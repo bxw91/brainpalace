@@ -1,0 +1,124 @@
+"""Phase 130 — GitHistoryIndexService: gate, dedup, incremental since-sha."""
+
+from __future__ import annotations
+
+import subprocess
+from pathlib import Path
+
+import pytest
+
+from brainpalace_server.config.git_config import GitIndexingConfig
+from brainpalace_server.services.git_history_index_service import (
+    GitHistoryIndexService,
+)
+
+
+def _run(repo: Path, *args: str) -> None:
+    subprocess.run(
+        ["git", "-C", str(repo), *args], check=True, capture_output=True, text=True
+    )
+
+
+def _commit(repo: Path, name: str) -> None:
+    (repo / name).write_text(f"content {name}\n")
+    _run(repo, "add", name)
+    _run(repo, "commit", "-m", f"add {name}")
+
+
+@pytest.fixture()
+def git_repo(tmp_path: Path) -> Path:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _run(repo, "init")
+    _run(repo, "config", "user.email", "dev@example.com")
+    _run(repo, "config", "user.name", "Dev Person")
+    _commit(repo, "a.txt")
+    _commit(repo, "b.txt")
+    return repo
+
+
+class FakeStore:
+    def __init__(self) -> None:
+        self.ids: set[str] = set()
+        self.upserts: list[list[str]] = []
+
+    async def get_by_id(self, chunk_id: str):  # noqa: ANN201
+        return {"id": chunk_id} if chunk_id in self.ids else None
+
+    async def upsert_documents(self, ids, embeddings, documents, metadatas):  # noqa: ANN001,ANN201
+        self.upserts.append(list(ids))
+        self.ids.update(ids)
+
+
+class FakeEmbedder:
+    def __init__(self) -> None:
+        self.embedded = 0
+
+    async def embed_chunks(self, chunks, progress=None):  # noqa: ANN001,ANN201
+        self.embedded += len(chunks)
+        return [[0.0, 0.1] for _ in chunks]
+
+
+def _svc(state_dir: Path):
+    store, emb = FakeStore(), FakeEmbedder()
+    svc = GitHistoryIndexService(
+        embedding_generator=emb, storage_backend=store, state_dir=state_dir
+    )
+    return svc, store, emb
+
+
+@pytest.mark.asyncio
+async def test_disabled_config_indexes_nothing(git_repo: Path, tmp_path: Path) -> None:
+    svc, store, emb = _svc(tmp_path / "state")
+    summary = await svc.index_repo(str(git_repo), GitIndexingConfig(enabled=False))
+    assert summary["enabled"] is False
+    assert summary["commits_new"] == 0
+    assert emb.embedded == 0
+
+
+@pytest.mark.asyncio
+async def test_indexes_full_history_first_run(git_repo: Path, tmp_path: Path) -> None:
+    svc, store, emb = _svc(tmp_path / "state")
+    summary = await svc.index_repo(str(git_repo), GitIndexingConfig(enabled=True))
+    assert summary["commits_new"] == 2
+    assert emb.embedded == 2
+    assert store.upserts
+
+
+@pytest.mark.asyncio
+async def test_incremental_adds_only_new_commit(
+    git_repo: Path, tmp_path: Path
+) -> None:
+    svc, store, emb = _svc(tmp_path / "state")
+    cfg = GitIndexingConfig(enabled=True)
+    await svc.index_repo(str(git_repo), cfg)
+    first_embedded = emb.embedded
+
+    _commit(git_repo, "c.txt")
+    summary = await svc.index_repo(str(git_repo), cfg)
+
+    assert summary["commits_new"] == 1
+    assert emb.embedded == first_embedded + 1
+
+
+@pytest.mark.asyncio
+async def test_reindex_no_change_is_noop(git_repo: Path, tmp_path: Path) -> None:
+    svc, store, emb = _svc(tmp_path / "state")
+    cfg = GitIndexingConfig(enabled=True)
+    await svc.index_repo(str(git_repo), cfg)
+    first_embedded = emb.embedded
+
+    summary = await svc.index_repo(str(git_repo), cfg)
+
+    assert summary["commits_new"] == 0
+    assert emb.embedded == first_embedded
+
+
+@pytest.mark.asyncio
+async def test_non_repo_no_ops(tmp_path: Path) -> None:
+    svc, store, emb = _svc(tmp_path / "state")
+    summary = await svc.index_repo(
+        str(tmp_path / "nope"), GitIndexingConfig(enabled=True)
+    )
+    assert summary["commits_new"] == 0
+    assert emb.embedded == 0

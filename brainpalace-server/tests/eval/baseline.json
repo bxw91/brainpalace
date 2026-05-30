@@ -1,0 +1,180 @@
+{
+  "model": "text-embedding-3-small",
+  "summary": {
+    "overall": {
+      "cases": 16,
+      "errors": 0,
+      "recall_at_k": 0.96875,
+      "mrr": 1.0
+    },
+    "by_mode": {
+      "bm25": {
+        "cases": 5,
+        "errors": 0,
+        "recall_at_k": 1.0,
+        "mrr": 1.0
+      },
+      "hybrid": {
+        "cases": 6,
+        "errors": 0,
+        "recall_at_k": 1.0,
+        "mrr": 1.0
+      },
+      "vector": {
+        "cases": 5,
+        "errors": 0,
+        "recall_at_k": 0.9,
+        "mrr": 1.0
+      }
+    },
+    "mode_agreement": {
+      "hybrid_vs_bm25_mrr_delta": 0.0
+    }
+  },
+  "cases": [
+    {
+      "id": "bm25-retry-after",
+      "mode": "bm25",
+      "k": 3,
+      "recall_at_k": 1.0,
+      "rr": 1.0,
+      "hit": true,
+      "error": null
+    },
+    {
+      "id": "bm25-reciprocal-rank-fusion",
+      "mode": "bm25",
+      "k": 3,
+      "recall_at_k": 1.0,
+      "rr": 1.0,
+      "hit": true,
+      "error": null
+    },
+    {
+      "id": "bm25-compute-invoice-total",
+      "mode": "bm25",
+      "k": 3,
+      "recall_at_k": 1.0,
+      "rr": 1.0,
+      "hit": true,
+      "error": null
+    },
+    {
+      "id": "bm25-endoftext-token",
+      "mode": "bm25",
+      "k": 3,
+      "recall_at_k": 1.0,
+      "rr": 1.0,
+      "hit": true,
+      "error": null
+    },
+    {
+      "id": "bm25-page-label",
+      "mode": "bm25",
+      "k": 3,
+      "recall_at_k": 1.0,
+      "rr": 1.0,
+      "hit": true,
+      "error": null
+    },
+    {
+      "id": "vec-token-renewal",
+      "mode": "vector",
+      "k": 3,
+      "recall_at_k": 0.5,
+      "rr": 1.0,
+      "hit": true,
+      "error": null
+    },
+    {
+      "id": "vec-throttling",
+      "mode": "vector",
+      "k": 3,
+      "recall_at_k": 1.0,
+      "rr": 1.0,
+      "hit": true,
+      "error": null
+    },
+    {
+      "id": "vec-stale-results",
+      "mode": "vector",
+      "k": 3,
+      "recall_at_k": 1.0,
+      "rr": 1.0,
+      "hit": true,
+      "error": null
+    },
+    {
+      "id": "vec-bill-amount",
+      "mode": "vector",
+      "k": 3,
+      "recall_at_k": 1.0,
+      "rr": 1.0,
+      "hit": true,
+      "error": null
+    },
+    {
+      "id": "vec-large-document-pages",
+      "mode": "vector",
+      "k": 3,
+      "recall_at_k": 1.0,
+      "rr": 1.0,
+      "hit": true,
+      "error": null
+    },
+    {
+      "id": "hyb-refresh-rotation",
+      "mode": "hybrid",
+      "k": 3,
+      "recall_at_k": 1.0,
+      "rr": 1.0,
+      "hit": true,
+      "error": null
+    },
+    {
+      "id": "hyb-bucket-refill",
+      "mode": "hybrid",
+      "k": 3,
+      "recall_at_k": 1.0,
+      "rr": 1.0,
+      "hit": true,
+      "error": null
+    },
+    {
+      "id": "hyb-lru-eviction",
+      "mode": "hybrid",
+      "k": 3,
+      "recall_at_k": 1.0,
+      "rr": 1.0,
+      "hit": true,
+      "error": null
+    },
+    {
+      "id": "hyb-discount",
+      "mode": "hybrid",
+      "k": 3,
+      "recall_at_k": 1.0,
+      "rr": 1.0,
+      "hit": true,
+      "error": null
+    },
+    {
+      "id": "hyb-env-precedence",
+      "mode": "hybrid",
+      "k": 3,
+      "recall_at_k": 1.0,
+      "rr": 1.0,
+      "hit": true,
+      "error": null
+    },
+    {
+      "id": "hyb-session-manager",
+      "mode": "hybrid",
+      "k": 3,
+      "recall_at_k": 1.0,
+      "rr": 1.0,
+      "hit": true,
+      "error": null
+    }
+  ]
+}

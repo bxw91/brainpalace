@@ -1,0 +1,181 @@
+# BrainPalace Server Task Runner
+# https://taskfile.dev
+
+version: '3'
+
+vars:
+  PROJECT_NAME: brainpalace-server
+  SRC_DIR: brainpalace_server
+  TEST_DIR: tests
+  # `poetry` wrapped to strip an IDE-injected VIRTUAL_ENV (e.g. the VSCode
+  # Python extension exporting a non-project path), so Poetry always resolves
+  # the in-project .venv/. Use {{.POETRY}} for every Poetry call.
+  POETRY: env -u VIRTUAL_ENV poetry
+
+env:
+  PYTHONPATH: './brainpalace_server:./tests'
+
+tasks:
+  default:
+    desc: List all available tasks
+    cmds:
+      - task --list
+
+  # ===================
+  # Setup
+  # ===================
+
+  install:
+    desc: Install project dependencies
+    cmds:
+    - "{{.POETRY}} install"
+
+  install:global:
+    desc: Install as a global CLI tool (editable mode)
+    cmds:
+    - pip install -e .
+
+  # ===================
+  # Development
+  # ===================
+
+  dev:
+    desc: Run server in development mode with hot reload
+    deps: [install]
+    env:
+      DEBUG: "true"
+    cmds:
+      - "{{.POETRY}} run brainpalace-serve"
+
+  run:
+    desc: Run server in production mode
+    deps: [install]
+    env:
+      DEBUG: "false"
+    cmds:
+      - "{{.POETRY}} run brainpalace-serve"
+
+  # ===================
+  # Build & Package
+  # ===================
+
+  clean:
+    desc: Remove build artifacts and temporary files
+    cmds:
+      - rm -rf dist build *.egg-info
+      - rm -rf .pytest_cache .mypy_cache .ruff_cache
+      - rm -rf htmlcov .coverage coverage.xml
+      - find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+
+  build:
+    desc: Build the package
+    deps: [clean]
+    cmds:
+      - "{{.POETRY}} build"
+
+  package:
+    desc: Create distributable package
+    deps: [build, test]
+    cmds:
+      - "{{.POETRY}} build"
+
+  # ===================
+  # Testing
+  # ===================
+
+  test:
+    desc: Run unit tests
+    deps: [install]
+    cmds:
+      - "{{.POETRY}} run pytest {{.TEST_DIR}} -v"
+
+  test:cov:
+    desc: Run tests with coverage report
+    aliases: [coverage]
+    deps: [install]
+    cmds:
+      - "{{.POETRY}} run pytest {{.TEST_DIR}} --cov={{.SRC_DIR}} --cov-report=term-missing --cov-report=html"
+
+  eval:
+    desc: >-
+      Run the retrieval eval harness (recall@k + MRR vs baseline). Directional,
+      NOT a gate — needs OPENAI_API_KEY. See ../docs/EVALUATION.md.
+    deps: [install]
+    cmds:
+      - "{{.POETRY}} run python -m tests.eval.report --baseline {{.CLI_ARGS}}"
+
+  test:watch:
+    desc: Run tests in watch mode
+    deps: [install]
+    cmds:
+      - "{{.POETRY}} run pytest-watch"
+
+  # ===================
+  # Code Quality
+  # ===================
+
+  format:
+    desc: Auto-format code with Black
+    cmds:
+      - "{{.POETRY}} run black {{.SRC_DIR}} {{.TEST_DIR}}"
+
+  format:check:
+    desc: Check code formatting without changes
+    cmds:
+      - "{{.POETRY}} run black --check {{.SRC_DIR}} {{.TEST_DIR}}"
+
+  lint:
+    desc: Check code for style violations with Ruff
+    cmds:
+      - "{{.POETRY}} run ruff check {{.SRC_DIR}} {{.TEST_DIR}}"
+
+  lint:fix:
+    desc: Lint and auto-fix issues
+    cmds:
+      - "{{.POETRY}} run ruff check --fix {{.SRC_DIR}} {{.TEST_DIR}}"
+
+  typecheck:
+    desc: Type check with mypy
+    aliases: [mypy]
+    cmds:
+      - "{{.POETRY}} run mypy {{.SRC_DIR}}"
+
+  vet:
+    desc: Perform all static analysis (lint + typecheck)
+    cmds:
+      - task: lint
+      - task: typecheck
+
+  # ===================
+  # Combined Tasks
+  # ===================
+
+  check:
+    desc: Run all quality checks without tests
+    cmds:
+      - task: format:check
+      - task: lint
+      - task: typecheck
+
+  all:
+    desc: Format, lint, typecheck, and test
+    cmds:
+      - task: format
+      - task: lint
+      - task: typecheck
+      - task: test
+
+  ci:
+    desc: Simulate full CI pipeline locally
+    cmds:
+      - task: clean
+      - task: install
+      - task: lint
+      - task: typecheck
+      - task: test:cov
+      - task: build
+
+  pr-qa-gate:
+    desc: PR quality gate with 50% coverage minimum
+    cmds:
+      - "{{.POETRY}} run pytest {{.TEST_DIR}} --cov={{.SRC_DIR}} --cov-report=term-missing --cov-report=xml:coverage-server.xml --cov-fail-under=50"

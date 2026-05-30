@@ -1,0 +1,118 @@
+[tool.poetry]
+name = "brainpalace-rag"
+version = "26.5.1"
+description = "BrainPalace RAG - Intelligent document indexing and semantic search server that gives AI agents long-term memory"
+authors = ["bxw91"]
+readme = "README.md"
+license = "MIT"
+homepage = "https://github.com/bxw91/brainpalace"
+repository = "https://github.com/bxw91/brainpalace"
+documentation = "https://github.com/bxw91/brainpalace#readme"
+keywords = ["brainpalace", "rag", "semantic-search", "ai-memory", "llm-memory", "documentation", "indexing", "llama-index", "chromadb", "ai-agent", "claude-code", "agent-memory"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Documentation",
+    "Topic :: Text Processing :: Indexing",
+]
+packages = [{include = "brainpalace_server"}]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+fastapi = "^0.115.0"
+uvicorn = {extras = ["standard"], version = "^0.32.0"}
+llama-index-core = "^0.14.0"
+llama-index-readers-file = "^0.5.0"
+llama-index-embeddings-openai = "^0.5.0"
+llama-index-retrievers-bm25 = "^0.6.0"
+rank-bm25 = "^0.2.2"
+chromadb = "^0.5.0"
+openai = "^1.57.0"
+anthropic = "^0.40.0"
+tiktoken = "^0.8.0"
+pydantic = "^2.10.0"
+pydantic-settings = "^2.6.0"
+python-dotenv = "^1.0.0"
+click = "^8.1.0"
+llama-index-llms-openai = "^0.6.12"
+tree-sitter-language-pack = "^0.7.3"
+pyyaml = "^6.0.0"
+pathspec = "^0.12.0"
+
+# Pluggable Provider dependencies (Feature 103)
+cohere = "^5.0.0"
+google-genai = "^1.0.0"
+
+# Reranking dependencies (Feature 01 - Two-Stage Reranking)
+sentence-transformers = "^3.4.0"
+
+# Optional GraphRAG dependencies (Feature 113)
+langextract = {version = "^1.0.0", optional = true}
+
+# PostgreSQL dependencies (Phase 6)
+asyncpg = "^0.29.0"
+sqlalchemy = {version = "^2.0.0", extras = ["asyncio"]}
+cachetools = ">=5.3"
+
+[tool.poetry.extras]
+graphrag = ["langextract"]
+postgres = ["asyncpg", "sqlalchemy"]
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.0"
+pytest-asyncio = "^0.24.0"
+pytest-cov = "^6.0.0"
+httpx = "^0.28.0"
+black = "^24.10.0"
+ruff = "^0.8.0"
+mypy = "^1.13.0"
+types-PyYAML = "^6.0.0"
+types-cachetools = "^6.2.0.20251022"
+
+[tool.poetry.scripts]
+brainpalace-serve = "brainpalace_server.api.main:cli"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 88
+target-version = ['py310']
+
+[tool.ruff]
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "C4"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+ignore_missing_imports = true
+plugins = ["pydantic.mypy"]
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+filterwarnings = [
+    "ignore::pydantic._internal._generate_schema.UnsupportedFieldAttributeWarning",
+]
+markers = [
+    "openai: marks tests that require OPENAI_API_KEY",
+    "anthropic: marks tests that require ANTHROPIC_API_KEY",
+    "cohere: marks tests that require COHERE_API_KEY",
+    "ollama: marks tests that require Ollama to be running",
+    "postgres: marks tests that require PostgreSQL database",
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+]

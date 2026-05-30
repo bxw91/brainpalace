@@ -1,0 +1,79 @@
+name: Bug Report
+description: Report a defect in brainpalace (CLI, server, MCP, or plugin)
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. Quick checks before submitting:
+
+        - Run `brainpalace status` and `brainpalace whoami` — confirm a server
+          is running for the project you're querying from.
+        - Run `task pr-qa-gate` if you can reproduce locally — surfaces most
+          regressions and tells you which subsystem.
+        - Check the [latest release notes](https://github.com/bxw91/brainpalace/releases)
+          to see whether it's already known.
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `brainpalace --version` (or the tag you're on).
+      placeholder: "v9.8.2"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which part of brainpalace is the bug in?
+      options:
+        - CLI (`brainpalace` command)
+        - Server (FastAPI, indexing, retrieval)
+        - MCP server (`brainpalace mcp`)
+        - Claude Code plugin (commands / agents / skills)
+        - Documentation
+        - Other / unsure
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Concrete observation. Include exact commands and output. Stack traces in fenced code blocks.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Minimal sequence. Include project setup, indexing commands, the query, the observed result.
+      placeholder: |
+        1. brainpalace init
+        2. brainpalace start
+        3. brainpalace index ./docs
+        4. brainpalace query "X" --mode hybrid
+        5. observed: ...
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Python version, embedding/summarisation provider, install method, anything else relevant.
+      placeholder: |
+        - OS: Linux 6.8 / macOS 14.5 / Windows 11
+        - Python: 3.12.3
+        - Embedding provider: OpenAI text-embedding-3-large
+        - Summarisation provider: none / Anthropic claude-haiku-4-5
+        - Install method: pip / pipx / Poetry (editable from source)
+        - MCP client (if MCP-related): VS Code Copilot / Cursor / Kilo Code / Cline / Continue / Zed

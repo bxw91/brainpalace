@@ -1,0 +1,211 @@
+---
+name: brainpalace-index
+description: Index documents for semantic search
+parameters:
+  - name: path
+    description: Path to documents to index
+    required: true
+  - name: include-code
+    description: Include code files in indexing
+    required: false
+    default: false
+  - name: include-type
+    description: File type presets to include (e.g., python,docs)
+    required: false
+  - name: force
+    description: Force re-indexing (bypass manifest, evict all prior chunks)
+    required: false
+    default: false
+skills:
+  - using-brainpalace
+last_validated: 2026-03-16
+---
+
+# Index Documents
+
+## Purpose
+
+Indexes documents at the specified path for semantic search. Processes markdown, PDF, text, and optionally code files. Creates vector embeddings for semantic search and builds the BM25 index for keyword search. Supports incremental indexing — only changed files are re-processed on subsequent runs.
+
+## Usage
+
+```
+/brainpalace:brainpalace-index <path> [options]
+```
+
+### Parameters
+
+| Parameter | Required | Default | Description |
+|-----------|----------|---------|-------------|
+| path | Yes | - | Path to documents (file or directory) |
+| --include-code | No | false | Include code files (.py, .ts, .js, .java, etc.) |
+| --include-type | No | - | File type presets (e.g., python,docs,typescript). Use `brainpalace types list` to see all. |
+| --chunk-size | No | 512 | Target chunk size in tokens |
+| --chunk-overlap | No | 50 | Overlap between chunks in tokens |
+| --no-recursive | No | false | Don't scan subdirectories |
+| --languages | No | - | Comma-separated language list for code files |
+| --code-strategy | No | ast_aware | Code splitting strategy: ast_aware or text_based |
+| --include-patterns | No | - | Additional glob include patterns |
+| --exclude-patterns | No | - | Additional glob exclude patterns |
+| --generate-summaries | No | false | Generate LLM summaries for better search quality |
+| --force | No | false | Force re-indexing (bypass manifest, evict all prior chunks) |
+| --allow-external | No | false | Allow indexing paths outside the project directory |
+| --json | No | false | Output results as JSON |
+
+### Examples
+
+```
+/brainpalace:brainpalace-index docs/
+/brainpalace:brainpalace-index ./src --include-code
+/brainpalace:brainpalace-index ./project --include-type python,docs
+/brainpalace:brainpalace-index ./src --include-type typescript --include-patterns "*.json"
+/brainpalace:brainpalace-index ./docs --force
+/brainpalace:brainpalace-index ./src --include-code --chunk-size 1024 --generate-summaries
+/brainpalace:brainpalace-index ./src --allow-external
+```
+
+## Execution
+
+Run the appropriate command based on parameters:
+
+**Index documents only:**
+```bash
+brainpalace index <path>
+```
+
+**Include code files:**
+```bash
+brainpalace index <path> --include-code
+```
+
+**With file type presets:**
+```bash
+brainpalace index <path> --include-type python,docs
+```
+
+**Force full re-index (bypass incremental):**
+```bash
+brainpalace index <path> --force
+```
+
+**With file watching (auto-reindex on changes):**
+```bash
+brainpalace folders add <path> --watch auto --include-code
+brainpalace folders add <path> --watch auto --debounce 10
+```
+
+**With all options:**
+```bash
+brainpalace index <path> --include-code --include-type python,docs --chunk-size 1024 --generate-summaries --force
+```
+
+### Expected Output
+
+```
+Indexing job queued!
+
+Job ID: abc123
+Folder: /home/dev/project/docs
+Include types: python, docs
+Status: queued
+
+Use 'brainpalace jobs' to monitor progress.
+```
+
+**After completion (check with `brainpalace jobs <job_id>`):**
+
+First-time indexing:
+```
+Files added: 45
+Chunks created: 312
+```
+
+Incremental re-indexing:
+```
+Eviction Summary:
+  Files added:     3
+  Files changed:   2
+  Files deleted:   1
+  Files unchanged: 39
+  Chunks evicted:  15
+  Chunks created:  25
+```
+
+## Output
+
+Report progress and results:
+
+1. **Job Queued** — Show job ID and status
+2. **Monitor Progress** — Use `brainpalace jobs --watch`
+3. **Completion Summary** — Eviction summary for incremental runs
+
+### Supported File Types
+
+| Category | Extensions |
+|----------|------------|
+| Documents | `.md`, `.txt`, `.pdf`, `.rst` |
+| Code (with --include-code) | `.py`, `.ts`, `.js`, `.java`, `.go`, `.rs`, `.c`, `.cpp`, `.h`, `.cs` |
+
+### File Type Presets (with --include-type)
+
+| Preset | Extensions |
+|--------|------------|
+| python | `.py`, `.pyi`, `.pyw` |
+| javascript | `.js`, `.jsx`, `.mjs`, `.cjs` |
+| typescript | `.ts`, `.tsx` |
+| go | `.go` |
+| rust | `.rs` |
+| java | `.java` |
+| csharp | `.cs` |
+| c | `.c`, `.h` |
+| cpp | `.cpp`, `.hpp`, `.cc`, `.hh` |
+| web | `.html`, `.css`, `.scss`, `.jsx`, `.tsx` |
+| docs | `.md`, `.txt`, `.rst`, `.pdf` |
+| text | `.md`, `.txt`, `.rst` |
+| pdf | `.pdf` |
+| code | All language presets combined |
+
+Use `brainpalace types list` to see all available presets.
+
+## Error Handling
+
+| Error | Cause | Resolution |
+|-------|-------|------------|
+| Path not found | Invalid path specified | Verify the path exists |
+| No files found | Path contains no supported files | Check file extensions or use --include-type |
+| Server not running | BrainPalace server is stopped | Run `brainpalace start` first |
+| Embedding provider error | Provider not configured | Run `/brainpalace:brainpalace-config` |
+| Permission denied | Cannot read files | Check file permissions |
+| Queue full (429) | Too many concurrent jobs | Wait or cancel with `brainpalace jobs JOB_ID --cancel` |
+
+### Recovery Commands
+
+```bash
+# Verify server is running
+brainpalace status
+
+# Check configuration
+brainpalace verify
+
+# Monitor job progress
+brainpalace jobs --watch
+
+# Force full re-index if incremental fails
+brainpalace index <path> --force
+```
+
+## Notes
+
+- Indexing runs asynchronously via job queue — use `brainpalace jobs` to monitor
+- Incremental indexing: only changed/new files are processed (unchanged files skipped)
+- Use `--force` to bypass manifest tracking and fully re-index
+- Deleted files' chunks are automatically evicted during incremental re-indexing
+- Use `brainpalace reset --yes` to clear the entire index before re-indexing
+- Large directories may take several minutes
+- Code files require AST parsing and may be slower
+- Binary files and images are automatically skipped
+- Relative paths are resolved from the current directory
+- Use `/brainpalace:brainpalace-inject` to enrich chunks with custom metadata during indexing
+- Use `--watch auto` to enable automatic re-indexing when files change
+- Watcher-triggered jobs use incremental diff for efficiency (only changed files processed)
+- Directories like `.git/`, `node_modules/`, `__pycache__/`, `dist/`, `build/` are excluded from watching

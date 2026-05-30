@@ -1,0 +1,151 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.pmarkdownc
+project_struct*.md
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+.python-version
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+*.sublime-project
+*.sublime-workspace
+
+# Testing
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+coverage-*.xml
+*.cover
+.hypothesis/
+
+# Mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Ruff
+.ruff_cache/
+
+# Node
+node_modules/
+
+# Vector and index databases
+chroma_db/
+bm25_index/
+*.chroma/
+test_persist/
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ============================================
+# SECURITY: Environment and API Keys
+# ============================================
+# IMPORTANT: Never commit these files!
+.env
+.env.*
+!.env.example
+.env.local
+.env.*.local
+*.env
+.envrc
+
+# API Keys and secrets
+secrets/
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+credentials.json
+*-credentials.json
+service-account*.json
+*_secret*.json
+
+# OpenAI and other API keys
+openai.key
+anthropic.key
+.api_keys
+api_keys.txt
+api_keys.json
+
+# Poetry - lock files are committed for reproducible CI builds
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Distribution / packaging
+*.manifest
+*.spec
+pip-log.txt
+pip-delete-this-directory.txt
+
+
+# Local development data
+data/
+indexed_docs/
+test_output/
+e2e_workdir/
+e2e/tmp/
+tmp/
+.tmp-*/
+*.bak
+!CLAUDE.md
+!AGENTS.md
+!.claude/
+!.opencode/
+!e2e-cli/lib/
+!e2e-cli/lib/*.sh
+
+# BrainPalace per-project runtime state
+.claude/brainpalace/
+.claude/doc-serve/
+.claude/settings.local.json
+
+# Local tool state
+.claude/projects/
+.claude/scheduled_tasks.lock
+brainpalace-server/.brainpalace/
+.brainpalace/
+integration/tests/quick_start/
+/DEV-WORKFLOW.md

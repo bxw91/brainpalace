@@ -1,0 +1,21 @@
+# Graph-mode eval cases (Phase 160). Scored ONLY with `--graph` (needs
+# ENABLE_GRAPH_INDEX=true at index time). Validates 090/100 GRAPH retrieval:
+# a query naming a code symbol should surface the file that defines it via the
+# AST-metadata knowledge graph (defined_in / contains / imports edges).
+- id: graph-invoice-total
+  query: "compute_invoice_total"
+  mode: graph
+  k: 5
+  expected: ["invoices.py"]
+
+- id: graph-session-manager
+  query: "SessionManager refresh_token"
+  mode: graph
+  k: 5
+  expected: ["session.py"]
+
+- id: graph-rrf
+  query: "reciprocal_rank_fusion"
+  mode: graph
+  k: 5
+  expected: ["search.py"]

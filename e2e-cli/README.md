@@ -1,0 +1,151 @@
+# E2E CLI Test Harness
+
+End-to-end testing harness for BrainPalace plugin commands through CLI adapters. Tests the full workflow from initialization to search and cleanup using headless CLI invocation.
+
+## Quick Start
+
+```bash
+# Run all scenarios with the Claude Code adapter
+task e2e-cli
+
+# Or directly
+./e2e-cli/run.sh
+```
+
+## Prerequisites
+
+- BrainPalace server dependencies installed (`cd brainpalace-server && poetry install`)
+- `claude` CLI installed and configured (for Claude adapter)
+- `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` environment variables set
+
+## Usage
+
+```bash
+# Run all scenarios
+./e2e-cli/run.sh
+
+# Run with a specific adapter
+./e2e-cli/run.sh --adapter claude
+
+# Run a single scenario
+./e2e-cli/run.sh --scenario search-hybrid
+
+# List available scenarios
+./e2e-cli/run.sh --list
+
+# Dry run (show what would execute)
+./e2e-cli/run.sh --dry-run
+
+# Keep all workspaces (even passing ones)
+./e2e-cli/run.sh --keep
+```
+
+## Scenarios
+
+| # | Scenario | Description | Server |
+|---|----------|-------------|--------|
+| 01 | init | Initialize BrainPalace project | No |
+| 02 | start | Verify server is running | Yes |
+| 03 | status | Check server status | Yes |
+| 04 | index-docs | Index .md documentation files | Yes |
+| 05 | index-code | Index .py/.ts code files | Yes |
+| 06 | search-bm25 | BM25 keyword search | Yes |
+| 07 | search-vector | Vector semantic search | Yes |
+| 08 | search-hybrid | Hybrid BM25+Vector search | Yes |
+| 09 | search-graph | Graph relationship search | Yes |
+| 10 | search-multi | Multi-mode fusion search | Yes |
+| 11 | reset | Reset index and verify empty | Yes |
+| 12 | stop | Verify server before shutdown | Yes |
+| 90 | negative-no-server | Search with no server | No |
+| 91 | negative-bad-path | Index nonexistent path | Yes |
+| 92 | negative-empty-query | Search with missing query | Yes |
+
+## Reports
+
+After each run, reports are generated in `e2e_workdir/<run-id>/`:
+
+- `report.json` — Machine-readable results
+- `report.md` — Markdown summary for CI artifacts
+- Terminal table — Printed to stdout
+
+## Adding an Adapter
+
+Create a new file in `adapters/<name>.sh` that exports these functions:
+
+```bash
+adapter_name()           # Return adapter name (e.g., "opencode")
+adapter_available()      # Return 0 if CLI is installed
+adapter_version()        # Print CLI version
+adapter_supports_hooks() # Return 0 if adapter supports hooks
+adapter_invoke()         # Run a command through the CLI
+adapter_setup()          # Prepare workspace for this adapter
+adapter_teardown()       # Clean up adapter-specific resources
+```
+
+## Adding a Scenario
+
+Create a new `.sh` file in `scenarios/` with a numeric prefix for ordering:
+
+```bash
+scenario_name()           # Return scenario name
+scenario_requires_hooks() # Return 0 if hooks are needed
+scenario_requires_server()# Return 0 if server is needed
+scenario_run()            # Execute the test (return 0=pass, 1=fail)
+```
+
+Use assertion helpers from `lib/harness.sh`:
+- `assert_success "label" command args...`
+- `assert_failure "label" command args...`
+- `echo "$data" | assert_contains "label" "substring"`
+- `echo "$data" | assert_matches "label" "regex"`
+- `echo "$json" | assert_json "label" ".field" "expected"`
+- `assert_gt "label" "$actual" "$threshold"`
+
+## Workspace Isolation
+
+Each scenario runs in an isolated workspace under `e2e_workdir/<run-id>/<adapter>/<scenario>/`. On success, only the disposable `project/` tree is cleaned up; logs, reports, and `cleanup/` helpers remain in place. On failure, the entire scenario workspace is preserved for debugging.
+
+## Runtime Parity Harness
+
+Runtime parity phases reuse the existing `e2e-cli/` harness instead of creating a
+second framework.
+
+- Checked-in fixture template: `e2e-cli/fixtures/runtime-project-template/`
+- Disposable runtime copy: `e2e_workdir/<run-id>/<adapter>/<scenario>/<runtime>-runtime/project/`
+- Runtime helper directories: `e2e_workdir/<run-id>/<adapter>/<scenario>/<runtime>-runtime/{cleanup,logs}/`
+- Allowed install shape: `brainpalace install-agent --agent <runtime> --project --path <workspace> --json`
+- Success cleanup removes only the disposable `project/` copy and keeps scenario
+  logs plus future status artifacts in the scenario root
+- Failure cleanup preserves the repo-owned scenario root for debugging and must
+  never mutate checked-in fixture sources or user-global runtime directories
+
+## OpenCode Parity Guard
+
+OpenCode now defaults to the user's global runtime path, so the parity harness intentionally keeps every install scoped to a disposable `.opencode/` workspace. The helper in `e2e-cli/lib/runtime_parity.sh` ensures `--agent opencode --project --path <workspace>` is enforced, snapshots the real `~/.config/opencode` tree, and flags any mutation as `global_path_mutated`. The regression guard lives at `e2e-cli/tests/test_opencode_scope_guard.sh`.
+
+## Runtime Verification Contract
+
+Runtime parity execution verifies installs in this exact order before any real headless runtime call:
+
+1. Structure check: confirm the expected project-local target directory exists under `e2e_workdir/` and the runtime-specific root has `logs/`.
+2. Install/file + JSON validation: confirm the installer JSON resolves `target_dir` to the expected project-local path.
+3. Dry runtime probe: run a runtime-specific probe command that must emit valid JSON.
+
+Failures always produce both:
+
+- `logs/failure.log` in the runtime-specific workspace
+- A machine-readable JSON payload with `runtime`, `status`, `error_type`, `details`, `remediation`, and `workspace`
+
+The current shared failure types are `missing_cli`, `install_verification_failed`, `malformed_json`, `forbidden_global_path`, and `global_path_mutated`.
+
+## CI Integration
+
+The harness runs nightly via `.github/workflows/e2e-nightly.yml`:
+- Schedule: 6:00 AM UTC daily
+- Can be triggered manually via `workflow_dispatch`
+- Artifacts uploaded on failure
+- Advisory only (not a required check)
+
+## Cost
+
+Each full run makes real `claude -p` API calls. Estimated cost: $0.50-2.00 per run depending on scenario count and response length.

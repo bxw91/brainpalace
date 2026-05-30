@@ -1,0 +1,343 @@
+"""Tests for CLI configuration module."""
+
+import os
+from pathlib import Path
+from unittest.mock import patch
+
+from brainpalace_cli.config import (
+    BrainPalaceConfig,
+    EmbeddingConfig,
+    ProjectConfig,
+    ServerConfig,
+    SummarizationConfig,
+    get_server_url,
+    get_state_dir,
+    load_config,
+)
+
+
+class TestServerConfig:
+    """Tests for ServerConfig model."""
+
+    def test_default_values(self) -> None:
+        """Test default configuration values."""
+        config = ServerConfig()
+        assert config.url == "http://127.0.0.1:8000"
+        assert config.host == "127.0.0.1"
+        assert config.port == 8000
+        assert config.auto_port is True
+
+
+class TestProjectConfig:
+    """Tests for ProjectConfig model."""
+
+    def test_default_values(self) -> None:
+        """Test default configuration values."""
+        config = ProjectConfig()
+        assert config.state_dir is None
+        assert config.project_root is None
+
+    def test_custom_state_dir(self) -> None:
+        """Test custom state directory."""
+        config = ProjectConfig(state_dir="/custom/path")
+        assert config.state_dir == "/custom/path"
+
+
+class TestEmbeddingConfig:
+    """Tests for EmbeddingConfig model."""
+
+    def test_default_values(self) -> None:
+        """Test default configuration values."""
+        config = EmbeddingConfig()
+        assert config.provider == "openai"
+        assert config.model == "text-embedding-3-large"
+        assert config.api_key_env == "OPENAI_API_KEY"
+        assert config.api_key is None
+
+    def test_direct_api_key(self) -> None:
+        """Test direct API key configuration."""
+        config = EmbeddingConfig(api_key="test-key")
+        assert config.api_key == "test-key"
+
+
+class TestSummarizationConfig:
+    """Tests for SummarizationConfig model."""
+
+    def test_default_values(self) -> None:
+        """Test default configuration values."""
+        config = SummarizationConfig()
+        assert config.provider == "anthropic"
+        assert config.model == "claude-haiku-4-5-20251001"
+        assert config.api_key_env == "ANTHROPIC_API_KEY"
+
+
+class TestBrainPalaceConfig:
+    """Tests for BrainPalaceConfig model."""
+
+    def test_default_values(self) -> None:
+        """Test default configuration values."""
+        config = BrainPalaceConfig()
+        assert config.server.url == "http://127.0.0.1:8000"
+        assert config.project.state_dir is None
+        assert config.embedding.provider == "openai"
+        assert config.summarization.provider == "anthropic"
+
+    def test_from_dict(self) -> None:
+        """Test creating config from dictionary (as from YAML)."""
+        config = BrainPalaceConfig(
+            server={"url": "http://localhost:9000", "port": 9000},
+            project={"state_dir": "/custom/state"},
+            embedding={"provider": "ollama", "model": "nomic-embed-text"},
+        )
+        assert config.server.url == "http://localhost:9000"
+        assert config.server.port == 9000
+        assert config.project.state_dir == "/custom/state"
+        assert config.embedding.provider == "ollama"
+
+
+class TestLoadConfig:
+    """Tests for load_config function."""
+
+    def test_default_when_no_config(self) -> None:
+        """Test defaults are used when no config file exists."""
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            patch(
+                "brainpalace_cli.config._find_config_file",
+                return_value=None,
+            ),
+        ):
+            config = load_config(Path("/nonexistent"))
+            assert config.server.url == "http://127.0.0.1:8000"
+            assert config.embedding.provider == "openai"
+
+    def test_env_var_override(self) -> None:
+        """Test environment variable overrides config file."""
+        with patch.dict(
+            os.environ,
+            {"BRAINPALACE_URL": "http://custom:8080"},
+            clear=True,
+        ):
+            config = load_config(Path("/nonexistent"))
+            assert config.server.url == "http://custom:8080"
+
+    def test_state_dir_env_override(self) -> None:
+        """Test state dir environment variable override."""
+        with patch.dict(
+            os.environ,
+            {"BRAINPALACE_STATE_DIR": "/env/state/dir"},
+            clear=True,
+        ):
+            config = load_config(Path("/nonexistent"))
+            assert config.project.state_dir == "/env/state/dir"
+
+
+class TestGetServerUrl:
+    """Tests for get_server_url function."""
+
+    def test_default_url(self, tmp_path: Path) -> None:
+        """Test default URL when nothing configured."""
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            patch("brainpalace_cli.config.get_state_dir", return_value=tmp_path),
+        ):
+            url = get_server_url()
+            assert url == "http://127.0.0.1:8000"
+
+    def test_env_var_takes_precedence(self) -> None:
+        """Test environment variable takes precedence."""
+        with patch.dict(os.environ, {"BRAINPALACE_URL": "http://envvar:9000"}):
+            url = get_server_url()
+            assert url == "http://envvar:9000"
+
+
+class TestGetStateDir:
+    """Tests for get_state_dir function."""
+
+    def test_default_state_dir(self) -> None:
+        """Test default state directory path."""
+        with patch.dict(os.environ, {}, clear=True):
+            project_root = Path("/my/project")
+            state_dir = get_state_dir(project_root=project_root)
+            assert state_dir == project_root / ".brainpalace"
+
+    def test_env_var_takes_precedence(self) -> None:
+        """Test environment variable takes precedence."""
+        with (
+            patch.dict(os.environ, {"BRAINPALACE_STATE_DIR": "/env/state"}),
+            patch(
+                "brainpalace_cli.config._find_project_root",
+                return_value=Path("/fake/project"),
+            ),
+            patch(
+                "brainpalace_cli.config._find_config_file",
+                return_value=None,
+            ),
+        ):
+            state_dir = get_state_dir(project_root=Path("/fake/project"))
+            assert state_dir == Path("/env/state")
+
+    def test_config_state_dir(self) -> None:
+        """Test state dir from config object."""
+        config = BrainPalaceConfig(project={"state_dir": "/config/state"})
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            patch(
+                "brainpalace_cli.config._find_project_root",
+                return_value=Path("/fake/project"),
+            ),
+        ):
+            state_dir = get_state_dir(config=config, project_root=Path("/fake/project"))
+            assert state_dir == Path("/config/state")
+
+
+class TestConfigFileLoading:
+    """Tests for loading config from YAML files."""
+
+    def test_load_yaml_config(self, tmp_path: Path) -> None:
+        """Test loading config from YAML file."""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(
+            """
+server:
+  url: "http://test:8080"
+  port: 8080
+
+project:
+  state_dir: "/test/state"
+
+embedding:
+  provider: "ollama"
+  model: "nomic-embed-text"
+"""
+        )
+
+        # Set config path and ensure no env var overrides
+        with patch.dict(
+            os.environ,
+            {"BRAINPALACE_CONFIG": str(config_file)},
+            clear=False,
+        ):
+            # Temporarily remove any override env vars
+            saved_url = os.environ.pop("BRAINPALACE_URL", None)
+            saved_state = os.environ.pop("BRAINPALACE_STATE_DIR", None)
+            try:
+                config = load_config()
+                assert config.server.url == "http://test:8080"
+                assert config.server.port == 8080
+                assert config.project.state_dir == "/test/state"
+                assert config.embedding.provider == "ollama"
+            finally:
+                # Restore any removed env vars
+                if saved_url:
+                    os.environ["BRAINPALACE_URL"] = saved_url
+                if saved_state:
+                    os.environ["BRAINPALACE_STATE_DIR"] = saved_state
+
+    def test_config_with_api_key(self, tmp_path: Path) -> None:
+        """Test loading config with direct API key."""
+        config_file = tmp_path / "config.yaml"
+        config_file.write_text(
+            """
+embedding:
+  provider: "openai"
+  api_key: "sk-test-key"
+
+summarization:
+  provider: "anthropic"
+  api_key: "sk-ant-test-key"
+"""
+        )
+
+        with patch.dict(os.environ, {"BRAINPALACE_CONFIG": str(config_file)}):
+            config = load_config()
+            assert config.embedding.api_key == "sk-test-key"
+            assert config.summarization.api_key == "sk-ant-test-key"
+
+    def test_project_config_file(self, tmp_path: Path) -> None:
+        """Test loading from project .brainpalace/config.yaml."""
+        # Create project structure
+        state_dir = tmp_path / ".brainpalace"
+        state_dir.mkdir(parents=True)
+        config_file = state_dir / "config.yaml"
+        config_file.write_text(
+            """
+server:
+  url: "http://project:8000"
+"""
+        )
+
+        with patch.dict(os.environ, {}, clear=True):
+            config = load_config(tmp_path)
+            assert config.server.url == "http://project:8000"
+
+
+class TestXdgConfigPriority:
+    """Tests for XDG-first config search priority."""
+
+    def test_xdg_before_legacy(self, tmp_path: Path) -> None:
+        """XDG config path is checked before legacy ~/.brainpalace."""
+        from brainpalace_cli.config import _find_config_file
+
+        # Create config at both XDG and legacy locations
+        xdg_config_dir = tmp_path / "xdg_config" / "brainpalace"
+        xdg_config_dir.mkdir(parents=True)
+        xdg_config = xdg_config_dir / "config.yaml"
+        xdg_config.write_text("server:\n  url: http://xdg:8000\n")
+
+        legacy_dir = tmp_path / ".brainpalace"
+        legacy_dir.mkdir(parents=True)
+        legacy_config = legacy_dir / "config.yaml"
+        legacy_config.write_text("server:\n  url: http://legacy:8000\n")
+
+        # Remove all env var overrides and set XDG_CONFIG_HOME
+        env = {
+            k: v
+            for k, v in os.environ.items()
+            if k
+            not in (
+                "BRAINPALACE_CONFIG",
+                "BRAINPALACE_STATE_DIR",
+                "DOC_SERVE_STATE_DIR",
+                "XDG_CONFIG_HOME",
+            )
+        }
+        env["XDG_CONFIG_HOME"] = str(tmp_path / "xdg_config")
+        with patch.dict(os.environ, env, clear=True):
+            # Use a non-existent start_path to skip steps 2 and 3
+            result = _find_config_file(start_path=Path("/nonexistent/path/for/testing"))
+            # Should find XDG config
+            assert result == xdg_config
+
+    def test_legacy_fallback_when_no_xdg_config(self, tmp_path: Path) -> None:
+        """Legacy path used as fallback when XDG config doesn't exist."""
+        from brainpalace_cli.config import _find_config_file
+
+        # Only legacy config exists
+        legacy_dir = tmp_path / ".brainpalace"
+        legacy_dir.mkdir(parents=True)
+        legacy_config = legacy_dir / "config.yaml"
+        legacy_config.write_text("server:\n  url: http://legacy:8000\n")
+
+        # Set XDG_CONFIG_HOME to tmp_path/xdg (no config.yaml there)
+        xdg_dir = tmp_path / "xdg_config" / "brainpalace"
+        xdg_dir.mkdir(parents=True)  # dir exists but no config.yaml
+
+        env = {
+            k: v
+            for k, v in os.environ.items()
+            if k
+            not in (
+                "BRAINPALACE_CONFIG",
+                "BRAINPALACE_STATE_DIR",
+                "DOC_SERVE_STATE_DIR",
+                "XDG_CONFIG_HOME",
+            )
+        }
+        env["XDG_CONFIG_HOME"] = str(tmp_path / "xdg_config")
+        with patch.dict(os.environ, env, clear=True):
+            with patch("pathlib.Path.home", return_value=tmp_path):
+                result = _find_config_file(
+                    start_path=Path("/nonexistent/path/for/testing")
+                )
+                assert result == legacy_config

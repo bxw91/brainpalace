@@ -1,0 +1,690 @@
+"""Document loading from various file formats using LlamaIndex."""
+
+import asyncio
+import fnmatch
+import logging
+import os
+import re
+from collections.abc import Iterator
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from brainpalace_server.indexing.gitignore_matcher import GitignoreMatcher
+
+from llama_index.core import Document, SimpleDirectoryReader
+
+logger = logging.getLogger(__name__)
+
+# Check for optional docx support
+_DOCX_AVAILABLE = False
+try:
+    import docx2txt  # noqa: F401
+
+    _DOCX_AVAILABLE = True
+except ImportError:
+    pass
+
+
+@dataclass
+class LoadedDocument:
+    """Represents a loaded document with metadata."""
+
+    text: str
+    source: str
+    file_name: str
+    file_path: str
+    file_size: int
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+class LanguageDetector:
+    """
+    Utility for detecting programming languages from file paths and content.
+
+    Supports the 10 languages with tree-sitter parsers:
+    - Python, TypeScript, JavaScript, Kotlin, C, C++, Java, Go, Rust, Swift
+    """
+
+    # Language detection by file extension
+    EXTENSION_TO_LANGUAGE = {
+        # Python
+        ".py": "python",
+        ".pyw": "python",
+        ".pyi": "python",
+        # TypeScript/JavaScript
+        ".ts": "typescript",
+        ".tsx": "typescript",
+        ".js": "javascript",
+        ".jsx": "javascript",
+        ".mjs": "javascript",
+        ".cjs": "javascript",
+        # Kotlin
+        ".kt": "kotlin",
+        ".kts": "kotlin",
+        # C/C++
+        ".c": "c",
+        ".h": "c",
+        ".cpp": "cpp",
+        ".cc": "cpp",
+        ".cxx": "cpp",
+        ".hpp": "cpp",
+        ".hxx": "cpp",
+        # Java
+        ".java": "java",
+        # Go
+        ".go": "go",
+        # Rust
+        ".rs": "rust",
+        # Swift
+        ".swift": "swift",
+        # C#
+        ".cs": "csharp",
+        ".csx": "csharp",
+        # Object Pascal
+        ".pas": "pascal",
+        ".pp": "pascal",
+        ".lpr": "pascal",
+        ".dpr": "pascal",
+        ".dpk": "pascal",
+    }
+
+    # Language detection by content patterns (fallback)
+    CONTENT_PATTERNS = {
+        "python": [
+            re.compile(r"^\s*import\s+\w+", re.MULTILINE),
+            re.compile(r"^\s*from\s+\w+\s+import", re.MULTILINE),
+            re.compile(r"^\s*def\s+\w+\s*\(", re.MULTILINE),
+            re.compile(r"^\s*class\s+\w+", re.MULTILINE),
+        ],
+        "javascript": [
+            re.compile(r"^\s*(const|let|var)\s+\w+\s*=", re.MULTILINE),
+            re.compile(r"^\s*function\s+\w+\s*\(", re.MULTILINE),
+            re.compile(r"^\s*=>\s*\{", re.MULTILINE),  # Arrow functions
+        ],
+        "typescript": [
+            re.compile(r"^\s*interface\s+\w+", re.MULTILINE),
+            re.compile(r"^\s*type\s+\w+\s*=", re.MULTILINE),
+            re.compile(r":\s*(string|number|boolean|any)", re.MULTILINE),
+        ],
+        "java": [
+            re.compile(r"^\s*public\s+class\s+\w+", re.MULTILINE),
+            re.compile(r"^\s*package\s+\w+", re.MULTILINE),
+            re.compile(r"^\s*import\s+java\.", re.MULTILINE),
+        ],
+        "kotlin": [
+            re.compile(r"^\s*fun\s+\w+\s*\(", re.MULTILINE),
+            re.compile(r"^\s*class\s+\w+", re.MULTILINE),
+            re.compile(r":\s*(String|Int|Boolean)", re.MULTILINE),
+        ],
+        "cpp": [
+            re.compile(r"^\s*#include\s*<", re.MULTILINE),
+            re.compile(r"^\s*using\s+namespace", re.MULTILINE),
+            re.compile(r"^\s*std::", re.MULTILINE),
+        ],
+        "c": [
+            re.compile(r"^\s*#include\s*<", re.MULTILINE),
+            re.compile(r"^\s*int\s+main\s*\(", re.MULTILINE),
+            re.compile(r"^\s*printf\s*\(", re.MULTILINE),
+        ],
+        "go": [
+            re.compile(r"^\s*package\s+\w+", re.MULTILINE),
+            re.compile(r"^\s*import\s*\(", re.MULTILINE),
+            re.compile(r"^\s*func\s+\w+\s*\(", re.MULTILINE),
+        ],
+        "rust": [
+            re.compile(r"^\s*fn\s+\w+\s*\(", re.MULTILINE),
+            re.compile(r"^\s*use\s+\w+::", re.MULTILINE),
+            re.compile(r"^\s*let\s+(mut\s+)?\w+", re.MULTILINE),
+        ],
+        "swift": [
+            re.compile(r"^\s*import\s+Foundation", re.MULTILINE),
+            re.compile(r"^\s*func\s+\w+\s*\(", re.MULTILINE),
+            re.compile(r"^\s*class\s+\w+\s*:", re.MULTILINE),
+        ],
+        "csharp": [
+            re.compile(r"^\s*using\s+System", re.MULTILINE),
+            re.compile(r"^\s*namespace\s+\w+", re.MULTILINE),
+            re.compile(r"\{\s*get\s*;\s*(set\s*;)?\s*\}", re.MULTILINE),
+            re.compile(r"\[[\w]+(\(.*\))?\]", re.MULTILINE),
+            re.compile(
+                r"^\s*public\s+(class|interface|struct|record|enum)\s+\w+",
+                re.MULTILINE,
+            ),
+        ],
+        "pascal": [
+            re.compile(r"^\s*(unit|program|library)\s+\w+\s*;", re.MULTILINE),
+            re.compile(r"^\s*(procedure|function)\s+\w+", re.MULTILINE),
+            re.compile(r"^\s*begin\b", re.MULTILINE),
+        ],
+    }
+
+    @classmethod
+    def detect_from_path(cls, file_path: str) -> str | None:
+        """
+        Detect language from file path/extension.
+
+        Args:
+            file_path: Path to the file.
+
+        Returns:
+            Language name or None if not detected.
+        """
+        path = Path(file_path)
+        extension = path.suffix.lower()
+
+        return cls.EXTENSION_TO_LANGUAGE.get(extension)
+
+    @classmethod
+    def detect_from_content(
+        cls, content: str, top_n: int = 3
+    ) -> list[tuple[str, float]]:
+        """
+        Detect language from file content using pattern matching.
+
+        Args:
+            content: File content to analyze.
+            top_n: Number of top matches to return.
+
+        Returns:
+            List of (language, confidence) tuples, sorted by confidence.
+        """
+        scores: dict[str, float] = {}
+
+        for language, patterns in cls.CONTENT_PATTERNS.items():
+            total_score = 0.0
+            pattern_count = len(patterns)
+
+            for pattern in patterns:
+                matches = len(pattern.findall(content))
+                if matches > 0:
+                    # Score based on number of matches, normalized by pattern count
+                    total_score += min(matches / 10.0, 1.0)  # Cap at 1.0 per pattern
+
+            if total_score > 0:
+                scores[language] = total_score / pattern_count
+
+        # Sort by score descending
+        sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+        return sorted_scores[:top_n]
+
+    @classmethod
+    def detect_language(cls, file_path: str, content: str | None = None) -> str | None:
+        """
+        Detect programming language using both path and content analysis.
+
+        Args:
+            file_path: Path to the file.
+            content: Optional file content for fallback detection.
+
+        Returns:
+            Detected language name or None.
+        """
+        # First try extension-based detection (fast and reliable)
+        language = cls.detect_from_path(file_path)
+        if language:
+            return language
+
+        # Fallback to content analysis if content is provided
+        if content:
+            content_matches = cls.detect_from_content(content, top_n=1)
+            if (
+                content_matches and content_matches[0][1] > 0.1
+            ):  # Minimum confidence threshold
+                return content_matches[0][0]
+
+        return None
+
+    @classmethod
+    def is_supported_language(cls, language: str) -> bool:
+        """
+        Check if a language is supported by our tree-sitter parsers.
+
+        Args:
+            language: Language name to check.
+
+        Returns:
+            True if supported, False otherwise.
+        """
+        return language in cls.CONTENT_PATTERNS
+
+    @classmethod
+    def get_supported_languages(cls) -> list[str]:
+        """Get list of all supported programming languages."""
+        return list(cls.CONTENT_PATTERNS.keys())
+
+
+class DocumentLoader:
+    """
+    Loads documents and code files from a folder supporting multiple file formats.
+
+    Supported document formats: .txt, .md, .pdf, .docx, .html, .rst
+    Supported code formats: .py, .ts, .tsx, .js, .jsx, .kt, .c, .cpp,
+    .java, .go, .rs, .swift
+    """
+
+    # Document formats (.docx requires optional docx2txt package)
+    DOCUMENT_EXTENSIONS: set[str] = (
+        {".txt", ".md", ".pdf", ".docx", ".html", ".rst"}
+        if _DOCX_AVAILABLE
+        else {".txt", ".md", ".pdf", ".html", ".rst"}
+    )
+
+    # Code formats (supported by tree-sitter)
+    CODE_EXTENSIONS: set[str] = {
+        ".py",
+        ".pyw",
+        ".pyi",  # Python
+        ".ts",
+        ".tsx",  # TypeScript
+        ".js",
+        ".jsx",
+        ".mjs",
+        ".cjs",  # JavaScript
+        ".kt",
+        ".kts",  # Kotlin
+        ".c",
+        ".h",  # C
+        ".cpp",
+        ".cc",
+        ".cxx",
+        ".hpp",
+        ".hxx",  # C++
+        ".java",  # Java
+        ".go",  # Go
+        ".rs",  # Rust
+        ".swift",  # Swift
+        ".cs",
+        ".csx",  # C#
+        ".pas",
+        ".pp",
+        ".lpr",
+        ".dpr",
+        ".dpk",  # Object Pascal
+    }
+
+    SUPPORTED_EXTENSIONS: set[str] = DOCUMENT_EXTENSIONS | CODE_EXTENSIONS
+
+    # Default directories to exclude from indexing
+    DEFAULT_EXCLUDE_PATTERNS: list[str] = [
+        "**/node_modules/**",
+        "**/__pycache__/**",
+        "**/.venv/**",
+        "**/venv/**",
+        "**/.git/**",
+        "**/dist/**",
+        "**/build/**",
+        "**/target/**",
+        "**/.next/**",
+        "**/.nuxt/**",
+        "**/coverage/**",
+        "**/.pytest_cache/**",
+        "**/.mypy_cache/**",
+        "**/.tox/**",
+        "**/egg-info/**",
+        "**/*.egg-info/**",
+        "**/.claude/**",
+        "**/.claude-plugin/**",
+        "**/.brainpalace/**",
+    ]
+
+    # B9: directory names ALWAYS excluded regardless of configured
+    # exclude_patterns. The .brainpalace/ directory holds the index itself;
+    # indexing it would create an index-of-the-index feedback loop.
+    ALWAYS_EXCLUDED_DIR_NAMES: frozenset[str] = frozenset({".brainpalace"})
+
+    def __init__(
+        self,
+        supported_extensions: set[str] | None = None,
+        exclude_patterns: list[str] | None = None,
+        gitignore_matcher: "GitignoreMatcher | None" = None,
+    ):
+        """
+        Initialize the document loader.
+
+        Args:
+            supported_extensions: Set of file extensions to load.
+                                  Defaults to SUPPORTED_EXTENSIONS.
+            exclude_patterns: List of glob patterns to exclude.
+                              Defaults to DEFAULT_EXCLUDE_PATTERNS.
+            gitignore_matcher: Optional pre-built matcher for project-local
+                              `.gitignore` files. When supplied, files +
+                              directories that the matcher reports as
+                              ignored are pruned in addition to
+                              exclude_patterns.
+        """
+        self.extensions = supported_extensions or self.SUPPORTED_EXTENSIONS
+        self.exclude_patterns = (
+            exclude_patterns
+            if exclude_patterns is not None
+            else self.DEFAULT_EXCLUDE_PATTERNS
+        )
+        self.gitignore_matcher = gitignore_matcher
+
+    async def load_from_folder(
+        self,
+        folder_path: str,
+        recursive: bool = True,
+    ) -> list[LoadedDocument]:
+        """
+        Load all supported documents from a folder.
+
+        Args:
+            folder_path: Path to the folder containing documents.
+            recursive: Whether to scan subdirectories recursively.
+
+        Returns:
+            List of LoadedDocument objects.
+
+        Raises:
+            ValueError: If the folder path is invalid.
+            FileNotFoundError: If the folder doesn't exist.
+        """
+        path = Path(folder_path)
+
+        if not path.exists():
+            raise FileNotFoundError(f"Folder not found: {folder_path}")
+
+        if not path.is_dir():
+            raise ValueError(f"Path is not a directory: {folder_path}")
+
+        logger.info(f"Loading documents from: {folder_path} (recursive={recursive})")
+        if self.exclude_patterns:
+            logger.info(
+                f"Excluding patterns: {self.exclude_patterns[:3]}... "
+                f"({len(self.exclude_patterns)} total)"
+            )
+
+        # Use LlamaIndex's SimpleDirectoryReader
+        # Run in thread pool to avoid blocking the event loop
+        try:
+            # Prune excluded dirs before descending so SimpleDirectoryReader
+            # does not walk them via its internal fs.walk.
+            collected = [
+                str(f)
+                for f in self._walk_pruned(path)
+                if f.suffix.lower() in self.extensions
+            ]
+            # An empty file set must short-circuit. SimpleDirectoryReader raises
+            # `ValueError: Must provide either input_dir or input_files` when
+            # handed input_files=[]. A folder whose every file is filtered out
+            # by extension / exclude-pattern / .gitignore pruning is a valid
+            # (empty) index target, not an error.
+            if not collected:
+                logger.warning(
+                    f"No indexable files found in {folder_path} after extension "
+                    f"filtering and exclude/.gitignore pruning — nothing to load"
+                )
+                return []
+            reader = SimpleDirectoryReader(
+                input_files=collected,
+                required_exts=list(self.extensions),
+                filename_as_id=True,
+            )
+            # reader.load_data() is blocking I/O - run in thread pool
+            llama_documents: list[Document] = await asyncio.to_thread(reader.load_data)
+        except Exception as e:
+            logger.error(f"Failed to load documents: {e}")
+            raise
+
+        # Convert to our LoadedDocument format.
+        # The loop does Path.stat(), LanguageDetector.detect_language()
+        # (regex-heavy), and object construction for every document.
+        # Run in a thread so the event loop stays responsive during
+        # large folder loads (hundreds of files).
+        code_exts = self.CODE_EXTENSIONS
+
+        def _convert_documents() -> list[LoadedDocument]:
+            docs: list[LoadedDocument] = []
+            for doc in llama_documents:
+                file_path = doc.metadata.get("file_path", "")
+                file_name = doc.metadata.get(
+                    "file_name", Path(file_path).name if file_path else "unknown"
+                )
+
+                # Get file size
+                try:
+                    file_size = Path(file_path).stat().st_size if file_path else 0
+                except OSError:
+                    file_size = 0
+
+                # Detect language for code files
+                language = None
+                source_type = "doc"  # Default to document
+                if file_path:
+                    path_ext = Path(file_path).suffix.lower()
+                    if path_ext in code_exts:
+                        source_type = "code"
+                        language = LanguageDetector.detect_language(file_path, doc.text)
+
+                # Preserve any per-part identifier the loader put in
+                # metadata["source"] before we overwrite it with file_path.
+                # PyMuPDFReader, for example, sets it to the 1-based page
+                # number string ("1", "2", ...); without this, multi-page
+                # PDFs collide on chunk_id (issue #141).
+                prior_source = doc.metadata.get("source")
+                merged_metadata: dict[str, Any] = {
+                    **doc.metadata,
+                    "doc_id": doc.doc_id,
+                    "source": file_path,
+                    "source_type": source_type,
+                    "language": language,
+                }
+                if (
+                    prior_source
+                    and isinstance(prior_source, str)
+                    and prior_source != file_path
+                    and "page_label" not in doc.metadata
+                ):
+                    merged_metadata["page_label"] = prior_source
+
+                loaded_doc = LoadedDocument(
+                    text=doc.text,
+                    source=file_path,
+                    file_name=file_name,
+                    file_path=file_path,
+                    file_size=file_size,
+                    metadata=merged_metadata,
+                )
+                docs.append(loaded_doc)
+            return docs
+
+        loaded_docs = await asyncio.to_thread(_convert_documents)
+
+        logger.info(f"Loaded {len(loaded_docs)} documents from {folder_path}")
+        return loaded_docs
+
+    async def load_single_file(self, file_path: str) -> LoadedDocument:
+        """
+        Load a single document file.
+
+        Args:
+            file_path: Path to the file.
+
+        Returns:
+            LoadedDocument object.
+
+        Raises:
+            ValueError: If the file type is not supported.
+            FileNotFoundError: If the file doesn't exist.
+        """
+        path = Path(file_path)
+
+        if not path.exists():
+            raise FileNotFoundError(f"File not found: {file_path}")
+
+        if path.suffix.lower() not in self.extensions:
+            raise ValueError(
+                f"Unsupported file type: {path.suffix}. "
+                f"Supported: {', '.join(self.extensions)}"
+            )
+
+        reader = SimpleDirectoryReader(
+            input_files=[str(path)],
+            filename_as_id=True,
+        )
+        # Run in thread pool to avoid blocking the event loop
+        docs = await asyncio.to_thread(reader.load_data)
+
+        if not docs:
+            raise ValueError(f"No content loaded from file: {file_path}")
+
+        doc = docs[0]
+
+        # Detect language for code files
+        language = None
+        source_type = "doc"  # Default to document
+        path_ext = path.suffix.lower()
+        if path_ext in self.CODE_EXTENSIONS:
+            source_type = "code"
+            language = LanguageDetector.detect_language(str(path), doc.text)
+
+        return LoadedDocument(
+            text=doc.text,
+            source=file_path,
+            file_name=path.name,
+            file_path=str(path),
+            file_size=path.stat().st_size,
+            metadata={
+                **doc.metadata,
+                "doc_id": doc.doc_id,
+                "source": file_path,
+                "source_type": source_type,
+                "language": language,
+            },
+        )
+
+    async def load_files(
+        self,
+        folder_path: str,
+        recursive: bool = True,
+        include_code: bool = False,
+        include_patterns: list[str] | None = None,
+    ) -> list[LoadedDocument]:
+        """
+        Load documents and optionally code files from a folder.
+
+        Args:
+            folder_path: Path to the folder containing files to load.
+            recursive: Whether to scan subdirectories recursively.
+            include_code: Whether to include source code files alongside documents.
+            include_patterns: Optional glob patterns (e.g. ``["*.py", "*.md"]``)
+                that restrict which files are loaded.  When provided, patterns
+                like ``*.py`` are converted to extensions (``.py``) and used as
+                the effective extension set via
+                ``SimpleDirectoryReader(required_exts=...)``.
+
+        Returns:
+            List of LoadedDocument objects with proper metadata.
+
+        Raises:
+            ValueError: If folder path is invalid.
+            FileNotFoundError: If folder doesn't exist.
+        """
+        # If explicit include_patterns provided, derive extensions from them
+        if include_patterns:
+            effective_extensions = set()
+            for pattern in include_patterns:
+                # Convert glob pattern like "*.py" → ".py"
+                if pattern.startswith("*."):
+                    ext = pattern[1:]  # "*.py" → ".py"
+                    effective_extensions.add(ext)
+                elif pattern.startswith("."):
+                    effective_extensions.add(pattern)
+            if not effective_extensions:
+                # Patterns didn't yield any extensions; fall through to default
+                effective_extensions = (
+                    self.SUPPORTED_EXTENSIONS
+                    if include_code
+                    else self.DOCUMENT_EXTENSIONS
+                )
+        elif include_code:
+            # Use all supported extensions (docs + code)
+            effective_extensions = self.SUPPORTED_EXTENSIONS
+        else:
+            # Use only document extensions
+            effective_extensions = self.DOCUMENT_EXTENSIONS
+
+        # Create a temporary loader with the effective extensions and exclude
+        # patterns. The gitignore matcher MUST be forwarded — load_files() is
+        # the production indexing path; without it .gitignore is silently
+        # ignored despite being wired into load_from_folder (Phase H).
+        temp_loader = DocumentLoader(
+            supported_extensions=effective_extensions,
+            exclude_patterns=self.exclude_patterns,
+            gitignore_matcher=self.gitignore_matcher,
+        )
+
+        # Load files using the configured extensions
+        loaded_docs = await temp_loader.load_from_folder(folder_path, recursive)
+
+        # Ensure all documents have proper source_type metadata
+        for doc in loaded_docs:
+            if not doc.metadata.get("source_type"):
+                path_ext = Path(doc.source).suffix.lower()
+                if path_ext in self.CODE_EXTENSIONS:
+                    doc.metadata["source_type"] = "code"
+                    # Detect language for code files
+                    language = LanguageDetector.detect_language(doc.source, doc.text)
+                    if language:
+                        doc.metadata["language"] = language
+                else:
+                    doc.metadata["source_type"] = "doc"
+                    doc.metadata["language"] = "markdown"  # Default for documents
+
+        return loaded_docs
+
+    def _walk_pruned(self, root: Path) -> Iterator[Path]:
+        """Pruned os.walk: skips excluded dirs before descending.
+
+        Pruning sources (union):
+          1. ALWAYS_EXCLUDED_DIR_NAMES (e.g. `.brainpalace`)
+          2. `exclude_patterns` glob matches
+          3. `gitignore_matcher.is_ignored()` (Phase H)
+        """
+        excl = getattr(self, "exclude_patterns", None) or []
+        matcher = getattr(self, "gitignore_matcher", None)
+        for dirpath, dirnames, filenames in os.walk(root):
+            dp = Path(dirpath)
+            dirnames[:] = [
+                d
+                for d in dirnames
+                if d not in self.ALWAYS_EXCLUDED_DIR_NAMES
+                and not any(
+                    fnmatch.fnmatch(str(dp / d), pat.replace("**", "*")) for pat in excl
+                )
+                and not (matcher is not None and matcher.is_ignored(dp / d))
+            ]
+            for f in filenames:
+                fp = dp / f
+                if matcher is not None and matcher.is_ignored(fp):
+                    continue
+                yield fp
+
+    def get_supported_files(
+        self,
+        folder_path: str,
+        recursive: bool = True,
+    ) -> list[Path]:
+        """
+        Get list of supported files in a folder without loading them.
+
+        Args:
+            folder_path: Path to the folder.
+            recursive: Whether to scan subdirectories.
+
+        Returns:
+            List of Path objects for supported files.
+        """
+        path = Path(folder_path)
+
+        if not path.exists() or not path.is_dir():
+            return []
+
+        if recursive:
+            files = list(self._walk_pruned(path))
+        else:
+            files = [f for f in path.iterdir() if f.is_file()]
+
+        return [f for f in files if f.suffix.lower() in self.extensions]

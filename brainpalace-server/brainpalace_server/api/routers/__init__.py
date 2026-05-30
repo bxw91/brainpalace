@@ -1,0 +1,19 @@
+"""API routers for different endpoint groups."""
+
+from .cache import router as cache_router
+from .folders import router as folders_router
+from .health import router as health_router
+from .index import router as index_router
+from .jobs import router as jobs_router
+from .query import router as query_router
+from .runtime import router as runtime_router
+
+__all__ = [
+    "cache_router",
+    "folders_router",
+    "health_router",
+    "index_router",
+    "jobs_router",
+    "query_router",
+    "runtime_router",
+]

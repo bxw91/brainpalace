@@ -1,0 +1,112 @@
+# Retrieval eval cases for phase 010.
+#
+# Each case:
+#   id:       unique short identifier
+#   query:    the search query string
+#   mode:     bm25 | vector | hybrid   (graph/multi covered by later phases)
+#   k:        top-k to retrieve and score against
+#   expected: list of source-path SUFFIXES that should appear in the top-k
+#             (matched with str.endswith, so "auth.md" matches ".../corpus/auth.md")
+#
+# Keep expectations to the clearly-correct file(s). Add cases freely; refresh
+# the baseline with `python -m tests.eval.report --update-baseline` and a
+# written reason when a change legitimately moves scores.
+
+# ---- BM25 (keyword) — exact terms present in the corpus ----
+- id: bm25-retry-after
+  query: "Retry-After header 429 Too Many Requests"
+  mode: bm25
+  k: 3
+  expected: ["rate_limiting.md"]
+
+- id: bm25-reciprocal-rank-fusion
+  query: "reciprocal rank fusion RRF"
+  mode: bm25
+  k: 3
+  expected: ["search.py"]
+
+- id: bm25-compute-invoice-total
+  query: "compute_invoice_total tax_rate line items"
+  mode: bm25
+  k: 3
+  expected: ["invoices.py"]
+
+- id: bm25-endoftext-token
+  query: "ALLOW_SPECIAL_TOKENS_IN_TEXT endoftext literal"
+  mode: bm25
+  k: 3
+  expected: ["configuration.md"]
+
+- id: bm25-page-label
+  query: "page_label chunk identifier collide"
+  mode: bm25
+  k: 3
+  expected: ["pdf_parsing.md"]
+
+# ---- VECTOR (semantic) — paraphrased, terms not necessarily literal ----
+- id: vec-token-renewal
+  query: "how does the client get a new login credential after the old one expires"
+  mode: vector
+  k: 3
+  expected: ["auth.md", "session.py"]
+
+- id: vec-throttling
+  query: "stop a caller from making too many requests too quickly"
+  mode: vector
+  k: 3
+  expected: ["rate_limiting.md"]
+
+- id: vec-stale-results
+  query: "make sure old answers are dropped after the data changes"
+  mode: vector
+  k: 3
+  expected: ["caching.md"]
+
+- id: vec-bill-amount
+  query: "add up the cost of everything a customer bought including tax"
+  mode: vector
+  k: 3
+  expected: ["invoices.py"]
+
+- id: vec-large-document-pages
+  query: "reading a huge document one page at a time without running out of memory"
+  mode: vector
+  k: 3
+  expected: ["pdf_parsing.md"]
+
+# ---- HYBRID (fusion) — should surface the right file regardless of phrasing ----
+- id: hyb-refresh-rotation
+  query: "refresh token rotation revokes the family on reuse"
+  mode: hybrid
+  k: 3
+  expected: ["auth.md", "session.py"]
+
+- id: hyb-bucket-refill
+  query: "token bucket refills at a fixed rate per second"
+  mode: hybrid
+  k: 3
+  expected: ["rate_limiting.md"]
+
+- id: hyb-lru-eviction
+  query: "least recently used entry evicted when cache full TTL"
+  mode: hybrid
+  k: 3
+  expected: ["caching.md"]
+
+- id: hyb-discount
+  query: "apply a percentage discount to a total in cents"
+  mode: hybrid
+  k: 3
+  expected: ["invoices.py"]
+
+- id: hyb-env-precedence
+  query: "environment variables override the yaml config file"
+  mode: hybrid
+  k: 3
+  expected: ["configuration.md"]
+
+- id: hyb-session-manager
+  query: "SessionManager exchange refresh token for new access pair"
+  mode: hybrid
+  k: 3
+  expected: ["session.py"]

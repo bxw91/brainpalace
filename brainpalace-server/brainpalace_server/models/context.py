@@ -1,0 +1,20 @@
+"""Models for the session-start context block (Phase 035)."""
+
+from __future__ import annotations
+
+from pydantic import BaseModel, Field
+
+
+class SessionContext(BaseModel):
+    """A frozen-snapshot context block assembled at session start."""
+
+    text: str = Field(..., description="Rendered context block (markdown)")
+    token_estimate: int = Field(default=0, description="Approx tokens (chars/4)")
+    sections: list[str] = Field(
+        default_factory=list,
+        description="Slices actually included, e.g. ['project_facts', 'memory']",
+    )
+    truncated: bool = Field(
+        default=False, description="True if some memories were dropped for budget"
+    )
+    memory_count: int = Field(default=0, description="Curated memories included")

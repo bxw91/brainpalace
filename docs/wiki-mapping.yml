@@ -1,0 +1,143 @@
+# BrainPalace Wiki Mapping
+# Maps local markdown files to GitHub Wiki pages for synchronization
+
+# Main documentation files
+docs:
+  docs/USER_GUIDE.md: "User-Guide"
+  docs/DEVELOPERS_GUIDE.md: "Developer-Guide"
+  docs/QUICK_START.md: "Quick-Start"
+  docs/ORIGINAL_SPEC.md: "Original-Specification"
+  # New comprehensive documentation
+  docs/ARCHITECTURE.md: "Architecture-Overview"
+  docs/API_REFERENCE.md: "API-Reference"
+  docs/CONFIGURATION.md: "Configuration-Reference"
+  docs/DEPLOYMENT.md: "Deployment-Guide"
+  docs/GRAPHRAG_GUIDE.md: "GraphRAG-Guide"
+  docs/CODE_INDEXING.md: "Code-Indexing-Guide"
+  docs/PLUGIN_GUIDE.md: "Plugin-Guide"
+
+# Design documentation (diagrams and architecture)
+design:
+  docs/design/README.md: "Design-Overview"
+  docs/design/DIAGRAMS.md: "Diagrams-Index"
+  docs/design/architecture-overview.md: "Design-Architecture-Overview"
+  docs/design/query-architecture.md: "Design-Query-Architecture"
+  docs/design/query-sequences.md: "Design-Query-Sequences"
+  docs/design/indexing-pipeline.md: "Design-Indexing-Pipeline"
+  docs/design/indexing-sequences.md: "Design-Indexing-Sequences"
+  docs/design/storage-architecture.md: "Design-Storage-Architecture"
+  docs/design/class-diagrams.md: "Design-Class-Diagrams"
+  docs/design/deployment-architecture.md: "Design-Deployment-Architecture"
+  docs/design/deployment-diagram.md: "Design-Deployment-Diagram"
+  docs/design/package-diagrams.md: "Design-Package-Diagrams"
+  docs/design/component-diagrams.md: "Design-Component-Diagrams"
+  docs/design/server-states.md: "Design-Server-States"
+  docs/design/cli-sequences.md: "Design-CLI-Sequences"
+
+# Roadmap and planning documents
+roadmaps:
+  docs/roadmaps/product-roadmap.md: "Product-Roadmap"
+  docs/roadmaps/spec-mapping.md: "Specification-Mapping"
+
+# Plans
+plans:
+  docs/plans/e2e_testing_plan.md: "E2E-Testing-Plan"
+  docs/plans/graphrag-integration-plan.md: "GraphRAG-Integration-Plan"
+
+# Plugin skill documentation (primary location - from brainpalace-plugin)
+plugin-skill:
+  brainpalace-plugin/skills/using-brainpalace/SKILL.md: "Agent-Skill-Definition"
+  brainpalace-plugin/skills/using-brainpalace/references/api_reference.md: "Agent-Skill-API-Reference"
+  brainpalace-plugin/skills/using-brainpalace/references/bm25-search-guide.md: "Agent-Skill-BM25-Search-Guide"
+  brainpalace-plugin/skills/using-brainpalace/references/vector-search-guide.md: "Agent-Skill-Vector-Search-Guide"
+  brainpalace-plugin/skills/using-brainpalace/references/hybrid-search-guide.md: "Agent-Skill-Hybrid-Search-Guide"
+  brainpalace-plugin/skills/using-brainpalace/references/graph-search-guide.md: "Agent-Skill-Graph-Search-Guide"
+  brainpalace-plugin/skills/using-brainpalace/references/server-discovery.md: "Agent-Skill-Server-Discovery-Guide"
+  brainpalace-plugin/skills/using-brainpalace/references/integration-guide.md: "Agent-Skill-Integration-Guide"
+  brainpalace-plugin/skills/using-brainpalace/references/troubleshooting-guide.md: "Agent-Skill-Troubleshooting-Guide"
+  brainpalace-plugin/skills/using-brainpalace/references/provider-configuration.md: "Agent-Skill-Provider-Configuration"
+  brainpalace-plugin/skills/using-brainpalace/references/installation-guide.md: "Agent-Skill-Installation-Guide"
+  brainpalace-plugin/skills/using-brainpalace/references/version-management.md: "Agent-Skill-Version-Management"
+  brainpalace-plugin/skills/using-brainpalace/references/interactive-setup.md: "Agent-Skill-Interactive-Setup"
+
+# Feature 103 - Pluggable Providers
+feature-103:
+  .speckit/features/103-pluggable-providers/spec.md: "Pluggable-Providers-Spec"
+  .speckit/features/103-pluggable-providers/plan.md: "Pluggable-Providers-Plan"
+  .speckit/features/103-pluggable-providers/tasks.md: "Pluggable-Providers-Tasks"
+  .speckit/features/103-pluggable-providers/quickstart.md: "Pluggable-Providers-Quickstart"
+  .speckit/features/103-pluggable-providers/research.md: "Pluggable-Providers-Research"
+  .speckit/features/103-pluggable-providers/data-model.md: "Pluggable-Providers-Data-Model"
+
+# Feature 109 - Multi-Instance Architecture
+feature-109:
+  .speckit/features/109-multi-instance-architecture/spec.md: "Multi-Instance-Architecture-Spec"
+  .speckit/features/109-multi-instance-architecture/plan.md: "Multi-Instance-Architecture-Plan"
+  .speckit/features/109-multi-instance-architecture/tasks.md: "Multi-Instance-Architecture-Tasks"
+  .speckit/features/109-multi-instance-architecture/quickstart.md: "Multi-Instance-Architecture-Quickstart"
+  .speckit/features/109-multi-instance-architecture/data-model.md: "Multi-Instance-Architecture-Data-Model"
+  .speckit/features/109-multi-instance-architecture/research.md: "Multi-Instance-Architecture-Research"
+
+# Feature 113 - GraphRAG Integration
+feature-113:
+  .speckit/features/113-graphrag-integration/spec.md: "GraphRAG-Integration-Spec"
+  .speckit/features/113-graphrag-integration/plan.md: "GraphRAG-Integration-Plan"
+  .speckit/features/113-graphrag-integration/tasks.md: "GraphRAG-Integration-Tasks"
+  .speckit/features/113-graphrag-integration/quickstart.md: "GraphRAG-Integration-Quickstart"
+  .speckit/features/113-graphrag-integration/research.md: "GraphRAG-Integration-Research"
+  .speckit/features/113-graphrag-integration/data-model.md: "GraphRAG-Integration-Data-Model"
+
+# Feature 114 - BrainPalace Plugin
+feature-114:
+  .speckit/features/114-brainpalace-plugin/spec.md: "BrainPalace-Plugin-Spec"
+  .speckit/features/114-brainpalace-plugin/plan.md: "BrainPalace-Plugin-Plan"
+  .speckit/features/114-brainpalace-plugin/tasks.md: "BrainPalace-Plugin-Tasks"
+  .speckit/features/114-brainpalace-plugin/quickstart.md: "BrainPalace-Plugin-Quickstart"
+  .speckit/features/114-brainpalace-plugin/research.md: "BrainPalace-Plugin-Research"
+  .speckit/features/114-brainpalace-plugin/data-model.md: "BrainPalace-Plugin-Data-Model"
+
+# Plugin documentation
+plugin:
+  brainpalace-plugin/README.md: "Plugin-README"
+
+# Plugin commands - Search operations
+plugin-commands-search:
+  brainpalace-plugin/commands/brainpalace-search.md: "Command-Search"
+  brainpalace-plugin/commands/brainpalace-semantic.md: "Command-Semantic"
+  brainpalace-plugin/commands/brainpalace-keyword.md: "Command-Keyword"
+  brainpalace-plugin/commands/brainpalace-bm25.md: "Command-BM25"
+  brainpalace-plugin/commands/brainpalace-vector.md: "Command-Vector"
+  brainpalace-plugin/commands/brainpalace-hybrid.md: "Command-Hybrid"
+  brainpalace-plugin/commands/brainpalace-graph.md: "Command-Graph"
+  brainpalace-plugin/commands/brainpalace-multi.md: "Command-Multi"
+
+# Plugin commands - Server management
+plugin-commands-server:
+  brainpalace-plugin/commands/brainpalace-start.md: "Command-Start"
+  brainpalace-plugin/commands/brainpalace-stop.md: "Command-Stop"
+  brainpalace-plugin/commands/brainpalace-status.md: "Command-Status"
+  brainpalace-plugin/commands/brainpalace-list.md: "Command-List"
+  brainpalace-plugin/commands/brainpalace-index.md: "Command-Index"
+  brainpalace-plugin/commands/brainpalace-reset.md: "Command-Reset"
+
+# Plugin commands - Setup and configuration
+plugin-commands-setup:
+  brainpalace-plugin/commands/brainpalace-init.md: "Command-Init"
+  brainpalace-plugin/commands/brainpalace-install.md: "Command-Install"
+  brainpalace-plugin/commands/brainpalace-setup.md: "Command-Setup"
+  brainpalace-plugin/commands/brainpalace-config.md: "Command-Config"
+  brainpalace-plugin/commands/brainpalace-verify.md: "Command-Verify"
+  brainpalace-plugin/commands/brainpalace-help.md: "Command-Help"
+  brainpalace-plugin/commands/brainpalace-version.md: "Command-Version"
+
+# Plugin commands - Provider configuration
+plugin-commands-providers:
+  brainpalace-plugin/commands/brainpalace-providers.md: "Command-Providers"
+  brainpalace-plugin/commands/brainpalace-embeddings.md: "Command-Embeddings"
+  brainpalace-plugin/commands/brainpalace-summarizer.md: "Command-Summarizer"
+
+# Plugin agents
+plugin-agents:
+  brainpalace-plugin/agents/search-assistant.md: "Agent-Search-Assistant"
+  brainpalace-plugin/agents/setup-assistant.md: "Agent-Setup-Assistant"
+  brainpalace-plugin/agents/research-assistant.md: "Agent-Research-Assistant"

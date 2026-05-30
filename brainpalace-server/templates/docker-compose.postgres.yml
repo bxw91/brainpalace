@@ -1,0 +1,28 @@
+# Docker Compose for BrainPalace PostgreSQL backend
+# Usage: docker compose -f docker-compose.postgres.yml up -d
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: brainpalace-postgres
+    environment:
+      POSTGRES_USER: brainpalace
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-brainpalace_dev}
+      POSTGRES_DB: brainpalace
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - brainpalace-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U brainpalace -d brainpalace"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+volumes:
+  brainpalace-postgres-data:
+    name: brainpalace-postgres-data
+    labels:
+      project: "brainpalace"
+      description: "BrainPalace PostgreSQL data with pgvector indexes"

@@ -1,0 +1,66 @@
+[tool.poetry]
+name = "brainpalace-cli"
+version = "26.5.1"
+description = "BrainPalace CLI - Command-line interface for managing AI agent memory and knowledge retrieval"
+authors = ["bxw91"]
+readme = "README.md"
+license = "MIT"
+homepage = "https://github.com/bxw91/brainpalace"
+repository = "https://github.com/bxw91/brainpalace"
+documentation = "https://github.com/bxw91/brainpalace#readme"
+keywords = ["brainpalace", "rag", "cli", "ai-memory", "llm-memory", "semantic-search", "ai-agent", "claude-code", "agent-memory"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+packages = [{include = "brainpalace_cli"}]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+click = "^8.1.0"
+httpx = "^0.28.0"
+rich = "^13.9.0"
+pyyaml = "^6.0.0"
+pydantic = "^2.10.0"
+brainpalace-rag = "^26.5.1"
+mcp = ">=1.0,<2.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.0"
+pytest-asyncio = "^0.24.0"
+pytest-cov = "^6.0.0"
+black = "^24.10.0"
+ruff = "^0.8.0"
+mypy = "^1.13.0"
+types-PyYAML = "^6.0.0"
+
+[tool.poetry.scripts]
+brainpalace = "brainpalace_cli.cli:cli"
+bp = "brainpalace_cli.cli:cli"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 88
+target-version = ['py310']
+
+[tool.ruff]
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "C4"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

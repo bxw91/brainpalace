@@ -1,0 +1,813 @@
+"""Shared diagnostics helpers for the BrainPalace CLI.
+
+The functions here power both the ``brainpalace doctor`` command and the
+"tip: run doctor" hint that appears when a command can't reach the server.
+Keeping the logic in one place means the hint and the diagnosis can never
+drift out of sync.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import platform
+import shutil
+import socket
+import sys
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
+from typing import Any
+from urllib.error import URLError
+from urllib.request import Request, urlopen
+
+from brainpalace_cli.config import (
+    LEGACY_STATE_DIR_NAME,
+    STATE_DIR_NAME,
+    get_server_url,
+    load_config,
+    resolve_project_root,
+    resolve_project_root_with_strategy,
+)
+
+#: Severity returned by every diagnostic check.
+SEVERITY_OK = "ok"
+SEVERITY_WARN = "warn"
+SEVERITY_FAIL = "fail"
+
+DOCTOR_HINT = "Tip: run `brainpalace doctor` to diagnose your setup."
+
+
+@dataclass
+class CheckResult:
+    """One row in the doctor output."""
+
+    name: str
+    status: str  # ok | warn | fail
+    message: str
+    fix: str | None = None
+    details: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class DoctorReport:
+    """The full diagnostic snapshot."""
+
+    project_root: str
+    state_dir: str
+    state_dir_exists: bool
+    runtime_file: str | None
+    server_url: str
+    checks: list[CheckResult]
+
+    @property
+    def exit_code(self) -> int:
+        """Non-zero when any critical check failed."""
+        return 1 if any(c.status == SEVERITY_FAIL for c in self.checks) else 0
+
+    def to_dict(self) -> dict[str, Any]:
+        data = asdict(self)
+        data["exit_code"] = self.exit_code
+        return data
+
+
+_RESOLVE_STRATEGY_LABEL: dict[str, str] = {
+    "brainpalace_dir": f"found {STATE_DIR_NAME}/ in this dir or an ancestor",
+    "legacy_claude_dir": f"found legacy {LEGACY_STATE_DIR_NAME}/",
+    "git_root": "git repository root (no state dir present yet)",
+    "claude_dir": ".claude/ marker in this dir or an ancestor",
+    "pyproject": "pyproject.toml marker in this dir or an ancestor",
+    "cwd_fallback": "no markers found — falling back to cwd",
+}
+
+
+def _check_version() -> CheckResult:
+    """Confirm the installed brainpalace-cli is importable and report version.
+
+    Issue #146 check #2 — surfaces broken installs (missing entry-point,
+    namespace shadowing, half-rolled-back upgrades) at the top of the doctor
+    report instead of leaving the user to discover them later.
+    """
+    try:
+        from importlib.metadata import PackageNotFoundError, version
+
+        ver = version("brainpalace-cli")
+    except PackageNotFoundError as exc:
+        return CheckResult(
+            "cli_version",
+            SEVERITY_FAIL,
+            "brainpalace-cli is not installed in this Python environment.",
+            fix="pip install brainpalace-cli  (or uv tool install brainpalace-cli)",
+            details={"error": str(exc)},
+        )
+    except Exception as exc:  # noqa: BLE001
+        return CheckResult(
+            "cli_version",
+            SEVERITY_FAIL,
+            f"Could not determine brainpalace-cli version: {exc}",
+        )
+    return CheckResult(
+        "cli_version",
+        SEVERITY_OK,
+        f"brainpalace-cli {ver}",
+        details={"version": ver},
+    )
+
+
+def _check_python() -> CheckResult:
+    major, minor = sys.version_info[:2]
+    version = f"{major}.{minor}.{sys.version_info.micro}"
+    if (major, minor) >= (3, 10):
+        return CheckResult(
+            "python_version",
+            SEVERITY_OK,
+            f"Python {version}",
+            details={"version": version},
+        )
+    return CheckResult(
+        "python_version",
+        SEVERITY_FAIL,
+        f"Python {version} — BrainPalace requires 3.10+",
+        fix="Upgrade to Python 3.10 or newer.",
+        details={"version": version},
+    )
+
+
+def _check_project_init(
+    project_root: Path, state_dir: Path, resolved_via: str
+) -> CheckResult:
+    """Validate the resolved project root and explain *why* it was picked.
+
+    Issue #146 check #3 — operators on monorepos / nested projects can be
+    surprised by which directory wins; the strategy label tells them.
+    """
+    strategy_msg = _RESOLVE_STRATEGY_LABEL.get(resolved_via, resolved_via)
+    config_path = state_dir / "config.json"
+    if config_path.exists():
+        return CheckResult(
+            "project_initialized",
+            SEVERITY_OK,
+            f"Project initialized at {state_dir} ({strategy_msg})",
+            details={
+                "state_dir": str(state_dir),
+                "resolved_via": resolved_via,
+            },
+        )
+    return CheckResult(
+        "project_initialized",
+        SEVERITY_FAIL,
+        (f"No {STATE_DIR_NAME}/config.json under {project_root} " f"({strategy_msg})"),
+        fix="Run `brainpalace init` in your project directory.",
+        details={
+            "project_root": str(project_root),
+            "expected_path": str(config_path),
+            "resolved_via": resolved_via,
+        },
+    )
+
+
+def _check_provider_config(state_dir: Path) -> CheckResult:
+    yaml_path = state_dir / "config.yaml"
+    try:
+        cfg = load_config()
+    except Exception as exc:  # pragma: no cover — pydantic noise
+        return CheckResult(
+            "provider_config",
+            SEVERITY_FAIL,
+            f"Failed to load config.yaml: {exc}",
+            fix=f"Fix or delete {yaml_path} and re-run `brainpalace doctor`.",
+        )
+
+    return CheckResult(
+        "provider_config",
+        SEVERITY_OK,
+        (
+            f"embedding={cfg.embedding.provider}:{cfg.embedding.model}, "
+            f"summarization={cfg.summarization.provider}:{cfg.summarization.model}"
+        ),
+        details={
+            "config_path": str(yaml_path) if yaml_path.exists() else None,
+            "embedding_provider": cfg.embedding.provider,
+            "embedding_model": cfg.embedding.model,
+            "summarization_provider": cfg.summarization.provider,
+            "summarization_model": cfg.summarization.model,
+        },
+    )
+
+
+_PROVIDER_KEY_ENV: dict[str, str] = {
+    "openai": "OPENAI_API_KEY",
+    "anthropic": "ANTHROPIC_API_KEY",
+    "claude": "ANTHROPIC_API_KEY",
+    "cohere": "COHERE_API_KEY",
+    "gemini": "GEMINI_API_KEY",
+    "google": "GEMINI_API_KEY",
+    "grok": "XAI_API_KEY",
+}
+
+
+def _check_api_keys() -> list[CheckResult]:
+    try:
+        cfg = load_config()
+    except Exception:  # pragma: no cover
+        return []
+
+    results: list[CheckResult] = []
+    for label, provider, model in (
+        ("embedding", cfg.embedding.provider, cfg.embedding.model),
+        ("summarization", cfg.summarization.provider, cfg.summarization.model),
+    ):
+        if provider == "ollama":
+            continue
+        env_name = (
+            cfg.embedding.api_key_env
+            if label == "embedding"
+            else cfg.summarization.api_key_env
+        ) or _PROVIDER_KEY_ENV.get(provider.lower())
+        if not env_name:
+            continue
+        present = bool(os.environ.get(env_name))
+        results.append(
+            CheckResult(
+                f"api_key_{label}",
+                SEVERITY_OK if present else SEVERITY_FAIL,
+                (
+                    f"{env_name} is set"
+                    if present
+                    else f"{env_name} is not set (required by {provider})"
+                ),
+                fix=(
+                    None
+                    if present
+                    else f"export {env_name}=… then re-run `brainpalace doctor`."
+                ),
+                details={
+                    "provider": provider,
+                    "model": model,
+                    "env_var": env_name,
+                    "present": present,
+                },
+            )
+        )
+    return results
+
+
+def _is_listening(host: str, port: int, timeout: float = 0.5) -> bool:
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except (OSError, ConnectionRefusedError):
+        return False
+
+
+def _check_server(server_url: str, runtime_file: Path | None) -> CheckResult:
+    if runtime_file and not runtime_file.exists():
+        return CheckResult(
+            "server_reachable",
+            SEVERITY_WARN,
+            (
+                f"No runtime.json at {runtime_file} — server is probably not "
+                "running for this project."
+            ),
+            fix="Run `brainpalace start` to launch the server.",
+            details={
+                "runtime_file": str(runtime_file),
+                "server_url": server_url,
+            },
+        )
+
+    try:
+        req = Request(server_url.rstrip("/") + "/health")
+        with urlopen(req, timeout=3) as resp:  # noqa: S310 — local URL
+            body = resp.read().decode("utf-8", errors="replace")
+        # Issue #146 check #7 — also pull /health/status for the richer
+        # indexing summary. Tolerate older servers that 404 here.
+        indexing_summary, indexing_payload = _fetch_indexing_summary(server_url)
+        message = f"Server responded at {server_url}"
+        if indexing_summary:
+            message = f"{message} — {indexing_summary}"
+        return CheckResult(
+            "server_reachable",
+            SEVERITY_OK,
+            message,
+            details={
+                "server_url": server_url,
+                "response_preview": body[:120],
+                "indexing": indexing_payload,
+            },
+        )
+    except URLError as exc:
+        return CheckResult(
+            "server_reachable",
+            SEVERITY_FAIL,
+            f"Cannot reach server at {server_url}: {exc.reason}",
+            fix="Start it with `brainpalace start` (or pass --url).",
+            details={"server_url": server_url, "error": str(exc.reason)},
+        )
+    except Exception as exc:  # noqa: BLE001
+        return CheckResult(
+            "server_reachable",
+            SEVERITY_FAIL,
+            f"Error contacting server at {server_url}: {exc}",
+            fix="Start it with `brainpalace start` (or pass --url).",
+            details={"server_url": server_url, "error": str(exc)},
+        )
+
+
+def _fetch_indexing_summary(
+    server_url: str,
+) -> tuple[str | None, dict[str, Any] | None]:
+    """Best-effort fetch of /health/status, returning (one-line summary, raw)."""
+    try:
+        req = Request(server_url.rstrip("/") + "/health/status")
+        with urlopen(req, timeout=3) as resp:  # noqa: S310 — local URL
+            payload = json.loads(resp.read().decode("utf-8", errors="replace"))
+    except Exception:  # noqa: BLE001 — old server or transient error is fine
+        return None, None
+    if not isinstance(payload, dict):
+        return None, None
+    state = payload.get("state") or payload.get("indexing_state") or "unknown"
+    chunk_count = (
+        payload.get("chunk_count")
+        or payload.get("total_chunks")
+        or payload.get("document_count")
+    )
+    parts = [f"indexing={state}"]
+    if isinstance(chunk_count, int):
+        parts.append(f"chunks={chunk_count}")
+    return ", ".join(parts), payload
+
+
+# ---------------------------------------------------------------------------
+# Phase 040 — scale-aware checks. All consume data already exposed by
+# GET /health/status (+ a best-effort GET /memories/). Pure functions over the
+# fetched payload so they unit-test with no network; every path that lacks data
+# returns an OK/skip row so the doctor exit code stays driven only by real
+# setup failures.
+# ---------------------------------------------------------------------------
+
+#: Default node ceiling for the simple in-memory graph before we nudge → 090.
+DEFAULT_GRAPH_MAX_NODES = 25000
+#: Default index-staleness window in days.
+DEFAULT_STALE_DAYS = 7
+#: Directories never worth walking for source-file mtimes.
+_STALE_SKIP_DIRS = {
+    ".git",
+    ".brainpalace",
+    ".claude",
+    ".venv",
+    "venv",
+    "node_modules",
+    "__pycache__",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    "dist",
+    "build",
+}
+#: Hard cap on files visited by the staleness walk (cost guard on huge repos).
+_STALE_FILE_CAP = 20000
+
+
+def _graph_max_nodes() -> int:
+    raw = os.environ.get("BRAINPALACE_DOCTOR_GRAPH_MAX_NODES")
+    try:
+        return int(raw) if raw else DEFAULT_GRAPH_MAX_NODES
+    except ValueError:
+        return DEFAULT_GRAPH_MAX_NODES
+
+
+def _stale_days() -> int:
+    raw = os.environ.get("BRAINPALACE_DOCTOR_STALE_DAYS")
+    try:
+        return int(raw) if raw else DEFAULT_STALE_DAYS
+    except ValueError:
+        return DEFAULT_STALE_DAYS
+
+
+def _check_graph_size(
+    status_payload: dict[str, Any] | None, max_nodes: int
+) -> CheckResult:
+    """Warn when the simple in-memory graph JSON has grown past a safe size.
+
+    Auto-clears (returns OK) once Phase 090's persistent backend is active —
+    detected by ``store_type`` no longer being ``"simple"``.
+    """
+    graph = (status_payload or {}).get("graph_index")
+    if not isinstance(graph, dict) or not graph.get("enabled"):
+        return CheckResult(
+            "graph_size",
+            SEVERITY_OK,
+            "Graph index disabled or unavailable — scale check N/A.",
+        )
+    store_type = graph.get("store_type")
+    if store_type != "simple":
+        return CheckResult(
+            "graph_size",
+            SEVERITY_OK,
+            f"Graph backend '{store_type}' is persistent — size limit N/A.",
+            details={"store_type": store_type},
+        )
+    nodes = int(graph.get("entity_count") or 0) + int(
+        graph.get("relationship_count") or 0
+    )
+    details = {
+        "store_type": store_type,
+        "entity_count": graph.get("entity_count"),
+        "relationship_count": graph.get("relationship_count"),
+        "nodes": nodes,
+        "max_nodes": max_nodes,
+    }
+    if nodes > max_nodes:
+        return CheckResult(
+            "graph_size",
+            SEVERITY_WARN,
+            (
+                f"Simple in-memory graph is large ({nodes} nodes > {max_nodes}) "
+                "— boot/memory cost grows with it."
+            ),
+            fix=(
+                "Phase 090's persistent (SQLite) graph backend removes this "
+                "limit. Until then set ENABLE_GRAPH_INDEX=false if the graph is "
+                "unused, or raise BRAINPALACE_DOCTOR_GRAPH_MAX_NODES."
+            ),
+            details=details,
+        )
+    return CheckResult(
+        "graph_size",
+        SEVERITY_OK,
+        f"Graph size OK ({nodes} nodes ≤ {max_nodes}).",
+        details=details,
+    )
+
+
+def _newest_source_mtime(project_root: Path) -> float | None:
+    """Return the newest regular-file mtime under ``project_root``.
+
+    Skips heavy/generated dirs and dotfiles; bails out past ``_STALE_FILE_CAP``
+    files so the walk stays cheap on large trees. Returns None when nothing
+    countable is found or the tree can't be read.
+    """
+    newest: float | None = None
+    seen = 0
+    try:
+        for dirpath, dirnames, filenames in os.walk(project_root):
+            dirnames[:] = [
+                d
+                for d in dirnames
+                if d not in _STALE_SKIP_DIRS and not d.startswith(".")
+            ]
+            for name in filenames:
+                if name.startswith("."):
+                    continue
+                seen += 1
+                if seen > _STALE_FILE_CAP:
+                    return newest
+                try:
+                    mtime = (Path(dirpath) / name).stat().st_mtime
+                except OSError:
+                    continue
+                if newest is None or mtime > newest:
+                    newest = mtime
+    except OSError:
+        return newest
+    return newest
+
+
+def _check_index_staleness(
+    project_root: Path, status_payload: dict[str, Any] | None, max_days: int
+) -> CheckResult:
+    """Warn when source files on disk are >max_days newer than the last index."""
+    from datetime import datetime
+
+    last_raw = (status_payload or {}).get("last_indexed_at")
+    if not last_raw:
+        return CheckResult(
+            "index_staleness",
+            SEVERITY_OK,
+            "No prior index recorded — staleness check N/A.",
+            details={"last_indexed_at": None},
+        )
+    try:
+        last_dt = datetime.fromisoformat(str(last_raw))
+        last_ts = last_dt.timestamp()
+    except (ValueError, TypeError):
+        return CheckResult(
+            "index_staleness",
+            SEVERITY_OK,
+            f"Could not parse last_indexed_at ({last_raw!r}) — staleness N/A.",
+        )
+
+    newest = _newest_source_mtime(project_root)
+    if newest is None:
+        return CheckResult(
+            "index_staleness",
+            SEVERITY_OK,
+            "No source files found to compare — staleness check N/A.",
+        )
+
+    lag_days = (newest - last_ts) / 86400.0
+    details = {
+        "last_indexed_at": str(last_raw),
+        "newest_source_mtime_days_ahead": round(lag_days, 1),
+        "max_days": max_days,
+    }
+    if lag_days > max_days:
+        return CheckResult(
+            "index_staleness",
+            SEVERITY_WARN,
+            (
+                f"Source files are ~{int(lag_days)} days newer than the last "
+                "index — recall may miss recent changes."
+            ),
+            fix=(
+                "Run `brainpalace index` to reindex, or confirm the file "
+                "watcher is running (see the server row above)."
+            ),
+            details=details,
+        )
+    return CheckResult(
+        "index_staleness",
+        SEVERITY_OK,
+        f"Index is fresh (tree ≤ {max_days} days ahead of last index).",
+        details=details,
+    )
+
+
+def _check_collection_sizes(
+    status_payload: dict[str, Any] | None, memory_count: int | None
+) -> CheckResult:
+    """Report per-collection chunk counts. Informational — never fails."""
+    if not status_payload:
+        return CheckResult(
+            "collection_sizes",
+            SEVERITY_OK,
+            "Server unreachable — collection sizes unavailable.",
+        )
+
+    def _fmt(val: int | None) -> str:
+        return str(val) if isinstance(val, int) else "–"
+
+    code = status_payload.get("total_code_chunks")
+    docs = status_payload.get("total_doc_chunks")
+    # sessions = session_turn chunks (Phase 050); git (Phase 130) not yet.
+    sessions = status_payload.get("session_chunks")
+    details: dict[str, Any] = {
+        "code": code,
+        "docs": docs,
+        "memories": memory_count,
+        "sessions": sessions,
+        "git": None,
+    }
+    summary = (
+        f"code={_fmt(code)}, docs={_fmt(docs)}, "
+        f"memories={_fmt(memory_count)}, sessions={_fmt(sessions)}, git=–"
+    )
+    return CheckResult(
+        "collection_sizes",
+        SEVERITY_OK,
+        summary,
+        details=details,
+    )
+
+
+def _fetch_memory_count(server_url: str) -> int | None:
+    """Best-effort GET /memories/ → total. Tolerates old servers / errors."""
+    try:
+        req = Request(server_url.rstrip("/") + "/memories/")
+        with urlopen(req, timeout=3) as resp:  # noqa: S310 — local URL
+            payload = json.loads(resp.read().decode("utf-8", errors="replace"))
+    except Exception:  # noqa: BLE001 — 404 on old servers / server down is fine
+        return None
+    if isinstance(payload, dict):
+        total = payload.get("total")
+        if isinstance(total, int):
+            return total
+    return None
+
+
+def _check_optional_dep(provider: str, module_name: str, extra: str) -> CheckResult:
+    """Report on an optional Python package that a chosen provider needs."""
+    if shutil.which("python3"):
+        # We import in-process so test mocks of installed packages work.
+        try:
+            __import__(module_name)
+            return CheckResult(
+                f"optional_dep_{module_name}",
+                SEVERITY_OK,
+                f"{module_name} is installed ({provider} provider)",
+                details={"module": module_name, "provider": provider},
+            )
+        except ImportError:
+            return CheckResult(
+                f"optional_dep_{module_name}",
+                SEVERITY_FAIL,
+                (
+                    f"{provider} provider selected but {module_name} is not "
+                    "installed."
+                ),
+                fix=f"pip install 'brainpalace-rag[{extra}]'",
+                details={
+                    "module": module_name,
+                    "provider": provider,
+                    "extras_install": extra,
+                },
+            )
+    return CheckResult(
+        f"optional_dep_{module_name}",
+        SEVERITY_WARN,
+        "Could not run Python interpreter to verify imports.",
+    )
+
+
+def _read_graphrag_block(state_dir: Path) -> dict[str, Any] | None:
+    """Read the ``graphrag`` block from the project's config.yaml, if any.
+
+    The CLI's Pydantic ``BrainPalaceConfig`` doesn't model graphrag (it's a
+    server concern), so this peeks directly at the YAML. Returns None when
+    no graphrag block is present.
+    """
+    import yaml  # local import to avoid a hard dep at module load
+
+    for name in ("config.yaml", "brainpalace.yaml", "config.yml"):
+        path = state_dir / name
+        if not path.exists():
+            continue
+        try:
+            data = yaml.safe_load(path.read_text()) or {}
+        except (OSError, yaml.YAMLError):
+            continue
+        block = data.get("graphrag")
+        if isinstance(block, dict):
+            return block
+    return None
+
+
+def _check_gitignore(project_root: Path) -> CheckResult:
+    gi = project_root / ".gitignore"
+    if not gi.exists():
+        return CheckResult(
+            "gitignore_state_dir",
+            SEVERITY_WARN,
+            f"No .gitignore at {project_root} — {STATE_DIR_NAME}/ may get committed.",
+            fix=f"Add `{STATE_DIR_NAME}/` to .gitignore.",
+        )
+    try:
+        lines = {line.strip() for line in gi.read_text().splitlines()}
+    except OSError:
+        return CheckResult(
+            "gitignore_state_dir",
+            SEVERITY_WARN,
+            f"Could not read {gi}.",
+        )
+    if any(entry in lines for entry in (STATE_DIR_NAME, f"{STATE_DIR_NAME}/")):
+        return CheckResult(
+            "gitignore_state_dir",
+            SEVERITY_OK,
+            f"{STATE_DIR_NAME}/ is in .gitignore",
+        )
+    return CheckResult(
+        "gitignore_state_dir",
+        SEVERITY_WARN,
+        f"{STATE_DIR_NAME}/ is not in .gitignore — index data may get committed.",
+        fix=f"Add `{STATE_DIR_NAME}/` to .gitignore.",
+    )
+
+
+def run_doctor(server_url_override: str | None = None) -> DoctorReport:
+    """Run every check and return a structured report."""
+    project_root, resolved_via = resolve_project_root_with_strategy()
+    state_dir = project_root / STATE_DIR_NAME
+    runtime_file: Path | None
+    if state_dir.exists():
+        runtime_file = state_dir / "runtime.json"
+    else:
+        legacy = project_root / LEGACY_STATE_DIR_NAME
+        runtime_file = legacy / "runtime.json" if legacy.exists() else None
+
+    server_url = server_url_override or get_server_url()
+
+    checks: list[CheckResult] = []
+    checks.append(_check_python())
+    checks.append(_check_version())
+    checks.append(_check_project_init(project_root, state_dir, resolved_via))
+    checks.append(_check_provider_config(state_dir))
+    checks.extend(_check_api_keys())
+
+    # Optional deps that surface common install failures (issues #122/#125/#129).
+    try:
+        cfg = load_config()
+    except Exception:  # pragma: no cover
+        cfg = None
+    if cfg and cfg.embedding.provider.lower() == "cohere":
+        checks.append(_check_optional_dep("cohere", "cohere", "cohere"))
+
+    # Issue #146 check #8 — surface graphrag's langextract dependency. The CLI
+    # config model doesn't carry the graphrag block (server concern), so read
+    # it straight from the project's config.yaml.
+    graphrag_block = _read_graphrag_block(state_dir)
+    if graphrag_block and graphrag_block.get("enabled"):
+        checks.append(
+            _check_optional_dep("graphrag (langextract)", "langextract", "graphrag")
+        )
+
+    checks.append(_check_gitignore(project_root))
+
+    server_check = _check_server(server_url, runtime_file)
+    checks.append(server_check)
+
+    # Phase 040 — scale-aware checks. Reuse the /health/status payload the
+    # server check already fetched (stashed in details["indexing"]) so we hit
+    # the network once; pull the memory count separately (best-effort).
+    status_payload = server_check.details.get("indexing")
+    if not isinstance(status_payload, dict):
+        status_payload = None
+    memory_count = (
+        _fetch_memory_count(server_url) if status_payload is not None else None
+    )
+    checks.append(_check_graph_size(status_payload, _graph_max_nodes()))
+    checks.append(_check_index_staleness(project_root, status_payload, _stale_days()))
+    checks.append(_check_collection_sizes(status_payload, memory_count))
+
+    return DoctorReport(
+        project_root=str(project_root),
+        state_dir=str(state_dir),
+        state_dir_exists=state_dir.exists(),
+        runtime_file=str(runtime_file) if runtime_file else None,
+        server_url=server_url,
+        checks=checks,
+    )
+
+
+def apply_safe_fixes(report: DoctorReport) -> list[str]:
+    """Apply the subset of fixes that are safe + idempotent + offline.
+
+    Returns the list of human-readable actions taken (empty if nothing to fix).
+    Used by ``brainpalace doctor --fix``. Anything that calls the network,
+    modifies user code, or requires an API key is *not* covered here — the
+    user must still address those manually.
+    """
+    actions: list[str] = []
+    project_root = Path(report.project_root)
+    state_dir = Path(report.state_dir)
+    for check in report.checks:
+        if check.name == "gitignore_state_dir" and check.status != SEVERITY_OK:
+            gi = project_root / ".gitignore"
+            line = f"{STATE_DIR_NAME}/\n"
+            if gi.exists():
+                content = gi.read_text()
+                if not content.endswith("\n"):
+                    content += "\n"
+                gi.write_text(content + line)
+            else:
+                gi.write_text(line)
+            actions.append(f"Added {STATE_DIR_NAME}/ to {gi}.")
+        elif check.name == "project_initialized" and check.status == SEVERITY_FAIL:
+            # Create the state dir + a minimal config.json shell so a follow-up
+            # `brainpalace init` (or any command) has something to read.
+            state_dir.mkdir(parents=True, exist_ok=True)
+            cfg_json = state_dir / "config.json"
+            if not cfg_json.exists():
+                cfg_json.write_text(
+                    json.dumps(
+                        {
+                            "project_root": str(project_root),
+                            "created_by": "brainpalace doctor --fix",
+                        },
+                        indent=2,
+                    )
+                    + "\n"
+                )
+                actions.append(f"Created {cfg_json}.")
+    return actions
+
+
+def doctor_hint_message(project_root: Path | None = None) -> str:
+    """Suggest the doctor command — and call out the most likely setup issue.
+
+    When ``runtime.json`` is missing, the user almost certainly hasn't run
+    ``brainpalace init && brainpalace start`` in this directory. Saying so
+    is more useful than the generic "connection refused".
+    """
+    root = project_root or resolve_project_root()
+    state_dir = root / STATE_DIR_NAME
+    runtime_file = state_dir / "runtime.json"
+    if not runtime_file.exists():
+        return (
+            "Tip: no `.brainpalace/runtime.json` found under "
+            f"{root}. Run `brainpalace init` and `brainpalace start` here "
+            "first, or run `brainpalace doctor` to diagnose."
+        )
+    return DOCTOR_HINT
+
+
+def report_to_json(report: DoctorReport) -> str:
+    return json.dumps(report.to_dict(), indent=2)
+
+
+def env_snapshot() -> dict[str, Any]:
+    """Lightweight environment summary used in JSON output."""
+    return {
+        "platform": platform.platform(),
+        "python": platform.python_version(),
+        "cwd": str(Path.cwd()),
+    }
