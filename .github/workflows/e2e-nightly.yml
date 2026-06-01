@@ -32,10 +32,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
@@ -52,7 +52,7 @@ jobs:
           version: 3.43.3
 
       - name: Cache Poetry dependencies (server)
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: brainpalace-server/.venv
           key: server-venv-${{ runner.os }}-${{ hashFiles('brainpalace-server/poetry.lock') }}
@@ -90,7 +90,7 @@ jobs:
           ./e2e-cli/run.sh $ARGS --keep || true
 
       - name: Upload test artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: e2e-cli-results
