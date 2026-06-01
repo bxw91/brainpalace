@@ -14,6 +14,27 @@ month (the counter resets monthly). It looks like SemVer but is not.
 
 ## [Unreleased]
 
+## [26.6.3] - 2026-06-01
+
+### Changed
+- **Session live-watcher debounce default raised 2s → 30s**
+  (`session_indexing.watch_debounce_ms`). AI transcripts are written
+  per-message in bursts (quiet during generation, then a burst of lines), so
+  the old 2s window fired redundant re-index passes mid-turn on an in-progress
+  transcript. 30s batches a whole turn; freshness is low-value here (recall
+  targets *past* sessions, not the live one). Tunable per project; the archive
+  deletion watcher stays at 1s.
+
+### Internal
+- **CI: GitHub Actions Node 20 → Node 24.** Bumped `actions/checkout@v6`,
+  `setup-python@v6`, `cache@v5`, `upload-artifact@v7`, `codecov-action@v5`, and
+  set `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true` to carry the remaining Node 20
+  actions (`arduino/setup-task`, codecov's internal `github-script`) onto
+  Node 24 ahead of the 2026-06-16 default flip and 2026-09-16 removal.
+- **Docs:** README usage examples (codebase / docs / graph / session memory),
+  a Session Memory badge, and clarified that automatic session capture is
+  Claude Code-transcript-specific (works from CLI or plugin install).
+
 ## [26.6.2] - 2026-06-01
 
 Durable, user-curatable session archive: session indexing now reads from a

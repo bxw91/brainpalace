@@ -54,6 +54,13 @@ class SessionIndexingConfig(BaseModel):
     )
     window: int = Field(default=4, description="Turns per sliding window (3-5).")
     stride: int = Field(default=2, description="Window stride in turns.")
+    watch_debounce_ms: int = Field(
+        default=30000,
+        description="Debounce (ms) for the live session watcher. Sessions are "
+        "bursty (per-message writes); batching a whole turn avoids "
+        "redundant re-index passes. Freshness is low-value here "
+        "(recall targets past sessions).",
+    )
     sessions_dir: str | None = Field(
         default=None,
         description="Override the auto-resolved runtime session directory.",

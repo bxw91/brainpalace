@@ -43,8 +43,16 @@ session_indexing:
   retain_days: 90           # gates indexing; archive kept forever
   window: 4                 # turns per sliding window (3–5)
   stride: 2                 # window stride in turns
+  watch_debounce_ms: 30000  # live-watch debounce; sessions are bursty, batch a turn
   # sessions_dir: /custom/path   # optional override of the auto-resolved dir
 ```
+
+**`watch_debounce_ms`** (default `30000`) batches the live session watcher. AI
+transcripts are written per message in bursts (long quiet during generation, then
+a burst of lines), so a short debounce fires redundant re-index passes mid-turn
+on an in-progress file. 30s batches a whole turn. Freshness is low-value here —
+recall targets *past* sessions, not the live one. Lower it only if you really
+want near-live indexing of the current session.
 
 By default BrainPalace resolves your session directory automatically by encoding
 the project path the way Claude Code does (`/` → `-`), e.g. project

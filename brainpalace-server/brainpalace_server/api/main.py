@@ -714,7 +714,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 asyncio.create_task(_boot_session_index())
 
                 watcher = SessionWatcher(
-                    sessions_dir, sess_svc, session_cfg, archive=archive_service
+                    sessions_dir,
+                    sess_svc,
+                    session_cfg,
+                    archive=archive_service,
+                    debounce_ms=session_cfg.watch_debounce_ms,
                 )
                 await watcher.start()
                 app.state.session_watcher = watcher

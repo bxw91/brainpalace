@@ -18,6 +18,16 @@ def test_defaults_are_disabled_and_private() -> None:
     assert cfg.include_user_turns is False
     assert cfg.retain_days == 90
     assert cfg.window == 4 and cfg.stride == 2
+    assert cfg.watch_debounce_ms == 30000
+
+
+def test_watch_debounce_override_parses(tmp_path: Path) -> None:
+    cfg_file = tmp_path / "config.yaml"
+    cfg_file.write_text(
+        "session_indexing:\n  enabled: true\n  watch_debounce_ms: 5000\n"
+    )
+    cfg = load_session_indexing_config(cfg_file)
+    assert cfg.watch_debounce_ms == 5000
 
 
 def test_absent_block_yields_disabled(tmp_path: Path) -> None:

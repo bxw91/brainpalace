@@ -14,6 +14,12 @@ permissions:
   contents: read
   id-token: write  # Required for OIDC authentication with PyPI
 
+env:
+  # Force node20 JS actions (e.g. arduino/setup-task@v2) onto node24 — they
+  # have no node24 release. Survives the 2026-06-16 default flip + 2026-09-16
+  # node20 removal.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   quality-gate:
     name: Quality Gate
@@ -21,10 +27,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
@@ -41,7 +47,7 @@ jobs:
           virtualenvs-in-project: true
 
       - name: Cache Poetry dependencies (server)
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: brainpalace-server/.venv
           key: server-venv-${{ runner.os }}-${{ hashFiles('brainpalace-server/poetry.lock') }}
@@ -49,7 +55,7 @@ jobs:
             server-venv-${{ runner.os }}-
 
       - name: Cache Poetry dependencies (cli)
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: brainpalace-cli/.venv
           key: cli-venv-${{ runner.os }}-${{ hashFiles('brainpalace-cli/poetry.lock') }}
@@ -95,7 +101,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Verify tag matches pyproject.toml version
         run: |
@@ -124,7 +130,7 @@ jobs:
           echo "✓ All versions aligned: $TAG_VERSION"
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
@@ -150,7 +156,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Wait for server package on PyPI
         run: |
@@ -169,7 +175,7 @@ jobs:
           exit 1
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 

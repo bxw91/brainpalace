@@ -6,6 +6,7 @@ last_validated: 2026-05-30
 
 ![Code & Docs RAG](https://img.shields.io/badge/Code_%26_Docs_RAG-1f6feb?style=for-the-badge)
 ![Mono-repo](https://img.shields.io/badge/Mono--repo-1f6feb?style=for-the-badge)
+![Session Memory](https://img.shields.io/badge/Session_Memory-1f6feb?style=for-the-badge)
 ![File Watcher](https://img.shields.io/badge/File_Watcher-1f6feb?style=for-the-badge)
 ![.gitignore-aware](https://img.shields.io/badge/.gitignore--aware-1f6feb?style=for-the-badge)
 
@@ -26,11 +27,11 @@ last_validated: 2026-05-30
 
 # BrainPalace
 
-**Local-first RAG for code & docs, with long-term memory for AI agents.**
+**Local-first RAG for code & docs, with persistent memory for AI agents.**
 BM25, vector, GraphRAG, and hybrid search over your codebase and
-documentation — plus session memory, a temporal knowledge graph, and
-git/LSP-aware indexing. Use it from the CLI, over MCP, or as a Claude Code
-plugin. Runs fully local on Ollama, or with cloud LLMs.
+documentation — plus session memory (Claude Code transcripts only), a temporal
+knowledge graph, and git/LSP-aware indexing. Use it from the CLI, over MCP, or
+as a Claude Code plugin. Runs fully local on Ollama, or with cloud LLMs.
 
 ## Install
 
@@ -104,7 +105,7 @@ notes — all in [`docs/INSTALL.md`](docs/INSTALL.md).
 BrainPalace indexes your codebase and documentation, then exposes the
 resulting search over multiple interfaces so any AI assistant — or you
 yourself — can answer questions against it. On top of plain retrieval it
-keeps **long-term memory**: curated facts, captured coding-session summaries
+keeps **persistent memory**: curated facts, captured coding-session summaries
 and decisions, and a **temporal knowledge graph** that tracks how those
 decisions supersede each other over time. Local-first by default (Ollama),
 with optional cloud providers for embeddings and summarisation.
@@ -124,7 +125,13 @@ with optional cloud providers for embeddings and summarisation.
   (`remember`/`recall`, markdown source-of-truth), searchable summaries +
   decisions, and a **typed knowledge graph** (Decision / Error / File / …).
   Cross-session linking supersedes stale decisions and promotes durable ones
-  into memory. See [SESSION_INDEXING](docs/SESSION_INDEXING.md).
+  into memory. **Automatic (passive) capture indexes Claude Code transcripts
+  only** (`~/.claude/projects/…/*.jsonl`) — it's a *server* feature, so it works
+  from **either install** (CLI-only or the plugin); no plugin required, just
+  `brainpalace init --sessions`. "Claude Code-specific" is about the transcript
+  *source*, not the install method. Other runtimes (OpenCode, Gemini CLI, Codex)
+  have no passive capture — they push memory explicitly via the plugin's
+  `/brainpalace-extract-session`. See [SESSION_INDEXING](docs/SESSION_INDEXING.md).
 - **Persistent graph backend** — opt-in `store_type: sqlite` with **temporal
   validity** (per-edge validity windows, `invalidate`, `timeline`); scales past
   the in-memory default. See [GRAPHRAG_GUIDE](docs/GRAPHRAG_GUIDE.md).
@@ -168,6 +175,109 @@ with optional cloud providers for embeddings and summarisation.
 | `BM25` | Exact terms, error codes | "NullPointerException", "getUserById" |
 | `GRAPH` | Relationships, dependencies | "What classes use AuthService?" |
 | `MULTI` | Comprehensive search (all modes via RRF) | "Everything about data validation" |
+
+## Usage Examples
+
+Four everyday queries and the kind of output to expect. The server is
+auto-discovered from your current directory — no `--url` flag needed. (Results
+below are illustrative.)
+
+### 1. Search your codebase
+
+```bash
+brainpalace query "where is the JWT token expiry validated?" --mode hybrid --top-k 3
+```
+
+```
+Query: where is the JWT token expiry validated?
+Found 3 results in 412ms
+
+╭─ [1] src/auth/middleware.py  (score 0.87) ─────────────────────────────╮
+│ def verify_token(token: str) -> Claims:                                │
+│     claims = decode(token, SECRET, algorithms=["HS256"])               │
+│     if claims.exp <= now():            # expiry check                   │
+│         raise TokenExpired()                                            │
+╰─────────────────────────────────────────────────────────────────────────╯
+╭─ [2] src/auth/claims.py  (score 0.71) ─────────────────────────────────╮
+│ class Claims(BaseModel):                                                │
+│     exp: int   # unix epoch; compared in verify_token()                 │
+╰─────────────────────────────────────────────────────────────────────────╯
+```
+
+### 2. Search your docs
+
+```bash
+brainpalace query "what is the embedding cache TTL?" --mode vector --top-k 2
+```
+
+```
+Query: what is the embedding cache TTL?
+Found 2 results in 233ms
+
+╭─ [1] docs/ARCHITECTURE.md  (score 0.81) ───────────────────────────────╮
+│ The embedding cache holds vectors for 3600 s (1 h) by default, keyed    │
+│ by provider:model:text-hash. Hit rate is reported in `status`.          │
+╰─────────────────────────────────────────────────────────────────────────╯
+```
+
+### 3. Trace dependencies (graph search)
+
+Relationship-aware queries — "what calls X", "what imports Y", "what extends Z".
+`--mode graph` walks the extracted entity/relationship graph instead of ranking
+text:
+
+```bash
+brainpalace query "what calls QueryService.search?" --mode graph --top-k 3
+```
+
+```
+Query: what calls QueryService.search?
+Found 3 results in 388ms
+
+╭─ [1] api/routers/query.py  (graph: CALLS) ─────────────────────────────╮
+│ async def search(req: QueryRequest, svc = Depends(get_query_service)):  │
+│     return await svc.search(req.query)    # endpoint → QueryService     │
+╰─────────────────────────────────────────────────────────────────────────╯
+╭─ [2] services/research_agent.py  (graph: CALLS) ───────────────────────╮
+│ hits = self.query_service.search(q, mode="multi")                       │
+│   edge: ResearchAgent ──CALLS──▶ QueryService.search                    │
+╰─────────────────────────────────────────────────────────────────────────╯
+╭─ [3] cli/commands/query.py  (graph: CALLS) ────────────────────────────╮
+│ results = client.search(text, mode=mode)                                │
+╰─────────────────────────────────────────────────────────────────────────╯
+```
+
+### 4. Search past coding sessions (session memory)
+
+Recall decisions and context from earlier AI-coding sessions. Restrict the
+search to session chunks with `--source-types session_turn`:
+
+```bash
+brainpalace query "why did we switch the queue from redis to sqlite?" \
+  --source-types session_turn --top-k 2
+```
+
+```
+Query: why did we switch the queue from redis to sqlite?
+Found 2 results in 540ms
+
+╭─ [1] session 2026-05-18  (score 0.79) ─────────────────────────────────╮
+│ assistant: Dropping Redis for the job queue — the single-process server │
+│ made the extra daemon pure overhead. SQLite WAL gives durability with   │
+│ zero ops. Migrated JobQueueStore in this session.                       │
+│   tools: Edit(job_queue.py)  ·  branch: stable                          │
+╰─────────────────────────────────────────────────────────────────────────╯
+```
+
+> **What "session memory" needs.** Automatic capture indexes **Claude Code
+> transcripts only** (`~/.claude/projects/<encoded>/*.jsonl`). It's a **server**
+> feature — it works whether you installed BrainPalace via the **CLI** or as the
+> **Claude Code plugin** (no plugin required); enable it with `brainpalace init
+> --sessions` (opt-in, off by default). The Claude-Code restriction is about the
+> *transcript format it reads*, not how you installed BrainPalace. Other runtimes
+> (OpenCode, Gemini CLI, Codex) have no passive capture — they push durable memory
+> explicitly via the plugin's runtime-agnostic `/brainpalace-extract-session`.
+> See [SESSION_INDEXING](docs/SESSION_INDEXING.md).
 
 ## Pluggable Providers
 

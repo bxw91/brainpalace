@@ -12,6 +12,13 @@ on:
   push:
     branches: [main, develop]
 
+env:
+  # arduino/setup-task@v2 and codecov-action's internal actions/github-script
+  # have no node24 release. Force node20 JS actions onto node24: GitHub flips
+  # this default ~2026-06-16, and node20 is removed ~2026-09-16 — opting in now
+  # keeps these green through both dates.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   qa-gate:
     name: Quality Assurance Gate
@@ -47,10 +54,10 @@ jobs:
           df -h
 
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
@@ -67,7 +74,7 @@ jobs:
           virtualenvs-in-project: true
 
       - name: Cache pip packages (PyTorch, CUDA, etc.)
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/pip
           key: pip-${{ runner.os }}-py3.11-${{ hashFiles('brainpalace-server/poetry.lock') }}
@@ -76,7 +83,7 @@ jobs:
             pip-${{ runner.os }}-
 
       - name: Cache HuggingFace models (sentence-transformers)
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/huggingface
           key: hf-${{ runner.os }}-sentence-transformers
@@ -84,7 +91,7 @@ jobs:
             hf-${{ runner.os }}-
 
       - name: Cache Poetry dependencies (server)
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: brainpalace-server/.venv
           key: server-venv-postgres-${{ runner.os }}-${{ hashFiles('brainpalace-server/poetry.lock') }}
@@ -92,7 +99,7 @@ jobs:
             server-venv-${{ runner.os }}-
 
       - name: Cache Poetry dependencies (cli)
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: brainpalace-cli/.venv
           key: cli-venv-${{ runner.os }}-${{ hashFiles('brainpalace-cli/poetry.lock') }}
@@ -159,7 +166,7 @@ jobs:
         run: task cli:pr-qa-gate
 
       - name: Upload coverage reports
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         if: always()
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
