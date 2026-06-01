@@ -495,14 +495,14 @@ stem = ["PyStemmer"]
 
 [[package]]
 name = "brainpalace-rag"
-version = "26.6.2"
+version = "26.6.4"
 description = "BrainPalace RAG - Intelligent document indexing and semantic search server that gives AI agents long-term memory"
 optional = false
 python-versions = "<4.0,>=3.10"
 groups = ["main"]
 files = [
-    {file = "brainpalace_rag-26.6.2-py3-none-any.whl", hash = "sha256:ac9021e6c7341decad7c01512da144d4f91dea57c3e0ccd584a3ac93ef3ab0e7"},
-    {file = "brainpalace_rag-26.6.2.tar.gz", hash = "sha256:bd11282715f9581762225e712e60135494e56831754b81110f846fbea654e110"},
+    {file = "brainpalace_rag-26.6.4-py3-none-any.whl", hash = "sha256:d5b2c4c5c0a83ef41309e26fd148b1aeabcb3cfc71d07b5957e74e15f6629282"},
+    {file = "brainpalace_rag-26.6.4.tar.gz", hash = "sha256:f92114dcc132f36afcb3eed3aab6ff6b9c91c9fcf96211d1c1f9e81c551b12d6"},
 ]
 
 [package.dependencies]

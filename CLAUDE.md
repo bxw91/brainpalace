@@ -33,12 +33,13 @@ export PYTHON_KEYRING_BACKEND=keyring.backends.null.Keyring
 task install
 ```
 
-## Branch rule
+## Branching & releasing
 
-- **PRs land on `stable`** (active dev branch). `main` is the squashed/published mirror — full
-  727-commit history lives only in local `stable`; don't rebase it away.
-- `task before-push` must pass before pushing/merging.
-- Remote: `brainpalace` → github.com/bxw91/brainpalace.
+- `task before-push` must pass before any push/merge.
+- **Never push the local `stable` branch.** It is local-only by design. The branch model and
+  the full release procedure live in **[docs/RELEASING.md](docs/RELEASING.md)** — follow it
+  exactly. Creating a GitHub Release is what publishes to PyPI (OIDC; never `poetry publish`
+  by hand).
 
 ## Codebase search — dogfood BrainPalace
 
@@ -51,8 +52,9 @@ brainpalace query "your question" --mode hybrid --top-k 8
 ```
 
 Server auto-discovers config by walking up to `.brainpalace/`. If the server is down, start it:
-`brainpalace start`. Provider config lives in `.brainpalace/config.yaml` (gitignored) —
-embeddings + summaries both routed to OpenAI here (`OPENAI_API_KEY`).
+`brainpalace start`. Provider config lives in the gitignored `.brainpalace/config.yaml`; the
+`init` defaults are OpenAI embeddings + Anthropic summarization, so set whichever API keys your
+config uses (`OPENAI_API_KEY` / `ANTHROPIC_API_KEY`). Change providers with `brainpalace config`.
 
 Modes: `bm25` (exact terms), `vector` (semantic/concepts), `hybrid` (default), `graph`
 (dependencies/relationships), `multi` (fusion).
@@ -63,17 +65,10 @@ Modes: `bm25` (exact terms), `vector` (semantic/concepts), `hybrid` (default), `
   folder watched; the server's `FileWatcherService` re-indexes on change. `--watch-debounce
   <seconds>` tunes the debounce. `folders add` defaults to `--watch auto`.
 - **Session memory (ON by default for new projects):** `brainpalace init` writes
-  `session_indexing.enabled: true` into `.brainpalace/config.yaml` by default; the server then
-  indexes this project's AI chat transcripts (assistant + tool turns). Interactive `init`
-  confirms (default yes); non-interactive / `--json` runs enable it. Opt out at init with
-  `brainpalace init --no-sessions`, or disable any time by removing the block or setting
-  `SESSION_INDEXING_ENABLED=false`. The server-side default for a project with **no**
-  `session_indexing` block (e.g. existing projects) stays off — only newly `init`-ed projects
-  get it on. What's stored: assistant/tool turns (user turns only if separately opted in); the
-  data lives in the local gitignored index. **Cost:** sliding windows default to 50% overlap
-  (`window=4`/`stride=2`) — ~26 transcripts ≈ 1,200 chunks ≈ 400k embedding tokens per pass.
-  `stride: 4` (no overlap) ~halves it. See
-  [docs/SESSION_INDEXING.md](docs/SESSION_INDEXING.md#embedding-cost--read-before-enabling).
+  `session_indexing.enabled: true` into `.brainpalace/config.yaml`; the server indexes this
+  project's AI chat transcripts (assistant + tool turns). Opt out with `init --no-sessions`.
+  Existing projects (no `session_indexing` block) stay off. Privacy model, embedding cost, and
+  tuning: [docs/SESSION_INDEXING.md](docs/SESSION_INDEXING.md#embedding-cost--read-before-enabling).
 - **`brainpalace status`** shows a per-feature view: document indexing, file watcher (with a
   clear "0 folders — none marked watch=auto" state), session memory (on/off, watching/idle,
   session-chunk + curated-memory counts), and graph index. `total_documents` is derived from
@@ -84,5 +79,5 @@ Modes: `bm25` (exact terms), `vector` (semantic/concepts), `hybrid` (default), `
 
 ## Local-only state
 
-`.brainpalace/` is gitignored. `.planning/` is excluded locally via `.git/info/exclude`
-(personal, not committed).
+`.brainpalace/` is gitignored (per-project index data). `.planning/` is local planning scratch,
+excluded via `.git/info/exclude` — never committed.

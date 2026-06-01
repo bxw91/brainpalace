@@ -45,30 +45,44 @@ class EmbeddingGenerator:
                 provided, creates one from configuration.
         """
         # Load configuration
-        settings = load_provider_settings()
+        self._settings = load_provider_settings()
 
         # Initialize providers from config or use provided ones
         if embedding_provider is not None:
             self._embedding_provider = embedding_provider
         else:
             self._embedding_provider = ProviderRegistry.get_embedding_provider(
-                settings.embedding
+                self._settings.embedding
             )
 
-        if summarization_provider is not None:
-            self._summarization_provider = summarization_provider
-        else:
-            self._summarization_provider = ProviderRegistry.get_summarization_provider(
-                settings.summarization
-            )
+        # Summarization is built LAZILY (on first summary), not here. Summaries
+        # are only needed for code-summary generation and already degrade
+        # gracefully to docstring extraction on failure. Building the provider
+        # eagerly made the whole server fail to start when the summarization
+        # provider's API key was absent (e.g. default summarization=anthropic
+        # with only OPENAI_API_KEY set) — even though embeddings, document
+        # indexing, and session memory only need the embedding provider.
+        self._summarization_provider = summarization_provider
 
         logger.info(
             f"EmbeddingGenerator initialized with "
             f"{self._embedding_provider.provider_name} embeddings "
-            f"({self._embedding_provider.model_name}) and "
-            f"{self._summarization_provider.provider_name} summarization "
-            f"({self._summarization_provider.model_name})"
+            f"({self._embedding_provider.model_name}); summarization "
+            f"({self._settings.summarization.provider}) is initialized on first use"
         )
+
+    def _ensure_summarization_provider(self) -> "SummarizationProvider":
+        """Lazily build (and cache) the summarization provider on first use.
+
+        Kept out of ``__init__`` so a missing summarization API key cannot crash
+        server startup; callers (``generate_summary``) handle build/usage errors
+        by falling back to docstring extraction.
+        """
+        if self._summarization_provider is None:
+            self._summarization_provider = ProviderRegistry.get_summarization_provider(
+                self._settings.summarization
+            )
+        return self._summarization_provider
 
     @property
     def model(self) -> str:
@@ -82,8 +96,8 @@ class EmbeddingGenerator:
 
     @property
     def summarization_provider(self) -> "SummarizationProvider":
-        """Get the summarization provider."""
-        return self._summarization_provider
+        """Get the summarization provider (built lazily on first access)."""
+        return self._ensure_summarization_provider()
 
     async def embed_text(self, text: str) -> list[float]:
         """Generate embedding for a single text (cache-intercepted).
@@ -239,14 +253,14 @@ class EmbeddingGenerator:
             Natural language summary of the code's functionality.
         """
         try:
-            summary = await self._summarization_provider.summarize(code_text)
+            provider = self._ensure_summarization_provider()
+            summary = await provider.summarize(code_text)
 
             if summary and len(summary) > 10:
                 return summary
             else:
                 logger.warning(
-                    f"{self._summarization_provider.provider_name} "
-                    "returned empty or too short summary"
+                    f"{provider.provider_name} returned empty or too short summary"
                 )
                 return self._extract_fallback_summary(code_text)
 

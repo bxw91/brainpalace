@@ -3,6 +3,16 @@
 CalVer `YY.M.N` (2-digit year · month · Nth release that month). `brainpalace-cli`
 and `brainpalace-rag` (server) **release in lockstep at the same version**.
 
+## Branch model (maintainer)
+
+- **`stable`** is the active development branch and is **LOCAL-ONLY — never push it.**
+  The full development history (hundreds of commits) lives only on the maintainer's
+  local `stable`; don't rebase it away.
+- **`main`** is the only remote branch: the squashed, published mirror — one commit per
+  release, carrying `stable`'s curated tree. All public clones see `main`.
+- Remote: `brainpalace` → github.com/bxw91/brainpalace.
+- Releases are cut on `main` (see below), not by pushing `stable`.
+
 ## How publishing works — read this first
 
 **PyPI publishing is automated.** The `.github/workflows/publish-to-pypi.yml`
@@ -50,8 +60,10 @@ The version lives in **one place per package**: `pyproject.toml`.
 5. **Changelog** — add the `[YY.M.N]` section in `docs/CHANGELOG.md`.
 6. **Gate**: `task before-push` must exit 0.
 7. **Commit on `stable`** (version bump + changelog).
-8. **Mirror to `main`** (the squashed published branch — full `stable` history
-   is never pushed) and tag:
+8. **Mirror to `main`** and tag. **`stable` is LOCAL-ONLY — NEVER `git push` it.**
+   `main` is the only remote branch: a single squashed commit per release that
+   mirrors `stable`'s (already curated) tree. Releases are cut on `main`, not by
+   pushing `stable`.
    ```bash
    git checkout -B main brainpalace/main
    git read-tree --reset -u stable        # main tree := stable tree
@@ -60,6 +72,9 @@ The version lives in **one place per package**: `pyproject.toml`.
    git push brainpalace main && git push brainpalace vYY.M.N
    git checkout stable
    ```
+   The published tree is curated *on `stable`* (e.g. `docs/superpowers` planning
+   docs are untracked there), so `read-tree --reset stable` mirrors the right
+   tree — do not hand-pick files.
 9. **Create the GitHub Release — this publishes to PyPI:**
    ```bash
    gh release create vYY.M.N --repo bxw91/brainpalace \

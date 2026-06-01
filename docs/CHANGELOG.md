@@ -14,6 +14,21 @@ month (the counter resets monthly). It looks like SemVer but is not.
 
 ## [Unreleased]
 
+## [26.6.5] - 2026-06-02
+
+### Fixed
+- **Server no longer fails to start when the summarization provider's API key is
+  absent.** `EmbeddingGenerator` built the summarization provider in its
+  constructor, so a missing key (e.g. the shipped default
+  `summarization: anthropic` on a machine that only has `OPENAI_API_KEY`) raised
+  `AuthenticationError` during startup and the whole server failed to boot —
+  even though embeddings, document indexing, and session memory only need the
+  embedding provider. The summarization provider is now built lazily on first
+  summary; code-summary generation already degrades to docstring extraction on
+  error, so a missing summarization key falls back gracefully instead of
+  crashing. (`brainpalace start` has no provider pre-flight, unlike
+  `init --start`, so this previously surfaced as a raw traceback.)
+
 ## [26.6.4] - 2026-06-01
 
 ### Fixed
