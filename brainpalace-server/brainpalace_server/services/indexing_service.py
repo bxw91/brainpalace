@@ -361,12 +361,13 @@ class IndexingService:
                     )
 
                 prior_manifest = await self.manifest_tracker.load(abs_folder_path)
-                eviction_summary, files_to_index_list = (
-                    await eviction_service.compute_diff_and_evict(
-                        folder_path=abs_folder_path,
-                        current_files=current_file_paths,
-                        force=request.force,
-                    )
+                (
+                    eviction_summary,
+                    files_to_index_list,
+                ) = await eviction_service.compute_diff_and_evict(
+                    folder_path=abs_folder_path,
+                    current_files=current_file_paths,
+                    force=request.force,
                 )
                 files_to_index_set = set(files_to_index_list)
 
@@ -391,11 +392,37 @@ class IndexingService:
                     f"{eviction_summary.chunks_evicted} chunks evicted"
                 )
                 if not documents:
-                    logger.info("No files need re-indexing - all files unchanged")
-                    # Save manifest (carry over unchanged entries)
+                    evicted_only = bool(
+                        eviction_summary.files_deleted
+                        or eviction_summary.files_changed
+                        or eviction_summary.chunks_evicted
+                    )
+                    if evicted_only:
+                        logger.info(
+                            "No new files to index, but "
+                            f"{eviction_summary.chunks_evicted} chunks evicted "
+                            f"(-{len(eviction_summary.files_deleted)} deleted "
+                            f"~{len(eviction_summary.files_changed)} changed) — "
+                            "rebuilding BM25 from surviving chunks"
+                        )
+                        # ChromaBackend.delete_by_ids only removes vector-store
+                        # chunks; BM25 is a full-rebuild index, so evicted chunks
+                        # remain queryable via BM25 until it is rebuilt. Rebuild it
+                        # here from the surviving (unchanged) chunks.
+                        await self._rebuild_bm25_from_unchanged(
+                            prior_manifest, eviction_summary.files_unchanged
+                        )
+                    else:
+                        logger.info("No files need re-indexing - all files unchanged")
+                    # Save manifest carrying over ONLY unchanged files — dropping
+                    # deleted/changed entries so the derived document count and the
+                    # manifest stay consistent with the stores.
                     new_manifest = FolderManifest(folder_path=abs_folder_path)
-                    if prior_manifest:
-                        new_manifest.files = dict(prior_manifest.files)
+                    if prior_manifest is not None:
+                        assert isinstance(prior_manifest, FolderManifest)
+                        for fp in eviction_summary.files_unchanged:
+                            if fp in prior_manifest.files:
+                                new_manifest.files[fp] = prior_manifest.files[fp]
                     await self.manifest_tracker.save(new_manifest)
                     self._state.status = IndexingStatusEnum.COMPLETED
                     self._state.is_indexing = False
@@ -830,6 +857,64 @@ class IndexingService:
         finally:
             self._state.is_indexing = False
 
+    async def _rebuild_bm25_from_unchanged(
+        self,
+        prior_manifest: Any,
+        files_unchanged: list[str],
+    ) -> None:
+        """Rebuild the BM25 index from surviving (unchanged) chunks after eviction.
+
+        ChromaBackend.delete_by_ids removes chunks only from the vector store;
+        BM25 is a full-rebuild structure with no per-id deletion, so evicted
+        chunks remain queryable via BM25 until it is rebuilt. This is invoked on
+        the "no new documents but chunks were evicted" path (e.g. a pure delete)
+        so deleted/changed chunks stop surfacing in keyword search.
+
+        Args:
+            prior_manifest: Prior FolderManifest (or None) holding chunk IDs.
+            files_unchanged: Paths whose chunks survive and must be retained.
+        """
+        from brainpalace_server.services.manifest_tracker import FolderManifest
+
+        survivors: list[TextNode] = []
+        if prior_manifest is not None:
+            assert isinstance(prior_manifest, FolderManifest)
+            unchanged_ids: list[str] = []
+            for fp in files_unchanged:
+                if fp in prior_manifest.files:
+                    unchanged_ids.extend(prior_manifest.files[fp].chunk_ids)
+            for chunk_id in unchanged_ids:
+                try:
+                    result = await self.storage_backend.get_by_id(chunk_id)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(
+                        f"Could not fetch chunk {chunk_id} for BM25 rebuild: {exc}"
+                    )
+                    continue
+                if result:
+                    survivors.append(
+                        TextNode(
+                            id_=chunk_id,
+                            text=result.get("text", ""),
+                            metadata=result.get("metadata", {}),
+                        )
+                    )
+
+        bm25_mgr = getattr(self.storage_backend, "bm25_manager", None)
+        if bm25_mgr is None:
+            bm25_mgr = self.bm25_manager
+
+        if survivors:
+            await asyncio.to_thread(bm25_mgr.build_index, survivors)
+            logger.info(
+                f"BM25 rebuilt with {len(survivors)} surviving node(s) after eviction"
+            )
+        else:
+            # build_index([]) is a no-op by design (issue #143), so reset to
+            # ensure evicted chunks are not left queryable when nothing survives.
+            await asyncio.to_thread(bm25_mgr.reset)
+            logger.info("BM25 reset after eviction left no surviving chunks")
+
     async def get_document_count(self) -> int:
         """Distinct indexed documents derived from persisted manifests.
 
@@ -925,6 +1010,11 @@ class IndexingService:
             # Clear folder manager records (Phase 12)
             if self.folder_manager is not None:
                 await self.folder_manager.clear()
+            # Purge per-folder manifests so a subsequent re-index does not read
+            # a stale manifest and skip every file as "unchanged" while the
+            # stores are empty (manifest/reset desync bug).
+            if self.manifest_tracker is not None:
+                await self.manifest_tracker.delete_all()
             self._state = IndexingState(
                 current_job_id="",
                 folder_path="",

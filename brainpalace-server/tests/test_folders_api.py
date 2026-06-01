@@ -288,6 +288,29 @@ class TestRemoveFolder:
         # Verify remove_folder was called
         app.state.folder_manager.remove_folder.assert_called_once()
 
+    def test_delete_folder_deletes_manifest(self) -> None:
+        """DELETE also deletes the per-folder manifest so a later re-index does
+        not see a stale "all unchanged" manifest and index 0 chunks (Bug 2)."""
+        record = _make_record(chunk_ids=["c1"])
+        app = _create_app(folder_records=[record])
+        app.state.folder_manager.get_folder = AsyncMock(return_value=record)
+        app.state.storage_backend.delete_by_ids = AsyncMock(return_value=1)
+        mock_tracker = AsyncMock()
+        mock_indexing = MagicMock()
+        mock_indexing.manifest_tracker = mock_tracker
+        app.state.indexing_service = mock_indexing
+        client = TestClient(app)
+
+        client.request(
+            "DELETE",
+            "/index/folders/",
+            json={"folder_path": record.folder_path},
+        )
+
+        mock_tracker.delete.assert_called_once()
+        normalized = str(Path(record.folder_path).resolve())
+        assert mock_tracker.delete.call_args.args[0] == normalized
+
     def test_delete_folder_no_running_jobs_skips_job_check(self) -> None:
         """DELETE skips job check when no running jobs (stats.running == 0)."""
         record = _make_record()

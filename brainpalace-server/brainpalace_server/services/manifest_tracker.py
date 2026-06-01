@@ -158,6 +158,35 @@ class ManifestTracker:
                 await asyncio.to_thread(path.unlink)
                 logger.debug(f"Deleted manifest for {folder_path}")
 
+    async def delete_all(self) -> int:
+        """Remove every manifest file in the manifests directory.
+
+        Used on a full index reset so a subsequent re-index does not read a
+        stale manifest and conclude every file is unchanged (which would leave
+        the stores empty while the manifest still tracks files). No-op if the
+        directory does not exist.
+
+        Returns:
+            Number of manifest files deleted.
+
+        Raises:
+            OSError: If a manifest file exists but cannot be deleted.
+        """
+        async with self._lock:
+            return await asyncio.to_thread(self._delete_all_sync)
+
+    def _delete_all_sync(self) -> int:
+        """Delete all ``*.json`` manifest files (synchronous, under lock)."""
+        if not self.manifests_dir.exists():
+            return 0
+        deleted = 0
+        for manifest_file in self.manifests_dir.glob("*.json"):
+            manifest_file.unlink()
+            deleted += 1
+        if deleted:
+            logger.info(f"Deleted {deleted} manifest file(s) on reset")
+        return deleted
+
     def _read_manifest(self, path: Path, folder_path: str) -> FolderManifest:
         """Deserialize manifest from JSON file (synchronous).
 

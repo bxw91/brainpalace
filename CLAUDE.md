@@ -62,14 +62,17 @@ Modes: `bm25` (exact terms), `vector` (semantic/concepts), `hybrid` (default), `
 - **Live re-index:** `brainpalace index <path> --watch auto` (or `--watch off`) marks the
   folder watched; the server's `FileWatcherService` re-indexes on change. `--watch-debounce
   <seconds>` tunes the debounce. `folders add` defaults to `--watch auto`.
-- **Session memory (opt-in, privacy-first):** `brainpalace init --sessions` writes
-  `session_indexing.enabled: true` into `.brainpalace/config.yaml`; the server then indexes
-  this project's AI chat transcripts (assistant + tool turns). Default is off — init prompts
-  on a TTY, stays off non-interactively. Disable any time by removing the block or setting
-  `SESSION_INDEXING_ENABLED=false`. What's stored: assistant/tool turns (user turns only if
-  separately opted in); the data lives in the local gitignored index. **Cost:** sliding
-  windows default to 50% overlap (`window=4`/`stride=2`) — ~26 transcripts ≈ 1,200 chunks
-  ≈ 400k embedding tokens per pass. `stride: 4` (no overlap) ~halves it. See
+- **Session memory (ON by default for new projects):** `brainpalace init` writes
+  `session_indexing.enabled: true` into `.brainpalace/config.yaml` by default; the server then
+  indexes this project's AI chat transcripts (assistant + tool turns). Interactive `init`
+  confirms (default yes); non-interactive / `--json` runs enable it. Opt out at init with
+  `brainpalace init --no-sessions`, or disable any time by removing the block or setting
+  `SESSION_INDEXING_ENABLED=false`. The server-side default for a project with **no**
+  `session_indexing` block (e.g. existing projects) stays off — only newly `init`-ed projects
+  get it on. What's stored: assistant/tool turns (user turns only if separately opted in); the
+  data lives in the local gitignored index. **Cost:** sliding windows default to 50% overlap
+  (`window=4`/`stride=2`) — ~26 transcripts ≈ 1,200 chunks ≈ 400k embedding tokens per pass.
+  `stride: 4` (no overlap) ~halves it. See
   [docs/SESSION_INDEXING.md](docs/SESSION_INDEXING.md#embedding-cost--read-before-enabling).
 - **`brainpalace status`** shows a per-feature view: document indexing, file watcher (with a
   clear "0 folders — none marked watch=auto" state), session memory (on/off, watching/idle,

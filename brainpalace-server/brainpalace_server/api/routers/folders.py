@@ -149,6 +149,17 @@ async def remove_folder(
     # Remove folder record from FolderManager
     await folder_manager.remove_folder(normalized_path)
 
+    # Delete the per-folder manifest too. Without this, a later re-index reads
+    # the stale manifest, sees every file unchanged, and indexes 0 chunks while
+    # the stores are empty (manifest/remove desync bug).
+    indexing_service = getattr(request.app.state, "indexing_service", None)
+    manifest_tracker = getattr(indexing_service, "manifest_tracker", None)
+    if manifest_tracker is not None:
+        try:
+            await manifest_tracker.delete(normalized_path)
+        except OSError as exc:
+            logger.warning(f"Could not delete manifest for {normalized_path}: {exc!r}")
+
     return FolderDeleteResponse(
         folder_path=normalized_path,
         chunks_deleted=chunks_deleted,

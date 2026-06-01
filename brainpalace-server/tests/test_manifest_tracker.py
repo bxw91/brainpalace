@@ -282,3 +282,31 @@ async def test_multiple_manifests_stored_independently(tmp_path: Path) -> None:
     # Cross-contamination check
     assert "/project/b/other.py" not in loaded_a.files
     assert "/project/a/file.py" not in loaded_b.files
+
+
+@pytest.mark.asyncio
+async def test_delete_all_removes_every_manifest(tmp_path: Path) -> None:
+    """delete_all() wipes all manifest files (reset clean-slate guarantee)."""
+    tracker = ManifestTracker(manifests_dir=tmp_path / "manifests")
+
+    for folder in ("/project/a", "/project/b", "/project/c"):
+        await tracker.save(
+            FolderManifest(
+                folder_path=folder,
+                files={f"{folder}/f.py": make_file_record()},
+            )
+        )
+
+    deleted = await tracker.delete_all()
+
+    assert deleted == 3
+    assert await tracker.load("/project/a") is None
+    assert await tracker.load("/project/b") is None
+    assert list((tmp_path / "manifests").glob("*.json")) == []
+
+
+@pytest.mark.asyncio
+async def test_delete_all_noop_when_dir_missing(tmp_path: Path) -> None:
+    """delete_all() returns 0 and does not raise when the dir does not exist."""
+    tracker = ManifestTracker(manifests_dir=tmp_path / "does_not_exist")
+    assert await tracker.delete_all() == 0

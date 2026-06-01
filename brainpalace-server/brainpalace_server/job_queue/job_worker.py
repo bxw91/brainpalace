@@ -536,20 +536,48 @@ class JobWorker:
                     f"{delta} new chunks (before={count_before}, after={count_after})"
                 )
                 return True
-            elif delta == 0:
-                # Check for zero-change incremental run (all files unchanged)
-                # Use eviction_result from pipeline (not job.eviction_summary
-                # which is only set after verification passes)
-                eviction = eviction_result or job.eviction_summary
-                if eviction is not None and eviction.get("chunks_to_create", -1) == 0:
+
+            # delta <= 0: net store size did not grow. This is legitimate for an
+            # incremental run that only deleted/changed files (eviction), or for
+            # a zero-change run where every file was unchanged. Use eviction_result
+            # from the pipeline (job.eviction_summary is only set after this
+            # verification passes).
+            eviction = eviction_result or job.eviction_summary
+            if eviction is not None:
+                evicted_chunks = eviction.get("chunks_evicted", 0)
+                files_deleted = eviction.get("files_deleted", []) or []
+                files_changed = eviction.get("files_changed", []) or []
+                if evicted_chunks > 0 or files_deleted or files_changed:
+                    logger.info(
+                        f"Eviction-only/incremental run for job {job.id}: "
+                        f"{evicted_chunks} chunks evicted, "
+                        f"-{len(files_deleted)} deleted "
+                        f"~{len(files_changed)} changed "
+                        f"(before={count_before}, after={count_after})"
+                    )
+                    return True
+                if eviction.get("chunks_to_create", -1) == 0:
+                    files_unchanged = eviction.get("files_unchanged", []) or []
+                    # Hardening: the manifest claims N files are already indexed
+                    # ("unchanged") yet the store is empty. That is a stale-manifest
+                    # / store desync — fail loudly instead of silently reporting
+                    # done at 0%, so the operator re-indexes with force.
+                    if files_unchanged and count_after == 0:
+                        logger.error(
+                            f"Job {job.id}: manifest reports "
+                            f"{len(files_unchanged)} unchanged file(s) but the "
+                            "vector store is empty — stale manifest suspected. "
+                            "Re-run with force to rebuild."
+                        )
+                        return False
                     logger.info(
                         f"Zero-change incremental run for job {job.id}: "
                         "all files unchanged, no new chunks expected"
                     )
                     return True
 
-                # Special case: job might have processed files that were already indexed
-                # Check if any documents were processed
+            if delta == 0:
+                # Special case: job might have processed files already indexed
                 if (
                     count_after > 0
                     and job.progress
@@ -566,11 +594,12 @@ class JobWorker:
                     f"(before={count_before}, after={count_after})"
                 )
                 return False
-            else:
-                logger.warning(
-                    f"Verification failed for job {job.id}: no chunks in vector store"
-                )
-                return False
+
+            logger.warning(
+                f"Verification failed for job {job.id}: chunk count decreased "
+                f"unexpectedly (before={count_before}, after={count_after})"
+            )
+            return False
 
         except Exception as e:
             logger.error(f"Verification error for job {job.id}: {e}")

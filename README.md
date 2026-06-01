@@ -127,8 +127,9 @@ with optional cloud providers for embeddings and summarisation.
   Cross-session linking supersedes stale decisions and promotes durable ones
   into memory. **Automatic (passive) capture indexes Claude Code transcripts
   only** (`~/.claude/projects/…/*.jsonl`) — it's a *server* feature, so it works
-  from **either install** (CLI-only or the plugin); no plugin required, just
-  `brainpalace init --sessions`. "Claude Code-specific" is about the transcript
+  from **either install** (CLI-only or the plugin); no plugin required — it's
+  **on by default for new projects** (`brainpalace init`; opt out with
+  `init --no-sessions`). "Claude Code-specific" is about the transcript
   *source*, not the install method. Other runtimes (OpenCode, Gemini CLI, Codex)
   have no passive capture — they push memory explicitly via the plugin's
   `/brainpalace-extract-session`. See [SESSION_INDEXING](docs/SESSION_INDEXING.md).

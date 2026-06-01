@@ -14,6 +14,38 @@ month (the counter resets monthly). It looks like SemVer but is not.
 
 ## [Unreleased]
 
+## [26.6.4] - 2026-06-01
+
+### Fixed
+- **File watcher / reindex now prunes deleted files.** A pure delete left the
+  chunk queryable and the document count stuck. Three coupled defects: the job
+  verifier treated a net-negative chunk delta (eviction) as failure and marked
+  the watcher job failed; the indexing pipeline's empty-docs early-return
+  skipped the BM25 rebuild, so `delete_by_ids` (vector store only) left the
+  chunk in BM25; and that path carried over the entire prior manifest including
+  the deleted file. Eviction-only runs now pass verification, rebuild BM25 from
+  the surviving chunks, and the manifest keeps only the unchanged entries.
+- **`reset` and `folders remove` no longer leave stale manifests.** They
+  cleared the chroma/bm25/graph stores but kept `.brainpalace/manifests/*.json`,
+  so the next `folders add` / `index` saw every file as unchanged and indexed
+  0 chunks into an empty store. `ManifestTracker.delete_all()` is now called on
+  `reset`, and `remove_folder` deletes the folder's manifest.
+
+### Changed
+- **Session memory is ON by default for newly `init`-ed projects.**
+  `brainpalace init` writes `session_indexing.enabled: true` by default
+  (interactive runs confirm with a default of yes; non-interactive / `--json`
+  runs enable it). Pass `brainpalace init --no-sessions` to opt out. The
+  default applies only to a freshly written `config.yaml` — re-init over an
+  existing config is left untouched. Projects with no `session_indexing` block
+  (existing projects) stay off; this is not retroactive. Only assistant/tool
+  turns are indexed; user turns remain separately opt-in.
+
+### Internal
+- Hardening: a zero-change indexing run whose store is empty but whose manifest
+  claims indexed files now fails loudly instead of silently reporting done at
+  0% (surfaces a stale-manifest desync for re-index with force).
+
 ## [26.6.3] - 2026-06-01
 
 ### Changed

@@ -330,6 +330,150 @@ async def test_deleted_file_chunks_evicted(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Test: reset() purges manifests (Bug 2 regression)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_reset_purges_manifests(tmp_path: Path) -> None:
+    """IndexingService.reset() must delete manifests, otherwise a later
+    re-index reads a stale manifest and indexes 0 chunks (Bug 2)."""
+    manifests_dir = tmp_path / "manifests"
+    tracker = ManifestTracker(manifests_dir=manifests_dir)
+
+    await tracker.save(
+        FolderManifest(
+            folder_path="/project/x",
+            files={
+                "/project/x/a.md": FileRecord(checksum="x", mtime=1.0, chunk_ids=["c1"])
+            },
+        )
+    )
+    assert await tracker.load("/project/x") is not None
+
+    storage = _make_storage_backend()
+    service = _make_indexing_service(storage, tracker, [], [])
+
+    await service.reset()
+
+    assert await tracker.load("/project/x") is None
+    assert list(manifests_dir.glob("*.json")) == []
+
+
+# ---------------------------------------------------------------------------
+# Test: pure delete prunes manifest + rebuilds BM25 (Bug 1 regression)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_pure_delete_prunes_manifest_and_rebuilds_bm25(tmp_path: Path) -> None:
+    """A pure delete (no new/changed files) must:
+
+    - evict the deleted file's chunks,
+    - drop the deleted file from the saved manifest (so the derived doc count
+      decreases instead of staying stale), and
+    - rebuild BM25 from the surviving chunks (ChromaBackend.delete_by_ids does
+      not touch BM25, so without a rebuild the evicted chunk stays queryable).
+    """
+    folder = str(tmp_path / "docs")
+    Path(folder).mkdir()
+
+    # Only file1 remains on disk; deleted.md is gone.
+    file1 = str(tmp_path / "docs" / "a.md")
+    Path(file1).write_text("content a")
+
+    manifests_dir = tmp_path / "manifests"
+    tracker = ManifestTracker(manifests_dir=manifests_dir)
+
+    import os
+
+    from brainpalace_server.services.manifest_tracker import compute_file_checksum
+
+    abs_folder = str(Path(folder).resolve())
+    abs_file1 = str(Path(file1).resolve())
+    abs_deleted = str(tmp_path / "docs" / "deleted.md")
+
+    checksum1 = await asyncio.to_thread(compute_file_checksum, file1)
+    manifest = FolderManifest(folder_path=abs_folder)
+    manifest.files[abs_file1] = FileRecord(
+        checksum=checksum1, mtime=os.stat(file1).st_mtime, chunk_ids=["c1"]
+    )
+    manifest.files[abs_deleted] = FileRecord(
+        checksum="old", mtime=0.0, chunk_ids=["deleted-chunk-1"]
+    )
+    await tracker.save(manifest)
+
+    # file1 is unchanged → documents filtered to empty → eviction-only path.
+    docs = [_make_doc(file1)]
+    storage = _make_storage_backend()
+    storage.delete_by_ids = AsyncMock(return_value=1)
+    # Surviving chunk content for the BM25 rebuild fetch.
+    storage.get_by_id = AsyncMock(
+        return_value={"text": "chunk text c1", "metadata": {"source": abs_file1}}
+    )
+
+    service = _make_indexing_service(storage, tracker, docs, [])
+    mock_bm25 = service.bm25_manager
+
+    request = IndexRequest(folder_path=folder)
+    result = await service._run_indexing_pipeline(request, "job_test")
+
+    # Eviction happened
+    assert result is not None
+    assert result["chunks_evicted"] == 1
+    assert abs_deleted in result["files_deleted"]
+    storage.delete_by_ids.assert_called_once_with(["deleted-chunk-1"])
+
+    # Manifest pruned: deleted file gone, unchanged file retained (Defect C)
+    saved = await tracker.load(abs_folder)
+    assert saved is not None
+    assert abs_file1 in saved.files
+    assert abs_deleted not in saved.files
+
+    # BM25 rebuilt from surviving chunk (Defect B)
+    mock_bm25.build_index.assert_called_once()
+    rebuilt_nodes = mock_bm25.build_index.call_args.args[0]
+    assert [n.id_ for n in rebuilt_nodes] == ["c1"]
+
+
+@pytest.mark.asyncio
+async def test_delete_last_file_resets_bm25(tmp_path: Path) -> None:
+    """Deleting the only file (no survivors) must reset BM25, not no-op it."""
+    folder = str(tmp_path / "docs")
+    Path(folder).mkdir()
+    # Keep one real file on disk so the loader returns something unchanged-free;
+    # but make the manifest's only tracked file the deleted one.
+    keep = str(tmp_path / "docs" / "keep.md")
+    Path(keep).write_text("keep")
+
+    manifests_dir = tmp_path / "manifests"
+    tracker = ManifestTracker(manifests_dir=manifests_dir)
+
+    abs_folder = str(Path(folder).resolve())
+    abs_deleted = str(tmp_path / "docs" / "gone.md")
+    manifest = FolderManifest(folder_path=abs_folder)
+    manifest.files[abs_deleted] = FileRecord(
+        checksum="old", mtime=0.0, chunk_ids=["gone-1"]
+    )
+    await tracker.save(manifest)
+
+    # Loader returns keep.md (a NEW file) — but to isolate the no-survivor reset
+    # path we feed an empty doc list so nothing is indexed and nothing survives.
+    storage = _make_storage_backend()
+    storage.delete_by_ids = AsyncMock(return_value=1)
+    service = _make_indexing_service(storage, tracker, [], [])
+    mock_bm25 = service.bm25_manager
+    mock_bm25.reset = MagicMock()
+
+    request = IndexRequest(folder_path=folder)
+    result = await service._run_indexing_pipeline(request, "job_test")
+
+    assert result is not None
+    assert abs_deleted in result["files_deleted"]
+    mock_bm25.reset.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
 # Test: zero-change run - no reindex needed
 # ---------------------------------------------------------------------------
 

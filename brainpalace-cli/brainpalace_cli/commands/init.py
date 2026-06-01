@@ -498,8 +498,9 @@ def _start_and_watch(
     default=None,
     help=(
         "Index this project's AI chat transcripts into searchable session "
-        "memory (assistant + tool turns). Privacy-first: default is to ask "
-        "when interactive, or off in non-interactive mode."
+        "memory (assistant + tool turns). ON by default for new projects: "
+        "interactive runs confirm (default yes), non-interactive runs enable "
+        "it. Pass --no-sessions to opt out."
     ),
 )
 def init_command(
@@ -665,14 +666,27 @@ def init_command(
                 "settings (use `brainpalace config` to change providers).[/]"
             )
 
-        # Phase 4: conscious session-memory opt-in. Default-off (privacy-first):
-        # prompt only on an interactive TTY, never silently enable.
-        if enable_sessions is None and not json_output and sys.stdin.isatty():
-            enable_sessions = click.confirm(
-                "Enable session memory? It indexes this project's AI chat "
-                "transcripts (assistant + tool turns) for later recall.",
-                default=False,
-            )
+        # Session memory is ON by default for new projects: it indexes this
+        # project's AI chat transcripts (assistant + tool turns). An interactive
+        # TTY gets a confirmation defaulting to yes; non-interactive/--json runs
+        # initialize it enabled. Explicit --no-sessions opts out. User turns
+        # remain separately opt-in.
+        #
+        # The default-on only applies when we just wrote a fresh config.yaml
+        # (i.e. a genuinely new project). On a re-init over an existing
+        # config.yaml we leave it untouched so user edits are preserved — only
+        # an explicit --sessions injects the block in that case.
+        if enable_sessions is None:
+            if not provider_config_written:
+                enable_sessions = False
+            elif not json_output and sys.stdin.isatty():
+                enable_sessions = click.confirm(
+                    "Enable session memory? It indexes this project's AI chat "
+                    "transcripts (assistant + tool turns) for later recall.",
+                    default=True,
+                )
+            else:
+                enable_sessions = True
         if enable_sessions:
             enable_session_indexing(resolved_state_dir)
 

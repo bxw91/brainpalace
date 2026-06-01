@@ -169,6 +169,64 @@ async def test_verify_delta_eviction_result_param_takes_precedence() -> None:
     assert result is True
 
 
+@pytest.mark.asyncio
+async def test_verify_delta_negative_with_eviction_passes() -> None:
+    """A pure-delete run shrinks the store (negative delta). With eviction
+    recorded it must PASS, not be flagged as a failed job (Bug 1A regression)."""
+    # Deleted one file's chunk: 35 -> 34.
+    worker, _ = _make_worker_with_mock_service(count_before=35, count_after=34)
+
+    eviction_from_pipeline: dict[str, Any] = {
+        "files_added": [],
+        "files_changed": [],
+        "files_deleted": ["/tmp/test_eviction/gone.md"],
+        "files_unchanged": ["/tmp/test_eviction/keep.md"],
+        "chunks_evicted": 1,
+        "chunks_to_create": 0,
+    }
+
+    job = _make_job(eviction_summary=None)
+    result = await worker._verify_collection_delta(
+        job, count_before=35, eviction_result=eviction_from_pipeline
+    )
+
+    assert result is True
+
+
+@pytest.mark.asyncio
+async def test_verify_delta_zero_change_but_empty_store_fails() -> None:
+    """Manifest claims files are unchanged but the store is empty → stale-manifest
+    desync must FAIL loudly, not silently report done at 0% (hardening)."""
+    worker, _ = _make_worker_with_mock_service(count_before=0, count_after=0)
+
+    eviction_from_pipeline: dict[str, Any] = {
+        "files_added": [],
+        "files_changed": [],
+        "files_deleted": [],
+        "files_unchanged": ["/tmp/test_eviction/a.md", "/tmp/test_eviction/b.md"],
+        "chunks_evicted": 0,
+        "chunks_to_create": 0,
+    }
+
+    job = _make_job(eviction_summary=None)
+    result = await worker._verify_collection_delta(
+        job, count_before=0, eviction_result=eviction_from_pipeline
+    )
+
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_verify_delta_negative_without_eviction_fails() -> None:
+    """A negative delta with no eviction recorded is a genuine anomaly → fail."""
+    worker, _ = _make_worker_with_mock_service(count_before=35, count_after=34)
+
+    job = _make_job(eviction_summary=None)
+    result = await worker._verify_collection_delta(job, count_before=35)
+
+    assert result is False
+
+
 # ---------------------------------------------------------------------------
 # Test: JobRecord.force is propagated to IndexRequest
 # ---------------------------------------------------------------------------

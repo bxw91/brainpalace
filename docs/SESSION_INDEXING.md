@@ -13,10 +13,15 @@ module?"* and get hits from prior sessions through the normal `query` path.
 
 ## Privacy model — read this first
 
-Session indexing is **OFF by default** and strictly opt-in per project.
+Session indexing is **ON by default for newly `init`-ed projects**, and opt-out
+per project. `brainpalace init` writes `session_indexing.enabled: true` (interactive
+runs confirm with a default of yes; non-interactive / `--json` runs enable it).
+Opt out with `brainpalace init --no-sessions`.
 
-- **Disabled unless you opt in.** With no `session_indexing:` block, nothing is
-  read, watched, or indexed.
+- **Existing projects are unaffected.** The server-side default for a project with
+  **no** `session_indexing:` block is still off — nothing is read, watched, or
+  indexed. Only `init` opts a project in by writing the block; this default change
+  does not retroactively enable indexing on projects you initialized earlier.
 - **Assistant-weighted.** Human *user* dialogue turns are **excluded by
   default** (`include_user_turns: false`). The assistant's messages, tool calls,
   and tool results are indexed; your prompts are not, unless you turn that on.
@@ -35,7 +40,7 @@ Add a `session_indexing:` block to your project `config.yaml` (the same file the
 
 ```yaml
 session_indexing:
-  enabled: true            # default: false (opt-in)
+  enabled: true            # init writes this true by default (opt out: init --no-sessions)
   archive:
     enabled: true          # default: true when session_indexing is on
     dir: .brainpalace/session_archive  # default; override if needed
