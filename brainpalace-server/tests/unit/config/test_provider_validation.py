@@ -87,6 +87,26 @@ class TestValidateProviderConfig:
             assert len(embedding_errors) == 1
             assert embedding_errors[0].severity == ValidationSeverity.CRITICAL
 
+    def test_openai_summarization_no_key_env_names_openai_var(self) -> None:
+        """provider=openai, no api_key_env, no key -> error names OPENAI_API_KEY.
+
+        Regression: previously the static ANTHROPIC_API_KEY default made the
+        error name the wrong provider's env var.
+        """
+        with patch.dict(os.environ, {}, clear=True):
+            settings = ProviderSettings(
+                embedding=EmbeddingConfig(provider=EmbeddingProviderType.OLLAMA),
+                summarization=SummarizationConfig(
+                    provider=SummarizationProviderType.OPENAI,
+                ),
+            )
+            errors = validate_provider_config(settings)
+
+            summ_errors = [e for e in errors if e.provider_type == "summarization"]
+            assert len(summ_errors) == 1
+            assert "OPENAI_API_KEY" in summ_errors[0].message
+            assert "ANTHROPIC_API_KEY" not in summ_errors[0].message
+
     def test_ollama_no_key_required(self) -> None:
         """Test Ollama provider doesn't require API key."""
         settings = ProviderSettings(

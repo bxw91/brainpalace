@@ -128,6 +128,7 @@ def status_command(
                         "file_watcher": indexing.file_watcher
                         or {"running": False, "watched_folders": 0},
                         "embedding_cache": indexing.embedding_cache,
+                        "features": getattr(indexing, "features", None),
                     },
                 }
                 click.echo(json.dumps(output, indent=2))
@@ -182,15 +183,55 @@ def status_command(
             if indexing.last_indexed_at:
                 table.add_row("Last Indexed", indexing.last_indexed_at)
 
-            file_watcher = indexing.file_watcher or {}
-            if file_watcher:
-                running = bool(file_watcher.get("running", False))
-                watched_folders = int(file_watcher.get("watched_folders", 0))
-                watcher_status = "running" if running else "stopped"
-                table.add_row(
-                    "File Watcher",
-                    f"{watcher_status} ({watched_folders} watched folder(s))",
-                )
+            features = getattr(indexing, "features", None) or {}
+
+            # File watcher — prefer the consolidated feature view (clearer
+            # 0-folder state), fall back to the legacy top-level field.
+            fw_feat = features.get("file_watcher")
+            if isinstance(fw_feat, dict):
+                enabled = bool(fw_feat.get("enabled"))
+                watched = int(fw_feat.get("watched_folders", 0) or 0)
+                if enabled and watched == 0:
+                    table.add_row(
+                        "File Watcher",
+                        "running ([yellow]0 folders — none marked watch=auto[/])",
+                    )
+                elif enabled:
+                    table.add_row(
+                        "File Watcher", f"running ({watched} watched folder(s))"
+                    )
+                else:
+                    table.add_row("File Watcher", "stopped")
+            else:
+                file_watcher = indexing.file_watcher or {}
+                if file_watcher:
+                    running = bool(file_watcher.get("running", False))
+                    watched_folders = int(file_watcher.get("watched_folders", 0))
+                    watcher_status = "running" if running else "stopped"
+                    table.add_row(
+                        "File Watcher",
+                        f"{watcher_status} ({watched_folders} watched folder(s))",
+                    )
+
+            # Session memory (from the feature view).
+            sess = features.get("session_memory")
+            if isinstance(sess, dict):
+                if sess.get("enabled"):
+                    sess_state = (
+                        "watching" if sess.get("watcher_running") else "idle"
+                    )
+                    table.add_row(
+                        "Session Memory",
+                        f"[green]on[/] ({sess_state}) — "
+                        f"{int(sess.get('session_chunks', 0) or 0):,} session "
+                        f"chunks, {int(sess.get('curated_memories', 0) or 0):,} "
+                        f"curated",
+                    )
+                else:
+                    table.add_row(
+                        "Session Memory",
+                        "[dim]off[/] (enable: brainpalace init --sessions)",
+                    )
 
             # Show embedding cache status if available (Phase 16)
             embedding_cache = indexing.embedding_cache

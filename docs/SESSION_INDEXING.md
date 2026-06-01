@@ -47,6 +47,27 @@ By default BrainPalace resolves your session directory automatically by encoding
 the project path the way Claude Code does (`/` → `-`), e.g. project
 `/home/me/work/app` → `~/.claude/projects/-home-me-work-app/`.
 
+### Embedding cost — read before enabling
+
+Session memory embeds **every** sliding window of your transcripts, and the
+default `window: 4` / `stride: 2` means **50% overlap** — each turn is embedded
+in roughly two windows. On a real project this adds up fast: ~26 transcripts
+produced ~1,200 session chunks (~400k OpenAI embedding tokens) in one indexing
+pass. If you index sessions continuously you can burn six figures of embedding
+tokens in an hour.
+
+This is by design (overlap improves multi-turn recall), but it is the single
+biggest cost driver of session memory. Two cheap levers:
+
+- **`stride: 4` (no overlap)** ≈ halves embedding cost, at some recall loss on
+  context that straddles a window boundary.
+- Use a **local embedding provider** (Ollama) for sessions if cost matters more
+  than retrieval quality.
+
+The graph extraction path (summaries/decisions/triplets) does **not** embed and
+costs nothing beyond your subscription — only the `session_turn` window indexing
+above incurs embedding spend.
+
 ## What gets indexed
 
 - A new chunk **source type**: `source_type="session_turn"`. Query just sessions

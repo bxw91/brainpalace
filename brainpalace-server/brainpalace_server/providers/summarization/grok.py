@@ -38,7 +38,8 @@ class GrokSummarizationProvider(BaseSummarizationProvider):
         api_key = config.get_api_key()
         if not api_key:
             raise AuthenticationError(
-                f"Missing API key. Set {config.api_key_env} environment variable.",
+                "Missing API key. Set "
+                f"{config.resolved_api_key_env()} environment variable.",
                 self.provider_name,
             )
 

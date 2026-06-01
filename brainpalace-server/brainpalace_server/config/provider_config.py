@@ -24,6 +24,24 @@ from brainpalace_server.providers.base import (
 logger = logging.getLogger(__name__)
 
 
+# Provider -> conventional API-key env var. Used to resolve the right env var
+# when the user selects a provider but leaves api_key_env unset, so an
+# openai-only user isn't told to "Set ANTHROPIC_API_KEY". None = no key needed.
+_EMBEDDING_KEY_ENV: dict[EmbeddingProviderType, str | None] = {
+    EmbeddingProviderType.OPENAI: "OPENAI_API_KEY",
+    EmbeddingProviderType.COHERE: "COHERE_API_KEY",
+    EmbeddingProviderType.OLLAMA: None,
+}
+
+_SUMMARIZATION_KEY_ENV: dict[SummarizationProviderType, str | None] = {
+    SummarizationProviderType.ANTHROPIC: "ANTHROPIC_API_KEY",
+    SummarizationProviderType.OPENAI: "OPENAI_API_KEY",
+    SummarizationProviderType.GEMINI: "GEMINI_API_KEY",
+    SummarizationProviderType.GROK: "XAI_API_KEY",
+    SummarizationProviderType.OLLAMA: None,
+}
+
+
 class ValidationSeverity(str, Enum):
     """Severity level for validation errors."""
 
@@ -69,8 +87,12 @@ class EmbeddingConfig(BaseModel):
         description="API key (alternative to api_key_env for local config files)",
     )
     api_key_env: str | None = Field(
-        default="OPENAI_API_KEY",
-        description="Environment variable name containing API key",
+        default=None,
+        description=(
+            "Environment variable name containing API key. When unset, the "
+            "conventional var for the selected provider is used "
+            "(openai->OPENAI_API_KEY, cohere->COHERE_API_KEY)."
+        ),
     )
     base_url: str | None = Field(
         default=None,
@@ -93,12 +115,23 @@ class EmbeddingConfig(BaseModel):
             return v
         return EmbeddingProviderType(v)
 
+    def resolved_api_key_env(self) -> str | None:
+        """Env var holding the API key, explicit or provider-derived.
+
+        Returns the user's ``api_key_env`` if set, else the conventional
+        var for the selected provider (None for providers needing no key).
+        """
+        if self.api_key_env:
+            return self.api_key_env
+        provider = EmbeddingProviderType(self.provider)
+        return _EMBEDDING_KEY_ENV.get(provider)
+
     def get_api_key(self) -> str | None:
         """Resolve API key from config or environment variable.
 
         Resolution order:
         1. api_key field in config (direct value)
-        2. Environment variable specified by api_key_env
+        2. Environment variable (explicit api_key_env or provider-derived)
 
         Returns:
             API key value or None if not found/not needed
@@ -109,8 +142,9 @@ class EmbeddingConfig(BaseModel):
         if self.api_key:
             return self.api_key
         # Fall back to environment variable
-        if self.api_key_env:
-            return os.getenv(self.api_key_env)
+        env_var = self.resolved_api_key_env()
+        if env_var:
+            return os.getenv(env_var)
         return None
 
     def get_base_url(self) -> str | None:
@@ -142,8 +176,13 @@ class SummarizationConfig(BaseModel):
         description="API key (alternative to api_key_env for local config files)",
     )
     api_key_env: str | None = Field(
-        default="ANTHROPIC_API_KEY",
-        description="Environment variable name containing API key",
+        default=None,
+        description=(
+            "Environment variable name containing API key. When unset, the "
+            "conventional var for the selected provider is used "
+            "(anthropic->ANTHROPIC_API_KEY, openai->OPENAI_API_KEY, "
+            "gemini->GEMINI_API_KEY, grok->XAI_API_KEY)."
+        ),
     )
     base_url: str | None = Field(
         default=None,
@@ -166,12 +205,23 @@ class SummarizationConfig(BaseModel):
             return v
         return SummarizationProviderType(v)
 
+    def resolved_api_key_env(self) -> str | None:
+        """Env var holding the API key, explicit or provider-derived.
+
+        Returns the user's ``api_key_env`` if set, else the conventional
+        var for the selected provider (None for providers needing no key).
+        """
+        if self.api_key_env:
+            return self.api_key_env
+        provider = SummarizationProviderType(self.provider)
+        return _SUMMARIZATION_KEY_ENV.get(provider)
+
     def get_api_key(self) -> str | None:
         """Resolve API key from config or environment variable.
 
         Resolution order:
         1. api_key field in config (direct value)
-        2. Environment variable specified by api_key_env
+        2. Environment variable (explicit api_key_env or provider-derived)
 
         Returns:
             API key value or None if not found/not needed
@@ -182,8 +232,9 @@ class SummarizationConfig(BaseModel):
         if self.api_key:
             return self.api_key
         # Fall back to environment variable
-        if self.api_key_env:
-            return os.getenv(self.api_key_env)
+        env_var = self.resolved_api_key_env()
+        if env_var:
+            return os.getenv(env_var)
         return None
 
     def get_base_url(self) -> str | None:
@@ -534,7 +585,7 @@ def validate_provider_config(
     if settings.embedding.provider != EmbeddingProviderType.OLLAMA:
         api_key = settings.embedding.get_api_key()
         if not api_key:
-            env_var = settings.embedding.api_key_env or "OPENAI_API_KEY"
+            env_var = settings.embedding.resolved_api_key_env() or "OPENAI_API_KEY"
             errors.append(
                 ValidationError(
                     message=(
@@ -551,7 +602,9 @@ def validate_provider_config(
     if settings.summarization.provider != SummarizationProviderType.OLLAMA:
         api_key = settings.summarization.get_api_key()
         if not api_key:
-            env_var = settings.summarization.api_key_env or "ANTHROPIC_API_KEY"
+            env_var = (
+                settings.summarization.resolved_api_key_env() or "ANTHROPIC_API_KEY"
+            )
             errors.append(
                 ValidationError(
                     message=(

@@ -46,6 +46,16 @@ logger = logging.getLogger(__name__)
 ProgressCallback = Callable[[int, int, str], Awaitable[None]]
 
 
+def _merge_chunk_ids(existing_ids: list[str], new_ids: list[str]) -> list[str]:
+    """Union existing and new chunk ids into a sorted, de-duplicated list.
+
+    Used so a folder's persisted ``chunk_count`` stays cumulative across
+    incremental re-indexes (which only produce chunks for changed files)
+    instead of being overwritten with the per-run delta.
+    """
+    return sorted(set(existing_ids) | set(new_ids))
+
+
 class IndexingService:
     """
     Orchestrates the document indexing pipeline.
@@ -730,16 +740,31 @@ class IndexingService:
 
             # Register folder with FolderManager for persistent tracking (Phase 12)
             if self.folder_manager is not None:
-                chunk_ids = [chunk.chunk_id for chunk in chunks]
+                new_chunk_ids = [chunk.chunk_id for chunk in chunks]
+                existing = await self.folder_manager.get_folder(abs_folder_path)
+                if existing is not None:
+                    # Incremental/re-index: union with already-tracked ids so the
+                    # persisted chunk_count stays cumulative, not the per-run delta.
+                    merged_ids = _merge_chunk_ids(existing.chunk_ids, new_chunk_ids)
+                    # Preserve the folder's watch settings — re-registering must
+                    # not silently reset an auto-watched folder back to 'off'.
+                    watch_mode = existing.watch_mode
+                    watch_debounce_seconds = existing.watch_debounce_seconds
+                else:
+                    merged_ids = new_chunk_ids
+                    watch_mode = "off"
+                    watch_debounce_seconds = None
                 await self.folder_manager.add_folder(
                     folder_path=abs_folder_path,
-                    chunk_count=len(chunks),
-                    chunk_ids=chunk_ids,
+                    chunk_count=len(merged_ids),
+                    chunk_ids=merged_ids,
+                    watch_mode=watch_mode,
+                    watch_debounce_seconds=watch_debounce_seconds,
                     include_code=request.include_code,
                 )
                 logger.info(
                     f"Registered folder {abs_folder_path} with FolderManager "
-                    f"({len(chunks)} chunks)"
+                    f"({len(merged_ids)} chunks)"
                 )
 
             # Save manifest after successful pipeline completion (Phase 14)
@@ -804,6 +829,27 @@ class IndexingService:
 
         finally:
             self._state.is_indexing = False
+
+    async def get_document_count(self) -> int:
+        """Distinct indexed documents derived from persisted manifests.
+
+        Authoritative count derived from the per-folder manifests (distinct
+        indexed file paths) rather than the ephemeral in-process state, which
+        is only updated when a full index runs in this process — async jobs
+        run in the worker and never touch it. Falls back to the last-known
+        state value when manifests are unavailable.
+        """
+        if self.folder_manager is None or self.manifest_tracker is None:
+            return self._state.total_documents
+        try:
+            paths: set[str] = set()
+            for folder in await self.folder_manager.list_folders():
+                manifest = await self.manifest_tracker.load(folder.folder_path)
+                if manifest is not None:
+                    paths.update(manifest.files.keys())
+            return len(paths)
+        except Exception:  # noqa: BLE001 — never fail /status on the count
+            return self._state.total_documents
 
     async def get_status(self) -> dict[str, Any]:
         """

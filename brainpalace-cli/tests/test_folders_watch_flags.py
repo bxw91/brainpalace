@@ -111,13 +111,13 @@ class TestFoldersAddWatchFlags:
             call_kwargs = mock_client.index.call_args
             assert call_kwargs.kwargs.get("watch_debounce_seconds") == 10
 
-    def test_no_watch_flag_passes_none(
+    def test_bare_add_defaults_watch_auto(
         self,
         runner: CliRunner,
         mock_index_response: IndexResponse,
         tmp_path: object,
     ) -> None:
-        """Without --watch, watch_mode is None."""
+        """Bare 'folders add' defaults watch_mode='auto' (matches CLAUDE.md)."""
         with patch(
             "brainpalace_cli.commands.folders.DocServeClient"
         ) as mock_client_cls:
@@ -134,7 +134,7 @@ class TestFoldersAddWatchFlags:
 
             assert result.exit_code == 0
             call_kwargs = mock_client.index.call_args
-            assert call_kwargs.kwargs.get("watch_mode") is None
+            assert call_kwargs.kwargs.get("watch_mode") == "auto"
             assert call_kwargs.kwargs.get("watch_debounce_seconds") is None
 
 

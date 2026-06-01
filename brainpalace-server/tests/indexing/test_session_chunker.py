@@ -79,9 +79,10 @@ def test_metadata_captures_tools_and_files() -> None:
     ]
     chunk = SessionChunker(window=4, stride=4).chunk(_meta(), turns)[0]
     extra = chunk.metadata.extra
-    assert "Write" in extra["tools_used"]
-    assert "Bash" in extra["tools_used"]
-    assert extra["files_touched"] == ["src/app.py"]  # DIRECT file inputs only
+    # List fields are stored as comma-joined strings (Chroma scalar metadata).
+    assert extra["tools_used"].split(",") == ["Write", "Bash"]
+    assert extra["files_touched"] == "src/app.py"  # DIRECT file inputs only
+    assert extra["role_mix"] == "assistant"
     assert extra["session_id"] == "s1"
     assert extra["branch"] == "main"
 

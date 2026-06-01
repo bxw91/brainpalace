@@ -3,6 +3,7 @@
 import json
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import click
@@ -120,6 +121,94 @@ def _looks_like_monorepo_root(project_root: Path) -> bool:
     except OSError:
         return False
     return any(marker in contents for marker in MONOREPO_CLAUDE_MD_MARKERS)
+
+
+def _preflight_providers(state_dir: Path, json_output: bool) -> None:
+    """Validate embedding/summarization providers before starting the server.
+
+    Reuses the server's own validation rules (the CLI bundles the server) so
+    there is one source of truth. On a critical error (e.g. a required API key
+    is missing) prints the provider, the missing env var, and exits non-zero
+    *before* any server start or index job — preventing the mid-init crash
+    class. Non-critical warnings are surfaced but do not block.
+    """
+    import os
+
+    try:
+        from brainpalace_server.config.provider_config import (
+            clear_settings_cache,
+            has_critical_errors,
+            load_provider_settings,
+            validate_provider_config,
+        )
+    except Exception:  # noqa: BLE001 — server not importable: skip preflight
+        return
+
+    # Point validation at the project config.yaml we just wrote.
+    prev = os.environ.get("BRAINPALACE_CONFIG")
+    os.environ["BRAINPALACE_CONFIG"] = str(state_dir / "config.yaml")
+    try:
+        clear_settings_cache()
+        errors = validate_provider_config(load_provider_settings())
+        critical = has_critical_errors(errors)
+    except Exception:  # noqa: BLE001 — never block init on the check itself
+        return
+    finally:
+        if prev is None:
+            os.environ.pop("BRAINPALACE_CONFIG", None)
+        else:
+            os.environ["BRAINPALACE_CONFIG"] = prev
+        clear_settings_cache()
+
+    if not critical:
+        return
+
+    messages = [str(e) for e in errors]
+    if json_output:
+        click.echo(
+            json.dumps(
+                {
+                    "error": "provider_preflight_failed",
+                    "messages": messages,
+                    "state_dir": str(state_dir),
+                }
+            )
+        )
+    else:
+        console.print(
+            "[red]Provider configuration error — not starting the server:[/]"
+        )
+        for msg in messages:
+            console.print(f"  {msg}")
+        console.print(
+            "\n[dim]Fix the configuration (set the missing API key env var or "
+            "edit .brainpalace/config.yaml), then re-run.[/]"
+        )
+    raise SystemExit(1)
+
+
+def enable_session_indexing(state_dir: Path) -> None:
+    """Set ``session_indexing.enabled: true`` in the project config.yaml.
+
+    Deep-merges into the existing config.yaml so the provider/graphrag/storage
+    blocks written by ``write_default_provider_config`` are preserved. Privacy
+    note: this opts the project into indexing AI chat transcripts; only called
+    when the user explicitly opts in. The server reads this block at startup
+    (``load_session_indexing_config``) to start the session watcher.
+    """
+    config_path = state_dir / "config.yaml"
+    data: dict[str, object] = {}
+    if config_path.exists():
+        loaded = yaml.safe_load(config_path.read_text()) or {}
+        if isinstance(loaded, dict):
+            data = loaded
+    block = data.get("session_indexing")
+    if not isinstance(block, dict):
+        block = {}
+    block["enabled"] = True
+    data["session_indexing"] = block
+    with open(config_path, "w", encoding="utf-8") as f:
+        yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
 
 
 def ensure_gitignore_entry(project_root: Path, entry: str = ".brainpalace/") -> bool:
@@ -274,6 +363,82 @@ def _emit_init_result(
         )
 
 
+def _start_and_watch(
+    *,
+    project_root: Path,
+    resolved_state_dir: Path,
+    config_path: Path,
+    config: dict[str, object],
+    gitignore_added: bool,
+    watch: str,
+    json_output: bool,
+) -> list[dict[str, object]]:
+    """Run the --start pipeline: provider preflight, server start, optional watch.
+
+    Shared by a fresh init and a re-run on an already-initialized project, so
+    `init --start` is idempotent (a first run that aborted at preflight can be
+    re-run to actually start). Emits the failure result and exits non-zero on
+    any failing step; returns the collected post-init steps on success.
+    """
+    post_init_steps: list[dict[str, object]] = []
+
+    # Provider pre-flight: fail fast with an actionable message before
+    # launching the server / queueing any index, so a misconfigured provider
+    # (e.g. summarization=anthropic with no key) can't crash the server.
+    _preflight_providers(resolved_state_dir, json_output)
+
+    start_result = _run_subcommand(
+        ["brainpalace", "start", "--path", str(project_root), "--json"],
+        step="start",
+        json_output=json_output,
+    )
+    post_init_steps.append(start_result)
+    if start_result["status"] != "ok":
+        _emit_init_result(
+            project_root=project_root,
+            resolved_state_dir=resolved_state_dir,
+            config_path=config_path,
+            config=config,
+            gitignore_added=gitignore_added,
+            post_init_steps=post_init_steps,
+            start_used=True,
+            watch=watch,
+            json_output=json_output,
+        )
+        raise SystemExit(1)
+
+    if watch != "off":
+        watch_result = _run_subcommand(
+            [
+                "brainpalace",
+                "folders",
+                "add",
+                str(project_root),
+                "--watch",
+                watch,
+                "--include-code",
+            ],
+            step="watch",
+            json_output=json_output,
+        )
+        post_init_steps.append(watch_result)
+        if watch_result["status"] != "ok":
+            _emit_init_result(
+                project_root=project_root,
+                resolved_state_dir=resolved_state_dir,
+                config_path=config_path,
+                config=config,
+                gitignore_added=gitignore_added,
+                post_init_steps=post_init_steps,
+                start_used=True,
+                watch=watch,
+                json_output=json_output,
+            )
+            raise SystemExit(1)
+
+    return post_init_steps
+
+
 @click.command("init")
 @click.option(
     "--path",
@@ -329,6 +494,16 @@ def _emit_init_result(
         "given watch mode (default 'off' = no folder registration)."
     ),
 )
+@click.option(
+    "--sessions/--no-sessions",
+    "enable_sessions",
+    default=None,
+    help=(
+        "Index this project's AI chat transcripts into searchable session "
+        "memory (assistant + tool turns). Privacy-first: default is to ask "
+        "when interactive, or off in non-interactive mode."
+    ),
+)
 def init_command(
     path: str | None,
     host: str,
@@ -339,6 +514,7 @@ def init_command(
     force_monorepo_root: bool,
     start: bool,
     watch: str,
+    enable_sessions: bool | None,
 ) -> None:
     """Initialize a new BrainPalace project.
 
@@ -401,8 +577,39 @@ def init_command(
             resolved_state_dir = migrate_state_dir(project_root)
         config_path = resolved_state_dir / "config.json"
 
-        # Idempotent: re-running init on an initialized project is a no-op (B5).
+        # Idempotent: re-running init on an initialized project is a no-op (B5),
+        # EXCEPT when --start is passed — then skip the config write but still
+        # run the start/watch pipeline so a first run that aborted at the
+        # provider preflight can be resumed without --force.
         if config_path.exists() and not force:
+            if start:
+                try:
+                    existing_config = json.loads(config_path.read_text())
+                except (OSError, json.JSONDecodeError):
+                    existing_config = {}
+                if enable_sessions:
+                    enable_session_indexing(resolved_state_dir)
+                post_init_steps: list[dict[str, object]] = _start_and_watch(
+                    project_root=project_root,
+                    resolved_state_dir=resolved_state_dir,
+                    config_path=config_path,
+                    config=existing_config,
+                    gitignore_added=False,
+                    watch=watch,
+                    json_output=json_output,
+                )
+                _emit_init_result(
+                    project_root=project_root,
+                    resolved_state_dir=resolved_state_dir,
+                    config_path=config_path,
+                    config=existing_config,
+                    gitignore_added=False,
+                    post_init_steps=post_init_steps,
+                    start_used=True,
+                    watch=watch,
+                    json_output=json_output,
+                )
+                return
             if json_output:
                 click.echo(
                     json.dumps(
@@ -446,63 +653,46 @@ def init_command(
         # Phase L: write a default config.yaml (provider settings) with
         # graphrag.enabled=true so new projects get code-graph indexing
         # without needing `brainpalace config wizard`. Idempotent: skip
-        # if config.yaml already exists.
-        write_default_provider_config(resolved_state_dir, force=force)
+        # if config.yaml already exists. NOTE: never pass force here — a
+        # re-init with --force overwrites the server config.json but must
+        # preserve the user's provider/embedding/summarization/storage/
+        # graphrag edits in config.yaml (use `brainpalace config` to change
+        # providers). Clobbering them on --force was a data-loss papercut.
+        provider_config_written = write_default_provider_config(
+            resolved_state_dir, force=False
+        )
+        if force and not provider_config_written and not json_output:
+            console.print(
+                "[dim]Preserved existing .brainpalace/config.yaml provider "
+                "settings (use `brainpalace config` to change providers).[/]"
+            )
+
+        # Phase 4: conscious session-memory opt-in. Default-off (privacy-first):
+        # prompt only on an interactive TTY, never silently enable.
+        if enable_sessions is None and not json_output and sys.stdin.isatty():
+            enable_sessions = click.confirm(
+                "Enable session memory? It indexes this project's AI chat "
+                "transcripts (assistant + tool turns) for later recall.",
+                default=False,
+            )
+        if enable_sessions:
+            enable_session_indexing(resolved_state_dir)
 
         # B5: ensure .brainpalace/ is git-ignored for the project.
         gitignore_added = ensure_gitignore_entry(project_root)
 
-        post_init_steps: list[dict[str, object]] = []
+        post_init_steps = []
 
         if start:
-            start_result = _run_subcommand(
-                ["brainpalace", "start", "--path", str(project_root), "--json"],
-                step="start",
+            post_init_steps = _start_and_watch(
+                project_root=project_root,
+                resolved_state_dir=resolved_state_dir,
+                config_path=config_path,
+                config=config,
+                gitignore_added=gitignore_added,
+                watch=watch,
                 json_output=json_output,
             )
-            post_init_steps.append(start_result)
-            if start_result["status"] != "ok":
-                _emit_init_result(
-                    project_root=project_root,
-                    resolved_state_dir=resolved_state_dir,
-                    config_path=config_path,
-                    config=config,
-                    gitignore_added=gitignore_added,
-                    post_init_steps=post_init_steps,
-                    start_used=start,
-                    watch=watch,
-                    json_output=json_output,
-                )
-                raise SystemExit(1)
-
-            if watch != "off":
-                watch_result = _run_subcommand(
-                    [
-                        "brainpalace",
-                        "folders",
-                        "add",
-                        str(project_root),
-                        "--watch",
-                        watch,
-                        "--include-code",
-                    ],
-                    step="watch",
-                    json_output=json_output,
-                )
-                post_init_steps.append(watch_result)
-                if watch_result["status"] != "ok":
-                    _emit_init_result(
-                        project_root=project_root,
-                        resolved_state_dir=resolved_state_dir,
-                        config_path=config_path,
-                        config=config,
-                        gitignore_added=gitignore_added,
-                        post_init_steps=post_init_steps,
-                        start_used=start,
-                        watch=watch,
-                        json_output=json_output,
-                    )
-                    raise SystemExit(1)
 
         _emit_init_result(
             project_root=project_root,

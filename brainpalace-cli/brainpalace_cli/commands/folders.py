@@ -133,8 +133,8 @@ def list_folders_cmd(url: str | None, json_output: bool) -> None:
     "--watch",
     "watch_mode",
     type=click.Choice(["off", "auto"], case_sensitive=False),
-    default=None,
-    help="Watch mode: 'auto' enables file watching, 'off' disables (default: off)",
+    default="auto",
+    help="Watch mode: 'auto' enables file watching, 'off' disables (default: auto)",
 )
 @click.option(
     "--debounce",

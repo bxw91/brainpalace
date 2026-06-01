@@ -52,6 +52,8 @@ class IndexingStatus:
     file_watcher: dict[str, Any] | None = None
     embedding_cache: dict[str, Any] | None = None
     migration: dict[str, Any] | None = None
+    graph_index: dict[str, Any] | None = None
+    features: dict[str, Any] | None = None
 
 
 @dataclass
@@ -218,6 +220,8 @@ class DocServeClient:
             indexed_folders=data.get("indexed_folders", []),
             file_watcher=data.get("file_watcher"),
             embedding_cache=data.get("embedding_cache"),
+            graph_index=data.get("graph_index"),
+            features=data.get("features"),
         )
 
     def query(

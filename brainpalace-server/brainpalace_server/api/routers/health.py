@@ -211,7 +211,7 @@ async def indexing_status(request: Request) -> dict[str, Any]:
         query_cache_info = query_cache_svc.get_stats()
 
     response = IndexingStatus(
-        total_documents=service_status.get("total_documents", 0),
+        total_documents=await indexing_service.get_document_count(),
         total_chunks=total_chunks,
         total_doc_chunks=service_status.get("total_doc_chunks", 0),
         total_code_chunks=service_status.get("total_code_chunks", 0),
@@ -266,6 +266,38 @@ async def indexing_status(request: Request) -> dict[str, Any]:
             )
     except Exception:  # noqa: BLE001 — never fail /status on the optional count
         pass
+
+    # Consolidated per-feature status for `brainpalace status` (human view).
+    # Reuses values already computed above; tolerant of missing app.state.
+    session_cfg = getattr(request.app.state, "session_indexing_config", None)
+    session_watcher = getattr(request.app.state, "session_watcher", None)
+    memory_service = getattr(request.app.state, "memory_service", None)
+    curated_count = 0
+    if memory_service is not None:
+        try:
+            curated_count = len(memory_service.load())
+        except Exception:  # noqa: BLE001
+            curated_count = 0
+
+    fw = file_watcher_info or {}
+    data["features"] = {
+        "doc_indexing": {
+            "active": total_chunks > 0,
+            "total_chunks": total_chunks,
+            "total_documents": data.get("total_documents", 0),
+        },
+        "file_watcher": {
+            "enabled": bool(fw.get("running")),
+            "watched_folders": int(fw.get("watched_folders", 0) or 0),
+        },
+        "session_memory": {
+            "enabled": bool(getattr(session_cfg, "enabled", False)),
+            "watcher_running": bool(getattr(session_watcher, "is_running", False)),
+            "session_chunks": int(data.get("session_chunks", 0) or 0),
+            "curated_memories": curated_count,
+        },
+        "graph_index": graph_index_info or {"enabled": False},
+    }
 
     return data
 

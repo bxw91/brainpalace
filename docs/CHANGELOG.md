@@ -14,6 +14,58 @@ month (the counter resets monthly). It looks like SemVer but is not.
 
 ## [Unreleased]
 
+## [26.6.1] - 2026-06-01
+
+Second release: watcher/session-memory/status fixes plus first-run UX and
+correctness fixes found during integration testing.
+
+### Added
+
+- **`index --watch` / `--watch-debounce`** — mark a folder live-watched (or
+  `--watch off`); the server's `FileWatcherService` re-indexes on change with a
+  tunable debounce.
+- **`init --sessions` session memory** — opt-in, privacy-first indexing of this
+  project's AI chat transcripts (assistant + tool turns). Default off; `init`
+  prompts on a TTY, stays off non-interactively.
+- **`status` per-feature view** — document indexing, file watcher (with a clear
+  "0 folders — none marked watch=auto" state), session memory (on/off,
+  watching/idle, session-chunk + curated-memory counts), and graph index.
+- **`init --start` provider pre-flight** — validates embedding + summarization
+  providers before launching, failing fast with the missing env var instead of
+  crashing mid-index.
+
+### Fixed
+
+- **Session chunks upsert to Chroma** — the session chunker stored list
+  (`role_mix`, `tools_used`, `files_touched`) and `None` metadata values that
+  Chroma rejects ("Expected metadata value to be a str, int, float or bool"),
+  crashing session indexing at boot on every project. Lists are now comma-joined
+  and unset optional keys dropped.
+- **`folders add` watch default** — bare `folders add .` now defaults to
+  `--watch auto` (was `off`), matching the documented behaviour so the file
+  watcher isn't left at "0 folders".
+- **Summarization `api_key_env` ignored the provider** — an OpenAI-only user who
+  set `summarization.provider: openai` but no `api_key_env` got
+  "Set ANTHROPIC_API_KEY" and a startup crash. The conventional env var is now
+  derived from the selected provider when unset (openai→`OPENAI_API_KEY`,
+  cohere→`COHERE_API_KEY`, gemini→`GEMINI_API_KEY`, grok→`XAI_API_KEY`); error
+  messages name the correct var.
+- **`init --start` re-run** — re-running after a first run that aborted at the
+  provider pre-flight now starts the server idempotently instead of hitting the
+  already-initialized no-op.
+- **`init --force`** — no longer overwrites a user-edited `.brainpalace/
+  config.yaml` (provider/embedding/summarization/storage/graphrag settings are
+  preserved; use `brainpalace config` to change providers).
+- **`status` `total_documents`** — derived from persisted folder manifests, so
+  it's correct even when indexing ran in the job worker. Folder `chunk_count` is
+  cumulative.
+
+### Docs
+
+- Documented the session-memory embedding cost (50% sliding-window overlap at
+  `window=4`/`stride=2`; `stride: 4` ~halves it) in `SESSION_INDEXING.md` and
+  `CLAUDE.md`.
+
 ## [26.5.1] - 2026-05-30
 
 First public release of BrainPalace.

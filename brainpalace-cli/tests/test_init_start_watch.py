@@ -32,6 +32,16 @@ def _ok_result(stdout: str = "") -> MagicMock:
 
 
 class TestInitStartWatch:
+    @pytest.fixture(autouse=True)
+    def _skip_provider_preflight(self):
+        """Bypass the --start provider pre-flight in orchestration tests.
+
+        These tests assert subprocess orchestration only; without real API
+        keys the pre-flight would abort init before any subcommand runs.
+        """
+        with patch("brainpalace_cli.commands.init._preflight_providers"):
+            yield
+
     def test_no_flags_no_subprocess_called(
         self, runner: CliRunner, temp_project: Path
     ) -> None:
@@ -130,3 +140,60 @@ class TestInitStartWatch:
 
         assert result.exit_code == 1
         assert mock_run.call_count == 1  # only `start`, not folders add
+
+    def test_rerun_with_start_on_initialized_runs_start(
+        self, runner: CliRunner, temp_project: Path
+    ) -> None:
+        """`init --start` re-run on an already-initialized project still starts.
+
+        Regression: the already-initialized early-return skipped the --start
+        pipeline, so a first run that aborted at the provider preflight could
+        not be resumed without --force.
+        """
+        # First run: initialize only (no --start), creates config.json.
+        first = runner.invoke(init_command, ["--path", str(temp_project), "--json"])
+        assert first.exit_code == 0
+        assert json.loads(first.output)["status"] == "initialized"
+
+        # Second run: --start on the already-initialized project.
+        with patch(
+            "brainpalace_cli.commands.init.subprocess.run",
+            return_value=_ok_result(stdout='{"status":"started"}'),
+        ) as mock_run:
+            result = runner.invoke(
+                init_command,
+                ["--path", str(temp_project), "--start", "--json"],
+            )
+
+        assert result.exit_code == 0
+        assert mock_run.call_count == 1
+        called_cmd = mock_run.call_args.args[0]
+        assert called_cmd[:2] == ["brainpalace", "start"]
+        payload = json.loads(result.output)
+        assert payload["status"] == "initialized"
+        assert payload["post_init_steps"][0]["step"] == "start"
+        assert payload["post_init_steps"][0]["status"] == "ok"
+
+
+class TestInitForcePreservesProviderConfig:
+    """`init --force` must not clobber the user's config.yaml provider edits."""
+
+    def test_force_preserves_existing_config_yaml(
+        self, runner: CliRunner, temp_project: Path
+    ) -> None:
+        """Re-init --force keeps a user-edited config.yaml verbatim."""
+        # First init to create the state dir + default config.yaml.
+        runner.invoke(init_command, ["--path", str(temp_project), "--json"])
+        config_yaml = temp_project / ".brainpalace" / "config.yaml"
+        assert config_yaml.exists()
+
+        # Simulate a user edit (custom provider settings).
+        sentinel = "# user-edited: do-not-clobber\nembedding:\n  provider: cohere\n"
+        config_yaml.write_text(sentinel)
+
+        # Re-init with --force.
+        result = runner.invoke(
+            init_command, ["--path", str(temp_project), "--force", "--json"]
+        )
+        assert result.exit_code == 0
+        assert config_yaml.read_text() == sentinel

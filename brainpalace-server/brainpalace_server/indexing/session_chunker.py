@@ -136,9 +136,11 @@ class SessionChunker:
                 "started_at": meta.started_at,
                 "turn_index": window_start_index,
                 "turn_span": len(group),
-                "role_mix": roles,
-                "tools_used": tools_used,
-                "files_touched": files_touched,
+                # Chroma metadata only accepts scalar values — join list
+                # fields to comma-separated strings (empty string when none).
+                "role_mix": ",".join(roles),
+                "tools_used": ",".join(tools_used),
+                "files_touched": ",".join(files_touched),
                 "branch": meta.branch,
                 "has_code_block": has_code,
                 "is_subagent": meta.is_subagent,
@@ -148,6 +150,10 @@ class SessionChunker:
             }
             if language:
                 extra["language"] = language
+
+            # Chroma rejects None metadata values — drop optional keys that are
+            # unset (branch, parent_session_id, started_at can all be None).
+            extra = {k: v for k, v in extra.items() if v is not None}
 
             metadata = ChunkMetadata(
                 chunk_id=chunk_id,

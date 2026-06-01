@@ -88,6 +88,7 @@ class TestStatusCommand:
         mock_status.indexed_folders = []
         mock_status.file_watcher = {"running": False, "watched_folders": 0}
         mock_status.embedding_cache = None  # fresh install: no cache entries
+        mock_status.features = None  # no per-feature block from this mock
 
         mock_client.health.return_value = mock_health
         mock_client.status.return_value = mock_status

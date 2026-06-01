@@ -92,6 +92,21 @@ console = Console()
     is_flag=True,
     help="Allow indexing paths outside the project directory",
 )
+@click.option(
+    "--watch",
+    "watch_mode",
+    type=click.Choice(["auto", "off"], case_sensitive=False),
+    default=None,
+    help="Enable ('auto') or disable ('off') live re-index on file changes "
+    "for this folder. Default: leave the folder's current setting unchanged.",
+)
+@click.option(
+    "--watch-debounce",
+    "watch_debounce_seconds",
+    type=int,
+    default=None,
+    help="Debounce window in seconds before a watched folder re-indexes.",
+)
 @click.option("--json", "json_output", is_flag=True, help="Output as JSON")
 def index_command(
     folder_path: str,
@@ -108,6 +123,8 @@ def index_command(
     generate_summaries: bool,
     force: bool,
     allow_external: bool,
+    watch_mode: str | None,
+    watch_debounce_seconds: int | None,
     json_output: bool,
 ) -> None:
     """Index documents from a folder.
@@ -154,6 +171,8 @@ def index_command(
                 generate_summaries=generate_summaries,
                 force=force,
                 allow_external=allow_external,
+                watch_mode=watch_mode,
+                watch_debounce_seconds=watch_debounce_seconds,
             )
 
             if json_output:
@@ -172,6 +191,8 @@ def index_command(
             console.print(f"[bold]Job ID:[/] {response.job_id}")
             console.print(f"[bold]Folder:[/] {folder}")
             console.print(f"[bold]Status:[/] {response.status}")
+            if watch_mode:
+                console.print(f"[bold]Watch:[/] {watch_mode}")
             if include_type:
                 console.print(f"[bold]Include Types:[/] {include_type}")
             if response.message:

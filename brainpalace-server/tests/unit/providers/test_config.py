@@ -27,9 +27,29 @@ class TestEmbeddingConfig:
         config = EmbeddingConfig()
         assert config.provider == EmbeddingProviderType.OPENAI
         assert config.model == "text-embedding-3-large"
-        assert config.api_key_env == "OPENAI_API_KEY"
+        # api_key_env defaults to None; resolved from provider on demand.
+        assert config.api_key_env is None
+        assert config.resolved_api_key_env() == "OPENAI_API_KEY"
         assert config.base_url is None
         assert config.params == {}
+
+    def test_resolved_api_key_env_provider_derived(self) -> None:
+        """Unset api_key_env resolves to the provider's conventional var."""
+        assert EmbeddingConfig(provider="cohere").resolved_api_key_env() == (
+            "COHERE_API_KEY"
+        )
+        assert EmbeddingConfig(provider="ollama").resolved_api_key_env() is None
+
+    def test_resolved_api_key_env_explicit_wins(self) -> None:
+        """Explicit api_key_env overrides provider derivation."""
+        config = EmbeddingConfig(provider="cohere", api_key_env="MY_KEY")
+        assert config.resolved_api_key_env() == "MY_KEY"
+
+    def test_get_api_key_provider_derived_env(self) -> None:
+        """Provider=cohere with no api_key_env reads COHERE_API_KEY."""
+        with patch.dict(os.environ, {"COHERE_API_KEY": "cohere-secret"}):
+            config = EmbeddingConfig(provider="cohere")
+            assert config.get_api_key() == "cohere-secret"
 
     def test_provider_from_string(self) -> None:
         """Test provider enum conversion from string."""
@@ -88,9 +108,30 @@ class TestSummarizationConfig:
         config = SummarizationConfig()
         assert config.provider == SummarizationProviderType.ANTHROPIC
         assert config.model == "claude-haiku-4-5-20251001"
-        assert config.api_key_env == "ANTHROPIC_API_KEY"
+        # api_key_env defaults to None; resolved from provider on demand.
+        assert config.api_key_env is None
+        assert config.resolved_api_key_env() == "ANTHROPIC_API_KEY"
         assert config.base_url is None
         assert config.params == {}
+
+    def test_resolved_api_key_env_provider_derived(self) -> None:
+        """Unset api_key_env resolves to the provider's conventional var."""
+        assert SummarizationConfig(provider="openai").resolved_api_key_env() == (
+            "OPENAI_API_KEY"
+        )
+        assert SummarizationConfig(provider="gemini").resolved_api_key_env() == (
+            "GEMINI_API_KEY"
+        )
+        assert SummarizationConfig(provider="grok").resolved_api_key_env() == (
+            "XAI_API_KEY"
+        )
+        assert SummarizationConfig(provider="ollama").resolved_api_key_env() is None
+
+    def test_get_api_key_provider_derived_env(self) -> None:
+        """Provider=openai with no api_key_env reads OPENAI_API_KEY (not Anthropic)."""
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "openai-secret"}):
+            config = SummarizationConfig(provider="openai")
+            assert config.get_api_key() == "openai-secret"
 
     def test_provider_from_string(self) -> None:
         """Test provider enum conversion from string."""
