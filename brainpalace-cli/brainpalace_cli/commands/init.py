@@ -175,9 +175,7 @@ def _preflight_providers(state_dir: Path, json_output: bool) -> None:
             )
         )
     else:
-        console.print(
-            "[red]Provider configuration error — not starting the server:[/]"
-        )
+        console.print("[red]Provider configuration error — not starting the server:[/]")
         for msg in messages:
             console.print(f"  {msg}")
         console.print(

@@ -108,7 +108,7 @@ def _write_digest(digest_path: Path, payload: SessionExtraction) -> bool:
         new = "\n\n".join(parts) + "\n"
     else:
         header = "" if existing.strip() else "# Decisions digest\n\n"
-        new = (existing.rstrip("\n") + "\n\n" if existing.strip() else header)
+        new = existing.rstrip("\n") + "\n\n" if existing.strip() else header
         new += block + "\n"
 
     digest_path.parent.mkdir(parents=True, exist_ok=True)

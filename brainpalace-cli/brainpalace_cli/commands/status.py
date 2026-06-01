@@ -217,9 +217,7 @@ def status_command(
             sess = features.get("session_memory")
             if isinstance(sess, dict):
                 if sess.get("enabled"):
-                    sess_state = (
-                        "watching" if sess.get("watcher_running") else "idle"
-                    )
+                    sess_state = "watching" if sess.get("watcher_running") else "idle"
                     table.add_row(
                         "Session Memory",
                         f"[green]on[/] ({sess_state}) — "

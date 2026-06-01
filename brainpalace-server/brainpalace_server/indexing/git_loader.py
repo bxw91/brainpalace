@@ -25,9 +25,7 @@ _COMMIT = "\x1eABGIT_COMMIT\x1e"
 _ENDMSG = "\x1eABGIT_ENDMSG\x1e"
 
 #: Field order inside the header block (one field per line, body last).
-_PRETTY = (
-    f"{_COMMIT}%n%H%n%an%n%ae%n%cI%n%s%n%b%n{_ENDMSG}"
-)
+_PRETTY = f"{_COMMIT}%n%H%n%an%n%ae%n%cI%n%s%n%b%n{_ENDMSG}"
 
 DEFAULT_DEPTH = 1000
 

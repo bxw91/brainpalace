@@ -217,8 +217,7 @@ class SQLitePropertyGraphStore:
             return 0
         eid = _edge_id(sid, predicate, tid)
         cur = self._conn.execute(
-            "UPDATE edges SET valid_until = ? "
-            "WHERE id = ? AND valid_until IS NULL",
+            "UPDATE edges SET valid_until = ? " "WHERE id = ? AND valid_until IS NULL",
             (_to_iso(at) or _now_iso(), eid),
         )
         self._conn.commit()

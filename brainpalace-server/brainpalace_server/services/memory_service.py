@@ -248,7 +248,9 @@ class MemoryService:
             return
         try:
             await self._vector_store.delete_by_ids(ids)
-        except Exception as exc:  # noqa: BLE001 — index is rebuildable; don't fail the write
+        except (
+            Exception
+        ) as exc:  # noqa: BLE001 — index is rebuildable; don't fail the write
             logger.warning("memory index delete failed for %s: %s", ids, exc)
 
     async def rebuild_from_markdown(self) -> int:

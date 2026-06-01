@@ -24,9 +24,7 @@ from brainpalace_server.indexing.session_loader import load_session
 logger = logging.getLogger(__name__)
 
 
-def encode_project_to_sessions_dir(
-    project_path: str, home: Path | None = None
-) -> Path:
+def encode_project_to_sessions_dir(project_path: str, home: Path | None = None) -> Path:
     """Map a project cwd to its Claude Code session dir.
 
     Claude Code stores transcripts at
@@ -54,9 +52,12 @@ class SessionIndexService:
         include_user_turns: bool = False,
         window: int = 4,
         stride: int = 2,
+        origin_path: str | None = None,
     ) -> dict[str, Any]:
         """Chunk + dedup + embed + upsert a single transcript."""
         meta, turns = load_session(path)
+        if origin_path is not None:
+            meta.origin_path = origin_path
         chunker = SessionChunker(
             window=window, stride=stride, include_user_turns=include_user_turns
         )

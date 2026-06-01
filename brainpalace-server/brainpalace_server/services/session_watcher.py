@@ -22,6 +22,9 @@ import watchfiles
 
 if TYPE_CHECKING:
     from brainpalace_server.config.session_config import SessionIndexingConfig
+    from brainpalace_server.services.session_archive_service import (
+        SessionArchiveService,
+    )
     from brainpalace_server.services.session_index_service import SessionIndexService
 
 logger = logging.getLogger(__name__)
@@ -35,11 +38,13 @@ class SessionWatcher:
         sessions_dir: str | Path,
         service: SessionIndexService,
         config: SessionIndexingConfig,
+        archive: SessionArchiveService | None = None,
         debounce_ms: int = 2000,
     ) -> None:
         self.sessions_dir = Path(sessions_dir)
         self.service = service
         self.config = config
+        self.archive = archive
         self.debounce_ms = debounce_ms
         self._stop_event: anyio.Event | None = None
         self._task: asyncio.Task[None] | None = None
@@ -56,16 +61,27 @@ class SessionWatcher:
                 continue
             if not Path(path).exists():  # deletion / rename-away
                 continue
+            target: str | Path = path
+            origin_path: str | None = None
+            if self.archive is not None:
+                archived = self.archive.sync(path)
+                if archived is None:
+                    continue  # tombstoned / unreadable: do not index
+                origin_path = str(path)
+                target = archived
             try:
                 await self.service.index_session_file(
-                    path,
+                    target,
                     include_user_turns=self.config.include_user_turns,
                     window=self.config.window,
                     stride=self.config.stride,
+                    origin_path=origin_path,
                 )
                 count += 1
-            except Exception as exc:  # noqa: BLE001 — one bad file must not kill the watcher
-                logger.warning("session watcher: ingest failed for %s: %s", path, exc)
+            except (
+                Exception
+            ) as exc:  # noqa: BLE001 — one bad file must not kill the watcher
+                logger.warning("session watcher: ingest failed for %s: %s", target, exc)
         return count
 
     async def _loop(self) -> None:

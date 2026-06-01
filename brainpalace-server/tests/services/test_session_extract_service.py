@@ -20,13 +20,14 @@ class FakeStore:
         for cid in [
             k
             for k, v in self.docs.items()
-            if v["meta"].get("session_id") == sid
-            and v["meta"].get("source_type") == st
+            if v["meta"].get("session_id") == sid and v["meta"].get("source_type") == st
         ]:
             del self.docs[cid]
         return 0
 
-    async def upsert_documents(self, ids, embeddings, documents, metadatas):  # noqa: ANN001,ANN201
+    async def upsert_documents(
+        self, ids, embeddings, documents, metadatas
+    ):  # noqa: ANN001,ANN201
         for cid, doc, meta in zip(ids, documents, metadatas):
             self.docs[cid] = {"text": doc, "meta": meta}
 

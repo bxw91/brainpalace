@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 from brainpalace_server.config.session_config import SessionIndexingConfig
+from brainpalace_server.services.session_archive_service import SessionArchiveService
 from brainpalace_server.services.session_watcher import SessionWatcher
 
 FIXTURES = Path(__file__).parent.parent / "fixtures" / "sessions"
@@ -48,3 +51,54 @@ async def test_start_stop_lifecycle() -> None:
     assert w.is_running is True
     await w.stop()
     assert w.is_running is False
+
+
+# --- archive integration ---
+
+
+def _write_transcript(path: Path, sid: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "sessionId": sid,
+                "timestamp": "2026-06-01T10:00:00Z",
+                "type": "assistant",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "hi"}],
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
+async def test_ingest_syncs_then_indexes_archive_path(tmp_path: Path) -> None:
+    live = tmp_path / "live" / "s1.jsonl"
+    _write_transcript(live, "s1")
+    archive = SessionArchiveService(archive_dir=tmp_path / "arch")
+    service = AsyncMock()
+    cfg = SessionIndexingConfig(enabled=True)
+
+    watcher = SessionWatcher(tmp_path / "live", service, cfg, archive=archive)
+    await watcher._ingest_paths({str(live)})
+
+    service.index_session_file.assert_awaited_once()
+    called_path = service.index_session_file.call_args.args[0]
+    assert str(called_path).startswith(str(tmp_path / "arch"))  # archive, not live
+    assert service.index_session_file.call_args.kwargs["origin_path"] == str(live)
+
+
+async def test_ingest_skips_tombstoned(tmp_path: Path) -> None:
+    live = tmp_path / "live" / "s2.jsonl"
+    _write_transcript(live, "s2")
+    archive = SessionArchiveService(archive_dir=tmp_path / "arch")
+    archive.tombstone("s2", origin_path=str(live))
+    service = AsyncMock()
+    watcher = SessionWatcher(
+        tmp_path / "live", service, SessionIndexingConfig(), archive=archive
+    )
+    await watcher._ingest_paths({str(live)})
+    service.index_session_file.assert_not_awaited()

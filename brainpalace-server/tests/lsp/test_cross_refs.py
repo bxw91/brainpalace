@@ -92,8 +92,12 @@ def test_type_hierarchy_supertypes() -> None:
         }
     )
     triples = extract_cross_refs(
-        client, file_path="pkg/mod.py", symbol_name="Handler",
-        line=10, character=4, source_chunk_id="c1",
+        client,
+        file_path="pkg/mod.py",
+        symbol_name="Handler",
+        line=10,
+        character=4,
+        source_chunk_id="c1",
     )
     # class (kind 5) -> extends ; interface (kind 11) -> implements
     assert any(

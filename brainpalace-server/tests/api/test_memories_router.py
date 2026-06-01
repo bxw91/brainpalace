@@ -24,8 +24,14 @@ def client(tmp_path):
 
 
 def test_create_and_list(client):
-    r = client.post("/memories/", json={"text": "staging url is staging.example.com",
-                                        "section": "Environment", "tags": ["infra"]})
+    r = client.post(
+        "/memories/",
+        json={
+            "text": "staging url is staging.example.com",
+            "section": "Environment",
+            "tags": ["infra"],
+        },
+    )
     assert r.status_code == 201, r.text
     mid = r.json()["memory"]["id"]
     assert mid.startswith("mem_")
@@ -44,10 +50,12 @@ def test_duplicate_409(client):
 
 
 def test_list_filters_by_tag_and_section(client):
-    client.post("/memories/", json={"text": "a", "section": "Environment",
-                                     "tags": ["infra"]})
-    client.post("/memories/", json={"text": "b", "section": "Decisions",
-                                    "tags": ["arch"]})
+    client.post(
+        "/memories/", json={"text": "a", "section": "Environment", "tags": ["infra"]}
+    )
+    client.post(
+        "/memories/", json={"text": "b", "section": "Decisions", "tags": ["arch"]}
+    )
     assert client.get("/memories/?tag=infra").json()["total"] == 1
     assert client.get("/memories/?section=Decisions").json()["total"] == 1
 

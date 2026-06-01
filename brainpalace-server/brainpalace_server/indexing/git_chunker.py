@@ -40,9 +40,7 @@ class GitCommitChunker:
         shown = rec.files_changed[: self.max_files]
         if shown:
             parts.append("")
-            parts.append(
-                f"Files changed (+{rec.lines_added}/-{rec.lines_deleted}):"
-            )
+            parts.append(f"Files changed (+{rec.lines_added}/-{rec.lines_deleted}):")
             parts.extend(shown)
             if len(rec.files_changed) > self.max_files:
                 parts.append(f"… +{len(rec.files_changed) - self.max_files} more")

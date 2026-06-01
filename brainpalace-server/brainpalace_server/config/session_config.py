@@ -20,6 +20,24 @@ from brainpalace_server.config.provider_config import _find_config_file
 logger = logging.getLogger(__name__)
 
 
+class SessionArchiveConfig(BaseModel):
+    """Raw-transcript archive settings (durable, user-curatable copies).
+
+    Defaults on, but it is gated by the parent ``SessionIndexingConfig.enabled``
+    (off by default): archiving is opt-out *once session indexing is enabled*,
+    not an independent switch. Consumers must check the parent first.
+    """
+
+    enabled: bool = Field(
+        default=True,
+        description="Archive raw transcripts under .brainpalace/ and index the copy.",
+    )
+    dir: str = Field(
+        default=".brainpalace/session_archive",
+        description="Archive directory (relative to project root or absolute).",
+    )
+
+
 class SessionIndexingConfig(BaseModel):
     """Parsed ``session_indexing:`` section. Defaults are privacy-first."""
 
@@ -40,6 +58,7 @@ class SessionIndexingConfig(BaseModel):
         default=None,
         description="Override the auto-resolved runtime session directory.",
     )
+    archive: SessionArchiveConfig = Field(default_factory=SessionArchiveConfig)
 
 
 def _env_master_enabled() -> bool:
@@ -65,10 +84,13 @@ def load_session_indexing_config(
             raw = yaml.safe_load(Path(path).read_text()) or {}
             block = raw.get("session_indexing")
             if isinstance(block, dict):
-                cfg = SessionIndexingConfig(**{
-                    k: v for k, v in block.items()
-                    if k in SessionIndexingConfig.model_fields
-                })
+                cfg = SessionIndexingConfig(
+                    **{
+                        k: v
+                        for k, v in block.items()
+                        if k in SessionIndexingConfig.model_fields
+                    }
+                )
         except (OSError, yaml.YAMLError, ValueError) as exc:
             logger.warning("Could not parse session_indexing config: %s", exc)
 

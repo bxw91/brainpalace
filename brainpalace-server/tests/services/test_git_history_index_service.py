@@ -45,7 +45,9 @@ class FakeStore:
     async def get_by_id(self, chunk_id: str):  # noqa: ANN201
         return {"id": chunk_id} if chunk_id in self.ids else None
 
-    async def upsert_documents(self, ids, embeddings, documents, metadatas):  # noqa: ANN001,ANN201
+    async def upsert_documents(
+        self, ids, embeddings, documents, metadatas
+    ):  # noqa: ANN001,ANN201
         self.upserts.append(list(ids))
         self.ids.update(ids)
 
@@ -86,9 +88,7 @@ async def test_indexes_full_history_first_run(git_repo: Path, tmp_path: Path) ->
 
 
 @pytest.mark.asyncio
-async def test_incremental_adds_only_new_commit(
-    git_repo: Path, tmp_path: Path
-) -> None:
+async def test_incremental_adds_only_new_commit(git_repo: Path, tmp_path: Path) -> None:
     svc, store, emb = _svc(tmp_path / "state")
     cfg = GitIndexingConfig(enabled=True)
     await svc.index_repo(str(git_repo), cfg)

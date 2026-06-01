@@ -126,9 +126,9 @@ class SessionChunker:
             language = fence.group(1) if (fence and fence.group(1)) else None
 
             window_start_index = group[0].index
-            digest = hashlib.sha256(
-                f"{meta.session_id}\n{text}".encode()
-            ).hexdigest()[:32]
+            digest = hashlib.sha256(f"{meta.session_id}\n{text}".encode()).hexdigest()[
+                :32
+            ]
             chunk_id = f"session:{meta.session_id}:{digest}"
 
             extra = {
@@ -146,6 +146,7 @@ class SessionChunker:
                 "is_subagent": meta.is_subagent,
                 "parent_session_id": meta.parent_session_id,
                 "source_path": meta.source_path,
+                "origin_path": meta.origin_path,
                 "content_hash": digest,
             }
             if language:

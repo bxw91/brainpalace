@@ -541,9 +541,7 @@ class DocServeClient:
     ) -> dict[str, Any]:
         """Mark a curated memory obsolete."""
         params = {"superseded_by": superseded_by} if superseded_by else None
-        return self._request(
-            "POST", f"/memories/{memory_id}/obsolete", params=params
-        )
+        return self._request("POST", f"/memories/{memory_id}/obsolete", params=params)
 
     # ----- Session-start context (Phase 035) ---------------------------
 

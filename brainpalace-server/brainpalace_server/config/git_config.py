@@ -24,9 +24,7 @@ logger = logging.getLogger(__name__)
 class GitIndexingConfig(BaseModel):
     """Parsed ``git_indexing:`` section. Defaults are privacy-first."""
 
-    enabled: bool = Field(
-        default=False, description="Opt in to indexing git history."
-    )
+    enabled: bool = Field(default=False, description="Opt in to indexing git history.")
     depth: int = Field(
         default=1000,
         description="Max commits walked on a full (first) index pass.",
@@ -64,10 +62,13 @@ def load_git_indexing_config(
             raw = yaml.safe_load(Path(path).read_text()) or {}
             block = raw.get("git_indexing")
             if isinstance(block, dict):
-                cfg = GitIndexingConfig(**{
-                    k: v for k, v in block.items()
-                    if k in GitIndexingConfig.model_fields
-                })
+                cfg = GitIndexingConfig(
+                    **{
+                        k: v
+                        for k, v in block.items()
+                        if k in GitIndexingConfig.model_fields
+                    }
+                )
         except (OSError, yaml.YAMLError, ValueError) as exc:
             logger.warning("Could not parse git_indexing config: %s", exc)
 

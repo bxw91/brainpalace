@@ -27,13 +27,16 @@ class FakeStore:
     async def delete_by_metadata(self, where):  # noqa: ANN001,ANN201
         sid, st = where.get("session_id"), where.get("source_type")
         for cid in [
-            k for k, v in self.docs.items()
+            k
+            for k, v in self.docs.items()
             if v["m"].get("session_id") == sid and v["m"].get("source_type") == st
         ]:
             del self.docs[cid]
         return 0
 
-    async def upsert_documents(self, ids, embeddings, documents, metadatas):  # noqa: ANN001,ANN201
+    async def upsert_documents(
+        self, ids, embeddings, documents, metadatas
+    ):  # noqa: ANN001,ANN201
         for cid, doc, meta in zip(ids, documents, metadatas):
             self.docs[cid] = {"text": doc, "m": meta}
 
@@ -47,7 +50,9 @@ class FakeMemory:
     def __init__(self) -> None:
         self.added: list[str] = []
 
-    async def add(self, text, section="Project", tags=None, origin="user", confidence=1.0):  # noqa: ANN001,ANN201,E501
+    async def add(
+        self, text, section="Project", tags=None, origin="user", confidence=1.0
+    ):  # noqa: ANN001,ANN201,E501
         self.added.append(text)
 
     def load(self):
@@ -80,23 +85,36 @@ async def test_supersession_invalidates_facts_and_penalises(tmp_path: Path) -> N
         session_id="A",
         summary="chose in-memory cache",
         decisions=[{"text": "use in-memory cache", "rationale": "simple"}],
-        triplets=[{"subject": "A", "relation": "decided",
-                   "object": "use in-memory cache"}],
+        triplets=[
+            {"subject": "A", "relation": "decided", "object": "use in-memory cache"}
+        ],
     )
-    await svc.store(a, embedder=emb, storage_backend=store, graph_store=graph,
-                    memory_service=mem)
+    await svc.store(
+        a, embedder=emb, storage_backend=store, graph_store=graph, memory_service=mem
+    )
 
     # Session B supersedes A's decision.
     b = SessionExtraction(
         session_id="B",
         summary="switched to Redis",
-        decisions=[{"text": "use Redis cache", "rationale": "scale",
-                    "supersedes": "use in-memory cache"}],
-        triplets=[{"subject": "use in-memory cache", "relation": "superseded-by",
-                   "object": "use Redis cache"}],
+        decisions=[
+            {
+                "text": "use Redis cache",
+                "rationale": "scale",
+                "supersedes": "use in-memory cache",
+            }
+        ],
+        triplets=[
+            {
+                "subject": "use in-memory cache",
+                "relation": "superseded-by",
+                "object": "use Redis cache",
+            }
+        ],
     )
-    await svc.store(b, embedder=emb, storage_backend=store, graph_store=graph,
-                   memory_service=mem)
+    await svc.store(
+        b, embedder=emb, storage_backend=store, graph_store=graph, memory_service=mem
+    )
 
     # 140: the old decision's `decided` fact is invalidated; the supersedes
     # history edge is preserved.
@@ -110,10 +128,20 @@ async def test_supersession_invalidates_facts_and_penalises(tmp_path: Path) -> N
     svc_q = object.__new__(QueryService)  # type: ignore[call-arg]
     svc_q.graph_index_manager = type("GM", (), {"graph_store": graph})()
     results = [
-        QueryResult(text="use in-memory cache", source="A", score=1.0,
-                    chunk_id="A", source_type="session_decision"),
-        QueryResult(text="use Redis cache", source="B", score=0.9,
-                    chunk_id="B", source_type="session_decision"),
+        QueryResult(
+            text="use in-memory cache",
+            source="A",
+            score=1.0,
+            chunk_id="A",
+            source_type="session_decision",
+        ),
+        QueryResult(
+            text="use Redis cache",
+            source="B",
+            score=0.9,
+            chunk_id="B",
+            source_type="session_decision",
+        ),
     ]
     ranked = svc_q._apply_stale_decision_penalty(results)
     assert ranked[0].chunk_id == "B"  # current decision now ranks first

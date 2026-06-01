@@ -66,9 +66,7 @@ _TOOL_DESCRIPTIONS: dict[str, str] = {
     "jobs_list": "List queued, running, and completed indexing jobs.",
     "memorize": "Save a durable curated fact to the project memory namespace.",
     "recall": "Recall curated facts from the project memory namespace only.",
-    "session_context": (
-        "Session-start context block: project facts + curated memory."
-    ),
+    "session_context": ("Session-start context block: project facts + curated memory."),
 }
 
 # Maps tool name → (schema class, async handler). The schema parses and

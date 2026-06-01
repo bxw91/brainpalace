@@ -25,7 +25,9 @@ def memories_group() -> None:
 
 
 _url_option = click.option(
-    "--url", envvar="BRAINPALACE_URL", default=None,
+    "--url",
+    envvar="BRAINPALACE_URL",
+    default=None,
     help="BrainPalace server URL (default: from config)",
 )
 
@@ -63,8 +65,10 @@ def list_memories(
     for m in mems:
         flag = "" if m.get("obsoleted_at") is None else " [dim](obsolete)[/]"
         table.add_row(
-            m.get("id", ""), m.get("section", ""),
-            (m.get("text", "") + flag), ",".join(m.get("tags", []))
+            m.get("id", ""),
+            m.get("section", ""),
+            (m.get("text", "") + flag),
+            ",".join(m.get("tags", [])),
         )
     console.print(table)
     console.print(

@@ -21,8 +21,11 @@ def svc(tmp_path):
 
 
 async def test_add_and_load_roundtrip(svc):
-    m = await svc.add("staging url is staging.example.com", section="Environment",
-                      tags=["infra", "url"])
+    m = await svc.add(
+        "staging url is staging.example.com",
+        section="Environment",
+        tags=["infra", "url"],
+    )
     loaded = svc.load()
     assert len(loaded) == 1
     got = loaded[0]

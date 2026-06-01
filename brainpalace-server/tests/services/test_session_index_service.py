@@ -27,7 +27,9 @@ class FakeStore:
     async def get_by_id(self, chunk_id: str):  # noqa: ANN201
         return {"id": chunk_id} if chunk_id in self.ids else None
 
-    async def upsert_documents(self, ids, embeddings, documents, metadatas):  # noqa: ANN001,ANN201
+    async def upsert_documents(
+        self, ids, embeddings, documents, metadatas
+    ):  # noqa: ANN001,ANN201
         self.upserts.append(list(ids))
         self.ids.update(ids)
 
@@ -48,9 +50,7 @@ def _svc() -> tuple[SessionIndexService, FakeStore, FakeEmbedder]:
 
 
 def test_encode_project_to_sessions_dir() -> None:
-    d = encode_project_to_sessions_dir(
-        "/home/x/proj", home=Path("/home/x")
-    )
+    d = encode_project_to_sessions_dir("/home/x/proj", home=Path("/home/x"))
     # Claude Code encodes cwd by replacing "/" with "-".
     assert d == Path("/home/x/.claude/projects/-home-x-proj")
 

@@ -52,9 +52,7 @@ class FakeGraph:
         return [n for n in self.decisions if n.strip().lower() == norm]
 
     def timeline(self, entity: str) -> list[dict]:
-        return [
-            e for e in self.edges if entity in (e["subject"], e["object"])
-        ]
+        return [e for e in self.edges if entity in (e["subject"], e["object"])]
 
     def invalidate(self, subject, predicate, obj, at=None) -> int:
         self.invalidated.append((subject, predicate, obj))
@@ -97,9 +95,7 @@ class TestSupersession:
             },
         ]
         payload = _payload(
-            decisions=[
-                {"text": "use Redis cache", "supersedes": "use in-memory cache"}
-            ]
+            decisions=[{"text": "use Redis cache", "supersedes": "use in-memory cache"}]
         )
         n = apply_supersessions(payload, g, project_root="")
         assert n == 1
@@ -173,7 +169,5 @@ class TestPromotion:
         assert await promote_decisions(payload, mem) == 0
 
     async def test_none_memory_service_is_noop(self) -> None:
-        payload = _payload(
-            decisions=[{"text": "x", "rationale": "y"}]
-        )
+        payload = _payload(decisions=[{"text": "x", "rationale": "y"}])
         assert await promote_decisions(payload, None) == 0

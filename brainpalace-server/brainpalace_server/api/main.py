@@ -12,6 +12,7 @@ import asyncio
 import logging
 import os
 import socket
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -629,6 +630,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.session_index_service = None
         app.state.session_indexing_config = None
         app.state.session_watcher = None
+        app.state.session_archive_service = None
+        app.state.session_archive_watcher = None
         try:
             from brainpalace_server.config.session_config import (
                 load_session_indexing_config,
@@ -655,22 +658,73 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                     else encode_project_to_sessions_dir(app.state.project_root)
                 )
 
+                from brainpalace_server.services.session_archive_service import (
+                    SessionArchiveService,
+                )
+                from brainpalace_server.services.session_archive_watcher import (
+                    SessionArchiveWatcher,
+                )
+
+                archive_service = None
+                archive_watcher = None
+                if session_cfg.archive.enabled:
+                    arch_dir = Path(session_cfg.archive.dir)
+                    if not arch_dir.is_absolute():
+                        arch_dir = Path(app.state.project_root) / arch_dir
+                    archive_service = SessionArchiveService(archive_dir=arch_dir)
+                app.state.session_archive_service = archive_service
+
                 async def _boot_session_index() -> None:
                     try:
-                        summary = await sess_svc.index_project(
-                            app.state.project_root, session_cfg
-                        )
-                        logger.info(
-                            "Session boot-index: %d file(s)", summary.get("files", 0)
-                        )
+                        if archive_service is not None:
+                            live_files = sess_svc._discover(sessions_dir)
+                            cutoff = time.time() - session_cfg.retain_days * 86400
+                            indexed = 0
+                            for live in live_files:
+                                try:
+                                    if live.stat().st_mtime < cutoff:
+                                        continue
+                                except OSError:
+                                    continue
+                                arch = archive_service.sync(live)
+                                if arch is None:
+                                    continue
+                                await sess_svc.index_session_file(
+                                    arch,
+                                    include_user_turns=session_cfg.include_user_turns,
+                                    window=session_cfg.window,
+                                    stride=session_cfg.stride,
+                                    origin_path=str(live),
+                                )
+                                indexed += 1
+                            logger.info(
+                                "Session boot-index (archive): %d file(s)", indexed
+                            )
+                        else:
+                            summary = await sess_svc.index_project(
+                                app.state.project_root, session_cfg
+                            )
+                            logger.info(
+                                "Session boot-index: %d file(s)",
+                                summary.get("files", 0),
+                            )
                     except Exception as exc:  # noqa: BLE001
                         logger.warning("Session boot-index failed: %s", exc)
 
                 asyncio.create_task(_boot_session_index())
 
-                watcher = SessionWatcher(sessions_dir, sess_svc, session_cfg)
+                watcher = SessionWatcher(
+                    sessions_dir, sess_svc, session_cfg, archive=archive_service
+                )
                 await watcher.start()
                 app.state.session_watcher = watcher
+
+                if archive_service is not None:
+                    archive_watcher = SessionArchiveWatcher(
+                        archive_service.archive_dir, archive_service, storage_backend
+                    )
+                    await archive_watcher.start()
+                app.state.session_archive_watcher = archive_watcher
                 logger.info("Session indexing enabled: %s", sessions_dir)
         except Exception as exc:  # noqa: BLE001 — never block startup on sessions
             logger.warning("Session indexing setup failed: %s", exc)
@@ -901,6 +955,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         except Exception as exc:  # noqa: BLE001
             logger.warning("Session watcher stop failed: %s", exc)
         _file_watcher = None
+
+    archive_watcher = getattr(app.state, "session_archive_watcher", None)
+    if archive_watcher is not None:
+        try:
+            await archive_watcher.stop()
+            logger.info("Session archive watcher stopped")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Session archive watcher stop failed: %s", exc)
 
     # Stop job worker gracefully
     if _job_worker is not None:

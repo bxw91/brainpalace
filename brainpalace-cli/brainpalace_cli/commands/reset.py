@@ -10,7 +10,7 @@ from ..client import (
     ServerError,
     exit_on_connection_error,
 )
-from ..config import get_server_url
+from ..config import get_server_url, get_state_dir
 
 console = Console()
 
@@ -29,7 +29,16 @@ console = Console()
     help="Skip confirmation prompt",
 )
 @click.option("--json", "json_output", is_flag=True, help="Output as JSON")
-def reset_command(url: str | None, yes: bool, json_output: bool) -> None:
+@click.option(
+    "--include-sessions",
+    is_flag=True,
+    default=False,
+    help="Also delete the raw session archive (.brainpalace/session_archive). "
+    "Off by default — the archive survives a normal reset.",
+)
+def reset_command(
+    url: str | None, yes: bool, json_output: bool, include_sessions: bool
+) -> None:
     """Reset the index by deleting all indexed documents.
 
     WARNING: This permanently removes all indexed content.
@@ -58,12 +67,33 @@ def reset_command(url: str | None, yes: bool, json_output: bool) -> None:
                     "status": response.status,
                     "message": response.message,
                 }
+                if include_sessions:
+                    import shutil
+
+                    archive_dir = get_state_dir() / "session_archive"
+                    if archive_dir.exists():
+                        shutil.rmtree(archive_dir)
                 click.echo(json.dumps(output, indent=2))
                 return
 
             console.print("\n[green]Index reset successfully![/]")
             if response.message:
                 console.print(f"[bold]Message:[/] {response.message}")
+
+            if include_sessions:
+                import shutil
+
+                archive_dir = get_state_dir() / "session_archive"
+                if archive_dir.exists():
+                    shutil.rmtree(archive_dir)
+                    console.print(f"[yellow]Deleted session archive:[/] {archive_dir}")
+                else:
+                    console.print("[dim]No session archive to delete.[/]")
+            else:
+                console.print(
+                    "[dim]Session archive preserved "
+                    "(use --include-sessions to delete it).[/]"
+                )
 
     except ConnectionError as e:
         exit_on_connection_error(e, base_url=resolved_url, json_output=json_output)

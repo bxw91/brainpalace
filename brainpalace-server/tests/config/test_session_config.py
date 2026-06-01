@@ -59,3 +59,17 @@ def test_unknown_keys_ignored(tmp_path: Path) -> None:
     cfg_file.write_text("session_indexing:\n  enabled: true\n  bogus_key: 1\n")
     cfg = load_session_indexing_config(cfg_file)
     assert cfg.enabled is True
+
+
+def test_archive_defaults_on_when_sessions_enabled() -> None:
+    cfg = SessionIndexingConfig(enabled=True)
+    assert cfg.archive.enabled is True
+    assert cfg.archive.dir == ".brainpalace/session_archive"
+
+
+def test_archive_block_overrides_parse() -> None:
+    cfg = SessionIndexingConfig(
+        enabled=True, archive={"enabled": False, "dir": "/custom/arch"}
+    )
+    assert cfg.archive.enabled is False
+    assert cfg.archive.dir == "/custom/arch"

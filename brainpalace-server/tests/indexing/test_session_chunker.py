@@ -48,8 +48,14 @@ def test_user_turns_excluded_by_default() -> None:
     turns = [
         Turn(0, "user", "text", "SECRET user prompt do not index"),
         Turn(1, "assistant", "text", "assistant reply alpha"),
-        Turn(2, "assistant", "tool_use", "", tool_name="Read",
-             tool_inputs={"file_path": "a.py"}),
+        Turn(
+            2,
+            "assistant",
+            "tool_use",
+            "",
+            tool_name="Read",
+            tool_inputs={"file_path": "a.py"},
+        ),
         Turn(3, "user", "tool_result", "result body"),
     ]
     chunks = SessionChunker(window=4, stride=4).chunk(_meta(), turns)
@@ -72,10 +78,22 @@ def test_user_turns_included_when_opted_in() -> None:
 
 def test_metadata_captures_tools_and_files() -> None:
     turns = [
-        Turn(0, "assistant", "tool_use", "", tool_name="Write",
-             tool_inputs={"file_path": "src/app.py", "content": "x=1"}),
-        Turn(1, "assistant", "tool_use", "", tool_name="Bash",
-             tool_inputs={"command": "pytest"}),
+        Turn(
+            0,
+            "assistant",
+            "tool_use",
+            "",
+            tool_name="Write",
+            tool_inputs={"file_path": "src/app.py", "content": "x=1"},
+        ),
+        Turn(
+            1,
+            "assistant",
+            "tool_use",
+            "",
+            tool_name="Bash",
+            tool_inputs={"command": "pytest"},
+        ),
     ]
     chunk = SessionChunker(window=4, stride=4).chunk(_meta(), turns)[0]
     extra = chunk.metadata.extra
@@ -89,8 +107,12 @@ def test_metadata_captures_tools_and_files() -> None:
 
 def test_code_block_flag_and_language() -> None:
     turns = [
-        Turn(0, "assistant", "text",
-             "Here:\n```python\ndef f():\n    return 1\n```\ndone"),
+        Turn(
+            0,
+            "assistant",
+            "text",
+            "Here:\n```python\ndef f():\n    return 1\n```\ndone",
+        ),
     ]
     chunk = SessionChunker(window=4, stride=4).chunk(_meta(), turns)[0]
     assert chunk.metadata.extra["has_code_block"] is True
@@ -120,3 +142,23 @@ def test_chunks_real_fixture_session() -> None:
     assert chunks
     assert all(c.token_count > 0 for c in chunks)
     assert all(c.metadata.extra["session_id"] == "sess-parent-1" for c in chunks)
+
+
+def test_chunk_metadata_includes_origin_path() -> None:
+    meta = SessionMeta(
+        session_id="s1",
+        project_path="/p",
+        branch=None,
+        started_at="2026-06-01T10:00:00Z",
+        ended_at=None,
+        source_path="/arch/2026-06-01/s1.jsonl",
+        is_subagent=False,
+        parent_session_id=None,
+        origin_path="/home/u/.claude/projects/p/s1.jsonl",
+    )
+    turns = [Turn(index=0, role="assistant", kind="text", text="hello world")]
+    chunks = SessionChunker(window=1, stride=1).chunk(meta, turns)
+    assert chunks, "expected at least one chunk"
+    md = chunks[0].metadata.to_dict()
+    assert md["origin_path"] == "/home/u/.claude/projects/p/s1.jsonl"
+    assert md["source_path"] == "/arch/2026-06-01/s1.jsonl"

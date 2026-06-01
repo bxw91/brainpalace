@@ -292,8 +292,11 @@ def _status(**graph: object) -> dict:
 
 def test_check_graph_size_warns_over_threshold() -> None:
     payload = _status(
-        enabled=True, initialized=True, store_type="simple",
-        entity_count=20000, relationship_count=20000,
+        enabled=True,
+        initialized=True,
+        store_type="simple",
+        entity_count=20000,
+        relationship_count=20000,
     )
     res = _check_graph_size(payload, max_nodes=25000)
     assert res.status == SEVERITY_WARN
@@ -303,8 +306,10 @@ def test_check_graph_size_warns_over_threshold() -> None:
 
 def test_check_graph_size_ok_under_threshold() -> None:
     payload = _status(
-        enabled=True, store_type="simple",
-        entity_count=10, relationship_count=5,
+        enabled=True,
+        store_type="simple",
+        entity_count=10,
+        relationship_count=5,
     )
     res = _check_graph_size(payload, max_nodes=25000)
     assert res.status == SEVERITY_OK
@@ -314,8 +319,10 @@ def test_check_graph_size_ok_under_threshold() -> None:
 def test_check_graph_size_skips_on_persistent_backend() -> None:
     # store_type != "simple" → Phase 090 active → check auto-clears.
     payload = _status(
-        enabled=True, store_type="sqlite",
-        entity_count=99999, relationship_count=99999,
+        enabled=True,
+        store_type="sqlite",
+        entity_count=99999,
+        relationship_count=99999,
     )
     res = _check_graph_size(payload, max_nodes=25000)
     assert res.status == SEVERITY_OK

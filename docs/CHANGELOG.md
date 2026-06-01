@@ -14,6 +14,36 @@ month (the counter resets monthly). It looks like SemVer but is not.
 
 ## [Unreleased]
 
+## [26.6.2] - 2026-06-01
+
+Durable, user-curatable session archive: session indexing now reads from a
+local archive copy instead of the live `~/.claude` transcripts.
+
+### Added
+- **Session archive.** On a transcript change the raw `.jsonl` is copied
+  verbatim into `.brainpalace/session_archive/<YYYY-MM-DD>/`, and indexing runs
+  off the archive copy. `~/.claude` is treated as read-only. Sessions survive
+  Claude Code removal / auto-delete. Opt-out via `session_indexing.archive.enabled`.
+- **Curation by deletion.** Deleting an archived transcript (or a dated folder)
+  purges that session's index chunks and writes a tombstone, so the live source
+  is never re-synced (no resurrection).
+- **Provenance.** Chunks record `origin_path` (the live source) alongside
+  `source_path` (the archive copy).
+- **Status.** `brainpalace status` / `/status` report `archived_sessions`,
+  `archived_files`, `archived_bytes`, and `tombstoned`.
+- **`brainpalace reset --include-sessions`** also deletes the archive; a plain
+  reset preserves it.
+
+### Fixed
+- Chunk purge used a flat multi-key ChromaDB `where` filter that ChromaDB
+  rejects ("expected exactly one operator"); deletions never purged chunks.
+  Wrapped in `$and`.
+- Subagent transcripts carry the parent's `sessionId`, so a `session_id`-keyed
+  manifest collided each parent with its subagents (undercount, broken mtime
+  no-op, and a data-loss path where deleting one subagent purged the parent's
+  chunks). Manifest is now keyed per file; a session is purged only when all of
+  its files are gone.
+
 ## [26.6.1] - 2026-06-01
 
 Second release: watcher/session-memory/status fixes plus first-run UX and

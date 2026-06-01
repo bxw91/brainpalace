@@ -32,18 +32,25 @@ def _svc(hits):
 
 
 def _resp(*results):
-    return QueryResponse(results=list(results), query_time_ms=1.0,
-                         total_results=len(results))
+    return QueryResponse(
+        results=list(results), query_time_ms=1.0, total_results=len(results)
+    )
 
 
 def _chunk(cid, score):
-    return QueryResult(text=f"chunk {cid}", source=f"f/{cid}", score=score,
-                       chunk_id=cid, source_type="doc")
+    return QueryResult(
+        text=f"chunk {cid}",
+        source=f"f/{cid}",
+        score=score,
+        chunk_id=cid,
+        source_type="doc",
+    )
 
 
 def _req(mode=QueryMode.HYBRID, top_k=5, use_memory=True):
-    return QueryRequest(query="staging url", mode=mode, top_k=top_k,
-                        use_memory=use_memory)
+    return QueryRequest(
+        query="staging url", mode=mode, top_k=top_k, use_memory=use_memory
+    )
 
 
 async def test_relevant_memory_ranks_first():

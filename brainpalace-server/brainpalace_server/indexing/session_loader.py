@@ -71,6 +71,7 @@ class SessionMeta:
     source_path: str
     is_subagent: bool = False
     parent_session_id: str | None = None
+    origin_path: str | None = None
 
 
 def is_subagent_path(path: str | Path) -> bool:
@@ -118,9 +119,7 @@ def _tool_inputs(block: dict[str, Any]) -> dict[str, Any]:
 def _tool_result_text(block: dict[str, Any]) -> str:
     content = block.get("content")
     if isinstance(content, list):
-        content = " ".join(
-            x.get("text", "") for x in content if isinstance(x, dict)
-        )
+        content = " ".join(x.get("text", "") for x in content if isinstance(x, dict))
     return _short(content or "", TOOL_RESULT_TRUNC)
 
 

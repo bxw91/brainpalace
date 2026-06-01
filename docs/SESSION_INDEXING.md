@@ -36,8 +36,11 @@ Add a `session_indexing:` block to your project `config.yaml` (the same file the
 ```yaml
 session_indexing:
   enabled: true            # default: false (opt-in)
-  include_user_turns: false # default: false (assistant/tools only)
-  retain_days: 90           # skip transcripts older than this
+  archive:
+    enabled: true          # default: true when session_indexing is on
+    dir: .brainpalace/session_archive  # default; override if needed
+  include_user_turns: false # indexing filter only — archive is always full raw
+  retain_days: 90           # gates indexing; archive kept forever
   window: 4                 # turns per sliding window (3–5)
   stride: 2                 # window stride in turns
   # sessions_dir: /custom/path   # optional override of the auto-resolved dir
@@ -86,6 +89,83 @@ above incurs embedding spend.
   session re-embeds nothing.
 - **Retention.** Transcripts older than `retain_days` are skipped (a roll-up
   summary for old sessions arrives with the LLM phases).
+
+## Archive & durability
+
+When a live transcript changes, BrainPalace copies the raw `.jsonl` **verbatim**
+into a local archive before indexing it. The server then indexes the archive
+copy, not the live file.
+
+### Archive location
+
+```
+.brainpalace/session_archive/<YYYY-MM-DD>/<session_id>.jsonl
+```
+
+Subagent transcripts nest under their parent:
+
+```
+.brainpalace/session_archive/<parent_date>/<parent_id>/subagents/<session_id>.jsonl
+```
+
+The archive directory is gitignored (local only, never committed).
+
+### Full raw transcripts — privacy implication
+
+The archive always contains **the full raw transcript**, including user turns,
+regardless of the `include_user_turns` setting. `include_user_turns` only
+controls what gets indexed (searchable chunks); it does not filter the archive.
+
+**Concretely:** if `include_user_turns: false` (the default), your prompts are
+never indexed but they **are** present in `.brainpalace/session_archive/` on
+disk. If you want a session's raw prompts removed, delete the archived `.jsonl`
+file (see Curation below).
+
+### Durability
+
+Because the archive is a copy independent of `~/.claude`, sessions survive
+Claude Code removal, transcript auto-deletion, or directory cleanup. The
+archive is the stable source of truth for re-indexing.
+
+`~/.claude` is **read-only** to BrainPalace — it only reads and copies from
+that directory; it never writes to or deletes from it.
+
+### Curation by filesystem deletion
+
+To remove a session from the index permanently:
+
+1. Delete the archived `.jsonl` (or an entire dated folder to remove all sessions
+   from that day).
+2. The archive watcher detects the deletion, purges that session's index chunks,
+   and writes a **tombstone** entry.
+3. The tombstone prevents resurrection: if the same session later appears as a
+   live transcript change, the server skips it rather than re-syncing.
+
+There is no separate curation command — the filesystem is the interface.
+
+### `retain_days` and `brainpalace reset`
+
+- **`retain_days`** gates indexing only. Transcripts older than `retain_days`
+  are not indexed (or re-indexed), but the archive files themselves are kept
+  forever — they are never pruned by this setting.
+- **`brainpalace reset`** clears the vector/BM25 index but **preserves** the
+  archive by default. Pass `--include-sessions` to also delete
+  `.brainpalace/session_archive`:
+
+  ```bash
+  brainpalace reset                    # index cleared; archive kept
+  brainpalace reset --include-sessions # index + archive both deleted
+  ```
+
+### Status reporting
+
+`brainpalace status` reports archive metrics under the session memory section:
+
+| Field | Meaning |
+|---|---|
+| `archived_sessions` | number of `.jsonl` files in the archive |
+| `archived_bytes` | total size of the archive on disk |
+| `tombstoned` | sessions deleted from the archive and blocked from re-sync |
 
 ## Recall tiers
 

@@ -29,10 +29,37 @@ logger = logging.getLogger(__name__)
 # Entities that look like source files get canonicalised; everything else
 # (free-text concepts, decisions) is left alone.
 _CODE_EXTS = {
-    ".py", ".js", ".ts", ".tsx", ".jsx", ".go", ".rs", ".java", ".rb",
-    ".c", ".cpp", ".h", ".hpp", ".cs", ".kt", ".swift", ".php", ".scala",
-    ".md", ".rst", ".txt", ".yaml", ".yml", ".toml", ".json", ".ini",
-    ".cfg", ".sh", ".sql", ".html", ".css",
+    ".py",
+    ".js",
+    ".ts",
+    ".tsx",
+    ".jsx",
+    ".go",
+    ".rs",
+    ".java",
+    ".rb",
+    ".c",
+    ".cpp",
+    ".h",
+    ".hpp",
+    ".cs",
+    ".kt",
+    ".swift",
+    ".php",
+    ".scala",
+    ".md",
+    ".rst",
+    ".txt",
+    ".yaml",
+    ".yml",
+    ".toml",
+    ".json",
+    ".ini",
+    ".cfg",
+    ".sh",
+    ".sql",
+    ".html",
+    ".css",
 }
 
 
@@ -102,9 +129,7 @@ def apply_supersessions(payload: Any, graph: Any, project_root: str = "") -> int
             if edge.get("predicate") == "superseded-by":
                 continue
             try:
-                if graph.invalidate(
-                    edge["subject"], edge["predicate"], edge["object"]
-                ):
+                if graph.invalidate(edge["subject"], edge["predicate"], edge["object"]):
                     invalidated_here = True
             except Exception as exc:  # noqa: BLE001 — best-effort
                 logger.debug("invalidate failed: %s", exc)

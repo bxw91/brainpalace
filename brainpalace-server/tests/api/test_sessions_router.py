@@ -11,7 +11,9 @@ from brainpalace_server.config.session_config import SessionIndexingConfig
 
 
 class FakeService:
-    async def index_project(self, project_root, config, home=None):  # noqa: ANN001,ANN201
+    async def index_project(
+        self, project_root, config, home=None
+    ):  # noqa: ANN001,ANN201
         return {"enabled": True, "files": 2, "files_skipped_old": 0, "sessions": {}}
 
 
@@ -24,7 +26,9 @@ class FakeStore:
     async def delete_by_metadata(self, where):  # noqa: ANN001,ANN201
         return 0
 
-    async def upsert_documents(self, ids, embeddings, documents, metadatas):  # noqa: ANN001,ANN201
+    async def upsert_documents(
+        self, ids, embeddings, documents, metadatas
+    ):  # noqa: ANN001,ANN201
         for cid in ids:
             self.docs[cid] = True
 

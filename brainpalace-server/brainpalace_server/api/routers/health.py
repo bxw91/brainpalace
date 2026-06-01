@@ -279,6 +279,19 @@ async def indexing_status(request: Request) -> dict[str, Any]:
         except Exception:  # noqa: BLE001
             curated_count = 0
 
+    archive_service = getattr(request.app.state, "session_archive_service", None)
+    archive_stats = {
+        "archived_sessions": 0,
+        "archived_files": 0,
+        "archived_bytes": 0,
+        "tombstoned": 0,
+    }
+    if archive_service is not None:
+        try:
+            archive_stats = archive_service.stats()
+        except Exception:  # noqa: BLE001
+            pass
+
     fw = file_watcher_info or {}
     data["features"] = {
         "doc_indexing": {
@@ -295,6 +308,12 @@ async def indexing_status(request: Request) -> dict[str, Any]:
             "watcher_running": bool(getattr(session_watcher, "is_running", False)),
             "session_chunks": int(data.get("session_chunks", 0) or 0),
             "curated_memories": curated_count,
+            "archived_sessions": int(archive_stats["archived_sessions"]),
+            "archived_files": int(
+                archive_stats.get("archived_files", archive_stats["archived_sessions"])
+            ),
+            "archived_bytes": int(archive_stats["archived_bytes"]),
+            "tombstoned": int(archive_stats["tombstoned"]),
         },
         "graph_index": graph_index_info or {"enabled": False},
     }

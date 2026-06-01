@@ -77,8 +77,12 @@ def test_typed_nodes_queryable_by_type(tmp_path: Path) -> None:
     mgr = _mgr(tmp_path)
     gi = GraphIndexManager(graph_store=mgr)
     mgr.add_triplet(
-        "decision_42", "supersedes", "decision_17",
-        subject_type="Decision", object_type="Decision", source_chunk_id="s1",
+        "decision_42",
+        "supersedes",
+        "decision_17",
+        subject_type="Decision",
+        object_type="Decision",
+        source_chunk_id="s1",
     )
     typed = gi.query_by_type("decision_42", entity_types=["Decision"])
     assert any(r["subject"] == "decision_42" for r in typed)

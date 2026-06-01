@@ -35,9 +35,7 @@ async def test_get_document_count_counts_distinct_files(tmp_path):
     await fm.initialize()
     mt = ManifestTracker(manifests_dir=tmp_path / "manifests")
 
-    await fm.add_folder(
-        folder_path="/repo", chunk_count=5, chunk_ids=["a", "b", "c"]
-    )
+    await fm.add_folder(folder_path="/repo", chunk_count=5, chunk_ids=["a", "b", "c"])
     manifest = FolderManifest(folder_path="/repo")
     # 3 files, one multi-chunk -> 3 documents, not 5 chunks.
     manifest.files["/repo/a.py"] = FileRecord("h1", 1.0, ["a0", "a1"])

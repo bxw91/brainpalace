@@ -51,8 +51,13 @@ class TestRequest:
     def test_request_skips_notifications_until_match(self) -> None:
         writer = io.BytesIO()
         reader = io.BytesIO(
-            frame_message({"jsonrpc": "2.0", "method": "window/logMessage",
-                           "params": {"m": "noise"}})
+            frame_message(
+                {
+                    "jsonrpc": "2.0",
+                    "method": "window/logMessage",
+                    "params": {"m": "noise"},
+                }
+            )
             + frame_message({"jsonrpc": "2.0", "id": 1, "result": "ok"})
         )
         client = LspClient(reader=reader, writer=writer)
@@ -61,8 +66,9 @@ class TestRequest:
     def test_request_raises_on_error_response(self) -> None:
         writer = io.BytesIO()
         reader = io.BytesIO(
-            frame_message({"jsonrpc": "2.0", "id": 1,
-                           "error": {"code": -32601, "message": "no"}})
+            frame_message(
+                {"jsonrpc": "2.0", "id": 1, "error": {"code": -32601, "message": "no"}}
+            )
         )
         client = LspClient(reader=reader, writer=writer)
         try:

@@ -72,8 +72,11 @@ def test_penalty_one_is_noop(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_non_decision_results_untouched(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "BRAINPALACE_STALE_DECISION_PENALTY", 0.5)
     r = QueryResult(
-        text="use in-memory cache", source="s", score=1.0,
-        chunk_id="c", source_type="code",
+        text="use in-memory cache",
+        source="s",
+        score=1.0,
+        chunk_id="c",
+        source_type="code",
     )
     out = _svc({"use in-memory cache"})._apply_stale_decision_penalty([r])
     assert out[0].score == 1.0

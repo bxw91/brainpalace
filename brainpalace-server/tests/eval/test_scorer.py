@@ -65,9 +65,7 @@ def test_suffix_match_not_substring():
 
 
 def test_score_case_errored_is_zero():
-    c = FakeCase(
-        id="e", mode="bm25", k=3, expected=["auth.md"], error="Boom: nope"
-    )
+    c = FakeCase(id="e", mode="bm25", k=3, expected=["auth.md"], error="Boom: nope")
     s = score_case(c)
     assert s.recall == 0.0 and s.rr == 0.0 and s.error == "Boom: nope"
     assert s.hit is False
