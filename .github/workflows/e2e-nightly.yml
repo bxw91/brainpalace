@@ -23,6 +23,12 @@ on:
         default: ''
         type: string
 
+env:
+  # Force node20 JS actions (e.g. arduino/setup-task@v2) onto node24 — they
+  # have no node24 release. Survives the 2026-06-16 default flip + 2026-09-16
+  # node20 removal.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   e2e-cli:
     name: E2E CLI Tests
