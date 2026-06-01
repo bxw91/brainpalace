@@ -149,3 +149,6 @@ brainpalace-server/.brainpalace/
 .brainpalace/
 integration/tests/quick_start/
 /DEV-WORKFLOW.md
+
+# Internal planning/design scaffolding (kept out of the public repo)
+docs/superpowers/

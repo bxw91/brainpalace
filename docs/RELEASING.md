@@ -3,6 +3,20 @@
 CalVer `YY.M.N` (2-digit year · month · Nth release that month). `brainpalace-cli`
 and `brainpalace-rag` (server) **release in lockstep at the same version**.
 
+## How publishing works — read this first
+
+**PyPI publishing is automated.** The `.github/workflows/publish-to-pypi.yml`
+workflow fires `on: release: published` and uploads both packages (server first,
+then cli) using a **PyPI Trusted Publisher (OIDC)** — short-lived, repo-scoped,
+**no API token**.
+
+- **Do NOT run `poetry publish` by hand.** A manual upload bypasses the Trusted
+  Publisher, trips a PyPI security warning, and makes the workflow's own publish
+  step fail on the now-duplicate files (PyPI uploads are immutable). Creating the
+  GitHub Release *is* the publish trigger.
+- No PyPI API token is needed anywhere — locally or in CI. If one exists in
+  `~/.config/pypoetry/auth.toml` or your PyPI account, delete it.
+
 ## Version: one source of truth
 
 The version lives in **one place per package**: `pyproject.toml`.
@@ -13,16 +27,14 @@ The version lives in **one place per package**: `pyproject.toml`.
   there. `__version__` feeds `--version` for both CLIs *and* the server's HTTP
   surface (`/health`, `/runtime`, OpenAPI).
 - Because `__version__` reads metadata, **editable dev installs only reflect a
-  new version after reinstall** (`task install`). Built wheels always carry the
-  correct version straight from `pyproject.toml`, so published artifacts are
-  never wrong — this is the guarantee that matters.
+  new version after reinstall** (`task install`, or `pipx install` for the
+  global CLI). Built wheels always carry the correct version straight from
+  `pyproject.toml`, so published artifacts are never wrong — this is the
+  guarantee that matters.
 - `tests/test_version_consistency.py` (cli) fails the gate if the two
   `pyproject.toml` versions drift apart.
-
-> History: 26.6.1 shipped with hardcoded `__version__ = "26.5.1"` left behind
-> when only `pyproject.toml` was bumped — the wheels reported the wrong version
-> over `--version` and HTTP. Metadata-derived `__version__` makes that
-> impossible to repeat.
+- The publish workflow also re-checks that the release **tag** matches both
+  `pyproject.toml` versions before uploading.
 
 ## Release checklist
 
@@ -36,24 +48,10 @@ The version lives in **one place per package**: `pyproject.toml`.
    (`__version__` is derived). The consistency test enforces both moved.
 4. **Reinstall** so editable `--version` reflects the bump: `task install`.
 5. **Changelog** — add the `[YY.M.N]` section in `docs/CHANGELOG.md`.
-6. **Gate again**: `task before-push` must exit 0.
-7. **Publish to PyPI — server first** (the cli depends on it):
-   ```bash
-   export PYTHON_KEYRING_BACKEND=keyring.backends.null.Keyring
-   # token in ~/.config/pypoetry/auth.toml (NOT the OS keyring, which the
-   # headless env can't read): poetry config pypi-token.pypi <token>
-   (cd brainpalace-server && poetry build && poetry publish)
-   # verify it is live, then:
-   (cd brainpalace-cli && poetry build && poetry publish --skip-existing)
-   ```
-   PyPI uploads are **immutable** — a version can never be re-uploaded. A bad
-   publish means shipping a new patch `N+1`, not overwriting.
-8. **Refresh the cli lock** once the server wheel is on PyPI (so dev pulls the
-   matching server): `(cd brainpalace-cli && poetry update brainpalace-rag --lock)`.
-   The pin stays `^YY.M.1` (it already permits later same-year releases); only
-   the lock entry moves. Commit on `stable`.
-9. **Mirror to `main`** (the squashed published branch — full `stable` history
-   is never pushed):
+6. **Gate**: `task before-push` must exit 0.
+7. **Commit on `stable`** (version bump + changelog).
+8. **Mirror to `main`** (the squashed published branch — full `stable` history
+   is never pushed) and tag:
    ```bash
    git checkout -B main brainpalace/main
    git read-tree --reset -u stable        # main tree := stable tree
@@ -62,17 +60,33 @@ The version lives in **one place per package**: `pyproject.toml`.
    git push brainpalace main && git push brainpalace vYY.M.N
    git checkout stable
    ```
-10. **GitHub release**: `gh release create vYY.M.N --repo bxw91/brainpalace
-    --title "BrainPalace YY.M.N" --notes-file <notes>`.
+9. **Create the GitHub Release — this publishes to PyPI:**
+   ```bash
+   gh release create vYY.M.N --repo bxw91/brainpalace \
+     --title "BrainPalace YY.M.N" --notes-file <notes>
+   ```
+   The `publish-to-pypi.yml` workflow runs the quality gate, then publishes
+   `brainpalace-rag` and `brainpalace-cli` via OIDC (it waits for the server to
+   appear on PyPI before publishing the cli). **Do not publish manually.**
+10. **Verify the run is green** and both versions are live:
+    ```bash
+    gh run list --repo bxw91/brainpalace --workflow publish-to-pypi.yml --limit 1
+    curl -s https://pypi.org/pypi/brainpalace-rag/json | python3 -c 'import sys,json;print(json.load(sys.stdin)["info"]["version"])'
+    curl -s https://pypi.org/pypi/brainpalace-cli/json | python3 -c 'import sys,json;print(json.load(sys.stdin)["info"]["version"])'
+    ```
+    If the publish step fails, fix the cause and ship a new patch `N+1` — a PyPI
+    version can never be re-uploaded.
+11. **(Optional, dev parity)** Refresh the cli lock so local dev pulls the
+    matching server: `(cd brainpalace-cli && poetry update brainpalace-rag --lock)`,
+    then commit on `stable`. The pin stays `^YY.M.1`; only the lock entry moves.
+    (Poetry caches the index — if the new version isn't picked up, clear it:
+    `rm -rf ~/.cache/pypoetry/_http && poetry update brainpalace-rag --lock`.)
 
 ## Environment gotchas
 
 - `VIRTUAL_ENV=/usr` may be set bogusly in some shells, making Poetry target the
   read-only system Python. Use the in-project `.venv` directly
   (`unset VIRTUAL_ENV && .venv/bin/python -m pytest ...`).
-- The PyPI token must live in `~/.config/pypoetry/auth.toml`
-  (`PYTHON_KEYRING_BACKEND=keyring.backends.null.Keyring poetry config
-  pypi-token.pypi <token>`); a token stored in the OS keyring is invisible to
-  headless shells.
-- `pipx upgrade <name>` from inside the repo treats `<name>` as a path if a
-  matching subdir exists — run it from another directory (e.g. `$HOME`).
+- `pipx upgrade <name>` / `pipx install <name>` from inside the repo treats
+  `<name>` as a path if a matching subdir exists — run it from another directory
+  (e.g. `$HOME` or `/tmp`).
