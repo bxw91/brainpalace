@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-05-28
+last_validated: 2026-05-30
 ---
 
 # Retrieval Evaluation Harness

@@ -271,6 +271,8 @@ async def indexing_status(request: Request) -> dict[str, Any]:
     # Reuses values already computed above; tolerant of missing app.state.
     session_cfg = getattr(request.app.state, "session_indexing_config", None)
     session_watcher = getattr(request.app.state, "session_watcher", None)
+    archive_enabled = bool(getattr(request.app.state, "session_archive_enabled", False))
+    index_enabled = bool(getattr(request.app.state, "session_index_enabled", False))
     memory_service = getattr(request.app.state, "memory_service", None)
     curated_count = 0
     if memory_service is not None:
@@ -303,11 +305,26 @@ async def indexing_status(request: Request) -> dict[str, Any]:
             "enabled": bool(fw.get("running")),
             "watched_folders": int(fw.get("watched_folders", 0) or 0),
         },
+        # INDEX capability (embeddings). `enabled` stays index-scoped for
+        # back-compat; archive lives in its own feature below.
         "session_memory": {
-            "enabled": bool(getattr(session_cfg, "enabled", False)),
+            "enabled": index_enabled,
             "watcher_running": bool(getattr(session_watcher, "is_running", False)),
             "session_chunks": int(data.get("session_chunks", 0) or 0),
             "curated_memories": curated_count,
+            "archived_sessions": int(archive_stats["archived_sessions"]),
+            "archived_files": int(
+                archive_stats.get("archived_files", archive_stats["archived_sessions"])
+            ),
+            "archived_bytes": int(archive_stats["archived_bytes"]),
+            "tombstoned": int(archive_stats["tombstoned"]),
+        },
+        # ARCHIVE capability (raw transcript backup) — independent of index.
+        "session_archive": {
+            "enabled": archive_enabled,
+            "retain_days": int(
+                getattr(getattr(session_cfg, "archive", None), "retain_days", 0) or 0
+            ),
             "archived_sessions": int(archive_stats["archived_sessions"]),
             "archived_files": int(
                 archive_stats.get("archived_files", archive_stats["archived_sessions"])

@@ -8,7 +8,7 @@ parameters:
     default: list
 skills:
   - using-brainpalace
-last_validated: 2026-03-16
+last_validated: 2026-05-30
 ---
 
 # BrainPalace Providers

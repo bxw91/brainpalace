@@ -36,16 +36,18 @@ class SessionWatcher:
     def __init__(
         self,
         sessions_dir: str | Path,
-        service: SessionIndexService,
+        service: SessionIndexService | None,
         config: SessionIndexingConfig,
         archive: SessionArchiveService | None = None,
         debounce_ms: int = 2000,
+        index_enabled: bool = True,
     ) -> None:
         self.sessions_dir = Path(sessions_dir)
         self.service = service
         self.config = config
         self.archive = archive
         self.debounce_ms = debounce_ms
+        self.index_enabled = index_enabled
         self._stop_event: anyio.Event | None = None
         self._task: asyncio.Task[None] | None = None
 
@@ -54,21 +56,37 @@ class SessionWatcher:
         return self._stop_event is not None and not self._stop_event.is_set()
 
     async def _ingest_paths(self, paths: set[str]) -> int:
-        """Re-ingest each changed ``*.jsonl`` path. Returns files ingested."""
+        """Re-process each changed ``*.jsonl`` path. Returns files handled.
+
+        Archiving (when an archive service is set) always runs. Indexing runs
+        only when ``index_enabled`` — so an archive-only project copies the raw
+        transcript without ever embedding it.
+        """
         count = 0
         for path in sorted(paths):
             if not path.endswith(".jsonl"):
                 continue
             if not Path(path).exists():  # deletion / rename-away
                 continue
-            target: str | Path = path
-            origin_path: str | None = None
+
+            archived: Path | None = None
             if self.archive is not None:
                 archived = self.archive.sync(path)
                 if archived is None:
-                    continue  # tombstoned / unreadable: do not index
-                origin_path = str(path)
-                target = archived
+                    continue  # tombstoned / unreadable: skip entirely
+
+            if not self.index_enabled or self.service is None:
+                # Archive-only: copied above (if archive set), never indexed.
+                if archived is not None:
+                    count += 1
+                continue
+
+            if archived is not None:
+                target: str | Path = archived
+                origin_path: str | None = str(path)
+            else:
+                target = path  # legacy: no archive, index the live file directly
+                origin_path = None
             try:
                 await self.service.index_session_file(
                     target,

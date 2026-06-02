@@ -14,6 +14,7 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
+from brainpalace_server.config.session_config import DEFAULT_TOOL
 from brainpalace_server.indexing.session_loader import (
     is_subagent_path,
     load_session,
@@ -24,10 +25,17 @@ logger = logging.getLogger(__name__)
 
 
 class SessionArchiveService:
-    """File + state layer for the raw session archive (no indexing here)."""
+    """File + state layer for the raw session archive (no indexing here).
 
-    def __init__(self, archive_dir: str | Path) -> None:
+    Archive date folders are tool-tagged ``YYYY-MM-DD-<tool>`` (e.g.
+    ``2026-06-01-claude-code``) so same-day sessions from different tools sort
+    adjacently. The ``tool`` is also stored as a structured manifest field —
+    that field, not the path, is the source of truth for consumers.
+    """
+
+    def __init__(self, archive_dir: str | Path, tool: str = DEFAULT_TOOL) -> None:
         self.archive_dir = Path(archive_dir)
+        self.tool = tool
         self._manifest_path = self.archive_dir / "manifest.json"
         self._tombstone_path = self.archive_dir / "tombstones.json"
         self._manifest: dict[str, dict[str, Any]] = self._load(self._manifest_path)
@@ -85,6 +93,10 @@ class SessionArchiveService:
             return started_at[:10]
         return "undated"
 
+    def _folder_for(self, date: str) -> str:
+        """Tool-tagged date folder segment, e.g. ``2026-06-01-claude-code``."""
+        return f"{date}-{self.tool}"
+
     @staticmethod
     def _manifest_key(live_path: Path, session_id: str) -> str:
         """Unique manifest key per transcript FILE.
@@ -100,20 +112,27 @@ class SessionArchiveService:
             return f"{parent_id}/{live_path.stem}"
         return session_id
 
-    def _dest_for(self, live_path: Path, session_id: str, date: str) -> Path:
-        """Archive destination, preserving subagent structure under parent date."""
+    def _dest_for(self, live_path: Path, session_id: str, folder: str) -> Path:
+        """Archive destination, preserving subagent structure under parent folder.
+
+        ``folder`` is the tool-tagged ``YYYY-MM-DD-<tool>`` segment. Subagents
+        nest under their parent's *recorded* folder (``archived_dir``) so a
+        parent indexed under one tool keeps its children together.
+        """
         if is_subagent_path(live_path):
             parent_id = parent_session_id_for(live_path) or "unknown-parent"
             parent_entry = self.manifest_entry(parent_id)
-            parent_date = parent_entry["archived_date"] if parent_entry else date
+            parent_folder = (
+                parent_entry.get("archived_dir") if parent_entry else None
+            ) or folder
             return (
                 self.archive_dir
-                / parent_date
+                / parent_folder
                 / parent_id
                 / "subagents"
                 / live_path.name
             )
-        return self.archive_dir / date / f"{session_id}.jsonl"
+        return self.archive_dir / folder / f"{session_id}.jsonl"
 
     def sync(self, live_path: str | Path) -> Path | None:
         """Copy a live transcript into the archive. Returns archive path or None.
@@ -148,7 +167,8 @@ class SessionArchiveService:
             return Path(entry["archive_path"])  # unchanged: no re-copy
 
         date = self._date_for(meta.started_at)
-        dest = self._dest_for(live_path, session_id, date)
+        folder = self._folder_for(date)
+        dest = self._dest_for(live_path, session_id, folder)
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(live_path, dest)  # copy2 preserves mtime
 
@@ -159,6 +179,8 @@ class SessionArchiveService:
                 "origin_path": str(live_path),
                 "archive_path": str(dest),
                 "archived_date": date,
+                "archived_dir": folder,
+                "tool": self.tool,
                 "src_mtime": stat.st_mtime,
                 "src_size": stat.st_size,
             },

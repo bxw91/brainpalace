@@ -89,6 +89,41 @@ async def test_purge_continues_when_one_delete_fails(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_archive_only_reconciles_without_purge(tmp_path: Path) -> None:
+    """purge_index=False ⇒ deletion tombstones + drops manifest, no storage call."""
+    live = tmp_path / "live" / "s1.jsonl"
+    _write(live, "s1")
+    archive = SessionArchiveService(archive_dir=tmp_path / "arch")
+    archive_path = archive.sync(live)
+    storage = AsyncMock()
+
+    watcher = SessionArchiveWatcher(
+        tmp_path / "arch", archive, storage, purge_index=False
+    )
+    archive_path.unlink()
+    purged = await watcher.purge_deleted()
+
+    assert purged == ["s1"]  # reconciled
+    assert archive.is_tombstoned("s1") is True
+    assert archive.manifest_entry("s1") is None
+    storage.delete_by_metadata.assert_not_awaited()  # no chunks to purge
+
+
+@pytest.mark.asyncio
+async def test_archive_only_tolerates_no_backend(tmp_path: Path) -> None:
+    live = tmp_path / "live" / "s1.jsonl"
+    _write(live, "s1")
+    archive = SessionArchiveService(archive_dir=tmp_path / "arch")
+    archive_path = archive.sync(live)
+
+    watcher = SessionArchiveWatcher(tmp_path / "arch", archive, None, purge_index=False)
+    archive_path.unlink()
+    purged = await watcher.purge_deleted()  # must not raise on None backend
+
+    assert purged == ["s1"]
+
+
+@pytest.mark.asyncio
 async def test_purge_empty_when_nothing_deleted(tmp_path: Path) -> None:
     archive = SessionArchiveService(archive_dir=tmp_path / "arch")
     live = tmp_path / "live" / "keep.jsonl"

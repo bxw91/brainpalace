@@ -213,7 +213,25 @@ def status_command(
                         f"{watcher_status} ({watched_folders} watched folder(s))",
                     )
 
-            # Session memory (from the feature view).
+            # Session archive (raw transcript backup) — independent of index.
+            arch = features.get("session_archive")
+            if isinstance(arch, dict):
+                if arch.get("enabled"):
+                    files = int(arch.get("archived_files", 0) or 0)
+                    size_mb = int(arch.get("archived_bytes", 0) or 0) / (1024 * 1024)
+                    retain = int(arch.get("retain_days", 0) or 0)
+                    window = "forever" if retain <= 0 else f"{retain}d"
+                    table.add_row(
+                        "Session Archive",
+                        f"[green]on[/] — {files:,} files, {size_mb:.1f} MB ({window})",
+                    )
+                else:
+                    table.add_row(
+                        "Session Archive",
+                        "[dim]off[/] (SESSION_ARCHIVE_ENABLED=false)",
+                    )
+
+            # Session memory / INDEX (from the feature view).
             sess = features.get("session_memory")
             if isinstance(sess, dict):
                 if sess.get("enabled"):

@@ -1,3 +1,7 @@
+---
+last_validated: 2026-05-30
+---
+
 # LSP Cross-References (Phase 150)
 
 Augment the code knowledge graph with **typed cross-references from a real

@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-05-28
+last_validated: 2026-06-02
 ---
 
 # BrainPalace Developer Guide
@@ -152,6 +152,33 @@ This ensures:
 2. Type checking (mypy) passes.
 3. Unit and Integration tests pass.
 4. Test coverage is above 50%.
+
+### Documentation Freshness (`last_validated`)
+Audited docs carry a `last_validated: YYYY-MM-DD` frontmatter field. It means
+**"this doc was last read against the live code and confirmed accurate on that
+date"** — it is *not* an auto "last modified" stamp.
+
+The rule:
+
+> **When you change an audited doc's content, you must re-confirm it against the
+> code and bump its `last_validated` to today.** A doc whose last git commit is
+> newer than its `last_validated` is *stale* — the claim of validation no longer
+> covers the current text.
+
+Enforcement is automated. `task lint:doc-freshness` (run as part of
+`task before-push`) fails if any audited doc was committed after its
+`last_validated` date, or is missing the field. The audited set is the same
+globs used by the audit scripts: `docs/*.md`,
+`brainpalace-plugin/commands/*.md`, `brainpalace-plugin/skills/*/references/*.md`,
+`brainpalace-plugin/agents/*.md`, plus `README.md`, `CLAUDE.md`, `AGENTS.md`.
+
+To clear staleness after actually re-reading the docs:
+```bash
+python scripts/check_doc_freshness.py        # list what's stale
+python scripts/add_audit_metadata.py         # stamp today's date into frontmatter
+```
+Do **not** run `add_audit_metadata.py` to silence the check without re-reading
+the doc — the date asserts a human (or you) verified it against the code.
 
 ### Test Directories
 - `brainpalace-server/tests/`: Server-specific tests.

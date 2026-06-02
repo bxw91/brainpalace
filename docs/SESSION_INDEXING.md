@@ -1,3 +1,7 @@
+---
+last_validated: 2026-06-02
+---
+
 # Session Indexing
 
 Make your past AI-coding sessions searchable. BrainPalace can parse the runtime
@@ -11,27 +15,46 @@ module?"* and get hits from prior sessions through the normal `query` path.
 > and a knowledge graph come in later phases (060/100). Re-ingest is cheap
 > (content-hash dedup); nothing is summarized or sent to an LLM here.
 
-## Privacy model — read this first
+## Two independent capabilities
 
-Session indexing is **ON by default for newly `init`-ed projects**, and opt-out
-per project. `brainpalace init` writes `session_indexing.enabled: true` (interactive
-runs confirm with a default of yes; non-interactive / `--json` runs enable it).
-Opt out with `brainpalace init --no-sessions`.
+Session handling splits into **two separate switches** — you can run either
+without the other:
 
-- **Existing projects are unaffected.** The server-side default for a project with
-  **no** `session_indexing:` block is still off — nothing is read, watched, or
-  indexed. Only `init` opts a project in by writing the block; this default change
-  does not retroactively enable indexing on projects you initialized earlier.
-- **Assistant-weighted.** Human *user* dialogue turns are **excluded by
-  default** (`include_user_turns: false`). The assistant's messages, tool calls,
-  and tool results are indexed; your prompts are not, unless you turn that on.
-- **Transcripts are never copied.** Per the project's tiered-store decision
-  (ADR 0001), the raw JSONL on disk *is* the source-of-truth. BrainPalace stores
-  only derived chunks (gitignored, rebuildable) that **reference** the
-  `session_id` + file path; it never duplicates the transcript into its store or
-  into git.
-- **Global kill-switch.** `SESSION_INDEXING_ENABLED=false` in the server
-  environment forces session indexing off regardless of any project config.
+| Capability | What it does | Cost | Default |
+|---|---|---|---|
+| **archive** | Copies raw `.jsonl` transcripts into `.brainpalace/` as a durable backup. No embeddings. | Free (disk only) | **ON** — including existing projects |
+| **index** | Embeds archived transcripts into the vector store for semantic/keyword recall. | Billable (embedding tokens) | ON for new projects; **OFF** for existing |
+
+Archiving exists because Claude Code prunes transcripts older than ~30 days;
+the archive is a durable backup that survives that. Indexing is the billable,
+opt-in search layer on top.
+
+## Privacy & defaults — read this first
+
+The decision matrix turns on whether your project `config.yaml` has a
+`session_indexing:` block:
+
+- **No block (existing projects):** **archive ON, index OFF.** Your transcripts
+  are backed up to `.brainpalace/session_archive/` but **nothing is embedded** —
+  no surprise embedding cost. This is the accepted default; see the privacy note
+  below since the archive contains *full raw transcripts*.
+- **Block present (new `brainpalace init`):** **both ON.** `init` writes
+  `session_indexing.enabled: true` and `session_indexing.archive.enabled: true`.
+  Interactive runs confirm the index (default yes); non-interactive / `--json`
+  runs enable both. Disable per capability: `init --no-sessions` (index off,
+  archive stays on) or `init --no-archive` (archive off, index stays on).
+
+Other guarantees:
+
+- **Assistant-weighted indexing.** Human *user* dialogue turns are **excluded by
+  default** (`include_user_turns: false`) from the *index*. This filter does
+  **not** apply to the archive — see the privacy note below.
+- **Index stores only derived chunks.** Per ADR 0001 the indexed store holds
+  derived chunks that **reference** the `session_id` + file path; the *archive*
+  is the verbatim copy.
+- **Global kill-switches.** `SESSION_INDEXING_ENABLED=false` forces the index
+  off; `SESSION_ARCHIVE_ENABLED=false` forces the archive off — each regardless
+  of any project config.
 
 ## Enabling it
 
@@ -40,17 +63,24 @@ Add a `session_indexing:` block to your project `config.yaml` (the same file the
 
 ```yaml
 session_indexing:
-  enabled: true            # init writes this true by default (opt out: init --no-sessions)
-  archive:
-    enabled: true          # default: true when session_indexing is on
-    dir: .brainpalace/session_archive  # default; override if needed
-  include_user_turns: false # indexing filter only — archive is always full raw
-  retain_days: 90           # gates indexing; archive kept forever
+  enabled: true            # INDEX: embed transcripts (billable). init writes true; opt out: init --no-sessions
+  retain_days: 0           # index age cutoff in days; <=0 = forever (no cutoff)
+  include_user_turns: false # INDEX filter only — the archive is always full raw
   window: 4                 # turns per sliding window (3–5)
   stride: 2                 # window stride in turns
   watch_debounce_ms: 30000  # live-watch debounce; sessions are bursty, batch a turn
+  archive:
+    enabled: true          # ARCHIVE: copy raw transcripts (independent of index)
+    dir: .brainpalace/session_archive  # default; override if needed
+    retain_days: 0         # archive age cutoff in days; <=0 = forever (separate from index)
   # sessions_dir: /custom/path   # optional override of the auto-resolved dir
 ```
+
+**`retain_days <= 0` means keep forever** (no age cutoff), for both index and
+archive independently. A positive value skips files older than
+`now - retain_days*86400`. ⚠️ First-run indexing with `retain_days: 0` over a
+large transcript history can be a big embedding bill — set a positive cutoff if
+that matters (this only applies when *index* is enabled).
 
 **`watch_debounce_ms`** (default `30000`) batches the live session watcher. AI
 transcripts are written per message in bursts (long quiet during generation, then
@@ -100,28 +130,39 @@ above incurs embedding spend.
   parent's summary (which proved lossy in the 020 extraction spike).
 - **Dedup.** Each chunk's id is a content hash, so re-indexing an unchanged
   session re-embeds nothing.
-- **Retention.** Transcripts older than `retain_days` are skipped (a roll-up
-  summary for old sessions arrives with the LLM phases).
+- **Retention.** Transcripts older than `retain_days` are skipped for indexing
+  (`<= 0` = forever; a roll-up summary for old sessions arrives with the LLM
+  phases). The archive has its own `archive.retain_days`.
 
 ## Archive & durability
 
 When a live transcript changes, BrainPalace copies the raw `.jsonl` **verbatim**
-into a local archive before indexing it. The server then indexes the archive
+into a local archive. Archiving runs **whenever the archive capability is on**,
+independent of indexing — so an archive-only project (e.g. an existing project
+with no `session_indexing` block) still backs up every transcript without
+embedding anything. When indexing is also on, the server indexes the archive
 copy, not the live file.
 
 ### Archive location
 
-```
-.brainpalace/session_archive/<YYYY-MM-DD>/<session_id>.jsonl
-```
-
-Subagent transcripts nest under their parent:
+Date folders are **tool-tagged** `YYYY-MM-DD-<tool>` so same-day sessions from
+different tools sort adjacently and future multi-tool support (Codex, Gemini,
+OpenCode) slots in cleanly. Today the only tool is `claude-code`:
 
 ```
-.brainpalace/session_archive/<parent_date>/<parent_id>/subagents/<session_id>.jsonl
+.brainpalace/session_archive/<YYYY-MM-DD>-<tool>/<session_id>.jsonl
+# e.g. .brainpalace/session_archive/2026-06-01-claude-code/s_abc.jsonl
 ```
 
-The archive directory is gitignored (local only, never committed).
+Subagent transcripts nest under their parent's tool-dated folder:
+
+```
+.brainpalace/session_archive/<YYYY-MM-DD>-<tool>/<parent_id>/subagents/<session_id>.jsonl
+```
+
+Each manifest entry stores `tool` as a **structured field** — that field, not
+the folder path, is the source of truth (consumers must not parse paths). The
+archive directory is gitignored (local only, never committed).
 
 ### Full raw transcripts — privacy implication
 
@@ -149,8 +190,9 @@ To remove a session from the index permanently:
 
 1. Delete the archived `.jsonl` (or an entire dated folder to remove all sessions
    from that day).
-2. The archive watcher detects the deletion, purges that session's index chunks,
-   and writes a **tombstone** entry.
+2. The archive watcher detects the deletion, writes a **tombstone** entry, and —
+   *only when indexing is on* — purges that session's index chunks. With index
+   off there are no chunks, so it just tombstones and drops the manifest entry.
 3. The tombstone prevents resurrection: if the same session later appears as a
    live transcript change, the server skips it rather than re-syncing.
 
@@ -158,9 +200,12 @@ There is no separate curation command — the filesystem is the interface.
 
 ### `retain_days` and `brainpalace reset`
 
-- **`retain_days`** gates indexing only. Transcripts older than `retain_days`
-  are not indexed (or re-indexed), but the archive files themselves are kept
-  forever — they are never pruned by this setting.
+- **`retain_days`** (top-level) gates **indexing**: transcripts older than the
+  cutoff are not indexed. `<= 0` means forever (no cutoff).
+- **`archive.retain_days`** gates the **archive** independently (also `<= 0` =
+  forever). Disk growth with a forever archive is accepted by design.
+- Disable a capability by **removing/disabling its block or flag**, not via
+  retention. `retain_days: 0` keeps everything; it does not disable anything.
 - **`brainpalace reset`** clears the vector/BM25 index but **preserves** the
   archive by default. Pass `--include-sessions` to also delete
   `.brainpalace/session_archive`:
@@ -172,11 +217,20 @@ There is no separate curation command — the filesystem is the interface.
 
 ### Status reporting
 
-`brainpalace status` reports archive metrics under the session memory section:
+`brainpalace status` shows the two capabilities on **separate rows** so all four
+states (archive on/off × index on/off) are legible:
+
+```
+Session Archive: on — 463 files, 12.3 MB (forever)
+Session Memory:  off (enable: brainpalace init --sessions)
+```
+
+Archive metrics:
 
 | Field | Meaning |
 |---|---|
-| `archived_sessions` | number of `.jsonl` files in the archive |
+| `archived_files` | number of `.jsonl` files in the archive |
+| `archived_sessions` | distinct sessions (parent + subagents count as one) |
 | `archived_bytes` | total size of the archive on disk |
 | `tombstoned` | sessions deleted from the archive and blocked from re-sync |
 

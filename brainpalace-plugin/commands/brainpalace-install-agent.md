@@ -26,7 +26,7 @@ parameters:
     required: false
 skills:
   - configuring-brainpalace
-last_validated: 2026-03-16
+last_validated: 2026-05-30
 ---
 
 # BrainPalace Install Agent

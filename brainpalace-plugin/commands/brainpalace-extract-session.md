@@ -7,7 +7,7 @@ parameters:
     required: false
 skills:
   - using-brainpalace
-last_validated: 2026-05-29
+last_validated: 2026-05-30
 ---
 
 # BrainPalace — Extract Session

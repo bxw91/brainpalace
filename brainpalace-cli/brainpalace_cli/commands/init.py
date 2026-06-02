@@ -185,15 +185,41 @@ def _preflight_providers(state_dir: Path, json_output: bool) -> None:
     raise SystemExit(1)
 
 
-def enable_session_indexing(state_dir: Path) -> None:
-    """Set ``session_indexing.enabled: true`` in the project config.yaml.
+def _existing_session_keys(state_dir: Path) -> set[str]:
+    """Keys present in any existing ``session_indexing`` block in config.yaml.
+
+    Used to detect an XDG-inherited block so ``init`` respects the global
+    default instead of clobbering it. Returns an empty set when no block exists.
+    """
+    config_path = state_dir / "config.yaml"
+    if not config_path.exists():
+        return set()
+    try:
+        loaded = yaml.safe_load(config_path.read_text()) or {}
+    except yaml.YAMLError:
+        return set()
+    block = loaded.get("session_indexing") if isinstance(loaded, dict) else None
+    return set(block.keys()) if isinstance(block, dict) else set()
+
+
+def write_session_config(
+    state_dir: Path,
+    index: bool | None = None,
+    archive: bool | None = None,
+) -> None:
+    """Write the two independent session capabilities into config.yaml.
 
     Deep-merges into the existing config.yaml so the provider/graphrag/storage
-    blocks written by ``write_default_provider_config`` are preserved. Privacy
-    note: this opts the project into indexing AI chat transcripts; only called
-    when the user explicitly opts in. The server reads this block at startup
-    (``load_session_indexing_config``) to start the session watcher.
+    blocks written by ``write_default_provider_config`` (and any XDG-inherited
+    ``session_indexing`` keys) are preserved. Only the explicitly-passed
+    capabilities are set (``None`` leaves the existing value untouched), so a
+    re-init that toggles one capability never clobbers the other. ``index``
+    embeds transcripts (billable opt-in); ``archive`` copies raw transcripts
+    (durable backup, no embeddings). The server reads this block at startup
+    (``load_session_indexing_config``).
     """
+    if index is None and archive is None:
+        return
     config_path = state_dir / "config.yaml"
     data: dict[str, object] = {}
     if config_path.exists():
@@ -203,7 +229,14 @@ def enable_session_indexing(state_dir: Path) -> None:
     block = data.get("session_indexing")
     if not isinstance(block, dict):
         block = {}
-    block["enabled"] = True
+    if index is not None:
+        block["enabled"] = bool(index)
+    if archive is not None:
+        archive_block = block.get("archive")
+        if not isinstance(archive_block, dict):
+            archive_block = {}
+        archive_block["enabled"] = bool(archive)
+        block["archive"] = archive_block
     data["session_indexing"] = block
     with open(config_path, "w", encoding="utf-8") as f:
         yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
@@ -497,10 +530,20 @@ def _start_and_watch(
     "enable_sessions",
     default=None,
     help=(
-        "Index this project's AI chat transcripts into searchable session "
-        "memory (assistant + tool turns). ON by default for new projects: "
+        "INDEX this project's AI chat transcripts into searchable session "
+        "memory (embeddings, billable). ON by default for new projects: "
         "interactive runs confirm (default yes), non-interactive runs enable "
-        "it. Pass --no-sessions to opt out."
+        "it. Pass --no-sessions to opt out (archive still runs)."
+    ),
+)
+@click.option(
+    "--archive/--no-archive",
+    "enable_archive",
+    default=None,
+    help=(
+        "ARCHIVE raw transcripts under .brainpalace/ as a durable backup (no "
+        "embeddings, independent of indexing). ON by default. Pass "
+        "--no-archive to opt out."
     ),
 )
 def init_command(
@@ -514,6 +557,7 @@ def init_command(
     start: bool,
     watch: str,
     enable_sessions: bool | None,
+    enable_archive: bool | None,
 ) -> None:
     """Initialize a new BrainPalace project.
 
@@ -586,8 +630,13 @@ def init_command(
                     existing_config = json.loads(config_path.read_text())
                 except (OSError, json.JSONDecodeError):
                     existing_config = {}
-                if enable_sessions:
-                    enable_session_indexing(resolved_state_dir)
+                # Over an existing config + --start, only act on capabilities the
+                # user named explicitly; leave the other untouched.
+                write_session_config(
+                    resolved_state_dir,
+                    index=enable_sessions,
+                    archive=enable_archive,
+                )
                 post_init_steps: list[dict[str, object]] = _start_and_watch(
                     project_root=project_root,
                     resolved_state_dir=resolved_state_dir,
@@ -669,26 +718,38 @@ def init_command(
         # Session memory is ON by default for new projects: it indexes this
         # project's AI chat transcripts (assistant + tool turns). An interactive
         # TTY gets a confirmation defaulting to yes; non-interactive/--json runs
-        # initialize it enabled. Explicit --no-sessions opts out. User turns
-        # remain separately opt-in.
+        # Two INDEPENDENT capabilities, both default ON for genuinely new
+        # projects: ARCHIVE (raw transcript backup, free) and INDEX (embeddings,
+        # billable — interactive runs confirm it).
         #
-        # The default-on only applies when we just wrote a fresh config.yaml
-        # (i.e. a genuinely new project). On a re-init over an existing
-        # config.yaml we leave it untouched so user edits are preserved — only
-        # an explicit --sessions injects the block in that case.
+        # Precedence per capability:
+        #   1. Explicit flag (--sessions/--no-sessions, --archive/--no-archive).
+        #   2. An XDG-inherited session_indexing block (copied by
+        #      write_default_provider_config) — respect it, don't clobber.
+        #   3. Fresh-project default ON (only when we just wrote config.yaml).
+        # A re-init over an existing project config (provider_config_written is
+        # False) leaves both untouched unless a flag is passed explicitly.
+        inherited = _existing_session_keys(resolved_state_dir)
         if enable_sessions is None:
             if not provider_config_written:
-                enable_sessions = False
+                pass  # leave existing config untouched
+            elif "enabled" in inherited:
+                pass  # respect XDG global default
             elif not json_output and sys.stdin.isatty():
                 enable_sessions = click.confirm(
-                    "Enable session memory? It indexes this project's AI chat "
-                    "transcripts (assistant + tool turns) for later recall.",
+                    "Enable session memory (INDEX)? It embeds this project's AI "
+                    "chat transcripts (assistant + tool turns) for later recall. "
+                    "Raw transcripts are archived regardless.",
                     default=True,
                 )
             else:
                 enable_sessions = True
-        if enable_sessions:
-            enable_session_indexing(resolved_state_dir)
+        if enable_archive is None and provider_config_written:
+            if "archive" not in inherited:  # respect XDG archive block if present
+                enable_archive = True
+        write_session_config(
+            resolved_state_dir, index=enable_sessions, archive=enable_archive
+        )
 
         # B5: ensure .brainpalace/ is git-ignored for the project.
         gitignore_added = ensure_gitignore_entry(project_root)

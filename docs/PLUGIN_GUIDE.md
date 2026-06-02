@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-05-23
+last_validated: 2026-05-30
 ---
 
 # BrainPalace Plugin Guide

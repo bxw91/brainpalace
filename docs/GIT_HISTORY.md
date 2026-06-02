@@ -1,3 +1,7 @@
+---
+last_validated: 2026-05-30
+---
+
 # Git History Indexing
 
 Make your repo's **git history** searchable. BrainPalace can walk `git log` and

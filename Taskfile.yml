@@ -161,6 +161,11 @@ tasks:
       - python3 -c "import yaml" 2>/dev/null || pip install pyyaml --quiet
       - python3 scripts/lint_yaml_frontmatter.py brainpalace-plugin/
 
+  lint:doc-freshness:
+    desc: Fail if audited docs changed after their last_validated date
+    cmds:
+      - python3 scripts/check_doc_freshness.py
+
   typecheck:
     desc: Type check all code with mypy
     aliases: [mypy]
@@ -193,6 +198,8 @@ tasks:
       - task: lint
       - echo "--- Linting YAML frontmatter ---"
       - task: lint:yaml
+      - echo "--- Checking doc freshness ---"
+      - task: lint:doc-freshness
       - echo "--- Type checking ---"
       - task: typecheck
       - echo "--- Running tests with coverage ---"

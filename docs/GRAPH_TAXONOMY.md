@@ -1,3 +1,7 @@
+---
+last_validated: 2026-05-30
+---
+
 # Session Knowledge-Graph Taxonomy
 
 How BrainPalace turns AI-coding sessions into a typed, queryable knowledge

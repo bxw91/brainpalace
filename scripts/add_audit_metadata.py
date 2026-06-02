@@ -123,6 +123,15 @@ def main() -> None:
         help="Audit date in YYYY-MM-DD format (default: today)",
     )
     parser.add_argument(
+        "--from-git",
+        action="store_true",
+        help=(
+            "Stamp each file with its own last content-change date from git "
+            "(ignores frontmatter-only commits) instead of a single --date. "
+            "Use to backfill truthful per-file dates."
+        ),
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Print what would change without writing files",
@@ -135,6 +144,12 @@ def main() -> None:
     except ValueError:
         print(f"Error: Invalid date format '{args.date}'. Use YYYY-MM-DD.", file=sys.stderr)
         sys.exit(1)
+
+    per_file_date = None
+    if args.from_git:
+        # Reuse the freshness checker's content-change-date logic.
+        from check_doc_freshness import last_content_commit_date
+        per_file_date = last_content_commit_date
 
     audit_date = args.date
     files = resolve_files(PROJECT_ROOT)
@@ -155,7 +170,17 @@ def main() -> None:
             errors += 1
             continue
 
-        new_content, action = update_frontmatter(content, audit_date)
+        file_date = audit_date
+        if per_file_date is not None:
+            gd = per_file_date(filepath)
+            if not gd:
+                # Untracked file — nothing committed to date from; skip.
+                if args.dry_run:
+                    print(f"  SKIP (untracked): {rel}")
+                continue
+            file_date = gd
+
+        new_content, action = update_frontmatter(content, file_date)
 
         if action == "current":
             current += 1

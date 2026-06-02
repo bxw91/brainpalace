@@ -35,6 +35,19 @@ def encode_project_to_sessions_dir(project_path: str, home: Path | None = None) 
     return home / ".claude" / "projects" / encoded
 
 
+def discover_session_files(sessions_dir: Path) -> list[Path]:
+    """Top-level transcripts + sub-agent transcripts (R2).
+
+    Module-level so archive-only boot (no index service) can enumerate live
+    transcripts without constructing a :class:`SessionIndexService`.
+    """
+    if not sessions_dir.exists():
+        return []
+    files = sorted(sessions_dir.glob("*.jsonl"))
+    files += sorted(sessions_dir.glob("*/subagents/*.jsonl"))
+    return files
+
+
 class SessionIndexService:
     """Ingest session transcripts into the shared index."""
 
@@ -92,11 +105,7 @@ class SessionIndexService:
 
     def _discover(self, sessions_dir: Path) -> list[Path]:
         """Top-level transcripts + sub-agent transcripts (R2)."""
-        if not sessions_dir.exists():
-            return []
-        files = sorted(sessions_dir.glob("*.jsonl"))
-        files += sorted(sessions_dir.glob("*/subagents/*.jsonl"))
-        return files
+        return discover_session_files(sessions_dir)
 
     async def index_project(
         self,

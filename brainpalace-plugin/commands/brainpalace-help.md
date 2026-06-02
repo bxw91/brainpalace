@@ -8,7 +8,7 @@ parameters:
 skills:
   - using-brainpalace
   - brainpalace-setup
-last_validated: 2026-03-16
+last_validated: 2026-05-30
 ---
 
 # BrainPalace Help

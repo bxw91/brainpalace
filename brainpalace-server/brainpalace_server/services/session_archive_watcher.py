@@ -32,11 +32,15 @@ class SessionArchiveWatcher:
         archive: SessionArchiveService,
         storage_backend: Any,
         debounce_ms: int = 1000,
+        purge_index: bool = True,
     ) -> None:
         self.archive_dir = Path(archive_dir)
         self.archive = archive
         self.storage_backend = storage_backend
         self.debounce_ms = debounce_ms
+        # When indexing is off no chunks exist, so deletions only reconcile the
+        # manifest + tombstones — never touch the storage backend.
+        self.purge_index = purge_index
         self._stop_event: anyio.Event | None = None
         self._task: asyncio.Task[None] | None = None
 
@@ -45,8 +49,10 @@ class SessionArchiveWatcher:
         return self._stop_event is not None and not self._stop_event.is_set()
 
     async def purge_deleted(self) -> list[str]:
-        """Reconcile deletions and purge each removed session's chunks."""
+        """Reconcile deletions and (when indexing) purge removed chunks."""
         removed = self.archive.reconcile_deletions()
+        if not self.purge_index or self.storage_backend is None:
+            return removed  # archive-only: tombstone + drop manifest, no chunks
         for session_id in removed:
             try:
                 # ChromaDB requires $and to combine multiple metadata

@@ -10,7 +10,13 @@ from brainpalace_server.api.routers.health import router
 
 
 def _client(
-    *, session_enabled, session_running, curated, session_chunks, archive_stats=None
+    *,
+    session_enabled,
+    session_running,
+    curated,
+    session_chunks,
+    archive_stats=None,
+    archive_enabled=None,
 ):
     app = FastAPI()
     app.include_router(router)
@@ -49,7 +55,14 @@ def _client(
     app.state.file_watcher_service = SimpleNamespace(
         is_running=True, watched_folder_count=2
     )
-    app.state.session_indexing_config = SimpleNamespace(enabled=session_enabled)
+    app.state.session_indexing_config = SimpleNamespace(
+        enabled=session_enabled, archive=SimpleNamespace(retain_days=0)
+    )
+    # Resolved capability flags (archive + index independent).
+    app.state.session_index_enabled = session_enabled
+    app.state.session_archive_enabled = (
+        session_enabled if archive_enabled is None else archive_enabled
+    )
     app.state.session_watcher = SimpleNamespace(is_running=session_running)
     app.state.memory_service = SimpleNamespace(load=lambda: [object()] * curated)
     if archive_stats is None:
@@ -77,6 +90,9 @@ def test_status_reports_feature_block():
     assert feats["session_memory"]["archived_sessions"] == 0
     assert feats["session_memory"]["archived_bytes"] == 0
     assert feats["session_memory"]["tombstoned"] == 0
+    # Archive is its own independent feature block.
+    assert feats["session_archive"]["enabled"] is True
+    assert feats["session_archive"]["retain_days"] == 0
     assert feats["graph_index"]["enabled"] is False
 
 
@@ -87,6 +103,27 @@ def test_status_feature_block_session_disabled():
     feats = client.get("/status").json()["features"]
     assert feats["session_memory"]["enabled"] is False
     assert feats["session_memory"]["watcher_running"] is False
+
+
+def test_archive_on_index_off_independent():
+    # Existing-project shape: archive ON, index OFF — independent feature rows.
+    client = _client(
+        session_enabled=False,
+        session_running=False,
+        curated=0,
+        session_chunks=0,
+        archive_enabled=True,
+        archive_stats={
+            "archived_sessions": 4,
+            "archived_files": 5,
+            "archived_bytes": 999,
+            "tombstoned": 0,
+        },
+    )
+    feats = client.get("/status").json()["features"]
+    assert feats["session_memory"]["enabled"] is False
+    assert feats["session_archive"]["enabled"] is True
+    assert feats["session_archive"]["archived_files"] == 5
 
 
 def test_session_memory_includes_archive_counts():

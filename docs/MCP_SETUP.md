@@ -1,3 +1,7 @@
+---
+last_validated: 2026-05-30
+---
+
 # MCP setup — connecting AI clients to BrainPalace
 
 > **Opt-in.** BrainPalace ships an MCP server — `brainpalace mcp` — so

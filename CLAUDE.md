@@ -1,3 +1,7 @@
+---
+last_validated: 2026-06-02
+---
+
 # BrainPalace — repo guide for Claude
 
 RAG system for AI coding assistants (BM25 + semantic vector + GraphRAG), per-project
@@ -33,6 +37,15 @@ export PYTHON_KEYRING_BACKEND=keyring.backends.null.Keyring
 task install
 ```
 
+## Docs — `last_validated` freshness
+
+Audited docs carry `last_validated: YYYY-MM-DD` = "confirmed accurate against
+code on this date." **Edit a doc's content → re-check vs code → bump the date.**
+`task before-push` runs `lint:doc-freshness` (fails when a doc's content commit
+is newer than its `last_validated`). Rule:
+[docs/DEVELOPERS_GUIDE.md](docs/DEVELOPERS_GUIDE.md#documentation-freshness-last_validated);
+release-time step: [docs/RELEASING.md](docs/RELEASING.md).
+
 ## Branching & releasing
 
 - `task before-push` must pass before any push/merge.
@@ -64,15 +77,20 @@ Modes: `bm25` (exact terms), `vector` (semantic/concepts), `hybrid` (default), `
 - **Live re-index:** `brainpalace index <path> --watch auto` (or `--watch off`) marks the
   folder watched; the server's `FileWatcherService` re-indexes on change. `--watch-debounce
   <seconds>` tunes the debounce. `folders add` defaults to `--watch auto`.
-- **Session memory (ON by default for new projects):** `brainpalace init` writes
-  `session_indexing.enabled: true` into `.brainpalace/config.yaml`; the server indexes this
-  project's AI chat transcripts (assistant + tool turns). Opt out with `init --no-sessions`.
-  Existing projects (no `session_indexing` block) stay off. Privacy model, embedding cost, and
-  tuning: [docs/SESSION_INDEXING.md](docs/SESSION_INDEXING.md#embedding-cost--read-before-enabling).
+- **Sessions = two independent capabilities** (see
+  [docs/SESSION_INDEXING.md](docs/SESSION_INDEXING.md)): **archive** (copy raw transcripts to
+  `.brainpalace/`, free, durable backup) and **index** (embed them, billable). Gated by the
+  presence of each config/flag; `retain_days <= 0` = forever. **Absent `session_indexing` block
+  (existing projects): archive ON, index OFF** — back up transcripts without surprise embedding
+  cost. `brainpalace init` writes both ON; `--no-sessions` / `--no-archive` disable each
+  independently. Kill-switches: `SESSION_INDEXING_ENABLED=false`, `SESSION_ARCHIVE_ENABLED=false`.
+  Archive folders are tool-tagged `YYYY-MM-DD-<tool>` (today `claude-code`). ⚠️ The raw archive
+  holds **full transcripts incl. user turns/secrets**.
 - **`brainpalace status`** shows a per-feature view: document indexing, file watcher (with a
-  clear "0 folders — none marked watch=auto" state), session memory (on/off, watching/idle,
-  session-chunk + curated-memory counts), and graph index. `total_documents` is derived from
-  the persisted folder manifests, so it's correct even when indexing ran in the job worker.
+  clear "0 folders — none marked watch=auto" state), session archive (on/off, files, size),
+  session memory/index (on/off, watching/idle, session-chunk + curated-memory counts), and graph
+  index. `total_documents` is derived from the persisted folder manifests, so it's correct even
+  when indexing ran in the job worker.
 - **`init --start` pre-flight:** validates embedding + summarization providers (using the
   server's own rules) before launching, failing fast with the missing env var instead of
   crashing mid-index on a misconfigured provider.

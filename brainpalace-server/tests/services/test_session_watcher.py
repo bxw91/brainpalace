@@ -102,3 +102,44 @@ async def test_ingest_skips_tombstoned(tmp_path: Path) -> None:
     )
     await watcher._ingest_paths({str(live)})
     service.index_session_file.assert_not_awaited()
+
+
+async def test_archive_only_does_not_index(tmp_path: Path) -> None:
+    """index_enabled=False ⇒ archive.sync runs, index_session_file does not."""
+    live = tmp_path / "live" / "s3.jsonl"
+    _write_transcript(live, "s3")
+    archive = SessionArchiveService(archive_dir=tmp_path / "arch")
+    service = AsyncMock()
+    watcher = SessionWatcher(
+        tmp_path / "live",
+        service,
+        SessionIndexingConfig(enabled=False),
+        archive=archive,
+        index_enabled=False,
+    )
+
+    n = await watcher._ingest_paths({str(live)})
+
+    assert n == 1  # archived
+    service.index_session_file.assert_not_awaited()  # not indexed
+    assert archive.manifest_entry("s3") is not None  # raw copy made
+    assert (tmp_path / "arch" / "2026-06-01-claude-code" / "s3.jsonl").exists()
+
+
+async def test_index_enabled_does_both(tmp_path: Path) -> None:
+    live = tmp_path / "live" / "s4.jsonl"
+    _write_transcript(live, "s4")
+    archive = SessionArchiveService(archive_dir=tmp_path / "arch")
+    service = AsyncMock()
+    watcher = SessionWatcher(
+        tmp_path / "live",
+        service,
+        SessionIndexingConfig(enabled=True),
+        archive=archive,
+        index_enabled=True,
+    )
+
+    await watcher._ingest_paths({str(live)})
+
+    service.index_session_file.assert_awaited_once()
+    assert archive.manifest_entry("s4") is not None

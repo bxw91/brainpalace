@@ -1,3 +1,7 @@
+---
+last_validated: 2026-05-30
+---
+
 # BrainPalace Benchmark Results
 
 Baseline latency measurements for all five retrieval modes, generated from the

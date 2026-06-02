@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-05-30
+last_validated: 2026-06-02
 ---
 
 # Changelog
@@ -13,6 +13,40 @@ month (the counter resets monthly). It looks like SemVer but is not.
 ---
 
 ## [Unreleased]
+
+## [26.6.6] - 2026-06-02
+
+### Changed
+- **Session archiving is now independent of indexing and always-on by default.**
+  Archive (copy raw transcripts into `.brainpalace/`, free) and index (embed
+  them, billable) are two separate capabilities, each gated by the presence of
+  its config/flag. **Existing projects with no `session_indexing` block now
+  archive ON / index OFF** — transcripts are backed up (Claude Code prunes
+  originals after ~30 days) without any surprise embedding cost. `brainpalace
+  init` writes both ON; `--no-sessions` and `--no-archive` disable each
+  independently. New kill-switch `SESSION_ARCHIVE_ENABLED=false` (alongside the
+  existing `SESSION_INDEXING_ENABLED=false`).
+- **`retain_days <= 0` now means keep forever** (no age cutoff) for both index
+  and the new independent `archive.retain_days`. Defaults are `0` (forever).
+  Previously `0` would have skipped everything. ⚠️ First-run forever-indexing of
+  a large transcript history can be a big embedding bill (no 90-day cap now);
+  set a positive `retain_days` to cap it.
+- **Tool-tagged archive folders.** Archive date folders are now
+  `YYYY-MM-DD-<tool>` (e.g. `2026-06-01-claude-code`) so same-day sessions from
+  different tools sort adjacently and future multi-tool support slots in
+  cleanly. Manifest entries gain a structured `tool` field (the source of
+  truth — consumers must not parse paths). No migration: existing local archives
+  may be wiped (rebuildable from `~/.claude` within its 30-day window).
+- **`brainpalace status`** now shows session **archive** and **index** on
+  separate rows, covering all four on/off states.
+
+### Fixed
+- **Doc-freshness gate no longer false-positives on frontmatter-introduction.**
+  `scripts/check_doc_freshness.py` treated the commit that *adds* a doc's
+  `last_validated` frontmatter block as a content change (it only ignored the
+  `last_validated:` line, not the surrounding `---` fences / blank line), so
+  five correctly-stamped docs were wrongly flagged stale. Frontmatter fence and
+  blank lines are now recognised as metadata too.
 
 ## [26.6.5] - 2026-06-02
 

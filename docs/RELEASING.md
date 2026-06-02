@@ -1,3 +1,7 @@
+---
+last_validated: 2026-06-02
+---
+
 # Releasing BrainPalace
 
 CalVer `YY.M.N` (2-digit year · month · Nth release that month). `brainpalace-cli`
@@ -58,9 +62,16 @@ The version lives in **one place per package**: `pyproject.toml`.
    (`__version__` is derived). The consistency test enforces both moved.
 4. **Reinstall** so editable `--version` reflects the bump: `task install`.
 5. **Changelog** — add the `[YY.M.N]` section in `docs/CHANGELOG.md`.
-6. **Gate**: `task before-push` must exit 0.
-7. **Commit on `stable`** (version bump + changelog).
-8. **Mirror to `main`** and tag. **`stable` is LOCAL-ONLY — NEVER `git push` it.**
+6. **Refresh doc freshness** — any audited doc whose content changed this
+   release must be re-read against the code and have its `last_validated` date
+   bumped. List stale docs with `python scripts/check_doc_freshness.py`; after
+   re-reading, stamp them (`python scripts/add_audit_metadata.py` for today, or
+   `--from-git` to backfill per-file content dates). The gate in step 7 enforces
+   this — a doc committed after its `last_validated` fails the build. The rule's
+   meaning lives in [DEVELOPERS_GUIDE.md](DEVELOPERS_GUIDE.md#documentation-freshness-last_validated).
+7. **Gate**: `task before-push` must exit 0.
+8. **Commit on `stable`** (version bump + changelog).
+9. **Mirror to `main`** and tag. **`stable` is LOCAL-ONLY — NEVER `git push` it.**
    `main` is the only remote branch: a single squashed commit per release that
    mirrors `stable`'s (already curated) tree. Releases are cut on `main`, not by
    pushing `stable`.

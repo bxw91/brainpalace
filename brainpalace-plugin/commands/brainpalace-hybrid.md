@@ -19,7 +19,7 @@ parameters:
     default: 0.3
 skills:
   - using-brainpalace
-last_validated: 2026-03-16
+last_validated: 2026-05-30
 ---
 
 # BrainPalace Hybrid Search

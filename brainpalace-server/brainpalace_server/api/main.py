@@ -12,7 +12,6 @@ import asyncio
 import logging
 import os
 import socket
-import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -624,114 +623,147 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         else:
             app.state.session_context_service = None
 
-        # Session indexing (Phase 050) — opt-in transcript ingest. OFF unless
-        # the project sets session_indexing.enabled and the env kill-switch
-        # (SESSION_INDEXING_ENABLED) isn't false. Never blocks startup.
+        # Session archive + indexing (Phase 050) — two INDEPENDENT capabilities.
+        #   archive: copy raw transcripts (durable backup, no embeddings). ON by
+        #     default incl. existing projects (absent block). SESSION_ARCHIVE_ENABLED.
+        #   index: embed archived transcripts (billable opt-in). ON only when the
+        #     session_indexing block is present. SESSION_INDEXING_ENABLED.
+        # Never blocks startup.
         app.state.session_index_service = None
         app.state.session_indexing_config = None
         app.state.session_watcher = None
         app.state.session_archive_service = None
         app.state.session_archive_watcher = None
+        app.state.session_archive_enabled = False
+        app.state.session_index_enabled = False
         try:
             from brainpalace_server.config.session_config import (
                 load_session_indexing_config,
+                resolve_session_capabilities,
+                retain_cutoff,
             )
 
             session_cfg = load_session_indexing_config()
             app.state.session_indexing_config = session_cfg
-            if session_cfg.enabled and app.state.project_root:
-                from brainpalace_server.indexing import get_embedding_generator
+            caps = resolve_session_capabilities(session_cfg)
+            app.state.session_archive_enabled = caps.archive_enabled
+            app.state.session_index_enabled = caps.index_enabled
+
+            if (caps.archive_enabled or caps.index_enabled) and app.state.project_root:
                 from brainpalace_server.services.session_index_service import (
-                    SessionIndexService,
+                    discover_session_files,
                     encode_project_to_sessions_dir,
                 )
                 from brainpalace_server.services.session_watcher import SessionWatcher
 
-                sess_svc = SessionIndexService(
-                    embedding_generator=get_embedding_generator(),
-                    storage_backend=storage_backend,
-                )
-                app.state.session_index_service = sess_svc
                 sessions_dir = (
                     Path(session_cfg.sessions_dir)
                     if session_cfg.sessions_dir
                     else encode_project_to_sessions_dir(app.state.project_root)
                 )
 
-                from brainpalace_server.services.session_archive_service import (
-                    SessionArchiveService,
-                )
-                from brainpalace_server.services.session_archive_watcher import (
-                    SessionArchiveWatcher,
-                )
-
+                # Archive service — independent of indexing.
                 archive_service = None
-                archive_watcher = None
-                if session_cfg.archive.enabled:
+                if caps.archive_enabled:
+                    from brainpalace_server.services.session_archive_service import (
+                        SessionArchiveService,
+                    )
+
                     arch_dir = Path(session_cfg.archive.dir)
                     if not arch_dir.is_absolute():
                         arch_dir = Path(app.state.project_root) / arch_dir
-                    archive_service = SessionArchiveService(archive_dir=arch_dir)
+                    archive_service = SessionArchiveService(
+                        archive_dir=arch_dir, tool=caps.tool
+                    )
                 app.state.session_archive_service = archive_service
 
-                async def _boot_session_index() -> None:
+                # Index service — only when indexing is enabled.
+                sess_svc = None
+                if caps.index_enabled:
+                    from brainpalace_server.indexing import get_embedding_generator
+                    from brainpalace_server.services.session_index_service import (
+                        SessionIndexService,
+                    )
+
+                    sess_svc = SessionIndexService(
+                        embedding_generator=get_embedding_generator(),
+                        storage_backend=storage_backend,
+                    )
+                app.state.session_index_service = sess_svc
+
+                async def _boot_sessions() -> None:
                     try:
-                        if archive_service is not None:
-                            live_files = sess_svc._discover(sessions_dir)
-                            cutoff = time.time() - session_cfg.retain_days * 86400
-                            indexed = 0
-                            for live in live_files:
+                        live_files = discover_session_files(sessions_dir)
+                        # retain_days <= 0 ⇒ keep forever (no cutoff).
+                        cutoff = retain_cutoff(session_cfg.retain_days)
+                        archived = 0
+                        indexed = 0
+                        for live in live_files:
+                            arch = None
+                            if archive_service is not None:
+                                arch = archive_service.sync(live)
+                                if arch is None:
+                                    continue  # tombstoned / unreadable
+                                archived += 1
+                            if not caps.index_enabled or sess_svc is None:
+                                continue
+                            if cutoff is not None:
                                 try:
                                     if live.stat().st_mtime < cutoff:
                                         continue
                                 except OSError:
                                     continue
-                                arch = archive_service.sync(live)
-                                if arch is None:
-                                    continue
-                                await sess_svc.index_session_file(
-                                    arch,
-                                    include_user_turns=session_cfg.include_user_turns,
-                                    window=session_cfg.window,
-                                    stride=session_cfg.stride,
-                                    origin_path=str(live),
-                                )
-                                indexed += 1
-                            logger.info(
-                                "Session boot-index (archive): %d file(s)", indexed
+                            await sess_svc.index_session_file(
+                                arch if arch is not None else live,
+                                include_user_turns=session_cfg.include_user_turns,
+                                window=session_cfg.window,
+                                stride=session_cfg.stride,
+                                origin_path=str(live) if arch is not None else None,
                             )
-                        else:
-                            summary = await sess_svc.index_project(
-                                app.state.project_root, session_cfg
-                            )
-                            logger.info(
-                                "Session boot-index: %d file(s)",
-                                summary.get("files", 0),
-                            )
+                            indexed += 1
+                        logger.info(
+                            "Session boot: %d archived, %d indexed", archived, indexed
+                        )
                     except Exception as exc:  # noqa: BLE001
-                        logger.warning("Session boot-index failed: %s", exc)
+                        logger.warning("Session boot failed: %s", exc)
 
-                asyncio.create_task(_boot_session_index())
+                asyncio.create_task(_boot_sessions())
 
-                watcher = SessionWatcher(
-                    sessions_dir,
-                    sess_svc,
-                    session_cfg,
-                    archive=archive_service,
-                    debounce_ms=session_cfg.watch_debounce_ms,
-                )
-                await watcher.start()
-                app.state.session_watcher = watcher
+                # Live watcher: archives always, indexes only when enabled.
+                if archive_service is not None or sess_svc is not None:
+                    watcher = SessionWatcher(
+                        sessions_dir,
+                        sess_svc,
+                        session_cfg,
+                        archive=archive_service,
+                        debounce_ms=session_cfg.watch_debounce_ms,
+                        index_enabled=caps.index_enabled,
+                    )
+                    await watcher.start()
+                    app.state.session_watcher = watcher
 
+                # Archive deletion watcher — purges chunks only when indexing.
                 if archive_service is not None:
+                    from brainpalace_server.services.session_archive_watcher import (
+                        SessionArchiveWatcher,
+                    )
+
                     archive_watcher = SessionArchiveWatcher(
-                        archive_service.archive_dir, archive_service, storage_backend
+                        archive_service.archive_dir,
+                        archive_service,
+                        storage_backend if caps.index_enabled else None,
+                        purge_index=caps.index_enabled,
                     )
                     await archive_watcher.start()
-                app.state.session_archive_watcher = archive_watcher
-                logger.info("Session indexing enabled: %s", sessions_dir)
+                    app.state.session_archive_watcher = archive_watcher
+                logger.info(
+                    "Session capabilities — archive=%s index=%s (%s)",
+                    caps.archive_enabled,
+                    caps.index_enabled,
+                    sessions_dir,
+                )
         except Exception as exc:  # noqa: BLE001 — never block startup on sessions
-            logger.warning("Session indexing setup failed: %s", exc)
+            logger.warning("Session archive/index setup failed: %s", exc)
 
         # Git-history indexing (Phase 130) — opt-in commit ingest. OFF unless
         # the project sets git_indexing.enabled and the env kill-switch
@@ -960,10 +992,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             logger.warning("Session watcher stop failed: %s", exc)
         _file_watcher = None
 
-    archive_watcher = getattr(app.state, "session_archive_watcher", None)
-    if archive_watcher is not None:
+    archive_watcher_shutdown = getattr(app.state, "session_archive_watcher", None)
+    if archive_watcher_shutdown is not None:
         try:
-            await archive_watcher.stop()
+            await archive_watcher_shutdown.stop()
             logger.info("Session archive watcher stopped")
         except Exception as exc:  # noqa: BLE001
             logger.warning("Session archive watcher stop failed: %s", exc)
