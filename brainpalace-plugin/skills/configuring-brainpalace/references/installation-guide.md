@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-05-30
+last_validated: 2026-06-02
 ---
 
 # BrainPalace Installation Guide
@@ -415,7 +415,7 @@ brainpalace install-agent --agent skill-runtime --dir /path/to/skills
 brainpalace install-agent --agent claude --dry-run
 
 # Global (user-level) installation
-brainpalace install-agent --agent claude --scope global
+brainpalace install-agent --agent claude --global
 ```
 
 ### Supported Runtimes
@@ -430,10 +430,49 @@ brainpalace install-agent --agent claude --scope global
 
 ### Uninstalling
 
+There is no CLI to remove an installed plugin (`install-agent` only installs).
+Delete the install dir directly — project scope + global scope:
+
 ```bash
-brainpalace uninstall --agent claude
-brainpalace uninstall --agent claude --scope global
+rm -rf .claude/plugins/brainpalace    ~/.claude/plugins/brainpalace
+rm -rf .opencode/plugins/brainpalace  ~/.config/opencode/plugins/brainpalace
+rm -rf .gemini/plugins/brainpalace    ~/.config/gemini/plugins/brainpalace
+rm -rf .codex/skills/brainpalace      ~/.codex/skills/brainpalace
 ```
+
+---
+
+## Complete teardown (remove all state)
+
+The per-method `### Uninstall` blocks above remove only the **package**, and the
+block above removes only the **plugin**. Neither touches running servers,
+per-project state, global dirs, MCP configs, or your shell rc. For a full
+removal, run in order — stop/enumerate servers **before** removing the binary:
+
+```bash
+# 1. Stop every server (needs the binary — do it first) and note its project.
+brainpalace list
+brainpalace stop --path <project>          # repeat per project
+
+# 2. Remove the plugin dirs from each runtime (see "Uninstalling" above).
+
+# 3. Uninstall the package (see the per-method "Uninstall" blocks above).
+
+# 4. Delete per-project state — ⚠️ holds archived raw transcripts (secrets).
+rm -rf <project>/.brainpalace             # one per initialised project
+
+# 5. Delete global state (honour $XDG_* overrides if set).
+rm -rf ~/.config/brainpalace ~/.local/state/brainpalace \
+       ~/.local/share/brainpalace ~/.brainpalace
+
+# 6. Remove the `brainpalace` entry from any MCP client config (project + $HOME):
+#    .vscode/mcp.json .cursor/mcp.json .zed/settings.json
+#    .cline/mcp.json  .continue/mcp.yaml .kilo/kilo.jsonc
+
+# 7. Remove any `export <PROVIDER>_API_KEY=…` you added to your shell rc.
+```
+
+Full prose version: [docs/INSTALL.md → Full uninstall (teardown)](../../../../docs/INSTALL.md#full-uninstall-teardown).
 
 ---
 

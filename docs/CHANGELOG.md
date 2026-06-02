@@ -14,6 +14,29 @@ month (the counter resets monthly). It looks like SemVer but is not.
 
 ## [Unreleased]
 
+## [26.6.7] - 2026-06-02
+
+### Added
+- **Guided uninstall — `scripts/uninstall.sh`.** Interactive teardown mirroring
+  `setup.sh`: stops servers, removes plugin dirs (all runtimes, both scopes),
+  surgically strips the `brainpalace` entry from MCP client configs (keeping
+  your other servers), uninstalls the package (auto-detected pipx/uv/pip), then
+  offers multi-select per-project and global-state deletion. Shell rc is left
+  to the user (an exported API key may be shared with other tools).
+- **"Full uninstall (teardown)" docs** in `docs/INSTALL.md` and both skill
+  installation guides, with a guided-uninstall curl one-liner.
+
+### Fixed
+- **Broken install URLs pointing at the local-only `stable` branch.** The
+  README `setup.sh` one-liner and the `PLUGIN_GUIDE.md` CI `pip install`
+  examples fetched `…/stable/…` / `@stable`, which 404 on GitHub (only `main`
+  is published). Now `main`.
+- **Documented a CLI command that does not exist.** `brainpalace uninstall
+  --agent <runtime>` was referenced across the docs, but `uninstall` removes
+  global data (no `--agent`) and `install-agent` only installs — there is no
+  CLI to remove a plugin. Replaced with direct `rm -rf` of the plugin dirs.
+  Also fixed `install-agent --scope global` → `--global` (wrong flag).
+
 ## [26.6.6] - 2026-06-02
 
 ### Changed

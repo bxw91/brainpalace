@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-01
+last_validated: 2026-06-02
 ---
 
 <div align="center">
@@ -81,10 +81,21 @@ Code, Zed). One command does both — it will ask which MCP client to wire (or
 "none" for CLI-only) along the way. Nothing runs until you answer.
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/bxw91/brainpalace/stable/scripts/setup.sh | bash
+curl -sSL https://raw.githubusercontent.com/bxw91/brainpalace/main/scripts/setup.sh | bash
 ```
 
 That's it.
+
+**Want to remove it?** A guided uninstall mirrors the installer — it stops
+servers, strips plugins + MCP entries, uninstalls the package, then asks before
+deleting per-project and global state:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/bxw91/brainpalace/main/scripts/uninstall.sh | bash
+```
+
+Full teardown reference:
+[`docs/INSTALL.md → Full uninstall (teardown)`](docs/INSTALL.md#full-uninstall-teardown).
 
 **Got more projects to index later?** The binary is installed once per
 machine; every new project needs three commands

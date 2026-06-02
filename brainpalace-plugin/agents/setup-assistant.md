@@ -31,7 +31,7 @@ allowed_tools:
   - "Edit(~/.config/brainpalace/**)"
   - "Write(.claude/brainpalace/**)"
   - "Edit(.claude/brainpalace/**)"
-last_validated: 2026-05-30
+last_validated: 2026-06-02
 ---
 
 # Setup Assistant Agent
@@ -310,7 +310,7 @@ brainpalace install-agent --agent skill-runtime --dir /path/to/skills
 brainpalace install-agent --agent claude --dry-run
 
 # Global (user-level) installation
-brainpalace install-agent --agent claude --scope global
+brainpalace install-agent --agent claude --global
 ```
 
 ### Supported Runtimes

@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-05-30
+last_validated: 2026-06-02
 ---
 
 # BrainPalace Plugin Guide
@@ -673,8 +673,8 @@ jobs:
       - name: Install BrainPalace
         run: |
           pip install --upgrade \
-            "git+https://github.com/bxw91/brainpalace.git@stable#subdirectory=brainpalace-cli" \
-            "git+https://github.com/bxw91/brainpalace.git@stable#subdirectory=brainpalace-server"
+            "git+https://github.com/bxw91/brainpalace.git@main#subdirectory=brainpalace-cli" \
+            "git+https://github.com/bxw91/brainpalace.git@main#subdirectory=brainpalace-server"
       - name: Start and Index
         run: |
           brainpalace init

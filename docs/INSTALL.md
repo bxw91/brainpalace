@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-05-30
+last_validated: 2026-06-02
 ---
 
 # Install — alternative paths
@@ -247,3 +247,109 @@ pipx install brainpalace-cli
 ```
 
 `brainpalace-cli` pulls the `brainpalace-rag` server into the same venv.
+
+---
+
+## Full uninstall (teardown)
+
+Uninstalling the package alone does **not** remove BrainPalace. State is left in
+project directories, global XDG dirs, MCP client configs, and your shell rc.
+
+### Guided uninstall (recommended)
+
+The interactive mirror of `setup.sh` — confirms every removal, stops servers,
+strips plugins + MCP entries, uninstalls the package, then offers to delete
+per-project and global state:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/bxw91/brainpalace/main/scripts/uninstall.sh | bash
+```
+
+It deliberately leaves your shell rc alone (an exported API key may be shared
+with other tools). Prefer the manual steps below if you want full control.
+
+### Manual teardown
+
+Run these steps **in order** — enumerate and stop servers *before* removing the
+binary, or you lose the tool that lists them.
+
+#### 1. Stop every running server
+
+```bash
+brainpalace list                       # show all running servers + their projects
+brainpalace stop --path <project>      # repeat per project (or run from each dir)
+```
+
+`pipx uninstall` does not stop daemons; skipping this leaves orphan `uvicorn`
+processes.
+
+#### 2. Note the projects, then remove the plugin from each runtime
+
+Record the project list from `brainpalace list` first — you need it in step 4.
+
+There is **no CLI command to remove an installed plugin** (`install-agent` only
+installs). Delete the install dirs directly — per runtime, project scope **and**
+global scope:
+
+```bash
+rm -rf .claude/plugins/brainpalace    ~/.claude/plugins/brainpalace
+rm -rf .opencode/plugins/brainpalace  ~/.config/opencode/plugins/brainpalace
+rm -rf .gemini/plugins/brainpalace    ~/.config/gemini/plugins/brainpalace
+rm -rf .codex/skills/brainpalace      ~/.codex/skills/brainpalace
+```
+
+(Run the project-scope paths from each project root; the `~/...` paths are the
+global installs.)
+
+#### 3. Uninstall the package
+
+| Method | Command |
+|--------|---------|
+| pipx | `pipx uninstall brainpalace-cli` |
+| uv | `uv tool uninstall brainpalace-cli` |
+| pip | `pip uninstall brainpalace-rag brainpalace-cli -y` |
+| conda | `pip uninstall brainpalace-rag brainpalace-cli -y` (inside the env), then `conda env remove -n brainpalace` |
+
+#### 4. Delete per-project state — ⚠️ contains raw session transcripts
+
+Every initialised project has a `.brainpalace/` holding the index, logs, config,
+**and archived raw chat transcripts (full user turns — may include secrets).**
+There is one per project (use the list from step 1/2):
+
+```bash
+rm -rf <project>/.brainpalace          # repeat for every project
+```
+
+#### 5. Delete global state (XDG dirs + legacy)
+
+Respect `$XDG_CONFIG_HOME` / `$XDG_STATE_HOME` / `$XDG_DATA_HOME` if you set them;
+otherwise the defaults are:
+
+```bash
+rm -rf ~/.config/brainpalace           # config.yaml (global)
+rm -rf ~/.local/state/brainpalace      # registry.json (tracks all projects)
+rm -rf ~/.local/share/brainpalace      # data (if present)
+rm -rf ~/.brainpalace                  # legacy pre-XDG dir (if present)
+```
+
+#### 6. Remove MCP client config entries
+
+`setup.sh` may have written a `brainpalace` server entry (with an absolute path
+to the now-deleted binary) into any of these. Delete the entry or the file:
+
+```
+.vscode/mcp.json    .cursor/mcp.json     .zed/settings.json
+.cline/mcp.json     .continue/mcp.yaml   .kilo/kilo.jsonc
+```
+
+These can live at project scope **and** at `$HOME` (user scope) — check both.
+
+#### 7. Revert shell rc + PATH
+
+- Remove any `export OPENAI_API_KEY=…` (or other provider key) you added on
+  setup.sh's advice.
+- `pipx` added its bin dir to `PATH` via `pipx ensurepath`; remove that line if
+  BrainPalace was the only pipx tool.
+
+After step 7, `command -v brainpalace` should print nothing and no `.brainpalace/`
+or `*/brainpalace` directories remain.

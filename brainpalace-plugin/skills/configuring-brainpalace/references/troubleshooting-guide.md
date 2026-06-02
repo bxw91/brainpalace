@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-05-30
+last_validated: 2026-06-02
 ---
 
 # BrainPalace Troubleshooting Guide
@@ -538,12 +538,10 @@ ls ~/.claude/plugins/brainpalace/commands/
 
 ### Uninstall Not Removing Files
 
-```bash
-# Uninstall for specific runtime
-brainpalace uninstall --agent claude
+There is no CLI to remove a plugin — delete its dir directly (project + global):
 
-# Manual cleanup if needed
-rm -rf .claude/plugins/brainpalace
+```bash
+rm -rf .claude/plugins/brainpalace ~/.claude/plugins/brainpalace
 ```
 
 ---

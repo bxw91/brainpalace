@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-05-30
+last_validated: 2026-06-02
 ---
 
 # BrainPalace API Reference
@@ -418,8 +418,9 @@ brainpalace install-agent --agent gemini        # Install for Gemini
 brainpalace install-agent --agent codex         # Install for Codex
 brainpalace install-agent --agent skill-runtime --dir /path  # Generic
 brainpalace install-agent --agent claude --dry-run  # Preview
-brainpalace install-agent --agent claude --scope global  # Global install
-brainpalace uninstall --agent claude            # Uninstall
+brainpalace install-agent --agent claude --global  # Global install
+# No CLI to uninstall a plugin — remove its dir, e.g.:
+rm -rf .claude/plugins/brainpalace ~/.claude/plugins/brainpalace  # Uninstall
 ```
 
 **Global Options:**
