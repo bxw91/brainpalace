@@ -148,33 +148,48 @@ class TestIndexEndpoints:
         assert data["status"] == "pending"
 
     def test_reset_index_success(self, client, mock_vector_store):
-        """Test resetting the index."""
+        """Reset succeeds when no indexing jobs are running.
+
+        The DELETE /index/ handler gates on ``app.state.job_service``'s queue
+        stats and calls ``app.state.indexing_service.reset()`` — it never reads
+        the module-level ``get_indexing_service``/``is_indexing`` the old test
+        patched. We override the two symbols the route actually resolves so the
+        test is authoritative regardless of any job/singleton state leaked by a
+        prior test (Bug 2: was flaky → 409 under full-suite ordering).
+        """
         mock_vector_store.is_initialized = True
 
-        with patch(
-            "brainpalace_server.services.get_indexing_service"
-        ) as mock_get_service:
-            mock_service = MagicMock()
-            mock_service.is_indexing = False
-            mock_service.reset = AsyncMock()
-            mock_get_service.return_value = mock_service
+        mock_job = MagicMock()
+        mock_job.get_queue_stats = AsyncMock(return_value=MagicMock(running=0))
+        client.app.state.job_service = mock_job
 
-            response = client.delete("/index/")
+        mock_idx = MagicMock()
+        mock_idx.reset = AsyncMock()
+        client.app.state.indexing_service = mock_idx
+
+        response = client.delete("/index/")
 
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "completed"
         assert "reset" in data["message"].lower()
+        mock_idx.reset.assert_awaited_once()
 
     def test_reset_index_conflict_when_indexing(self, client):
-        """Test reset conflict when indexing in progress."""
-        # Note: This test verifies the endpoint behavior. In production,
-        # a 409 is returned when is_indexing=True. The mock fixture
-        # sets is_indexing=False by default, so we get a 200 success.
-        # The actual conflict logic is tested via the service unit tests.
+        """Reset returns 409 when an indexing job is running.
+
+        Forces the conflict path authoritatively by making the route's
+        ``app.state.job_service`` report a running job — the previous test could
+        not exercise this branch (its comment admitted as much).
+        """
+        mock_job = MagicMock()
+        mock_job.get_queue_stats = AsyncMock(return_value=MagicMock(running=1))
+        client.app.state.job_service = mock_job
+
         response = client.delete("/index/")
-        # With mocked service (is_indexing=False), reset succeeds
-        assert response.status_code == 200
+
+        assert response.status_code == 409
+        assert "in progress" in response.json()["detail"].lower()
 
 
 class TestQueryEndpoints:

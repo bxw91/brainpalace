@@ -8,9 +8,25 @@ import pytest
 import yaml
 
 from brainpalace_cli.commands.init import (
-    DEFAULT_PROVIDER_CONFIG,
+    build_default_provider_config,
     write_default_provider_config,
 )
+
+# Every provider API-key env var init inspects when choosing defaults (Bug 0).
+_ALL_PROVIDER_KEYS = (
+    "OPENAI_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "COHERE_API_KEY",
+    "GEMINI_API_KEY",
+    "XAI_API_KEY",
+)
+
+
+@pytest.fixture
+def no_provider_keys(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Clear all provider API keys so default selection is deterministic."""
+    for key in _ALL_PROVIDER_KEYS:
+        monkeypatch.delenv(key, raising=False)
 
 
 @pytest.fixture
@@ -64,11 +80,63 @@ def test_force_overwrites(tmp_path: Path, isolated_xdg: Path) -> None:
     assert "old" not in data
 
 
-def test_defaults_match_constant(tmp_path: Path, isolated_xdg: Path) -> None:
-    """Written config matches DEFAULT_PROVIDER_CONFIG (no silent drift)."""
+def test_defaults_match_builder(tmp_path: Path, isolated_xdg: Path) -> None:
+    """Written config matches build_default_provider_config (no silent drift)."""
     write_default_provider_config(tmp_path)
     data = yaml.safe_load((tmp_path / "config.yaml").read_text())
-    assert data == DEFAULT_PROVIDER_CONFIG
+    assert data == build_default_provider_config()
+
+
+def test_no_keys_falls_back_to_openai_anthropic(
+    no_provider_keys: None,
+) -> None:
+    """No provider keys → fallback (openai embed + anthropic summarize)."""
+    config = build_default_provider_config()
+    assert config["embedding"]["provider"] == "openai"
+    assert config["summarization"]["provider"] == "anthropic"
+
+
+def test_openai_only_env_defaults_summarizer_to_openai(
+    no_provider_keys: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Bug 0: OPENAI_API_KEY set, ANTHROPIC absent → summarizer = openai.
+
+    Zero-edit happy path: an openai-only user must NOT be forced to set an
+    Anthropic key or edit config.yaml.
+    """
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    config = build_default_provider_config()
+    assert config["embedding"]["provider"] == "openai"
+    assert config["summarization"]["provider"] == "openai"
+
+
+def test_anthropic_preferred_when_present(
+    no_provider_keys: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Both keys present → anthropic stays the summarization default."""
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant")
+    config = build_default_provider_config()
+    assert config["summarization"]["provider"] == "anthropic"
+
+
+def test_gemini_only_env_defaults_summarizer_to_gemini(
+    no_provider_keys: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Gemini-only env → summarizer = gemini; embedding falls back to openai."""
+    monkeypatch.setenv("GEMINI_API_KEY", "g-test")
+    config = build_default_provider_config()
+    assert config["summarization"]["provider"] == "gemini"
+    assert config["embedding"]["provider"] == "openai"  # no embed gemini option
+
+
+def test_cohere_env_picks_cohere_embedding(
+    no_provider_keys: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """COHERE key (no OPENAI) → embedding = cohere."""
+    monkeypatch.setenv("COHERE_API_KEY", "co-test")
+    config = build_default_provider_config()
+    assert config["embedding"]["provider"] == "cohere"
 
 
 def test_copies_xdg_global_when_present(tmp_path: Path, isolated_xdg: Path) -> None:

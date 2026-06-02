@@ -15,6 +15,7 @@ import click
 from rich.console import Console
 from rich.panel import Panel
 
+from brainpalace_cli.config import resolve_project_root
 from brainpalace_cli.migration import resolve_state_dir_with_fallback
 from brainpalace_cli.xdg_paths import get_xdg_state_dir, migrate_legacy_paths
 
@@ -24,38 +25,6 @@ STATE_DIR_NAME = ".brainpalace"
 LOCK_FILE = "brainpalace.lock"
 PID_FILE = "brainpalace.pid"
 RUNTIME_FILE = "runtime.json"
-
-
-def resolve_project_root(start_path: Path | None = None) -> Path:
-    """Resolve the canonical project root directory."""
-    start = (start_path or Path.cwd()).resolve()
-
-    # Try git root first
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--show-toplevel"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-            cwd=str(start),
-        )
-        if result.returncode == 0:
-            return Path(result.stdout.strip()).resolve()
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
-        pass
-
-    # Walk up looking for markers
-    current = start
-    while current != current.parent:
-        if (current / ".brainpalace").is_dir():
-            return current
-        if (current / ".claude").is_dir():
-            return current
-        if (current / "pyproject.toml").is_file():
-            return current
-        current = current.parent
-
-    return start
 
 
 def read_config(state_dir: Path) -> dict[str, Any]:

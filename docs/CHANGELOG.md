@@ -14,6 +14,32 @@ month (the counter resets monthly). It looks like SemVer but is not.
 
 ## [Unreleased]
 
+## [26.6.9] - 2026-06-02
+
+### Fixed
+- **`init` no longer hardcodes the Anthropic summarizer.** The default
+  `config.yaml` now picks providers from the API keys present in the
+  environment: summarization prefers `anthropic` → `openai` → `gemini` →
+  `grok`, embedding prefers `openai` → `cohere`, each falling through to the
+  next whose key is set. An OpenAI-only environment gets a working config with
+  no edit — previously `init --start` failed the provider preflight on the
+  missing `ANTHROPIC_API_KEY` and left the user editing config on a fresh
+  project. The user's global XDG `config.yaml` still wins when present.
+- **`brainpalace start` / `stop` now resolve the project root correctly in a
+  mono-repo.** Both commands carried byte-identical resolvers that tried the
+  git top-level *first*, so a sub-project whose only `.git` lives at the
+  workspace root resolved to the workspace root and reported "Project not
+  initialized" — even with a local `.brainpalace/`. They now import the
+  canonical `config.resolve_project_root`, which checks the nearest
+  `.brainpalace/` before git (matching `whoami`/`doctor`/`index`/`query`/
+  `status`).
+- **`test_reset_index_success` is no longer order-dependent.** The reset route
+  gates on `app.state.job_service` queue stats and calls
+  `app.state.indexing_service.reset()`; the test patched an unrelated
+  `get_indexing_service` symbol, so leaked job state from a prior test could
+  flip it to a 409. The reset tests now override the symbols the route actually
+  reads, and the conflict test forces the 409 path authoritatively.
+
 ## [26.6.8] - 2026-06-02
 
 ### Added

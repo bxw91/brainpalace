@@ -102,6 +102,40 @@ def test_resolve_project_root_no_git_no_state(
     assert resolve_project_root(isolated_cwd) == isolated_cwd
 
 
+def test_start_stop_use_canonical_resolver(
+    isolated_cwd: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """start/stop must resolve the nearest .brainpalace/ in a mono-repo (Bug 1).
+
+    Before the fix start.py/stop.py carried byte-identical forks of the
+    resolver that tried the git root FIRST, so a sub-project whose git root is
+    the workspace parent resolved to the parent and missed its own
+    .brainpalace/. Both commands now import config.resolve_project_root, which
+    checks the state dir before git. Guards against the fork being reintroduced.
+    """
+    from brainpalace_cli.commands import start as start_mod
+    from brainpalace_cli.commands import stop as stop_mod
+
+    # Both commands must share the one canonical resolver, not a local copy.
+    assert start_mod.resolve_project_root is resolve_project_root
+    assert stop_mod.resolve_project_root is resolve_project_root
+
+    # Mono-repo: git root is the workspace parent; sub-project has .brainpalace/.
+    nested = isolated_cwd / "projects" / "claude-clock"
+    nested.mkdir(parents=True)
+    (nested / ".brainpalace").mkdir()
+
+    def fake_git(args, *_, **__):  # type: ignore[no-untyped-def]
+        return subprocess.CompletedProcess(
+            args=args, returncode=0, stdout=str(isolated_cwd) + "\n", stderr=""
+        )
+
+    monkeypatch.setattr("subprocess.run", fake_git)
+
+    assert start_mod.resolve_project_root(nested) == nested
+    assert stop_mod.resolve_project_root(nested) == nested
+
+
 def test_doctor_hint_when_runtime_missing(isolated_cwd: Path) -> None:
     """Hint message must point at the missing runtime.json, not a generic tip."""
     msg = doctor_hint_message(isolated_cwd)

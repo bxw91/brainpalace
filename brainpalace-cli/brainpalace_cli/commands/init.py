@@ -1,6 +1,7 @@
 """Init command for initializing an BrainPalace project."""
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -40,28 +41,66 @@ DEFAULT_CONFIG = {
 
 STATE_DIR_NAME = ".brainpalace"
 
-# Default config.yaml written by `brainpalace init` for new projects (Phase L).
-# Graph indexing is enabled with the cheap AST-code-only path: no LLM cost on
-# docs, no extra dependencies. Users can run `brainpalace config wizard` to
-# override (e.g. switch to LangExtract on docs).
-DEFAULT_PROVIDER_CONFIG = {
-    "embedding": {
-        "provider": "openai",
-        "model": "text-embedding-3-large",
-    },
-    "summarization": {
-        "provider": "anthropic",
-        "model": "claude-haiku-4-5-20251001",
-    },
-    "graphrag": {
-        "enabled": True,
-        "store_type": "simple",
-        "use_code_metadata": True,
-    },
-    "storage": {
-        "backend": "chroma",
-    },
+# Embedding providers in preference order: (provider, model, api-key env var).
+# None env var = no key needed (local). `init` picks the first whose key is
+# present in the environment, so an OpenAI-only env doesn't force an edit.
+_EMBEDDING_PREFERENCE = [
+    ("openai", "text-embedding-3-large", "OPENAI_API_KEY"),
+    ("cohere", "embed-english-v3.0", "COHERE_API_KEY"),
+]
+_EMBEDDING_FALLBACK = {"provider": "openai", "model": "text-embedding-3-large"}
+
+# Summarization providers in preference order: (provider, model, api-key env var).
+_SUMMARIZATION_PREFERENCE = [
+    ("anthropic", "claude-haiku-4-5-20251001", "ANTHROPIC_API_KEY"),
+    ("openai", "gpt-5-mini", "OPENAI_API_KEY"),
+    ("gemini", "gemini-2.0-flash", "GEMINI_API_KEY"),
+    ("grok", "grok-4-fast", "XAI_API_KEY"),
+]
+_SUMMARIZATION_FALLBACK = {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5-20251001",
 }
+
+
+def _pick_provider(
+    preference: list[tuple[str, str, str]],
+    fallback: dict[str, str],
+) -> dict[str, str]:
+    """Pick the first provider whose API-key env var is set, else the fallback.
+
+    Gives a zero-edit happy path: when only one provider key is present in the
+    environment, both embedding and summarization default to a provider that
+    key can actually drive — instead of hardcoding anthropic + openai and
+    forcing the user to edit config.yaml on a fresh project (Bug 0).
+    """
+    for provider, model, env_var in preference:
+        if os.environ.get(env_var):
+            return {"provider": provider, "model": model}
+    return dict(fallback)
+
+
+def build_default_provider_config() -> dict[str, object]:
+    """Build the default config.yaml provider block from detected env keys.
+
+    Graph indexing is enabled with the cheap AST-code-only path: no LLM cost on
+    docs, no extra dependencies. Users can run `brainpalace config wizard` to
+    override (e.g. switch to LangExtract on docs).
+    """
+    return {
+        "embedding": _pick_provider(_EMBEDDING_PREFERENCE, _EMBEDDING_FALLBACK),
+        "summarization": _pick_provider(
+            _SUMMARIZATION_PREFERENCE, _SUMMARIZATION_FALLBACK
+        ),
+        "graphrag": {
+            "enabled": True,
+            "store_type": "simple",
+            "use_code_metadata": True,
+        },
+        "storage": {
+            "backend": "chroma",
+        },
+    }
 
 
 def write_default_provider_config(state_dir: Path, force: bool = False) -> bool:
@@ -74,8 +113,8 @@ def write_default_provider_config(state_dir: Path, force: bool = False) -> bool:
     1. If a user-level config exists at XDG (~/.config/brainpalace/config.yaml),
        copy it — respects whichever embedding/summarization provider the
        user configured globally.
-    2. Otherwise write the hardcoded DEFAULT_PROVIDER_CONFIG (OpenAI
-       embedding + Anthropic summarization + graphrag code-only).
+    2. Otherwise write a default provider block chosen from detected env keys
+       (see build_default_provider_config) + graphrag code-only.
 
     Returns True if the file was written, False if it already existed.
     """
@@ -92,7 +131,7 @@ def write_default_provider_config(state_dir: Path, force: bool = False) -> bool:
 
     with open(config_path, "w", encoding="utf-8") as f:
         yaml.safe_dump(
-            DEFAULT_PROVIDER_CONFIG,
+            build_default_provider_config(),
             f,
             default_flow_style=False,
             sort_keys=False,
