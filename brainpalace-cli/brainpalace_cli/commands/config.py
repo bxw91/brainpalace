@@ -193,12 +193,12 @@ def wizard(global_: bool) -> None:
             console.print()
 
     embed_provider: str = click.prompt(
-        "Embedding provider",
+        "\nEmbedding provider",
         type=click.Choice(["openai", "ollama", "cohere"]),
         default="openai",
     )
     embed_model: str = click.prompt(
-        "Embedding model",
+        "\nEmbedding model",
         default=EMBEDDING_DEFAULT_MODELS[embed_provider],
     )
 
@@ -206,43 +206,59 @@ def wizard(global_: bool) -> None:
     request_delay_ms: int | None = None
     if embed_provider == "ollama":
         batch_size = click.prompt(
-            "Batch size",
+            "\nBatch size",
             type=click.Choice(["1", "5", "10", "20", "50", "100"]),
             default="10",
         )
         request_delay_ms = click.prompt(
-            "Request delay between batches (ms, 0=none)",
+            "\nRequest delay between batches (ms, 0=none)",
             type=click.IntRange(min=0),
             default=0,
         )
 
+    # Default summarization to the embedding provider when it can also
+    # summarize (openai, ollama); otherwise fall back to whichever
+    # summarization API key is already set in the environment, else anthropic.
+    if embed_provider in ("openai", "ollama"):
+        summ_default = embed_provider
+    elif os.getenv("OPENAI_API_KEY"):
+        summ_default = "openai"
+    elif os.getenv("ANTHROPIC_API_KEY"):
+        summ_default = "anthropic"
+    elif os.getenv("GOOGLE_API_KEY"):
+        summ_default = "gemini"
+    else:
+        summ_default = "anthropic"
     summ_provider: str = click.prompt(
-        "Summarization provider",
+        "\nSummarization provider",
         type=click.Choice(["anthropic", "openai", "ollama", "gemini"]),
-        default="anthropic",
+        default=summ_default,
     )
     summ_model: str = click.prompt(
-        "Summarization model",
+        "\nSummarization model",
         default=SUMMARIZATION_DEFAULT_MODELS[summ_provider],
     )
 
     graphrag_mode: str = click.prompt(
-        "GraphRAG mode\n"
-        "1) Disabled\n"
-        "2) AST for code + LangExtract for docs (mixed repos; LLM cost on docs)\n"
-        "3) AST for code only (recommended — free, fast, no LLM cost)",
+        "\nGraphRAG (relationship-aware search across code + docs)\n"
+        "1) Off — vector + keyword search only; no graph\n"
+        "2) On, code + docs — graph from code structure AND document text\n"
+        "     (uses your summarization model on docs)\n"
+        "3) On, code only — graph from code structure; no extra model usage\n"
+        "Select",
         type=click.Choice(["1", "2", "3"]),
         default="3",
     )
 
     suggested_port = _find_available_api_port(8000, 8300)
-    click.echo(f"Discovered available API port in 8000-8300 range: {suggested_port}")
+    click.echo(f"\nDiscovered available API port in 8000-8300 range: {suggested_port}")
 
     deployment_mode: str = click.prompt(
-        "Deployment mode\n"
+        "\nDeployment mode\n"
         "1) Localhost only (127.0.0.1)\n"
         "2) Network accessible (0.0.0.0 or custom host)\n"
-        "3) Custom port on localhost",
+        "3) Custom port on localhost\n"
+        "Select",
         type=click.Choice(["1", "2", "3"]),
         default="1",
     )
@@ -250,17 +266,17 @@ def wizard(global_: bool) -> None:
     api_host = "127.0.0.1"
     if deployment_mode == "2":
         host_mode: str = click.prompt(
-            "Host selection\n" "1) 0.0.0.0\n" "2) Custom host/IP",
+            "\nHost selection\n" "1) 0.0.0.0\n" "2) Custom host/IP",
             type=click.Choice(["1", "2"]),
             default="1",
         )
         if host_mode == "1":
             api_host = "0.0.0.0"
         else:
-            api_host = click.prompt("Custom host", default="0.0.0.0")
+            api_host = click.prompt("\nCustom host", default="0.0.0.0")
 
     api_port: int = click.prompt(
-        "API port",
+        "\nAPI port",
         type=click.IntRange(min=1, max=65535),
         default=suggested_port,
     )

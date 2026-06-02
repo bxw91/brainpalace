@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-05-30
+last_validated: 2026-06-02
 ---
 
 # BrainPalace Configuration Guide
@@ -14,18 +14,19 @@ BrainPalace supports multiple configuration methods with clear precedence rules.
 
 The config.yaml file provides a centralized configuration without needing to modify shell profiles.
 
-**Search locations** (in order):
+**Search locations** (in order — matches the server's resolver):
 
 1. `BRAINPALACE_CONFIG` environment variable (explicit path)
-2. Current directory: `./brainpalace.yaml` or `./config.yaml`
-3. Project directory: `./.brainpalace/config.yaml`
-4. User home: `~/.brainpalace/config.yaml`
-5. XDG config: `~/.config/brainpalace/config.yaml`
+2. State dir `config.yaml` (if `BRAINPALACE_STATE_DIR`/`DOC_SERVE_STATE_DIR` set)
+3. Current directory: `./config.yaml`
+4. Project directory: `./.brainpalace/config.yaml`
+5. XDG config (preferred global): `~/.config/brainpalace/config.yaml`
+6. User home (legacy, deprecated): `~/.brainpalace/config.yaml`
 
 **Complete config.yaml example**:
 
 ```yaml
-# ~/.brainpalace/config.yaml
+# ~/.config/brainpalace/config.yaml
 # BrainPalace Configuration
 
 # Server settings (for CLI connection)
@@ -282,7 +283,7 @@ GraphRAG enables graph-based retrieval using entity relationships extracted from
 ### GraphRAG in config.yaml
 
 ```yaml
-# ~/.brainpalace/config.yaml
+# ~/.config/brainpalace/config.yaml
 graphrag:
   enabled: true
   store_type: "simple"  # "simple" or "kuzu"
@@ -410,7 +411,7 @@ brainpalace index /path/to/docs
 ### Fully Local (Ollama - No API Keys)
 
 ```yaml
-# ~/.brainpalace/config.yaml
+# ~/.config/brainpalace/config.yaml
 embedding:
   provider: "ollama"
   model: "nomic-embed-text"
@@ -425,7 +426,7 @@ summarization:
 ### Cloud (Best Quality)
 
 ```yaml
-# ~/.brainpalace/config.yaml
+# ~/.config/brainpalace/config.yaml
 embedding:
   provider: "openai"
   model: "text-embedding-3-large"
@@ -440,7 +441,7 @@ summarization:
 ### Custom State Directory
 
 ```yaml
-# ~/.brainpalace/config.yaml
+# ~/.config/brainpalace/config.yaml
 project:
   state_dir: "/data/brainpalace/my-project"
 
@@ -452,7 +453,7 @@ embedding:
 ### GraphRAG Enabled (Code Search)
 
 ```yaml
-# ~/.brainpalace/config.yaml
+# ~/.config/brainpalace/config.yaml
 embedding:
   provider: "openai"
   model: "text-embedding-3-large"
@@ -481,7 +482,7 @@ If storing API keys in config files:
 
 ```bash
 # Restrict to owner only
-chmod 600 ~/.brainpalace/config.yaml
+chmod 600 ~/.config/brainpalace/config.yaml
 ```
 
 ### Git Ignore
@@ -506,13 +507,13 @@ Regenerate API keys periodically and update configurations.
 
 ```bash
 # Check config file exists
-ls -la ~/.brainpalace/config.yaml
+ls -la ~/.config/brainpalace/config.yaml
 
 # Verify YAML syntax
 python -c "import yaml; yaml.safe_load(open('config.yaml'))"
 
 # Force specific config
-export BRAINPALACE_CONFIG="$HOME/.brainpalace/config.yaml"
+export BRAINPALACE_CONFIG="$HOME/.config/brainpalace/config.yaml"
 ```
 
 ### API Key Not Working
@@ -523,7 +524,7 @@ curl https://api.openai.com/v1/models \
   -H "Authorization: Bearer $OPENAI_API_KEY"
 
 # Check if key is in config or env
-cat ~/.brainpalace/config.yaml | grep api_key
+cat ~/.config/brainpalace/config.yaml | grep api_key
 echo ${OPENAI_API_KEY:+SET}
 ```
 

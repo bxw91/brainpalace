@@ -407,7 +407,9 @@ brainpalace inject --script enrich.py ./docs    # Index with injection
 **Configuration (v8.0+):**
 ```bash
 brainpalace config show                         # Show current configuration
-brainpalace config set embedding.provider openai  # Set a config value
+brainpalace config path                         # Show active config file path
+brainpalace config wizard --global              # Reconfigure providers (writes global XDG config)
+brainpalace config validate                     # Validate the active config
 ```
 
 **Multi-Runtime Install (v9.0+):**

@@ -50,6 +50,59 @@ same prerequisites and end with the same `brainpalace` CLI on your `PATH`.
 
 ---
 
+### Install as a CLI or MCP server
+
+Use this if you want `brainpalace` as a command-line tool, or if you want to
+connect an MCP-capable editor (Cursor, VS Code Copilot, Cline, Continue, Kilo
+Code, Zed). One command does both — it will ask which MCP client to wire (or
+"none" for CLI-only) along the way. Nothing runs until you answer.
+
+```bash
+curl -sSL https://raw.githubusercontent.com/bxw91/brainpalace/main/scripts/setup.sh | bash
+```
+
+That's it.
+
+**Update later** (auto-detects pipx/uv/pip):
+
+```bash
+brainpalace update
+```
+
+```bash
+brainpalace stop && brainpalace start
+```
+
+**Got more projects to index later?** The binary is installed once per machine;
+every new project just needs (full setup by default — opt out with `--no-start`
+/ `--no-sessions` / `--yes` for CI):
+
+```bash
+brainpalace init
+```
+
+How-to:
+[`docs/INSTALL.md → Adding more projects`](docs/INSTALL.md#adding-more-projects-after-the-first-install).
+
+**Want to remove it?** `brainpalace uninstall` runs a guided teardown — stops
+servers, removes plugins + MCP entries, then asks before deleting per-project
+and global state, and prints any leftover step:
+
+```bash
+brainpalace uninstall
+```
+
+If the binary is already gone, the bash mirror does the same:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/bxw91/brainpalace/main/scripts/uninstall.sh | bash
+```
+
+Full teardown reference:
+[`docs/INSTALL.md → Full uninstall (teardown)`](docs/INSTALL.md#full-uninstall-teardown).
+
+---
+
 ### Install as a Claude Code plugin
 
 Richest UX — 30 slash commands, 3 agents, 2 skills. The setup wizard inside
@@ -70,42 +123,6 @@ slash command.
    ```
 
 Full Claude Code reference: [`docs/PLUGIN_GUIDE.md`](docs/PLUGIN_GUIDE.md).
-
----
-
-### Install as a CLI or MCP server
-
-Use this if you want `brainpalace` as a command-line tool, or if you want to
-connect an MCP-capable editor (Cursor, VS Code Copilot, Cline, Continue, Kilo
-Code, Zed). One command does both — it will ask which MCP client to wire (or
-"none" for CLI-only) along the way. Nothing runs until you answer.
-
-```bash
-curl -sSL https://raw.githubusercontent.com/bxw91/brainpalace/main/scripts/setup.sh | bash
-```
-
-That's it.
-
-**Update later:** `brainpalace update` (auto-detects pipx/uv/pip), then
-`brainpalace stop && brainpalace start` to reload.
-
-**Want to remove it?** `brainpalace uninstall` runs a guided teardown — stops
-servers, removes plugins + MCP entries, then asks before deleting per-project
-and global state, and prints any leftover step. If the binary is already gone,
-the bash mirror does the same:
-
-```bash
-curl -sSL https://raw.githubusercontent.com/bxw91/brainpalace/main/scripts/uninstall.sh | bash
-```
-
-Full teardown reference:
-[`docs/INSTALL.md → Full uninstall (teardown)`](docs/INSTALL.md#full-uninstall-teardown).
-
-**Got more projects to index later?** The binary is installed once per
-machine; every new project just needs `brainpalace init` (full setup by
-default — opt out with `--no-start` / `--no-sessions` / `--yes` for CI).
-Full how-to:
-[`docs/INSTALL.md → Adding more projects`](docs/INSTALL.md#adding-more-projects-after-the-first-install).
 
 ---
 

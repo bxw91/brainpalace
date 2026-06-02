@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-05-30
+last_validated: 2026-06-02
 ---
 
 # Provider Configuration Guide
@@ -37,12 +37,13 @@ Summarization generates concise descriptions of code and documents during indexi
 Create a `config.yaml` file with API keys and settings. BrainPalace searches these locations in order:
 
 1. `BRAINPALACE_CONFIG` environment variable (explicit path)
-2. Current directory: `./brainpalace.yaml` or `./config.yaml`
-3. Project directory: `./.brainpalace/config.yaml`
-4. User home: `~/.brainpalace/config.yaml`
-5. XDG config: `~/.config/brainpalace/config.yaml`
+2. State dir `config.yaml` (if `BRAINPALACE_STATE_DIR`/`DOC_SERVE_STATE_DIR` set)
+3. Current directory: `./config.yaml`
+4. Project directory: `./.brainpalace/config.yaml`
+5. XDG config (preferred global): `~/.config/brainpalace/config.yaml`
+6. User home (legacy, deprecated): `~/.brainpalace/config.yaml`
 
-**Complete example** (`~/.brainpalace/config.yaml`):
+**Complete example** (`~/.config/brainpalace/config.yaml`):
 
 ```yaml
 # Server settings (for CLI connection)
@@ -78,7 +79,7 @@ summarization:
 
 **Security warning**: If storing API keys in config files:
 ```bash
-chmod 600 ~/.brainpalace/config.yaml  # Restrict permissions
+chmod 600 ~/.config/brainpalace/config.yaml  # Restrict permissions
 echo "config.yaml" >> .gitignore       # Exclude from version control
 ```
 

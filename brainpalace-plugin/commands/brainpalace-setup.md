@@ -6,7 +6,7 @@ context: brainpalace
 agent: setup-assistant
 skills:
   - configuring-brainpalace
-last_validated: 2026-05-30
+last_validated: 2026-06-02
 ---
 
 # Complete BrainPalace Setup
@@ -93,7 +93,7 @@ SETUP_STATE=$( [ -n "$SCRIPT" ] && bash "$SCRIPT" || echo "{}" )
 echo "$SETUP_STATE"
 ```
 
-Store `SETUP_STATE` in memory for use in Steps 2-12. This avoids re-running individual detection commands later.
+Store `SETUP_STATE` in memory for use in Steps 2-11. This avoids re-running individual detection commands later.
 
 ### Step 2: Wizard — Embedding Provider
 
@@ -124,7 +124,12 @@ For Ollama, also record `embedding.base_url: "http://localhost:11434/v1"`.
 
 ### Step 3: Wizard — Summarization Provider
 
-Use AskUserQuestion to ask which summarization provider to use:
+Use AskUserQuestion to ask which summarization provider to use. **Default** to
+the provider chosen for embedding in Step 2 when it can also summarize
+(`openai` → OpenAI, `ollama` → Ollama); otherwise default to whichever
+summarization API key is already set in the environment (`OPENAI_API_KEY` →
+OpenAI, `ANTHROPIC_API_KEY` → Anthropic, `GOOGLE_API_KEY` → Gemini), falling back
+to Anthropic. (Mirrors the CLI `config wizard` behavior — keep them aligned.)
 
 ```
 Which summarization provider would you like to use for BrainPalace?
@@ -154,7 +159,7 @@ Options:
 
 Record the selection as `storage.backend` (value: `"chroma"` or `"postgres"`).
 
-If PostgreSQL is selected, note that the PostgreSQL setup step (Step 8) will handle Docker port auto-discovery and container startup. The config will be updated with the discovered port automatically.
+If PostgreSQL is selected, note that the PostgreSQL setup step (Step 10a) will handle Docker port auto-discovery and container startup. The config will be updated with the discovered port automatically.
 
 If PostgreSQL is selected, add this informational note to wizard output:
 
@@ -250,27 +255,25 @@ After the mode selection, add this informational note to wizard output:
 
 ### Step 7: Wizard — Write config.yaml
 
-Detect which config file location to use:
+Write the provider config to the **global** XDG location
+(`~/.config/brainpalace/config.yaml`) that every project inherits. There is no
+project-scoped or legacy `~/.brainpalace/` fallback — a project gets this config
+when you run `brainpalace init` in Step 10.
 
 ```bash
-# Check which config files exist
-if [ -f ".brainpalace/config.yaml" ]; then
-  echo "PROJECT config found: .brainpalace/config.yaml"
-  CONFIG_PATH=".brainpalace/config.yaml"
-elif [ -f "$HOME/.brainpalace/config.yaml" ]; then
-  echo "USER config found: $HOME/.brainpalace/config.yaml"
-  CONFIG_PATH="$HOME/.brainpalace/config.yaml"
-else
-  echo "No existing config found — will create user-level config"
-  CONFIG_PATH="$HOME/.brainpalace/config.yaml"
+# Global-first: provider config is written ONCE to the XDG global config that
+# every `brainpalace init` (and the CLI) inherits. No project/legacy fallback.
+CONFIG_PATH="${XDG_CONFIG_HOME:-$HOME/.config}/brainpalace/config.yaml"
+echo "Global config path: $CONFIG_PATH"
+if [ -f "$CONFIG_PATH" ]; then
+  echo "Existing global config found — will update it."
 fi
-echo "Config path: $CONFIG_PATH"
 ```
 
 If an existing config is found, use AskUserQuestion:
 
 ```
-An existing config.yaml was found at: <path>
+An existing GLOBAL config.yaml was found at: ~/.config/brainpalace/config.yaml
 
 Options:
 1. Update existing config - Merge wizard settings into current config
@@ -323,11 +326,11 @@ echo "# query:" >> "$CONFIG_PATH"
 echo "#   default_mode: \"<SELECTED_QUERY_MODE>\"  # vector | bm25 | hybrid | graph | multi" >> "$CONFIG_PATH"
 
 chmod 600 "$CONFIG_PATH"
-echo "Config written to: $CONFIG_PATH"
+echo "Global config written to: $CONFIG_PATH"
+echo "Validating..."
+brainpalace config validate || echo "WARN: config validate reported issues — review above."
 echo "SECURITY WARNING: Never commit this file to git — it may contain API keys"
 ```
-
-Add `config.yaml` and `*.yaml` to `.gitignore` if not already present.
 
 ### Step 8: Wizard — Verify Connectivity
 
@@ -358,23 +361,179 @@ Would you like to re-run the wizard to correct your provider settings? (Yes / No
 
 If the user chooses Yes, restart from Step 2. If No, continue to the next step.
 
-### Step 9: Initialize Project
+### Step 9: Wire an MCP Client (optional)
+
+For users who ALSO use a non-Claude MCP client (Cursor, VS Code, Cline,
+Continue, Kilo, Zed). If they only use this Claude Code plugin, skip this step.
+
+Use AskUserQuestion to ask which MCP client to wire:
+
+```
+Which MCP client would you like to wire BrainPalace into?
+
+Options:
+1. None — CLI / Claude Code plugin only (Default)
+2. VS Code → .vscode/mcp.json
+3. Cursor → .cursor/mcp.json
+4. Cline → .cline/mcp.json
+5. Continue → .continue/mcp.yaml
+6. Kilo Code → .kilo/kilo.jsonc
+7. Zed → .zed/settings.json
+```
+
+If none, skip to Step 10.
+
+If a client is selected, use AskUserQuestion to ask the scope:
+
+```
+Where should the MCP config file be written?
+
+Options:
+1. User scope (HOME — recommended, applies everywhere) (Default)
+2. Project scope (the project you set up in Step 10)
+```
+
+Resolve the absolute binary path:
+
+```bash
+AB_BIN="$(command -v brainpalace)"
+echo "Using brainpalace at: $AB_BIN"
+```
+
+Then use the Write tool to create the client's config file under `$HOME` (user
+scope) — or under the project root if the user chose project scope AND a project
+path is known. Use the absolute `$AB_BIN` path.
+
+**Per-client config templates** (replace `<AB_BIN>` with the resolved path):
+
+**VS Code** → `$HOME/.vscode/mcp.json`
+```json
+{
+  "servers": {
+    "brainpalace": {
+      "type": "stdio",
+      "command": "<AB_BIN>",
+      "args": ["mcp", "--ensure-server"]
+    }
+  }
+}
+```
+
+**Cursor** → `$HOME/.cursor/mcp.json`
+```json
+{
+  "mcpServers": {
+    "brainpalace": {
+      "command": "<AB_BIN>",
+      "args": ["mcp", "--ensure-server"]
+    }
+  }
+}
+```
+
+**Cline** → `$HOME/.cline/mcp.json`
+```json
+{
+  "mcpServers": {
+    "brainpalace": {
+      "command": "<AB_BIN>",
+      "args": ["mcp", "--ensure-server"],
+      "disabled": false
+    }
+  }
+}
+```
+
+**Continue** → `$HOME/.continue/mcp.yaml`
+```yaml
+mcpServers:
+  - name: brainpalace
+    command: <AB_BIN>
+    args: ["mcp", "--ensure-server"]
+```
+
+**Kilo Code** → `$HOME/.kilo/kilo.jsonc`
+```json
+{
+  "mcp": {
+    "brainpalace": {
+      "type": "local",
+      "command": ["<AB_BIN>", "mcp", "--ensure-server"],
+      "enabled": true,
+      "timeout": 30000
+    }
+  }
+}
+```
+
+**Zed** → `$HOME/.zed/settings.json`
+```json
+{
+  "context_servers": {
+    "brainpalace": {
+      "command": {
+        "path": "<AB_BIN>",
+        "args": ["mcp", "--ensure-server"]
+      }
+    }
+  }
+}
+```
+
+If the target file already exists, back it up first (`<path>.bak.<timestamp>`)
+before writing. Tell the user the absolute path was baked in to avoid
+PATH-inheritance failures.
+
+### Step 10: Set Up a Project (optional, last)
+
+This is the LAST step and is optional. The global provider config from Step 7 is
+already in place; a project just needs `brainpalace init` to inherit it.
+
+Use AskUserQuestion:
+
+```
+Initialise and index a project now?
+
+Options:
+1. Yes — set up the current project (Default)
+2. No — I'll run `brainpalace init` in a project later
+```
+
+If No, print the following hint and skip to summary:
+
+```
+BrainPalace is installed and configured globally. To set up a project later:
+
+    cd /path/to/your/project
+    brainpalace init
+
+The provider is configured globally — new projects inherit it.
+```
+
+> **Note:** If the storage backend chosen in Step 4 is `postgres`, run the
+> PostgreSQL sub-flow below (Step 10a) BEFORE `brainpalace init` so the server
+> can connect on first start.
+
+If Yes, run:
 
 ```bash
 brainpalace init
 ```
 
-Creates `.brainpalace/` directory with configuration files.
+This inherits the global config and by default starts server + indexes after a
+confirmation.
 
-### Step 10: PostgreSQL (Only When Backend Is Postgres)
+### Step 10a: PostgreSQL (Only When Backend Is Postgres)
 
-PostgreSQL setup is only required if the storage backend selected in Step 4 is `postgres`.
+PostgreSQL setup is only required if the storage backend selected in Step 4 is
+`postgres` AND the user chose to set up a project in Step 10. Run this before
+`brainpalace init`.
 
 Check backend selection (env override takes priority):
 
 ```bash
 echo "Backend override: ${BRAINPALACE_STORAGE_BACKEND:-unset}"
-rg -n "storage:\n  backend:" ~/.brainpalace/config.yaml .brainpalace/config.yaml 2>/dev/null
+rg -n "backend:" "${XDG_CONFIG_HOME:-$HOME/.config}/brainpalace/config.yaml" .brainpalace/config.yaml 2>/dev/null
 ```
 
 If the backend is `postgres`, confirm Docker and Docker Compose are available:
@@ -386,15 +545,15 @@ docker compose version
 
 If Docker is not available, pause and explain the user must install Docker or point `storage.postgres` to an existing PostgreSQL instance.
 
-#### 10a: Check for existing brainpalace-postgres container
+#### a: Check for existing brainpalace-postgres container
 
 ```bash
 docker ps --filter name=brainpalace-postgres --format '{{.Ports}}' 2>/dev/null
 ```
 
-If already running, extract the mapped port and skip to step 10e.
+If already running, extract the mapped port and skip to step e.
 
-#### 10b: Find available port
+#### b: Find available port
 
 ```bash
 POSTGRES_PORT=""
@@ -414,37 +573,32 @@ if [ -z "$POSTGRES_PORT" ]; then
 fi
 ```
 
-#### 10c: Start Docker Compose with discovered port
+#### c: Start Docker Compose with discovered port
 
 ```bash
 POSTGRES_PORT=$POSTGRES_PORT docker compose -f <plugin_path>/templates/docker-compose.postgres.yml up -d
 ```
 
-#### 10d: Update config.yaml with discovered port
+#### d: Update config.yaml with discovered port
 
 Write or update `storage.postgres.port` in the active config.yaml to use the discovered port. This ensures the server connects to the correct port automatically.
 
-#### 10e: Verify PostgreSQL is ready
+#### e: Verify PostgreSQL is ready
 
 ```bash
 docker exec brainpalace-postgres pg_isready -U brainpalace -d brainpalace
 ```
 
-### Step 11: Start Server
+### Step 11: Verify (only if a project was set up)
 
-```bash
-brainpalace start
-```
-
-Starts the server in background mode.
-
-### Step 12: Verify Setup
+If a project was initialised in Step 10:
 
 ```bash
 brainpalace status
 ```
 
-Confirm server is healthy and ready.
+Confirm the server is healthy. If init was declined, skip — there is no
+project server to check yet.
 
 ## Output
 
@@ -454,57 +608,18 @@ Display progress through each step with clear status indicators:
 BrainPalace Setup
 =================
 
-[0/10] Bootstrapping permissions...
-       .claude/settings.json [WRITTEN]
+[0]    Permissions ..... .claude/settings.json [WRITTEN]
+[1]    Install ......... OK (brainpalace <version>)
+[2-6]  Provider wizard . CONFIGURED
+[7]    Global config ... ~/.config/brainpalace/config.yaml [WRITTEN, chmod 600]
+[8]    Connectivity .... OK
+[9]    MCP client ...... <client or "skipped">
+[10]   Project ......... <initialised path or "skipped — run `brainpalace init` later">
+[11]   Verify .......... <OK or "skipped — no project initialised">
 
-[1/10] Checking installation...
-       brainpalace-cli: 1.2.0 [OK]
-       brainpalace-rag: 1.2.0 [OK]
+Setup complete.
 
-[2/10] Embedding provider...
-       Provider: ollama / nomic-embed-text [CONFIGURED]
-
-[3/10] Summarization provider...
-       Provider: ollama / llama3.2 [CONFIGURED]
-
-[4/10] Storage backend...
-       Backend: chroma (local-first) [CONFIGURED]
-
-[5/10] GraphRAG...
-       Status: disabled [OK]
-
-[6/10] Query mode...
-       Default mode: hybrid [NOTED]
-
-[7/10] Writing config.yaml...
-       Config: ~/.brainpalace/config.yaml [WRITTEN]
-       Permissions: 600 [SECURED]
-
-[8/10] Verifying connectivity...
-       Embedding: ollama connected [OK]
-       Summarization: ollama connected [OK]
-
-[9/10] Initializing project...
-       Created: .brainpalace/config.json [OK]
-
-[10/10] Starting server...
-        Server started on http://127.0.0.1:8000 [OK]
-
-Setup Complete!
-===============
-
-BrainPalace is ready to use.
-
-Next steps:
-  1. Index documents: /brainpalace-index <path>
-  2. Search: /brainpalace-search "your query"
-
-Quick start:
-  brainpalace index ./docs
-  brainpalace query "authentication"
-
-To use a specific query mode:
-  brainpalace query "class relationships" --mode hybrid
+The provider is configured globally — every `brainpalace init` inherits it.
 ```
 
 ## Error Handling
@@ -512,7 +627,7 @@ To use a specific query mode:
 ### Installation Failed
 
 ```
-[1/10] Checking installation... FAILED
+[1/?] Checking installation... FAILED
 
 BrainPalace is not installed.
 
@@ -523,7 +638,7 @@ Running installation...
 ### Provider Not Configured
 
 ```
-[2/10] Embedding provider... INCOMPLETE
+[2-6] Embedding provider... INCOMPLETE
 
 No embedding provider selected.
 
@@ -533,7 +648,7 @@ Re-running wizard from Step 2...
 ### Init Failed
 
 ```
-[9/10] Initializing project... FAILED
+[10]  Initializing project... FAILED
 
 Error: Permission denied creating .brainpalace/
 
@@ -546,7 +661,7 @@ Solutions:
 ### Server Start Failed
 
 ```
-[10/10] Starting server... FAILED
+[10/start]  Starting server... FAILED
 
 Error: Port already in use
 
@@ -560,7 +675,7 @@ Solutions:
 ### Verification Failed
 
 ```
-[10/10] Verifying setup... FAILED
+[11]  Verifying setup... FAILED
 
 Server started but health check failed.
 

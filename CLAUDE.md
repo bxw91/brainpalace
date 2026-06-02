@@ -18,6 +18,21 @@ servers with auto-discovery. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) fo
 
 Root is an organizational container + `Taskfile.yml` task runner. Each subpackage builds/tests independently.
 
+## Setup-surface parity — CLI · plugin · MCP (MANDATORY)
+
+Install/config/setup behavior is exposed through **three independent front-ends**
+that drift apart silently: **CLI** (`scripts/setup.sh`, `scripts/install.sh`,
+`brainpalace init`/`config wizard`), **Claude plugin**
+(`brainpalace-plugin/commands/brainpalace-{setup,config,install,install-agent}.md`,
+`agents/setup-assistant.md`, `skills/configuring-brainpalace/**`), and **MCP**
+(`brainpalace mcp`, the client-config templates, `docs/MCP_SETUP.md`).
+
+**When you change setup/install/config behavior in one surface, update the other
+two in the same change + note it in `docs/CHANGELOG.md`.** Canonical config path
+is XDG `~/.config/brainpalace/config.yaml` (legacy `~/.brainpalace/` is
+deprecated). Full rule + parity checklist:
+[docs/DEVELOPERS_GUIDE.md → Setup-surface parity](docs/DEVELOPERS_GUIDE.md#setup-surface-parity-cli--plugin--mcp).
+
 ## Build / test
 
 `task` (Taskfile.yml) is the entry point. `task --list` shows all.

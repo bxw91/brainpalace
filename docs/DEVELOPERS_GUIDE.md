@@ -321,6 +321,43 @@ The `/health` endpoint now includes mode information:
 
 ---
 
+## Setup-surface parity (CLI · plugin · MCP)
+
+BrainPalace exposes the **same install / configuration / setup behavior through
+three independent front-ends**. They are separate code and docs, and they drift
+apart silently — a change to one is **not** picked up by the others.
+
+| Surface | Where it lives |
+|---------|----------------|
+| **CLI / bash** | `scripts/setup.sh` (guided), `scripts/install.sh`, and the `brainpalace init` / `config wizard` commands under `brainpalace-cli/` |
+| **Claude plugin** | `brainpalace-plugin/commands/brainpalace-{setup,config,install,install-agent}.md`, `brainpalace-plugin/agents/setup-assistant.md`, `brainpalace-plugin/skills/configuring-brainpalace/**` |
+| **MCP** | the `brainpalace mcp` entrypoint, the MCP client-config templates (duplicated in `scripts/setup.sh` and the plugin setup command), and `docs/MCP_SETUP.md` |
+
+**Rule:** when you change install / configuration / setup behavior in **one**
+surface, update the other two **in the same change** and record it in
+`docs/CHANGELOG.md`. Behavior that must stay aligned includes: the config-file
+location written (canonical = XDG `~/.config/brainpalace/config.yaml`), the
+provider/wizard flow, whether project init is optional, the MCP client
+templates, and the documented config search order.
+
+**Parity checklist** — run through it for any setup-feature change:
+
+- [ ] **CLI:** `scripts/setup.sh` + `scripts/install.sh` reflect the change.
+- [ ] **Plugin:** `/brainpalace-setup`, `/brainpalace-config`, the
+      `setup-assistant` agent, and the `configuring-brainpalace` references
+      reflect it; bump each edited doc's `last_validated`.
+- [ ] **MCP:** client templates + `docs/MCP_SETUP.md` reflect it.
+- [ ] Config search order / write target matches the server resolver
+      (`brainpalace-server/brainpalace_server/config/provider_config.py`) across
+      every doc that lists it (XDG preferred, legacy `~/.brainpalace/` deprecated).
+- [ ] `docs/CHANGELOG.md` `[Unreleased]` notes the change.
+
+> **Why this section exists:** the CLI went global-first (XDG) while the plugin
+> kept writing the deprecated `~/.brainpalace/` path, so the plugin's config was
+> silently ignored whenever both were installed. This rule prevents a repeat.
+
+---
+
 ## Code Ingestion & Language Support
 
 BrainPalace supports AST-aware code chunking for 9+ programming languages using tree-sitter. The current implementation includes: **Python, TypeScript, JavaScript, Java, Go, Rust, C, C++, C#**.

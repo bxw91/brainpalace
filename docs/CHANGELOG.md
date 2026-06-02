@@ -12,6 +12,36 @@ month (the counter resets monthly). It looks like SemVer but is not.
 
 ---
 
+## [26.6.12] - 2026-06-02
+
+### Changed
+- **Plugin `/brainpalace-setup` is now global-first.** It writes the provider
+  config to the XDG global `~/.config/brainpalace/config.yaml` — the **same file
+  the CLI and `brainpalace init` use** — instead of the deprecated legacy
+  `~/.brainpalace/config.yaml`. Adds an optional MCP-client wiring step (user
+  scope) and makes project init the optional last step. Config-location docs
+  (`/brainpalace-config`, the setup-assistant agent, and the
+  configuring-brainpalace references) were corrected to the XDG-canonical search
+  order and the non-existent `brainpalace config set` examples removed.
+- **README install order:** "Install as a CLI or MCP server" now appears above
+  "Install as a Claude Code plugin", and its commands are each in their own
+  copy-paste code block.
+- **Guided `setup.sh` UX polish:** the detected provider API key is now shown as
+  a green "✓ detected" tag next to the matching provider in the selection menu
+  (instead of a separate line); the MCP-client step lists only auto-detected
+  clients by default with an "other — show all" escape hatch; declining the
+  optional project step no longer duplicates the next-steps text (shown once
+  after Verify); the trailing "Docs:" list was removed from the summary.
+- **`config wizard` prompts:** the summarization provider now defaults to the
+  embedding provider when it can summarize (openai/ollama), else to whichever
+  summarization API key is already set (else anthropic) — no longer hard-coded to
+  anthropic; the GraphRAG and Deployment-mode questions render the choice prompt
+  on its own line below the options, and the GraphRAG options were reworded to
+  neutral trade-offs (no scare wording). Mirrored in the plugin setup wizard.
+- **Guided setup prompts are spaced out:** a blank line now precedes every
+  question (CLI `config wizard` prompts and `setup.sh`'s own `ask`/`confirm`
+  prompts), so consecutive questions in a step are visually separated.
+
 ## [26.6.11] - 2026-06-02
 
 ### Changed

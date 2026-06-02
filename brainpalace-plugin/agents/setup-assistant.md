@@ -396,14 +396,20 @@ Guide users through YAML config setup:
 # Show current configuration
 brainpalace config show
 
-# Edit configuration interactively
-brainpalace config set embedding.provider openai
-brainpalace config set summarization.provider anthropic
+# Show the active config file path
+brainpalace config path
+
+# Reconfigure providers interactively (writes the global XDG config)
+brainpalace config wizard --global
+
+# Validate the active config
+brainpalace config validate
 ```
 
-Config file locations (searched in order):
+Config file locations (searched in order — matches the server's resolver):
 1. `BRAINPALACE_CONFIG` environment variable
-2. `./brainpalace.yaml` or `./config.yaml`
-3. `./.brainpalace/config.yaml`
-4. `~/.brainpalace/config.yaml`
-5. `~/.config/brainpalace/config.yaml`
+2. State dir `config.yaml` (if `BRAINPALACE_STATE_DIR`/`DOC_SERVE_STATE_DIR` set)
+3. `./config.yaml` (current directory)
+4. Walk up from CWD: `./.brainpalace/config.yaml`
+5. `~/.config/brainpalace/config.yaml` (XDG — preferred global)
+6. `~/.brainpalace/config.yaml` (legacy — deprecated, logs a migrate warning)

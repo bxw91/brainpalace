@@ -16,7 +16,7 @@ metadata:
   version: 7.0.0
   category: ai-tools
   author: bxw91
-  last_validated: 2026-03-19
+  last_validated: 2026-06-02
 ---
 
 # Configuring BrainPalace
@@ -253,13 +253,12 @@ BrainPalace supports pluggable providers with two configuration methods.
 
 Create a `config.yaml` file in one of these locations:
 
-1. **Project-level**: `.brainpalace/config.yaml`
-2. **User-level**: `~/.brainpalace/config.yaml`
-3. **XDG config**: `~/.config/brainpalace/config.yaml`
-4. **Current directory**: `./config.yaml` or `./brainpalace.yaml`
+1. `BRAINPALACE_CONFIG` env / project `./.brainpalace/config.yaml`
+2. **XDG config (preferred global)**: `~/.config/brainpalace/config.yaml`
+3. **User-level (legacy, deprecated)**: `~/.brainpalace/config.yaml`
 
 ```yaml
-# ~/.brainpalace/config.yaml
+# ~/.config/brainpalace/config.yaml
 server:
   url: "http://127.0.0.1:8000"
   port: 8000
@@ -280,10 +279,10 @@ summarization:
   # api_key_env: "ANTHROPIC_API_KEY"
 ```
 
-**Config file search order**: BRAINPALACE_CONFIG env → current dir → project dir → user home
+**Config file search order**: BRAINPALACE_CONFIG env → current dir → project dir → XDG (~/.config/brainpalace/config.yaml) → legacy ~/.brainpalace (deprecated)
 
 **Security**: If storing API keys in config file:
-- Set file permissions: `chmod 600 ~/.brainpalace/config.yaml`
+- Set file permissions: `chmod 600 ~/.config/brainpalace/config.yaml`
 - Add to `.gitignore`: `config.yaml`
 - Never commit API keys to version control
 
@@ -310,7 +309,7 @@ export ANTHROPIC_API_KEY="sk-ant-..."
 
 Best for privacy, air-gapped environments:
 
-**Config file** (`~/.brainpalace/config.yaml`):
+**Config file** (`~/.config/brainpalace/config.yaml`):
 ```yaml
 embedding:
   provider: "ollama"

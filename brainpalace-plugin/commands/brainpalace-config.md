@@ -6,7 +6,7 @@ context: brainpalace
 agent: setup-assistant
 skills:
   - configuring-brainpalace
-last_validated: 2026-05-30
+last_validated: 2026-06-02
 ---
 
 # Configure BrainPalace
@@ -40,7 +40,7 @@ Config file search order (highest to lowest):
 1. **BRAINPALACE_CONFIG** environment variable
 2. **State directory**: `BRAINPALACE_STATE_DIR/config.yaml`
 3. **Current directory**: `./config.yaml`
-4. **Project-level** (walk up from CWD): `.brainpalace/config.yaml` or `.claude/brainpalace/config.yaml`
+4. **Project-level** (walk up from CWD): `./.brainpalace/config.yaml`
 5. **XDG config** (preferred user-level): `~/.config/brainpalace/config.yaml`
 6. **Legacy user-level** (deprecated): `~/.brainpalace/config.yaml`
 
@@ -140,10 +140,10 @@ Ollama runs locally - no API keys or cloud costs!
    - nomic-embed-text: 8192 token context - handles large documents
    - mxbai-embed-large: only 512 token context - causes indexing errors
 
-4. Create config file (~/.brainpalace/config.yaml):
+4. Create config file (~/.config/brainpalace/config.yaml):
 
-   mkdir -p ~/.brainpalace
-   cat > ~/.brainpalace/config.yaml << 'EOF'
+   mkdir -p ~/.config/brainpalace
+   cat > ~/.config/brainpalace/config.yaml << 'EOF'
    embedding:
      provider: "ollama"
      model: "nomic-embed-text"
@@ -183,10 +183,10 @@ No API keys needed!
    - OpenAI: https://platform.openai.com/account/api-keys
    - Anthropic: https://console.anthropic.com/
 
-2. Create config file (~/.brainpalace/config.yaml):
+2. Create config file (~/.config/brainpalace/config.yaml):
 
-   mkdir -p ~/.brainpalace
-   cat > ~/.brainpalace/config.yaml << 'EOF'
+   mkdir -p ~/.config/brainpalace
+   cat > ~/.config/brainpalace/config.yaml << 'EOF'
    embedding:
      provider: "openai"
      model: "text-embedding-3-large"
@@ -198,7 +198,7 @@ No API keys needed!
      api_key: "sk-ant-YOUR-KEY-HERE"
    EOF
 
-   chmod 600 ~/.brainpalace/config.yaml  # Secure the file
+   chmod 600 ~/.config/brainpalace/config.yaml  # Secure the file
 
    OR use environment variables:
    export OPENAI_API_KEY="sk-proj-..."
@@ -216,10 +216,10 @@ No API keys needed!
 1. Get key: https://aistudio.google.com/apikey
 2. Set: export GOOGLE_API_KEY="AIza..."
 
-Create config file (~/.brainpalace/config.yaml):
+Create config file (~/.config/brainpalace/config.yaml):
 
-  mkdir -p ~/.brainpalace
-  cat > ~/.brainpalace/config.yaml << 'EOF'
+  mkdir -p ~/.config/brainpalace
+  cat > ~/.config/brainpalace/config.yaml << 'EOF'
   embedding:
     provider: "gemini"
     model: "text-embedding-004"
@@ -231,7 +231,7 @@ Create config file (~/.brainpalace/config.yaml):
     api_key: "AIza..."
   EOF
 
-  chmod 600 ~/.brainpalace/config.yaml  # Secure the file
+  chmod 600 ~/.config/brainpalace/config.yaml  # Secure the file
 
 OR use environment variables:
 export EMBEDDING_PROVIDER=gemini
@@ -259,10 +259,10 @@ Uses Mistral's small model for better summarization quality.
    ollama pull nomic-embed-text           # For embeddings (8192 token context)
    ollama pull mistral-small3.2:latest    # For summarization (better quality)
 
-3. Create config file (~/.brainpalace/config.yaml):
+3. Create config file (~/.config/brainpalace/config.yaml):
 
-   mkdir -p ~/.brainpalace
-   cat > ~/.brainpalace/config.yaml << 'EOF'
+   mkdir -p ~/.config/brainpalace
+   cat > ~/.config/brainpalace/config.yaml << 'EOF'
    embedding:
      provider: "ollama"
      model: "nomic-embed-text"
@@ -334,7 +334,7 @@ Which setup would you like? (Enter 1-5)
 Ollama Configuration Complete!
 ==============================
 
-Config file created: ~/.brainpalace/config.yaml
+Config file created: ~/.config/brainpalace/config.yaml
 
   embedding:
     provider: "ollama"
@@ -408,7 +408,7 @@ For xAI:       export XAI_API_KEY="xai-..."
 - Add `config.yaml` and `.env` files to `.gitignore`
 - If storing API keys in config files, restrict permissions:
   ```bash
-  chmod 600 ~/.brainpalace/config.yaml
+  chmod 600 ~/.config/brainpalace/config.yaml
   ```
 - Use `api_key_env` in config to read from env vars instead of storing directly
 

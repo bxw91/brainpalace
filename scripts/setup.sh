@@ -52,6 +52,7 @@ errx() { printf '%sERROR:%s %s\n' "$c_red" "$c_reset" "$*" >/dev/tty; exit 2; }
 ask() {
     # ask "Prompt" "default" -> echoes user answer (or default if blank)
     local prompt="$1" default="${2:-}" reply
+    printf '\n' >/dev/tty   # blank line before each question (visual separation)
     if [[ -n "$default" ]]; then
         printf '%s [%s]: ' "$prompt" "$default" >/dev/tty
     else
@@ -64,6 +65,7 @@ ask() {
 ask_required() {
     # Like ask but re-prompts on empty
     local prompt="$1" reply=""
+    printf '\n' >/dev/tty   # blank line before each question (visual separation)
     while [[ -z "$reply" ]]; do
         printf '%s: ' "$prompt" >/dev/tty
         IFS= read -r reply </dev/tty || reply=""
@@ -76,6 +78,7 @@ confirm() {
     # confirm "Prompt" "y|n" -> exit 0 if yes
     local prompt="$1" default="${2:-n}" reply hint
     [[ "$default" == "y" ]] && hint="[Y/n]" || hint="[y/N]"
+    printf '\n' >/dev/tty   # blank line before each question (visual separation)
     printf '%s %s ' "$prompt" "$hint" >/dev/tty
     IFS= read -r reply </dev/tty || reply=""
     reply="${reply:-$default}"
@@ -253,24 +256,18 @@ declare -A PROVIDER_ENV=(
     [grok]=XAI_API_KEY
 )
 
-DETECTED=""
-for var in OPENAI_API_KEY ANTHROPIC_API_KEY COHERE_API_KEY GOOGLE_API_KEY XAI_API_KEY; do
-    [[ -n "${!var:-}" ]] && DETECTED="$DETECTED $var"
-done
-if [[ -n "$DETECTED" ]]; then
-    say "Detected env vars:$DETECTED"
-else
-    say "No provider keys detected in your environment."
-fi
+# Append a green "✓ <VAR> detected" tag to a provider label when that key is
+# already exported, so the user sees at a glance which provider is ready to go.
+det_tag() { [[ -n "${!1:-}" ]] && printf '   %s✓ %s detected%s' "$c_gr" "$1" "$c_reset"; }
 
 echo >/dev/tty
 echo "Which provider do you want to set up?" >/dev/tty
 P_CHOICE="$(pick "Choice 1-8" "8" \
-    "openai     (cloud — needs OPENAI_API_KEY)" \
-    "anthropic  (cloud — needs ANTHROPIC_API_KEY)" \
-    "cohere     (cloud — needs COHERE_API_KEY)" \
-    "gemini     (cloud — needs GOOGLE_API_KEY)" \
-    "grok       (cloud — needs XAI_API_KEY)" \
+    "openai     (cloud — needs OPENAI_API_KEY)$(det_tag OPENAI_API_KEY)" \
+    "anthropic  (cloud — needs ANTHROPIC_API_KEY)$(det_tag ANTHROPIC_API_KEY)" \
+    "cohere     (cloud — needs COHERE_API_KEY)$(det_tag COHERE_API_KEY)" \
+    "gemini     (cloud — needs GOOGLE_API_KEY)$(det_tag GOOGLE_API_KEY)" \
+    "grok       (cloud — needs XAI_API_KEY)$(det_tag XAI_API_KEY)" \
     "ollama     (local — needs Ollama running)" \
     "skip       (set up later with 'brainpalace config wizard --global')" \
     "wizard now (run the full picker without my hints)")"
@@ -388,27 +385,61 @@ fi
 step "Step 3/5 — Wire an MCP client (optional, global)"
 
 say "If you only use the CLI (or the Claude Code plugin), pick 'none'."
-say "Otherwise pick the MCP client you use — its config file will be written"
-say "with an absolute path so GUI-launched editors do not hit the PATH gotcha."
+say "Otherwise pick the MCP client you use — its config file is written with an"
+say "absolute path so GUI-launched editors do not hit the PATH gotcha."
 
-M_CHOICE="$(pick "Choice 1-7" "7" \
-    "VS Code (GitHub Copilot agent mode) — .vscode/mcp.json" \
-    "Cursor                              — .cursor/mcp.json" \
-    "Cline                               — .cline/mcp.json" \
-    "Continue                            — .continue/mcp.yaml" \
-    "Kilo Code                           — .kilo/kilo.jsonc" \
-    "Zed                                 — .zed/settings.json" \
-    "none (CLI-only install)")"
+ALL_MCP_KEYS=(vscode cursor cline continue kilo zed)
+declare -A MCP_LABEL=(
+    [vscode]="VS Code (GitHub Copilot agent mode) — .vscode/mcp.json"
+    [cursor]="Cursor                              — .cursor/mcp.json"
+    [cline]="Cline                               — .cline/mcp.json"
+    [continue]="Continue                            — .continue/mcp.yaml"
+    [kilo]="Kilo Code                           — .kilo/kilo.jsonc"
+    [zed]="Zed                                 — .zed/settings.json"
+)
 
-case "$M_CHOICE" in
-    1) MCP_CLIENT="vscode" ;;
-    2) MCP_CLIENT="cursor" ;;
-    3) MCP_CLIENT="cline" ;;
-    4) MCP_CLIENT="continue" ;;
-    5) MCP_CLIENT="kilo" ;;
-    6) MCP_CLIENT="zed" ;;
-    7) MCP_CLIENT="none" ;;
-esac
+# Best-effort detection: a client counts as present if its CLI is on PATH or its
+# config/support dir exists. Used to show only relevant clients by default.
+mcp_detected() {
+    case "$1" in
+        vscode)   command -v code   >/dev/null 2>&1 || [[ -d "$HOME/.vscode"   || -d "$HOME/.config/Code"   ]] ;;
+        cursor)   command -v cursor >/dev/null 2>&1 || [[ -d "$HOME/.cursor"   || -d "$HOME/.config/Cursor" ]] ;;
+        cline)    [[ -d "$HOME/.cline" ]] ;;
+        continue) [[ -d "$HOME/.continue" ]] ;;
+        kilo)     [[ -d "$HOME/.kilo" ]] ;;
+        zed)      command -v zed    >/dev/null 2>&1 || [[ -d "$HOME/.zed"      || -d "$HOME/.config/zed"    ]] ;;
+        *) return 1 ;;
+    esac
+}
+
+# select_mcp <show_all_hatch:0|1> <key>... -> echoes chosen key | "none" | "__all__"
+select_mcp() {
+    local hatch="$1"; shift
+    local keys=("$@") labels=() k
+    for k in "${keys[@]}"; do labels+=("${MCP_LABEL[$k]}"); done
+    local none_idx=$(( ${#keys[@]} + 1 ))
+    labels+=("none (CLI-only install)")
+    [[ "$hatch" == "1" ]] && labels+=("other — show all supported clients")
+    local idx; idx="$(pick "Choice (number)" "$none_idx" "${labels[@]}")"
+    local sel="${labels[$((idx-1))]}"
+    case "$sel" in
+        none*)  echo "none" ;;
+        other*) echo "__all__" ;;
+        *)      echo "${keys[$((idx-1))]}" ;;
+    esac
+}
+
+DETECTED_MCP=()
+for k in "${ALL_MCP_KEYS[@]}"; do mcp_detected "$k" && DETECTED_MCP+=("$k"); done
+
+if [[ ${#DETECTED_MCP[@]} -gt 0 ]]; then
+    say "Auto-detected MCP-capable clients on this machine (pick 'other' to see all):"
+    MCP_CLIENT="$(select_mcp 1 "${DETECTED_MCP[@]}")"
+    [[ "$MCP_CLIENT" == "__all__" ]] && MCP_CLIENT="$(select_mcp 0 "${ALL_MCP_KEYS[@]}")"
+else
+    say "No MCP clients auto-detected — showing all supported clients:"
+    MCP_CLIENT="$(select_mcp 0 "${ALL_MCP_KEYS[@]}")"
+fi
 
 write_file() {
     local path="$1" content="$2"
@@ -553,14 +584,7 @@ if confirm "Set up and index a project now?" "y"; then
 else
     PROJECT=""
     INDEXED_TARGET="skipped"
-    say ""
-    say "BrainPalace is installed and configured globally. To set up a project later:"
-    say ""
-    say "    cd /path/to/your/project"
-    say "    brainpalace init"
-    say ""
-    say "The provider is already configured globally — new projects inherit it."
-    say "Opt out of pieces with --no-start / --no-watch / --no-sessions, or use --yes in scripts."
+    say "No project set up — see the next steps after verification."
 fi
 
 # -----------------------------------------------------------------------------
@@ -618,10 +642,4 @@ cat >/dev/tty <<EOF
 
 The provider is configured globally — every 'brainpalace init' inherits it.
 Each project gets its own server on a separate auto-allocated port.
-
-Docs:
-  README.md                Install + quick start
-  docs/INSTALL.md          Add-another-project + manual install + CI
-  docs/USER_GUIDE.md       Full CLI reference
-  docs/MCP_SETUP.md        Per-client MCP config
 EOF

@@ -143,7 +143,7 @@ class TestConfigWizard:
             )
 
             assert result.exit_code == 0, result.output
-            assert "AST for code + LangExtract for docs" in result.output
+            assert "On, code + docs" in result.output
 
             config_file = Path(".brainpalace") / "config.yaml"
             config = yaml.safe_load(config_file.read_text(encoding="utf-8"))
