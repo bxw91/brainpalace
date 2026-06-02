@@ -126,15 +126,19 @@ fi
 
 # -----------------------------------------------------------------------------
 # Next steps
+#
+# Suppressed when invoked from guided setup (setup.sh) — that flow prints its
+# own, simpler end-of-run guidance, so a mid-flow "Next steps" block here is
+# noise. Standalone `install.sh` runs still show it.
 # -----------------------------------------------------------------------------
 
-cat <<'EOF'
+if [[ -z "${BRAINPALACE_GUIDED_SETUP:-}" ]]; then
+    cat <<'EOF'
 
 Next steps
 ----------
-* In a project:   cd <project> && brainpalace init --start
-* Index it:       brainpalace index .
-* Query:          brainpalace query "your question"
+* In a project:   cd <project> && brainpalace init
 
 See docs/QUICK_START.md for a first-run walkthrough.
 EOF
+fi

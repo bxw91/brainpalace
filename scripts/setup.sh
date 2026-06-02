@@ -10,13 +10,12 @@
 #
 #   bash scripts/setup.sh
 #
-# Covers:
+# Covers (global-first):
 #   1. Install the `brainpalace` binary (CLI + server via pipx)
-#   2. Initialise the project and start the HTTP server
-#   3. Configure an embedding / summarisation provider
-#   4. Index the project
-#   5. Wire an MCP client config (optional)
-#   6. Verify with `brainpalace status` and an optional sample query
+#   2. Configure an embedding / summarisation provider GLOBALLY
+#   3. Wire an MCP client config at user scope (optional)
+#   4. Set up + index a project (optional — last step)
+#   5. Verify with `brainpalace status` and an optional sample query
 #
 # Requires an interactive terminal (reads from /dev/tty). Exits with a
 # clear error if stdin / tty is not attached.
@@ -83,6 +82,47 @@ confirm() {
     [[ "${reply,,}" == "y" || "${reply,,}" == "yes" ]]
 }
 
+detect_local_checkout() {
+    # Print the path to a brainpalace source checkout (this script run from a
+    # clone), else return 1. Used to offer the "install from local checkout"
+    # path ONLY when it's actually usable — a `curl | bash` user has no checkout
+    # and should not be asked about one.
+    local src here root
+    src="${BASH_SOURCE[0]:-$0}"
+    here="$(cd "$(dirname "$src")" 2>/dev/null && pwd)" || return 1
+    root="$(dirname "$here")"   # .../scripts -> repo root
+    if [[ -x "$root/scripts/install.sh" && -d "$root/brainpalace-cli" ]]; then
+        printf '%s\n' "$root"; return 0
+    fi
+    if [[ -x "$PWD/scripts/install.sh" && -d "$PWD/brainpalace-cli" ]]; then
+        printf '%s\n' "$PWD"; return 0
+    fi
+    return 1
+}
+
+latest_pypi_version() {
+    # Print the latest published version of a PyPI package, or return 1 if it
+    # can't be determined (offline, PyPI down). Best-effort — never fatal.
+    local pkg="$1" out
+    out="$(curl -fsSL "https://pypi.org/pypi/${pkg}/json" 2>/dev/null)" || return 1
+    if command -v python3 >/dev/null 2>&1; then
+        printf '%s' "$out" \
+            | python3 -c 'import sys,json; print(json.load(sys.stdin)["info"]["version"])' \
+              2>/dev/null
+    else
+        # Fallback: the info block is first, so its "version" is the first match.
+        printf '%s' "$out" \
+            | grep -oE '"version":[[:space:]]*"[^"]+"' | head -1 \
+            | grep -oE '[0-9][^"]*'
+    fi
+}
+
+xdg_config_yaml() {
+    # Path to the global provider config the wizard --global writes and every
+    # `brainpalace init` inherits. Honors XDG_CONFIG_HOME.
+    printf '%s/brainpalace/config.yaml' "${XDG_CONFIG_HOME:-$HOME/.config}"
+}
+
 pick() {
     # pick "Prompt" "default-num" "label1" "label2" ...
     # prints chosen label number to stdout
@@ -110,13 +150,12 @@ cat >/dev/tty <<EOF
 ${c_bold}BrainPalace — guided setup${c_reset}
 Source: $REPO_URL @ $REF
 
-This script will ask before every action. Six steps:
+This script will ask before every action. Five steps (global-first):
   1. Install the brainpalace binary (pipx)
-  2. Initialise project + start server
-  3. Configure provider
-  4. Index project
-  5. Wire MCP client (optional)
-  6. Verify
+  2. Configure provider globally
+  3. Wire MCP client at user scope (optional)
+  4. Set up + index a project (optional)
+  5. Verify
 
 EOF
 confirm "Continue?" "y" || { say "Aborted."; exit 0; }
@@ -125,12 +164,28 @@ confirm "Continue?" "y" || { say "Aborted."; exit 0; }
 # Step 1 — install
 # -----------------------------------------------------------------------------
 
-step "Step 1/6 — Install brainpalace binary"
+step "Step 1/5 — Install brainpalace binary"
 
 if command -v brainpalace >/dev/null 2>&1; then
     CURRENT_VERSION="$(brainpalace --version 2>/dev/null || echo unknown)"
+    cur="$(printf '%s' "$CURRENT_VERSION" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
     say "Already installed: $CURRENT_VERSION  ($(command -v brainpalace))"
-    if confirm "Reinstall / upgrade now?" "n"; then
+
+    latest="$(latest_pypi_version brainpalace-cli || true)"
+    prompt="Reinstall / upgrade now?"; default="n"
+    if [[ -n "$latest" ]]; then
+        if [[ -n "$cur" && "$cur" == "$latest" ]]; then
+            say "Latest on PyPI: $latest — you're up to date."
+            prompt="Reinstall anyway?"; default="n"
+        else
+            say "Latest on PyPI: $latest — update available."
+            prompt="Update to $latest now?"; default="y"
+        fi
+    else
+        say "(couldn't reach PyPI to check the latest version)"
+    fi
+
+    if confirm "$prompt" "$default"; then
         DO_INSTALL=1
     else
         DO_INSTALL=0
@@ -146,13 +201,21 @@ fi
 
 if [[ "$DO_INSTALL" -eq 1 ]]; then
     USE_LOCAL=""
-    if confirm "Install from a local checkout instead of GitHub?" "n"; then
-        USE_LOCAL="$(ask_required "Path to local checkout")"
-        [[ -x "$USE_LOCAL/scripts/install.sh" ]] \
-            || errx "install.sh not found at $USE_LOCAL/scripts/install.sh"
+    # Only offer the local-checkout path when one is actually present — most
+    # users install from GitHub/PyPI and have no checkout to point at.
+    local_root="$(detect_local_checkout || true)"
+    if [[ -n "$local_root" ]] \
+        && confirm "Local checkout detected at $local_root — install from it instead of GitHub?" "n"; then
+        USE_LOCAL="$local_root"
     fi
 
     say "Running install.sh ..."
+    say "This installs the CLI + server (full RAG/ML stack) into an isolated pipx"
+    say "venv. The first install downloads several large packages — expect it to"
+    say "take a few minutes."
+    # Tell install.sh it runs inside guided setup so it suppresses its own
+    # "Next steps" block — this script gives the (simpler) guidance at the end.
+    export BRAINPALACE_GUIDED_SETUP=1
     if [[ -n "$USE_LOCAL" ]]; then
         bash "$USE_LOCAL/scripts/install.sh" --local "$USE_LOCAL" </dev/tty >/dev/tty
     else
@@ -169,25 +232,15 @@ fi
 AB_BIN="$(command -v brainpalace)"
 
 # -----------------------------------------------------------------------------
-# Step 2 — pick project + configure provider (BEFORE init/start so the
-# server inherits the API key from this script's environment when it
-# boots in step 3; otherwise the long-lived server process would never
-# see the key the user just pasted).
+# Step 2 — configure provider GLOBALLY (no project yet). Written to the XDG
+# global config that every later `brainpalace init` inherits, so the project
+# step can be deferred to the end and made optional.
 # -----------------------------------------------------------------------------
 
-step "Step 2/6 — Project + provider"
+step "Step 2/5 — Provider / API key (global)"
 
-PROJECT="$(ask "Project root" "$PWD")"
-PROJECT="${PROJECT/#\~/$HOME}"
-[[ -d "$PROJECT" ]] || errx "Path does not exist: $PROJECT"
-PROJECT="$(cd "$PROJECT" && pwd)"
-say "Project: $PROJECT"
-
-if [[ -f "$PROJECT/.brainpalace/runtime.json" ]]; then
-    say "This project already has .brainpalace/ — init will be a no-op."
-fi
-
-say "Configure the provider FIRST so the server we start in step 3 sees the API key."
+say "Configure the embedding/summarization provider ONCE, globally."
+say "Every project you set up later inherits ~/.config/brainpalace/config.yaml."
 
 # env-var names match the server defaults and the Claude Code plugin
 # wizard. The server resolves the actual var name from `api_key_env` in
@@ -219,7 +272,7 @@ P_CHOICE="$(pick "Choice 1-8" "8" \
     "gemini     (cloud — needs GOOGLE_API_KEY)" \
     "grok       (cloud — needs XAI_API_KEY)" \
     "ollama     (local — needs Ollama running)" \
-    "skip       (set up later with 'brainpalace config wizard')" \
+    "skip       (set up later with 'brainpalace config wizard --global')" \
     "wizard now (run the full picker without my hints)")"
 
 case "$P_CHOICE" in
@@ -233,13 +286,14 @@ case "$P_CHOICE" in
     8) PROVIDER="wizard" ;;
 esac
 
+# Run the wizard GLOBALLY (from $HOME so no stray project .brainpalace/ is found).
 case "$PROVIDER" in
     skip)
-        warn "Skipping provider — search will fail until you run 'brainpalace config wizard'."
+        warn "Skipping provider — search fails until you run 'brainpalace config wizard --global'."
         ;;
     wizard)
-        say "Launching brainpalace config wizard ..."
-        (cd "$PROJECT" && "$AB_BIN" config wizard) </dev/tty >/dev/tty
+        say "Launching brainpalace config wizard (global) ..."
+        (cd "$HOME" && "$AB_BIN" config wizard --global) </dev/tty >/dev/tty
         ;;
     ollama)
         OLLAMA_URL="$(ask "Ollama base URL" "${OLLAMA_BASE_URL:-http://127.0.0.1:11434}")"
@@ -248,8 +302,8 @@ case "$PROVIDER" in
         else
             warn "Could not reach $OLLAMA_URL — wizard will still let you continue."
         fi
-        say "Launching wizard with OLLAMA_BASE_URL=$OLLAMA_URL"
-        (cd "$PROJECT" && OLLAMA_BASE_URL="$OLLAMA_URL" "$AB_BIN" config wizard) </dev/tty >/dev/tty
+        say "Launching wizard (global) with OLLAMA_BASE_URL=$OLLAMA_URL"
+        (cd "$HOME" && OLLAMA_BASE_URL="$OLLAMA_URL" "$AB_BIN" config wizard --global) </dev/tty >/dev/tty
         ;;
     *)
         VAR="${PROVIDER_ENV[$PROVIDER]:-}"
@@ -271,13 +325,13 @@ case "$PROVIDER" in
                 fi
             fi
         fi
-        say "Launching brainpalace config wizard ..."
-        (cd "$PROJECT" && "$AB_BIN" config wizard) </dev/tty >/dev/tty
+        say "Launching brainpalace config wizard (global) ..."
+        (cd "$HOME" && "$AB_BIN" config wizard --global) </dev/tty >/dev/tty
         ;;
 esac
 
 # -----------------------------------------------------------------------------
-# Post-wizard: patch api_key_env per provider.
+# Post-wizard: patch api_key_env per provider on the GLOBAL config.
 #
 # `brainpalace config wizard` writes provider + model but never prompts
 # for `api_key_env`, so it defaults to OPENAI_API_KEY (embedding) /
@@ -286,7 +340,7 @@ esac
 # server reads the var name the user actually exported above.
 # -----------------------------------------------------------------------------
 
-CFG="$PROJECT/.brainpalace/config.yaml"
+CFG="$(xdg_config_yaml)"
 if [[ -f "$CFG" && "$PROVIDER" != "skip" ]]; then
     # Use the brainpalace pipx venv's python (PyYAML guaranteed there).
     # Fall back to system python3 only if pipx env lookup fails.
@@ -319,64 +373,19 @@ for section in ("embedding", "summarization"):
         changed.append(f"{section}.api_key_env -> {want}")
 if changed:
     p.write_text(yaml.safe_dump(cfg, default_flow_style=False, sort_keys=False))
-    print("Patched config.yaml: " + ", ".join(changed))
+    print("Patched global config.yaml: " + ", ".join(changed))
 else:
-    print("config.yaml api_key_env already correct.")
+    print("Global config.yaml api_key_env already correct.")
 PY
 fi
 
 # -----------------------------------------------------------------------------
-# Step 3 — init + start (server inherits provider env from this script)
+# Step 3 — MCP client wiring (optional), user scope by default so it's
+# machine-wide. Runs BEFORE the project step; project scope falls back to
+# $HOME when no project has been chosen yet.
 # -----------------------------------------------------------------------------
 
-step "Step 3/6 — Initialise project + start server"
-
-WATCH="off"
-if confirm "Enable file watcher (auto reindex on save)?" "y"; then
-    WATCH="auto"
-fi
-
-WATCH_FLAG=""
-[[ "$WATCH" == "auto" ]] && WATCH_FLAG="--watch auto"
-
-say "Running: brainpalace init --start $WATCH_FLAG"
-(cd "$PROJECT" && "$AB_BIN" init --start $WATCH_FLAG) >/dev/tty
-ok "Server initialised and started."
-
-if [[ "$PROVIDER" != "skip" && "$PROVIDER" != "ollama" && "$PROVIDER" != "wizard" ]]; then
-    VAR_CHECK="${PROVIDER_ENV[$PROVIDER]:-}"
-    if [[ -n "$VAR_CHECK" && -z "${!VAR_CHECK:-}" ]]; then
-        warn "$VAR_CHECK not set — server will fail provider calls."
-        warn "Stop and rerun with the key exported, or set it now and 'brainpalace stop && brainpalace start'."
-    fi
-fi
-
-# -----------------------------------------------------------------------------
-# Step 4 — index
-# -----------------------------------------------------------------------------
-
-step "Step 4/6 — Index project"
-
-if confirm "Index the project now?" "y"; then
-    INDEX_PATH="$(ask "Path to index (relative to project root, or absolute)" ".")"
-    if confirm "Include code (AST chunking)? (no = docs only)" "y"; then
-        CODE_FLAG=""
-    else
-        CODE_FLAG="--no-code"
-    fi
-    say "Running: brainpalace index $INDEX_PATH $CODE_FLAG"
-    (cd "$PROJECT" && "$AB_BIN" index "$INDEX_PATH" $CODE_FLAG) >/dev/tty
-    INDEXED_TARGET="$INDEX_PATH"
-else
-    INDEXED_TARGET="skipped"
-    warn "No index — queries will return nothing until you run 'brainpalace index <path>'."
-fi
-
-# -----------------------------------------------------------------------------
-# Step 5 — MCP client wiring
-# -----------------------------------------------------------------------------
-
-step "Step 5/6 — Wire an MCP client (optional)"
+step "Step 3/5 — Wire an MCP client (optional, global)"
 
 say "If you only use the CLI (or the Claude Code plugin), pick 'none'."
 say "Otherwise pick the MCP client you use — its config file will be written"
@@ -414,13 +423,14 @@ write_file() {
 }
 
 if [[ "$MCP_CLIENT" != "none" ]]; then
-    SCOPE_CHOICE="$(pick "Write config where?" "1" \
-        "Project scope (in $PROJECT)" \
-        "User scope  (HOME directory)")"
-    if [[ "$SCOPE_CHOICE" == "2" ]]; then
-        BASE="$HOME"
-    else
+    SCOPE_CHOICE="$(pick "Write config where?" "2" \
+        "Project scope (in the project you set up below)" \
+        "User scope  (HOME directory — recommended, applies everywhere)")"
+    if [[ "$SCOPE_CHOICE" == "1" && -n "${PROJECT:-}" ]]; then
         BASE="$PROJECT"
+    else
+        [[ "$SCOPE_CHOICE" == "1" ]] && warn "No project selected yet — writing MCP config at user scope (HOME)."
+        BASE="$HOME"
     fi
 
     case "$MCP_CLIENT" in
@@ -504,17 +514,72 @@ EOF
 fi
 
 # -----------------------------------------------------------------------------
-# Step 6 — verify
+# Step 4 — optional project setup (init + start + index). LAST step, opt-in.
+# Inherits the global provider config written in Step 2.
 # -----------------------------------------------------------------------------
 
-step "Step 6/6 — Verify"
+step "Step 4/5 — Set up a project (optional)"
 
-(cd "$PROJECT" && "$AB_BIN" status) >/dev/tty || warn "status returned non-zero"
+WATCH="off"
+if confirm "Set up and index a project now?" "y"; then
+    PROJECT="$(ask "Project root" "$PWD")"
+    PROJECT="${PROJECT/#\~/$HOME}"
+    [[ -d "$PROJECT" ]] || errx "Path does not exist: $PROJECT"
+    PROJECT="$(cd "$PROJECT" && pwd)"
+    say "Project: $PROJECT"
 
-if confirm "Run a sample query now?" "y"; then
-    Q="$(ask "Query" "how does authentication work")"
-    (cd "$PROJECT" && "$AB_BIN" query "$Q" --mode hybrid) >/dev/tty \
-        || warn "Query failed — check provider config and index status."
+    WATCH_FLAG=""
+    if confirm "Enable file watcher (auto reindex on save)?" "y"; then
+        WATCH="auto"
+        WATCH_FLAG="--watch auto"
+    fi
+
+    # init --start inherits the global provider config written in Step 2.
+    say "Running: brainpalace init --start $WATCH_FLAG"
+    (cd "$PROJECT" && "$AB_BIN" init --start $WATCH_FLAG) >/dev/tty
+    ok "Server initialised and started."
+
+    if confirm "Index the project now?" "y"; then
+        INDEX_PATH="$(ask "Path to index (relative to project root, or absolute)" ".")"
+        CODE_FLAG=""
+        confirm "Include code (AST chunking)? (no = docs only)" "y" || CODE_FLAG="--no-code"
+        say "Running: brainpalace index $INDEX_PATH $CODE_FLAG"
+        (cd "$PROJECT" && "$AB_BIN" index "$INDEX_PATH" $CODE_FLAG) >/dev/tty
+        INDEXED_TARGET="$INDEX_PATH"
+    else
+        INDEXED_TARGET="skipped"
+        warn "No index — queries return nothing until you run 'brainpalace index <path>'."
+    fi
+else
+    PROJECT=""
+    INDEXED_TARGET="skipped"
+    say ""
+    say "BrainPalace is installed and configured globally. To set up a project later:"
+    say ""
+    say "    cd /path/to/your/project"
+    say "    brainpalace init"
+    say ""
+    say "The provider is already configured globally — new projects inherit it."
+    say "Opt out of pieces with --no-start / --no-watch / --no-sessions, or use --yes in scripts."
+fi
+
+# -----------------------------------------------------------------------------
+# Step 5 — verify
+# -----------------------------------------------------------------------------
+
+step "Step 5/5 — Verify"
+
+if [[ -n "$PROJECT" ]]; then
+    (cd "$PROJECT" && "$AB_BIN" status) >/dev/tty || warn "status returned non-zero"
+
+    if confirm "Run a sample query now?" "y"; then
+        Q="$(ask "Query" "how does authentication work")"
+        (cd "$PROJECT" && "$AB_BIN" query "$Q" --mode hybrid) >/dev/tty \
+            || warn "Query failed — check provider config and index status."
+    fi
+else
+    say "No project set up — skipping status/query checks."
+    say "Global config: $(xdg_config_yaml)"
 fi
 
 # -----------------------------------------------------------------------------
@@ -525,33 +590,34 @@ cat >/dev/tty <<EOF
 
 ${c_gr}Setup complete.${c_reset}
   Binary:    $AB_BIN  ($("$AB_BIN" --version 2>/dev/null || echo "?"))
+  Provider:  $PROVIDER (global — $(xdg_config_yaml))
+  MCP wire:  $MCP_CLIENT
+EOF
+
+if [[ -n "$PROJECT" ]]; then
+    cat >/dev/tty <<EOF
   Project:   $PROJECT
   Watcher:   $WATCH
-  Provider:  $PROVIDER
   Indexed:   $INDEXED_TARGET
-  MCP wire:  $MCP_CLIENT
 
-${c_bold}Useful next commands${c_reset} (all auto-discover the project from CWD):
+${c_bold}Next${c_reset} (auto-discovers the project from CWD):
   brainpalace status
   brainpalace query "..." --mode hybrid
-  brainpalace config wizard
-  brainpalace list                # all running servers across projects
+EOF
+else
+    cat >/dev/tty <<EOF
 
-${c_bold}Add another project${c_reset} (binary is already installed — never reinstall):
+${c_bold}Next${c_reset} — set up a project (the binary + provider are ready):
 
-  cd /path/to/other-project
-  brainpalace init --start --watch auto
-  brainpalace index .
+  cd /path/to/your/project
+  brainpalace init
+EOF
+fi
 
-Each project gets its own server on a separate auto-allocated port. The
-provider config you set up here can be reused by copying
-.brainpalace/config.yaml into the new project's .brainpalace/, or by
-running 'brainpalace config wizard' fresh inside it. The exported API
-key in your shell rc covers all projects.
+cat >/dev/tty <<EOF
 
-To re-run this guided setup for a different project (provider + index
-+ MCP-client wiring in one go), just run the same curl one-liner again
-— step 1 will detect the binary and skip reinstall.
+The provider is configured globally — every 'brainpalace init' inherits it.
+Each project gets its own server on a separate auto-allocated port.
 
 Docs:
   README.md                Install + quick start

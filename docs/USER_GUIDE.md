@@ -1064,6 +1064,11 @@ brainpalace init --no-start                  # config only (no server, no indexi
 brainpalace init --no-sessions               # everything except embedding transcripts
 brainpalace init --force-monorepo-root       # override workspace-root guard
 
+# Configure providers
+brainpalace config wizard                    # this project's .brainpalace/config.yaml
+brainpalace config wizard --global           # configure providers once, globally
+                                             #   (~/.config/brainpalace/config.yaml — every project inherits it)
+
 # Start/stop server
 brainpalace start          # Backgrounds by default
 brainpalace start --foreground  # Run in foreground

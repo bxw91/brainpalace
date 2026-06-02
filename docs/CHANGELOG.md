@@ -12,7 +12,25 @@ month (the counter resets monthly). It looks like SemVer but is not.
 
 ---
 
-## [Unreleased]
+## [26.6.11] - 2026-06-02
+
+### Changed
+- Guided `setup.sh`: the "install from a local checkout" prompt now appears
+  only when a source checkout is actually detected — network (`curl | bash`)
+  users no longer see a dev-only question. Setup also warns up front that the
+  first pipx install pulls a large RAG/ML stack and can take a few minutes.
+- Guided `setup.sh`: when brainpalace is already installed, setup now fetches
+  the latest version from PyPI and shows it alongside the installed one —
+  "update available" (prompt defaults to yes) or "you're up to date" — instead
+  of asking to reinstall with no idea whether a newer version exists.
+- **Guided `setup.sh` is now global-first.** It installs brainpalace, configures
+  the provider/API **globally** (`brainpalace config wizard --global` →
+  `~/.config/brainpalace/config.yaml`), and wires MCP at user scope first.
+  Setting up and indexing a project is now the **last, optional** step — declining
+  prints a copy-paste `brainpalace init` example. New: `brainpalace config wizard
+  --global` writes the global config that every project inherits. The mid-flow
+  "Next steps" block printed by `install.sh` is suppressed during guided setup
+  (the script gives simpler end-of-run guidance).
 
 ## [26.6.10] - 2026-06-02
 

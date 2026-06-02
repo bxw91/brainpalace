@@ -172,7 +172,14 @@ def config_group() -> None:
 
 
 @config_group.command("wizard")
-def wizard() -> None:
+@click.option(
+    "--global",
+    "global_",
+    is_flag=True,
+    help="Write to the global ~/.config/brainpalace/config.yaml (XDG) that all "
+    "projects inherit, instead of the current project's .brainpalace/.",
+)
+def wizard(global_: bool) -> None:
     """Interactive configuration wizard for BrainPalace providers."""
     # Check existing config for validation issues before prompting
     existing_config = _find_config_file()
@@ -296,7 +303,10 @@ def wizard() -> None:
             "use_code_metadata": True,
         }
 
-    config_path = _resolve_wizard_config_path()
+    if global_:
+        config_path = get_xdg_config_dir() / "config.yaml"
+    else:
+        config_path = _resolve_wizard_config_path()
     config_path.parent.mkdir(parents=True, exist_ok=True)
     with open(config_path, "w", encoding="utf-8") as f:
         yaml.safe_dump(config, f, default_flow_style=False, sort_keys=False)
