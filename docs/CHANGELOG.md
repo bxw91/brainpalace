@@ -14,6 +14,42 @@ month (the counter resets monthly). It looks like SemVer but is not.
 
 ## [Unreleased]
 
+## [26.6.10] - 2026-06-02
+
+### Added
+- **`brainpalace init` is full setup by default.** A bare `init` now writes
+  config, starts the server, indexes the project (`watch=auto`), archives
+  transcripts, and embeds transcripts. Interactive runs show the resolved plan
+  and confirm once (the two embedding steps are billable); declining falls back
+  to config-only. New flags: `--yes` / `-y` (skip the prompt, apply the full
+  plan — for scripts/CI), `--no-start`, and `--no-watch`, alongside the existing
+  `--no-sessions` / `--no-archive`. Non-interactive / `--json` runs stay
+  config-only unless `--yes` is passed, so existing automation is unaffected.
+
+### Fixed
+- **Uninstall no longer misreads a pipx/uv install as bare pip.**
+  `detect_install_manager` classified the `~/.local/bin` shim path verbatim;
+  pipx/uv install a *symlink* there with no `/pipx/` or `/uv/tools/` segment, so
+  `brainpalace uninstall` printed a `pip uninstall` line that fails PEP 668
+  (`externally-managed-environment`) on Debian/Ubuntu system Python — and
+  `brainpalace update` ran the wrong upgrade. It now classifies the resolved
+  symlink target and the shebang. The guided `scripts/uninstall.sh` also retries
+  with `--break-system-packages` for genuine system-pip installs.
+- **`init` start/watch work without a `brainpalace` binary on PATH.** The nested
+  start and `folders add` steps spawned `["brainpalace", ...]`, which raised
+  `FileNotFoundError` when the console script was not installed on PATH (running
+  from source / as a module / uninstalled dev checkout). They now fall back to
+  `python -m brainpalace_cli` with the current interpreter.
+
+### Changed
+- **`init` output distinguishes status from actions.** After the confirmation,
+  init prints why it pauses (server cold-boot, not transcript work) and that
+  indexing is enqueued in the background. The post-init summary now splits
+  completed actions under `Done:` from genuine follow-ups under `Next steps:`.
+- Docs (INSTALL.md, README, USER_GUIDE) updated for the new `init` default and
+  the `--no-*` / `--yes` opt-outs. Internal: the MCP none-arguments handshake
+  test is now environment-independent (no longer assumes no server is running).
+
 ## [26.6.9] - 2026-06-02
 
 ### Fixed

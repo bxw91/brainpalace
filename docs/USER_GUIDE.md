@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-05-30
+last_validated: 2026-06-02
 ---
 
 # BrainPalace User Guide
@@ -1058,9 +1058,10 @@ Or directly: `pipx install brainpalace-cli`.
 
 ```bash
 # Initialize project
-brainpalace init                             # basic init
-brainpalace init --start                     # init then start server
-brainpalace init --start --watch auto        # init + start + enable file watcher
+brainpalace init                             # full setup: confirm, then start + index + sessions
+brainpalace init --yes                       # full setup, no prompt (CI/scripts)
+brainpalace init --no-start                  # config only (no server, no indexing)
+brainpalace init --no-sessions               # everything except embedding transcripts
 brainpalace init --force-monorepo-root       # override workspace-root guard
 
 # Start/stop server

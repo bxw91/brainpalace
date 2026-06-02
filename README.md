@@ -102,8 +102,8 @@ Full teardown reference:
 [`docs/INSTALL.md → Full uninstall (teardown)`](docs/INSTALL.md#full-uninstall-teardown).
 
 **Got more projects to index later?** The binary is installed once per
-machine; every new project needs three commands
-(`brainpalace init --start --watch auto`, then `brainpalace index .`).
+machine; every new project just needs `brainpalace init` (full setup by
+default — opt out with `--no-start` / `--no-sessions` / `--yes` for CI).
 Full how-to:
 [`docs/INSTALL.md → Adding more projects`](docs/INSTALL.md#adding-more-projects-after-the-first-install).
 

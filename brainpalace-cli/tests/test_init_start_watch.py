@@ -38,8 +38,18 @@ class TestInitStartWatch:
 
         These tests assert subprocess orchestration only; without real API
         keys the pre-flight would abort init before any subcommand runs.
+
+        Also pin the nested-command resolver to a bare ``brainpalace`` binary so
+        the asserted argv prefix is deterministic regardless of whether the
+        console script is actually installed on PATH in the test environment.
         """
-        with patch("brainpalace_cli.commands.init._preflight_providers"):
+        with (
+            patch("brainpalace_cli.commands.init._preflight_providers"),
+            patch(
+                "brainpalace_cli.commands.init.shutil.which",
+                return_value="brainpalace",
+            ),
+        ):
             yield
 
     def test_no_flags_no_subprocess_called(
@@ -174,6 +184,29 @@ class TestInitStartWatch:
         assert payload["post_init_steps"][0]["step"] == "start"
         assert payload["post_init_steps"][0]["status"] == "ok"
 
+    def test_yes_starts_and_watches_auto(
+        self, runner: CliRunner, temp_project: Path
+    ) -> None:
+        """--yes (non-interactive) starts then folders-add with watch=auto,
+        with no explicit --start/--watch flags."""
+        with patch(
+            "brainpalace_cli.commands.init.subprocess.run",
+            return_value=_ok_result(),
+        ) as mock_run:
+            result = runner.invoke(
+                init_command,
+                ["--path", str(temp_project), "--yes", "--json"],
+            )
+
+        assert result.exit_code == 0
+        assert mock_run.call_count == 2
+        first = mock_run.call_args_list[0].args[0]
+        second = mock_run.call_args_list[1].args[0]
+        assert first[:2] == ["brainpalace", "start"]
+        assert second[:3] == ["brainpalace", "folders", "add"]
+        assert "--watch" in second and "auto" in second
+        assert "--include-code" in second
+
 
 class TestInitForcePreservesProviderConfig:
     """`init --force` must not clobber the user's config.yaml provider edits."""
@@ -197,3 +230,24 @@ class TestInitForcePreservesProviderConfig:
         )
         assert result.exit_code == 0
         assert config_yaml.read_text() == sentinel
+
+
+class TestBrainpalaceArgv:
+    """`_brainpalace_argv` resolves how to invoke nested subcommands."""
+
+    def test_uses_path_binary_when_present(self) -> None:
+        from brainpalace_cli.commands.init import _brainpalace_argv
+
+        with patch(
+            "brainpalace_cli.commands.init.shutil.which",
+            return_value="/usr/local/bin/brainpalace",
+        ):
+            assert _brainpalace_argv() == ["/usr/local/bin/brainpalace"]
+
+    def test_falls_back_to_module_when_not_on_path(self) -> None:
+        import sys
+
+        from brainpalace_cli.commands.init import _brainpalace_argv
+
+        with patch("brainpalace_cli.commands.init.shutil.which", return_value=None):
+            assert _brainpalace_argv() == [sys.executable, "-m", "brainpalace_cli"]

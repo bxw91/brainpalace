@@ -283,8 +283,17 @@ detect_and_uninstall() {
     if command -v pip >/dev/null 2>&1 && pip show brainpalace-cli >/dev/null 2>&1; then
         local ctx="pip"; [[ -n "${CONDA_DEFAULT_ENV:-}" ]] && ctx="pip (conda env: $CONDA_DEFAULT_ENV)"
         say "Detected $ctx install."
-        confirm "Run: pip uninstall brainpalace-rag brainpalace-cli -y ?" "y" \
-            && { pip uninstall brainpalace-rag brainpalace-cli -y >/dev/tty 2>&1 && ok "  pip packages removed."; UNINSTALLED=1; }
+        if confirm "Run: pip uninstall brainpalace-rag brainpalace-cli -y ?" "y"; then
+            if pip uninstall brainpalace-rag brainpalace-cli -y >/dev/tty 2>&1; then
+                ok "  pip packages removed."; UNINSTALLED=1
+            elif pip uninstall brainpalace-rag brainpalace-cli -y --break-system-packages >/dev/tty 2>&1; then
+                # PEP 668: Debian/Ubuntu system Python is "externally managed" and
+                # refuses a bare uninstall. Retry with the documented override.
+                ok "  pip packages removed (--break-system-packages)."; UNINSTALLED=1
+            else
+                warn "  pip uninstall failed — remove the package manually."
+            fi
+        fi
     fi
 }
 detect_and_uninstall

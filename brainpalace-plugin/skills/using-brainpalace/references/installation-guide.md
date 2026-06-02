@@ -283,6 +283,12 @@ xcode-select --install
 | pip | `pip uninstall brainpalace-rag brainpalace-cli -y` |
 | conda | `pip uninstall brainpalace-rag brainpalace-cli -y` (in conda env) |
 
+> Match the row to your install. The official installer uses **pipx**; if
+> `which brainpalace` resolves into `…/pipx/venvs/…`, use the pipx row. On a
+> Debian/Ubuntu **system** Python a bare `pip uninstall` fails with
+> `externally-managed-environment` (PEP 668) — re-run with
+> `--break-system-packages` only if it really is a system-pip install.
+
 The table above removes only the **package**. It leaves running servers,
 per-project state, global dirs, MCP configs, and shell rc untouched.
 

@@ -21,13 +21,28 @@ The `brainpalace` binary is installed **once per machine** (in your
 pipx venv). Every project gets its own server, on its own
 auto-allocated port, with its own `.brainpalace/` state directory.
 
-**Three commands per new project:**
+**One command per new project:**
 
 ```bash
 cd /path/to/other-project
-brainpalace init --start --watch auto    # writes .brainpalace/, starts server, enrols watcher
-brainpalace index .                       # code + docs (default)
+brainpalace init        # confirm, then: write .brainpalace/, start server,
+                        # index docs (watch=auto), archive + embed transcripts
 ```
+
+`brainpalace init` does the full setup by default. An interactive run shows the
+plan and asks once before the two billable embedding steps (document + transcript
+indexing); answer no to fall back to config-only. Opt out of individual pieces:
+
+| Flag | Effect |
+|------|--------|
+| `--no-start` | write config only — no server, no indexing |
+| `--no-watch` | start the server but do not register/index the folder |
+| `--no-sessions` | everything except embedding transcripts |
+| `--no-archive` | do not keep the raw transcript backup |
+| `--yes` / `-y` | skip the prompt and apply the full plan (use in scripts) |
+
+In a non-interactive context (CI, piped, `--json`) a bare `brainpalace init`
+stays config-only — it never starts or embeds without an explicit `--yes`.
 
 Then query as usual — `brainpalace` walks up from CWD to find the
 right server for whichever project you happen to be in:
@@ -341,6 +356,12 @@ global installs.)
 | uv | `uv tool uninstall brainpalace-cli` |
 | pip | `pip uninstall brainpalace-rag brainpalace-cli -y` |
 | conda | `pip uninstall brainpalace-rag brainpalace-cli -y` (inside the env), then `conda env remove -n brainpalace` |
+
+> **Pick the row that matches how you installed.** The official installer uses
+> **pipx** — `which brainpalace` pointing at `…/pipx/venvs/…` means you want the
+> pipx row, not pip. A bare `pip uninstall` against a Debian/Ubuntu **system**
+> Python (3.12+) fails with `error: externally-managed-environment` (PEP 668);
+> for a genuine system-pip install, re-run it with `--break-system-packages`.
 
 #### 4. Delete per-project state — ⚠️ contains raw session transcripts
 

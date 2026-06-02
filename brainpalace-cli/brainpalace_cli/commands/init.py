@@ -12,6 +12,11 @@ import yaml
 from rich.console import Console
 from rich.panel import Panel
 
+from brainpalace_cli.commands.init_plan import (
+    downgrade_to_config_only,
+    format_init_plan,
+    resolve_init_plan,
+)
 from brainpalace_cli.migration import migrate_state_dir
 from brainpalace_cli.xdg_paths import get_xdg_config_dir, migrate_legacy_paths
 
@@ -308,6 +313,20 @@ def ensure_gitignore_entry(project_root: Path, entry: str = ".brainpalace/") -> 
     return True
 
 
+def _brainpalace_argv() -> list[str]:
+    """Resolve how to invoke a nested ``brainpalace`` subcommand.
+
+    Prefer the installed ``brainpalace`` console script on PATH. When it is not
+    found (running from source, as a module, or an uninstalled dev checkout),
+    fall back to ``python -m brainpalace_cli`` with the current interpreter so
+    start/watch still work without a PATH binary.
+    """
+    exe = shutil.which("brainpalace")
+    if exe:
+        return [exe]
+    return [sys.executable, "-m", "brainpalace_cli"]
+
+
 def _run_subcommand(
     cmd: list[str],
     *,
@@ -410,27 +429,37 @@ def _emit_init_result(
         s.get("step") == "watch" and s.get("status") == "ok" for s in post_init_steps
     )
 
-    console.print("\n[dim]Next steps:[/]")
-    step_num = 1
+    # Separate what already happened (status) from what the user still has to
+    # do (actionable). Reusing one "Next steps" header for both read as if the
+    # status lines were chores the user must perform.
+    done: list[str] = []
+    todo: list[str] = []
     if not start_used:
-        console.print(
-            f"  {step_num}. Run [bold]brainpalace start[/] to start the server"
-        )
-        step_num += 1
+        todo.append("Run [bold]brainpalace start[/] to start the server")
     elif started_ok:
-        console.print(f"  {step_num}. [green]Server started.[/]")
-        step_num += 1
-
+        done.append("Server started.")
     if watch == "off":
-        console.print(
-            f"  {step_num}. Run [bold]brainpalace folders add <path>[/] "
-            f"to index a folder"
-        )
+        todo.append("Run [bold]brainpalace folders add <path>[/] to index a folder")
     elif watched_ok:
+        done.append(f"Folder watched + initial indexing enqueued: {project_root}")
+
+    if done:
+        console.print("\n[dim]Done:[/]")
+        for item in done:
+            console.print(f"  [green]✓[/] {item}")
+
+    console.print("\n[dim]Next steps:[/]")
+    for item in todo:
+        console.print(f"  • {item}")
+    if started_ok and watched_ok:
+        # Indexing runs in the background job worker — point the user at it.
         console.print(
-            f"  {step_num}. [green]Folder watched + initial indexing enqueued:[/] "
-            f"{project_root}"
+            "  • Indexing runs in the background. Watch it: "
+            "[bold]brainpalace status[/] (jobs: [bold]brainpalace jobs[/])"
         )
+        console.print('  • Then query: [bold]brainpalace query "your question"[/]')
+    elif not todo:
+        console.print("  • Check health: [bold]brainpalace status[/]")
 
 
 def _start_and_watch(
@@ -457,8 +486,14 @@ def _start_and_watch(
     # (e.g. summarization=anthropic with no key) can't crash the server.
     _preflight_providers(resolved_state_dir, json_output)
 
+    # The start subcommand polls the server's /health until it answers, so this
+    # step blocks for the server's cold-boot (can be ~a minute on first launch).
+    # Tell the user why nothing seems to be happening — the wait is server boot,
+    # not transcript/document work (indexing is enqueued and runs in background).
+    if not json_output:
+        console.print("[dim]Starting server… (first boot can take up to a minute)[/]")
     start_result = _run_subcommand(
-        ["brainpalace", "start", "--path", str(project_root), "--json"],
+        [*_brainpalace_argv(), "start", "--path", str(project_root), "--json"],
         step="start",
         json_output=json_output,
     )
@@ -478,9 +513,11 @@ def _start_and_watch(
         raise SystemExit(1)
 
     if watch != "off":
+        if not json_output:
+            console.print("[dim]Registering folder + enqueuing initial indexing…[/]")
         watch_result = _run_subcommand(
             [
-                "brainpalace",
+                *_brainpalace_argv(),
                 "folders",
                 "add",
                 str(project_root),
@@ -550,19 +587,36 @@ def _start_and_watch(
     ),
 )
 @click.option(
-    "--start",
-    is_flag=True,
-    help="Start the server after initialization (one-shot setup)",
+    "--start/--no-start",
+    "start",
+    default=None,
+    help=(
+        "Start the server after init. Default: ON in an interactive terminal "
+        "(after a confirmation) or with --yes; OFF in non-interactive/--json "
+        "runs. --no-start forces config-only."
+    ),
 )
 @click.option(
     "--watch",
     type=click.Choice(["off", "auto"], case_sensitive=False),
-    default="off",
-    show_default=True,
+    default=None,
     help=(
-        "When combined with --start, register + index project_root with the "
-        "given watch mode (default 'off' = no folder registration)."
+        "Folder watch mode when starting (auto = register + index project_root "
+        "+ live re-index). Default 'auto' when starting, else 'off'."
     ),
+)
+@click.option(
+    "--no-watch",
+    "no_watch",
+    is_flag=True,
+    help="Do not register/watch the project folder (alias for --watch off).",
+)
+@click.option(
+    "--yes",
+    "-y",
+    "yes",
+    is_flag=True,
+    help="Skip the confirmation prompt and apply the full resolved plan.",
 )
 @click.option(
     "--sessions/--no-sessions",
@@ -593,8 +647,10 @@ def init_command(
     json_output: bool,
     state_dir: str | None,
     force_monorepo_root: bool,
-    start: bool,
-    watch: str,
+    start: bool | None,
+    watch: str | None,
+    no_watch: bool,
+    yes: bool,
     enable_sessions: bool | None,
     enable_archive: bool | None,
 ) -> None:
@@ -604,18 +660,43 @@ def init_command(
     a default config.json file.
 
     \b
+    A bare `brainpalace init` does everything by default: writes config, starts
+    the server, indexes the project (watch=auto), archives transcripts, and
+    embeds transcripts. Interactive runs confirm first (the two embedding steps
+    are billable); non-interactive/--json runs stay config-only unless --yes.
+
+    \b
     Examples:
-      brainpalace init                              # Initialize in current project
-      brainpalace init --path /my/project           # Initialize specific project
-      brainpalace init --port 8080                  # Set preferred port
-      brainpalace init --state-dir /custom/path     # Custom storage location
-      brainpalace init --force                      # Overwrite existing config
-      brainpalace init --start                      # Init then start the server
-      brainpalace init --start --watch auto         # One-shot init + start + watch
+      brainpalace init                  # Interactive: confirm, then full setup
+      brainpalace init --yes            # Non-interactive: full setup, no prompt
+      brainpalace init --no-start       # Config only (no server, no indexing)
+      brainpalace init --no-sessions    # Everything except embedding transcripts
+      brainpalace init --no-watch       # Start, but do not index/watch the folder
+      brainpalace init --path /my/proj  # Initialize a specific project
+      brainpalace init --force          # Overwrite existing config
     """
     try:
         # Trigger one-time migration from legacy ~/.brainpalace to XDG dirs
         migrate_legacy_paths()
+
+        # Resolve the action plan up front so both the already-initialized
+        # branch and the fresh-init branch agree on what to do. Implicit
+        # all-on defaults apply only with consent (TTY confirm or --yes);
+        # --json forces non-interactive.
+        is_tty = sys.stdin.isatty() and not json_output
+        plan = resolve_init_plan(
+            start=start,
+            watch=watch,
+            no_watch=no_watch,
+            sessions=enable_sessions,
+            archive=enable_archive,
+            yes=yes,
+            is_tty=is_tty,
+        )
+        if plan.confirm:
+            console.print(format_init_plan(plan))
+            if not click.confirm("Proceed?", default=True):
+                plan = downgrade_to_config_only(plan)
 
         # Resolve project root — CWD when --path is omitted (B5).
         if path:
@@ -664,13 +745,13 @@ def init_command(
         # run the start/watch pipeline so a first run that aborted at the
         # provider preflight can be resumed without --force.
         if config_path.exists() and not force:
-            if start:
+            if plan.start:
                 try:
                     existing_config = json.loads(config_path.read_text())
                 except (OSError, json.JSONDecodeError):
                     existing_config = {}
-                # Over an existing config + --start, only act on capabilities the
-                # user named explicitly; leave the other untouched.
+                # Over an existing config, only act on session capabilities the
+                # user named explicitly; leave the others untouched.
                 write_session_config(
                     resolved_state_dir,
                     index=enable_sessions,
@@ -682,7 +763,7 @@ def init_command(
                     config_path=config_path,
                     config=existing_config,
                     gitignore_added=False,
-                    watch=watch,
+                    watch=plan.watch,
                     json_output=json_output,
                 )
                 _emit_init_result(
@@ -693,7 +774,7 @@ def init_command(
                     gitignore_added=False,
                     post_init_steps=post_init_steps,
                     start_used=True,
-                    watch=watch,
+                    watch=plan.watch,
                     json_output=json_output,
                 )
                 return
@@ -754,55 +835,40 @@ def init_command(
                 "settings (use `brainpalace config` to change providers).[/]"
             )
 
-        # Session memory is ON by default for new projects: it indexes this
-        # project's AI chat transcripts (assistant + tool turns). An interactive
-        # TTY gets a confirmation defaulting to yes; non-interactive/--json runs
-        # Two INDEPENDENT capabilities, both default ON for genuinely new
-        # projects: ARCHIVE (raw transcript backup, free) and INDEX (embeddings,
-        # billable — interactive runs confirm it).
-        #
-        # Precedence per capability:
-        #   1. Explicit flag (--sessions/--no-sessions, --archive/--no-archive).
-        #   2. An XDG-inherited session_indexing block (copied by
-        #      write_default_provider_config) — respect it, don't clobber.
-        #   3. Fresh-project default ON (only when we just wrote config.yaml).
-        # A re-init over an existing project config (provider_config_written is
-        # False) leaves both untouched unless a flag is passed explicitly.
+        # Two INDEPENDENT capabilities resolved by the plan: ARCHIVE (raw
+        # transcript backup, free) and INDEX (embeddings, billable). The plan
+        # already accounts for explicit flags, --yes, and TTY consent. Two
+        # guards remain here:
+        #   - only write when we just wrote config.yaml (provider_config_written);
+        #     a re-init over an existing project leaves it untouched.
+        #   - respect an XDG-inherited session_indexing block unless the user
+        #     passed the matching flag explicitly.
         inherited = _existing_session_keys(resolved_state_dir)
-        if enable_sessions is None:
-            if not provider_config_written:
-                pass  # leave existing config untouched
-            elif "enabled" in inherited:
-                pass  # respect XDG global default
-            elif not json_output and sys.stdin.isatty():
-                enable_sessions = click.confirm(
-                    "Enable session memory (INDEX)? It embeds this project's AI "
-                    "chat transcripts (assistant + tool turns) for later recall. "
-                    "Raw transcripts are archived regardless.",
-                    default=True,
-                )
-            else:
-                enable_sessions = True
-        if enable_archive is None and provider_config_written:
-            if "archive" not in inherited:  # respect XDG archive block if present
-                enable_archive = True
-        write_session_config(
-            resolved_state_dir, index=enable_sessions, archive=enable_archive
-        )
+        sess: bool | None = plan.sessions
+        arch: bool | None = plan.archive
+        if not provider_config_written:
+            sess = None
+            arch = None
+        else:
+            if enable_sessions is None and "enabled" in inherited:
+                sess = None  # respect XDG global default
+            if enable_archive is None and "archive" in inherited:
+                arch = None  # respect XDG archive block
+        write_session_config(resolved_state_dir, index=sess, archive=arch)
 
         # B5: ensure .brainpalace/ is git-ignored for the project.
         gitignore_added = ensure_gitignore_entry(project_root)
 
         post_init_steps = []
 
-        if start:
+        if plan.start:
             post_init_steps = _start_and_watch(
                 project_root=project_root,
                 resolved_state_dir=resolved_state_dir,
                 config_path=config_path,
                 config=config,
                 gitignore_added=gitignore_added,
-                watch=watch,
+                watch=plan.watch,
                 json_output=json_output,
             )
 
@@ -813,8 +879,8 @@ def init_command(
             config=config,
             gitignore_added=gitignore_added,
             post_init_steps=post_init_steps,
-            start_used=start,
-            watch=watch,
+            start_used=plan.start,
+            watch=plan.watch,
             json_output=json_output,
         )
 

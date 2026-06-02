@@ -1,10 +1,10 @@
 """`brainpalace init` session capabilities: independent archive + index.
 
-For new projects both default ON: init writes session_indexing.enabled: true
-(INDEX = embeddings) and session_indexing.archive.enabled: true (ARCHIVE = raw
-transcript backup). --no-sessions disables only the index (archive stays on);
---no-archive disables only the archive. Non-interactive runs enable both; an
-interactive run confirms the index with a default of yes.
+ARCHIVE (raw transcript backup, free) defaults ON always. INDEX (embeddings,
+billable) follows the all-on rule: ON in an interactive TTY (confirmed) or with
+--yes, OFF in non-interactive/--json runs. Explicit --sessions/--no-sessions and
+--archive/--no-archive always win. These tests run via CliRunner (no TTY), so
+the implicit index default is OFF unless --yes or --sessions is passed.
 """
 
 import yaml
@@ -47,30 +47,32 @@ def test_init_no_sessions_keeps_archive_on(tmp_path, monkeypatch):
     assert cfg["session_indexing"]["archive"]["enabled"] is True
 
 
-def test_init_no_archive_keeps_index_on(tmp_path, monkeypatch):
-    # --no-archive disables ARCHIVE only; INDEX stays on (default).
-    result = _run(["--path", str(tmp_path), "--no-archive"], monkeypatch, tmp_path)
+def test_init_no_archive_keeps_index_independent(tmp_path, monkeypatch):
+    # --no-archive disables ARCHIVE only; --sessions keeps INDEX on (independent).
+    result = _run(
+        ["--path", str(tmp_path), "--sessions", "--no-archive"], monkeypatch, tmp_path
+    )
     assert result.exit_code == 0, result.output
     cfg = _cfg(tmp_path)
     assert cfg["session_indexing"]["enabled"] is True
     assert cfg["session_indexing"]["archive"]["enabled"] is False
 
 
-def test_init_default_non_interactive_enables_both(tmp_path, monkeypatch):
-    # No TTY -> new-project default is ON for both capabilities.
+def test_init_default_non_interactive_archive_only(tmp_path, monkeypatch):
+    # No TTY, no --yes -> config-only baseline: ARCHIVE on, INDEX off.
     result = _run(["--path", str(tmp_path)], monkeypatch, tmp_path)
     assert result.exit_code == 0, result.output
     cfg = _cfg(tmp_path)
-    assert cfg["session_indexing"]["enabled"] is True
+    assert cfg["session_indexing"]["enabled"] is False
     assert cfg["session_indexing"]["archive"]["enabled"] is True
 
 
-def test_init_json_non_interactive_enables_both(tmp_path, monkeypatch):
-    # --json is non-interactive too -> default ON for both.
+def test_init_json_non_interactive_archive_only(tmp_path, monkeypatch):
+    # --json is non-interactive -> ARCHIVE on, INDEX off.
     result = _run(["--path", str(tmp_path), "--json"], monkeypatch, tmp_path)
     assert result.exit_code == 0, result.output
     cfg = _cfg(tmp_path)
-    assert cfg["session_indexing"]["enabled"] is True
+    assert cfg["session_indexing"]["enabled"] is False
     assert cfg["session_indexing"]["archive"]["enabled"] is True
 
 
@@ -102,3 +104,15 @@ def test_init_flag_overrides_xdg_default(tmp_path, monkeypatch):
     result = CliRunner().invoke(init_command, ["--path", str(tmp_path), "--sessions"])
     assert result.exit_code == 0, result.output
     assert _cfg(tmp_path)["session_indexing"]["enabled"] is True
+
+
+def test_init_yes_non_interactive_enables_both(tmp_path, monkeypatch):
+    # --yes is explicit consent -> full all-on: INDEX and ARCHIVE both on.
+    # --no-start keeps this config-only so no server subprocess is spawned.
+    result = _run(
+        ["--path", str(tmp_path), "--yes", "--no-start"], monkeypatch, tmp_path
+    )
+    assert result.exit_code == 0, result.output
+    cfg = _cfg(tmp_path)
+    assert cfg["session_indexing"]["enabled"] is True
+    assert cfg["session_indexing"]["archive"]["enabled"] is True

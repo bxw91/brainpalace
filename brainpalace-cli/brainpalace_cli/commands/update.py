@@ -32,10 +32,25 @@ def detect_install_manager(bin_path: str | Path | None = None) -> str | None:
         bin_path = shutil.which("brainpalace")
     if not bin_path:
         return None
-    p = str(bin_path)
-    if "/pipx/" in p:
+    bin_path = Path(bin_path)
+    # pipx/uv drop a *symlink* (or console-script shim) in ~/.local/bin; the
+    # shim path itself has no ``/pipx/`` or ``/uv/tools/`` segment. Classify the
+    # symlink target and the shebang's interpreter, not just the shim's name —
+    # otherwise a pipx/uv install misreads as bare pip and prints a PEP 668-
+    # failing uninstall line.
+    candidates = [str(bin_path)]
+    try:
+        candidates.append(str(bin_path.resolve()))
+    except OSError:
+        pass
+    try:
+        candidates.append(bin_path.read_text(errors="ignore").splitlines()[0])
+    except (OSError, IndexError):
+        pass
+    blob = "\n".join(candidates)
+    if "/pipx/" in blob:
         return "pipx"
-    if "/uv/tools/" in p:
+    if "/uv/tools/" in blob:
         return "uv"
     return "pip"
 

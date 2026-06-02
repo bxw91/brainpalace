@@ -181,6 +181,13 @@ class TestRemainingStepsMessage:
         assert "pip uninstall" in msg
         assert "API key" in msg or "_API_KEY" in msg
 
+    def test_pip_notes_pep668_fallback(self) -> None:
+        """PEP 668 hint: a bare pip uninstall is refused on Debian/Ubuntu
+        system Python; the message must point at --break-system-packages."""
+        mode, argv = package_uninstall_plan("pip")
+        msg = remaining_steps_message("pip", mode, argv)
+        assert "--break-system-packages" in msg
+
     def test_pipx_only_rc_reminder(self) -> None:
         mode, argv = package_uninstall_plan("pipx")
         msg = remaining_steps_message("pipx", mode, argv)

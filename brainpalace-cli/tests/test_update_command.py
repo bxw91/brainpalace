@@ -2,6 +2,7 @@
 
 import subprocess
 import sys
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -34,6 +35,35 @@ class TestDetectInstallManager:
     def test_pip_path_falls_through(self) -> None:
         path = "/home/u/.venv/bin/brainpalace"
         assert detect_install_manager(path) == "pip"
+
+    def test_pipx_symlink_shim(self, tmp_path: Path) -> None:
+        """A ~/.local/bin shim symlinked into a pipx venv classifies as pipx.
+
+        Regression: pipx/uv put a *symlink* in ~/.local/bin; the shim path
+        itself has no ``/pipx/`` segment, so classifying it verbatim misreads
+        the install as bare pip (and prints a PEP 668-failing uninstall line).
+        """
+        venv_bin = tmp_path / ".local/share/pipx/venvs/brainpalace-cli/bin"
+        venv_bin.mkdir(parents=True)
+        real = venv_bin / "brainpalace"
+        real.write_text("#!/usr/bin/env python\n")
+        shim_dir = tmp_path / ".local/bin"
+        shim_dir.mkdir(parents=True)
+        shim = shim_dir / "brainpalace"
+        shim.symlink_to(real)
+        assert detect_install_manager(str(shim)) == "pipx"
+
+    def test_uv_symlink_shim(self, tmp_path: Path) -> None:
+        """A ~/.local/bin shim symlinked into a uv tools dir classifies as uv."""
+        tool_bin = tmp_path / ".local/share/uv/tools/brainpalace-cli/bin"
+        tool_bin.mkdir(parents=True)
+        real = tool_bin / "brainpalace"
+        real.write_text("#!/usr/bin/env python\n")
+        shim_dir = tmp_path / ".local/bin"
+        shim_dir.mkdir(parents=True)
+        shim = shim_dir / "brainpalace"
+        shim.symlink_to(real)
+        assert detect_install_manager(str(shim)) == "uv"
 
     def test_none_when_not_found(self) -> None:
         with patch("shutil.which", return_value=None):

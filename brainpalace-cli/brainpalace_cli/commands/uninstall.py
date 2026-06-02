@@ -170,6 +170,10 @@ def remaining_steps_message(manager: str | None, mode: str, argv: list[str]) -> 
             "  - finish removing the package (can't self-delete the running env):"
         )
         lines.append(f"      {' '.join(argv)}")
+        lines.append(
+            "      (if that fails with 'externally-managed-environment' on a "
+            "Debian/Ubuntu system Python, re-run it with --break-system-packages)"
+        )
     elif mode == "unknown":
         lines.append(
             "  - uninstall the package with your installer "

@@ -92,10 +92,27 @@ def test_call_tool_dispatches_and_serialises(monkeypatch: pytest.MonkeyPatch) ->
     assert payload == {"ok": True, "echoed_path": "/p/demo"}
 
 
-def test_call_tool_handles_none_arguments() -> None:
-    """Some MCP clients send no arguments — handler must accept ``None``."""
+def test_call_tool_handles_none_arguments(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Some MCP clients send no arguments — ``call_tool`` must accept ``None``
+    and dispatch with a default-constructed schema (``None`` -> ``{}``).
+
+    Mocks the dispatch entry so the assertion does not depend on whether a real
+    BrainPalace server happens to be running in the test environment.
+    """
+    seen: dict[str, Any] = {}
+
+    class _Schema(BaseModel):
+        path: str | None = None
+
+    async def _handler(parsed: _Schema) -> dict[str, Any]:
+        seen["parsed"] = parsed
+        return {"ok": True, "path": parsed.path}
+
+    monkeypatch.setitem(server._DISPATCH, "status", (_Schema, _handler))
+
     result = asyncio.run(server.call_tool("status", None))
 
-    # No server running in the test env → friendly error from the real handler.
+    assert isinstance(seen["parsed"], _Schema)
+    assert seen["parsed"].path is None  # None args -> {} -> schema defaults
     payload = json.loads(result[0].text)
-    assert "error" in payload
+    assert payload == {"ok": True, "path": None}
