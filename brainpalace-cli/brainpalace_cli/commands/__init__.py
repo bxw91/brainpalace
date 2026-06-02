@@ -23,6 +23,7 @@ from .status import status_command
 from .stop import stop_command
 from .types import types_group
 from .uninstall import uninstall_command
+from .update import update_command
 from .whoami import whoami_command
 
 __all__ = [
@@ -49,5 +50,6 @@ __all__ = [
     "stop_command",
     "types_group",
     "uninstall_command",
+    "update_command",
     "whoami_command",
 ]

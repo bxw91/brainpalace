@@ -14,6 +14,22 @@ month (the counter resets monthly). It looks like SemVer but is not.
 
 ## [Unreleased]
 
+## [26.6.8] - 2026-06-02
+
+### Added
+- **`brainpalace update`** — one-command upgrade. Auto-detects how the CLI was
+  installed (pipx / uv / pip) and runs the matching upgrade, then reminds you to
+  restart the server. `--yes` skips the confirm.
+- **`brainpalace uninstall` is now a guided teardown** when run with no flags:
+  confirms each step (stop servers, remove plugin dirs across runtimes/scopes,
+  surgically strip the `brainpalace` entry from MCP client configs while keeping
+  your other servers, delete selected per-project state, delete global state),
+  then prints the leftover manual steps. For pipx/uv it offers to run the
+  package uninstall as its final act; for pip it prints the command (a process
+  can't delete its own running env). The shell-rc API key is always left to you.
+  `--yes` / `--json` keep the previous non-interactive behaviour (global data +
+  server stop only).
+
 ## [26.6.7] - 2026-06-02
 
 ### Added

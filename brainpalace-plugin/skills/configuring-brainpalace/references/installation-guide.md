@@ -444,6 +444,11 @@ rm -rf .codex/skills/brainpalace      ~/.codex/skills/brainpalace
 
 ## Complete teardown (remove all state)
 
+**Easiest:** `brainpalace uninstall` (guided — stops servers, removes plugins +
+MCP entries, deletes selected per-project + global state, then prints any
+leftover step). The manual sequence below is for when the binary is already
+gone or you want full control.
+
 The per-method `### Uninstall` blocks above remove only the **package**, and the
 block above removes only the **plugin**. Neither touches running servers,
 per-project state, global dirs, MCP configs, or your shell rc. For a full

@@ -125,16 +125,29 @@ class TestUninstallRemovesDirs:
 class TestUninstallConfirmation:
     """Tests for confirmation prompt behavior."""
 
-    def test_confirmation_prompt_aborts_on_n(
+    def test_guided_n_to_global_keeps_dirs(
         self, runner: CliRunner, tmp_path: Path
     ) -> None:
-        """Without --yes, prompts for confirmation; 'n' aborts without removing."""
+        """No flags = guided flow; 'n' at the global prompt keeps the dirs."""
         xdg_config = tmp_path / "config" / "brainpalace"
         xdg_config.mkdir(parents=True)
         xdg_state = tmp_path / "state" / "brainpalace"
         legacy = tmp_path / ".brainpalace"
+        registry = tmp_path / "registry.json"  # empty → only the global step runs
 
         with (
+            patch(
+                "brainpalace_cli.commands.uninstall.get_registry_path",
+                return_value=registry,
+            ),
+            patch(
+                "brainpalace_cli.commands.uninstall.discover_plugin_dirs",
+                return_value=[],
+            ),
+            patch(
+                "brainpalace_cli.commands.uninstall.discover_mcp_configs",
+                return_value=[],
+            ),
             patch(
                 "brainpalace_cli.commands.uninstall.get_xdg_config_dir",
                 return_value=xdg_config,
@@ -147,13 +160,16 @@ class TestUninstallConfirmation:
                 "brainpalace_cli.commands.uninstall.LEGACY_DIR",
                 new=legacy,
             ),
+            patch(
+                "brainpalace_cli.commands.uninstall.detect_install_manager",
+                return_value=None,
+            ),
         ):
             result = runner.invoke(uninstall_command, input="n\n")
 
         assert result.exit_code == 0
-        # Dirs should NOT be removed
+        # Dir should NOT be removed
         assert xdg_config.exists()
-        assert "aborted" in result.output.lower()
 
     def test_yes_flag_skips_prompt(self, runner: CliRunner, tmp_path: Path) -> None:
         """--yes skips confirmation and proceeds directly."""

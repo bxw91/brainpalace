@@ -31,6 +31,7 @@ from .commands import (
     submit_session_command,
     types_group,
     uninstall_command,
+    update_command,
     whoami_command,
 )
 
@@ -121,6 +122,7 @@ cli.add_command(folders_group, name="folders")
 cli.add_command(types_group, name="types")
 cli.add_command(cache_group, name="cache")
 cli.add_command(uninstall_command, name="uninstall")
+cli.add_command(update_command, name="update")
 cli.add_command(install_agent_command, name="install-agent")
 
 # Register MCP server (opt-in stdio shim for non-Claude-Code AI clients)

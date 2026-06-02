@@ -288,6 +288,11 @@ per-project state, global dirs, MCP configs, and shell rc untouched.
 
 ### Complete teardown (remove all state)
 
+**Easiest:** `brainpalace uninstall` (guided — stops servers, removes plugins +
+MCP entries, deletes selected per-project + global state, then prints any
+leftover step). Update with `brainpalace update`. The manual equivalent below
+is for when the binary is already gone.
+
 Run in order — stop/enumerate servers **before** removing the binary:
 
 ```bash

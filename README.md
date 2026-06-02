@@ -86,9 +86,13 @@ curl -sSL https://raw.githubusercontent.com/bxw91/brainpalace/main/scripts/setup
 
 That's it.
 
-**Want to remove it?** A guided uninstall mirrors the installer — it stops
-servers, strips plugins + MCP entries, uninstalls the package, then asks before
-deleting per-project and global state:
+**Update later:** `brainpalace update` (auto-detects pipx/uv/pip), then
+`brainpalace stop && brainpalace start` to reload.
+
+**Want to remove it?** `brainpalace uninstall` runs a guided teardown — stops
+servers, removes plugins + MCP entries, then asks before deleting per-project
+and global state, and prints any leftover step. If the binary is already gone,
+the bash mirror does the same:
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/bxw91/brainpalace/main/scripts/uninstall.sh | bash

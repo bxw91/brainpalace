@@ -250,6 +250,27 @@ pipx install brainpalace-cli
 
 ---
 
+## Updating
+
+One command — auto-detects pipx / uv / pip and runs the matching upgrade:
+
+```bash
+brainpalace update          # add --yes to skip the confirm
+```
+
+Then restart any running server so it loads the new code:
+
+```bash
+brainpalace stop && brainpalace start
+```
+
+Plugin files (`.claude/plugins/...`) don't auto-update — refresh with
+`brainpalace install-agent --agent <runtime>`. Manual equivalents per manager:
+`pipx upgrade brainpalace-cli` / `uv tool upgrade brainpalace-cli` /
+`pip install --upgrade brainpalace-rag brainpalace-cli`.
+
+---
+
 ## Full uninstall (teardown)
 
 Uninstalling the package alone does **not** remove BrainPalace. State is left in
@@ -257,16 +278,27 @@ project directories, global XDG dirs, MCP client configs, and your shell rc.
 
 ### Guided uninstall (recommended)
 
-The interactive mirror of `setup.sh` — confirms every removal, stops servers,
-strips plugins + MCP entries, uninstalls the package, then offers to delete
-per-project and global state:
+If the CLI is still installed, the guided teardown is one command:
+
+```bash
+brainpalace uninstall
+```
+
+It confirms each step — stop servers, remove plugin dirs (all runtimes/scopes),
+strip the `brainpalace` entry from MCP configs (keeping your other servers),
+delete selected per-project state, delete global state — then **prints the
+leftover steps**: for pip installs the final `pip uninstall …` line (a process
+can't delete its own running env; pipx/uv it offers to run for you), and the
+shell-rc API key (left to you — it may be shared with other tools).
+
+If the binary is **already gone** (or you prefer pure bash / curl), use the
+script mirror of `setup.sh`:
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/bxw91/brainpalace/main/scripts/uninstall.sh | bash
 ```
 
-It deliberately leaves your shell rc alone (an exported API key may be shared
-with other tools). Prefer the manual steps below if you want full control.
+Both leave your shell rc alone. Prefer the manual steps below for full control.
 
 ### Manual teardown
 
