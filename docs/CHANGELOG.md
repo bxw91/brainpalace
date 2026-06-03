@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-03
+last_validated: 2026-06-04
 ---
 
 # Changelog
@@ -13,6 +13,38 @@ month (the counter resets monthly). It looks like SemVer but is not.
 ---
 
 ## [Unreleased]
+
+## [26.6.14] - 2026-06-04
+
+### Changed
+- **Session summarization default is now `subagent` (Claude-Code-only).**
+  `session_extraction.mode` defaults to `subagent` instead of `auto`, in both the
+  CLI (`brainpalace init`) and the server's built-in default (absent/invalid
+  block). Summarization now happens **only inside Claude Code** (the plugin, free
+  on your subscription); the server never falls back to a paid provider on its
+  own — so there is **no surprise API bill**. If Claude Code didn't summarize a
+  session, it stays un-summarized by design. The `provider` and `auto` engines
+  (server-side, possibly metered, with the 24h safety net) remain available as an
+  explicit opt-in via `mode: provider` / `mode: auto`. **Upgrade note:** existing
+  projects on the implicit `auto` default lose the automatic server-side
+  fallback; set `mode: auto` or `mode: provider` by hand to restore it. The
+  `backfill-sessions` mode resolver now also defaults to `subagent` (was
+  `provider`) for a missing/unparseable config, so a config-less backfill can
+  never target the billable server engine.
+- **Provider distiller is now disabled by default (`SESSION_DISTILL_ENABLED`).**
+  The mode-independent kill switch flipped from default-**on** to default-**off**:
+  the server-side (billable) summarizer never runs unless `SESSION_DISTILL_ENABLED`
+  is explicitly truthy (`1`/`true`/`yes`/`on`). Server-side summarization now
+  requires **two** locks lifted — `session_extraction.mode: provider`/`auto` **and**
+  `SESSION_DISTILL_ENABLED=true`. Because this switch is independent of `mode`, it
+  also stops any pre-existing `mode: auto` config from billing until you opt in.
+  (`SESSION_INDEXING_ENABLED` and `SESSION_ARCHIVE_ENABLED` are unchanged —
+  still default-on.)
+- **Clarified "free" session summarization wording.** The plugin/subagent engine
+  is described as "free **on your Claude Code subscription**" (no separate API
+  bill — it draws on your subscription's usage limits), not unqualified "free",
+  across README, INSTALL, SESSION_INDEXING, the setup wizard, and `init`. Ollama
+  (provider mode) remains the only truly-$0 (fully local) option.
 
 ## [26.6.13] - 2026-06-03
 

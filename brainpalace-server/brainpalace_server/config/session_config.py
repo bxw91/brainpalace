@@ -102,28 +102,32 @@ ExtractMode = Literal["auto", "subagent", "provider", "off"]
 class SessionExtractionConfig(BaseModel):
     """Parsed ``session_extraction:`` block — selects the distillation engine.
 
-    Authoritative engine selector. ``init`` writes ``auto``: the engine is
-    decided at runtime by plugin presence — the server defers to the plugin's
-    subagent when installed (with a 24h safety net) and distils itself with the
-    configured summarization AI when not. ``--no-extract`` ⇒ ``off``. Absent
-    block ⇒ default ``auto``.
+    Authoritative engine selector. ``init`` writes ``subagent``: session
+    summarization happens ONLY inside Claude Code (the plugin's subagent, free on
+    your Claude Code subscription). The server never falls back to a paid
+    provider on its own — if Claude Code did not summarize a session, it simply
+    stays un-summarized. ``--no-extract`` ⇒ ``off``. Absent block ⇒ default
+    ``subagent``. ``provider`` (server-side LLM distillation, possibly metered)
+    and ``auto`` (subagent with a 24h provider safety net) remain available only
+    as explicit opt-in.
     """
 
     mode: ExtractMode = Field(
-        default="auto",
-        description="auto (runtime by plugin) | subagent | provider | off.",
+        default="subagent",
+        description="subagent (plugin-only, default) | auto | provider | off.",
     )
 
 
 def load_session_extraction_config(
     config_path: Path | None = None,
 ) -> SessionExtractionConfig:
-    """Load the ``session_extraction:`` block; default ``auto`` if absent.
+    """Load the ``session_extraction:`` block; default ``subagent`` if absent.
 
     Precedence: the project ``.brainpalace/config.yaml`` (resolved by
     :func:`_find_config_file`, which walks up from CWD) wins over the global XDG
-    config. An invalid/malformed block falls back to the ``auto`` default
-    rather than raising — distillation must never be disabled by a config typo.
+    config. An invalid/malformed block falls back to the ``subagent`` default
+    rather than raising — a config typo must never silently switch on paid
+    server-side distillation.
     """
     path = config_path or _find_config_file()
     block: dict[str, Any] | None = None
@@ -148,7 +152,7 @@ def load_session_extraction_config(
     try:
         return SessionExtractionConfig(**fields)
     except ValueError as exc:
-        logger.warning("Invalid session_extraction block, using auto: %s", exc)
+        logger.warning("Invalid session_extraction block, using subagent: %s", exc)
         return SessionExtractionConfig()
 
 
@@ -161,11 +165,11 @@ class SessionCapabilities:
     tool: str = DEFAULT_TOOL
 
 
-def _env_flag(name: str) -> bool:
-    """Generic env kill-switch. Absent ⇒ True (config then decides)."""
+def _env_flag(name: str, *, default: bool = True) -> bool:
+    """Generic env switch. Absent ⇒ ``default`` (config then decides)."""
     raw = os.getenv(name)
     if raw is None:
-        return True
+        return default
     return raw.strip().lower() in ("1", "true", "yes", "on")
 
 
@@ -180,12 +184,16 @@ def _env_archive_enabled() -> bool:
 
 
 def session_distill_enabled() -> bool:
-    """``SESSION_DISTILL_ENABLED`` kill switch for the PROVIDER distiller.
+    """``SESSION_DISTILL_ENABLED`` switch for the PROVIDER distiller.
 
-    Absent ⇒ enabled (config ``mode`` then decides). ``false`` is one of the two
-    ONLY non-summarize paths (the other is ``mode != provider``).
+    **Disabled by default** (absent ⇒ ``False``): the server-side provider
+    distiller — the only billable summarization path — never runs unless you
+    explicitly set ``SESSION_DISTILL_ENABLED`` truthy (``1``/``true``/``yes``/
+    ``on``). This is a hard, mode-independent lock: it keeps even an explicit
+    ``mode: provider``/``auto`` (incl. legacy configs) from billing until you opt
+    in. Summarization then stays inside Claude Code (``mode: subagent``).
     """
-    return _env_flag("SESSION_DISTILL_ENABLED")
+    return _env_flag("SESSION_DISTILL_ENABLED", default=False)
 
 
 def session_distill_grace_hours() -> float:

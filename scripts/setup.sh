@@ -556,11 +556,12 @@ fi
 
 # -----------------------------------------------------------------------------
 # Step 3b — offer the Claude Code plugin FIRST (best-effort, non-fatal).
-# Recommended path: free session summarization + the richest UX. Installing the
-# plugin makes `mode: auto` pick the plugin's subagent engine live.
+# Recommended path: free session summarization on your Claude Code subscription
+# (no separate API bill) + the richest UX. Installing the plugin makes
+# `mode: auto` pick the plugin's subagent engine live.
 # -----------------------------------------------------------------------------
 if command -v claude >/dev/null 2>&1; then
-    if confirm "Install the BrainPalace Claude Code plugin? (recommended — free session summarization, richest UX)" "y"; then
+    if confirm "Install the BrainPalace Claude Code plugin? (recommended — free session summarization on your Claude Code subscription, richest UX)" "y"; then
         say "Installing plugin via Claude Code…"
         if timeout 120 claude plugins marketplace add bxw91/brainpalace </dev/tty >/dev/tty 2>&1 \
            && timeout 120 claude plugins install brainpalace@brainpalace-marketplace </dev/tty >/dev/tty 2>&1; then
@@ -598,8 +599,9 @@ if confirm "Set up and index a project now?" "y"; then
     (cd "$PROJECT" && "$AB_BIN" init --start $WATCH_FLAG) >/dev/tty
     ok "Server initialised and started."
     # init enables session summarization and auto-picks the engine (printed
-    # above): plugin → subagent (free, Haiku); else → provider (your configured
-    # AI). CLI-only? Installing the Claude Code plugin is cheaper (subscription),
+    # above): plugin → subagent (free on your Claude Code subscription, Haiku —
+    # no separate API bill); else → provider (your configured AI). CLI-only?
+    # Installing the Claude Code plugin is cheaper (runs on your subscription),
     # or use a local Ollama summarizer to keep provider mode free + private.
     say "Session summarization: enabled (engine auto-picked; --no-extract to opt out)."
 

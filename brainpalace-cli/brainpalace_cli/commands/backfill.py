@@ -31,19 +31,24 @@ console = Console()
 
 
 def read_extract_mode(project_root: Path) -> str:
-    """Resolve ``session_extraction.mode`` from project config (default provider)."""
+    """Resolve ``session_extraction.mode`` from project config (default subagent).
+
+    Mirrors the server's default (``SessionExtractionConfig.mode``): an absent,
+    unparseable, or invalid block resolves to ``subagent`` — never ``provider`` —
+    so a missing config can never push backfill onto the billable server engine.
+    """
     config_path = project_root / ".brainpalace" / "config.yaml"
     if not config_path.exists():
-        return "provider"
+        return "subagent"
     try:
         data = yaml.safe_load(config_path.read_text()) or {}
     except yaml.YAMLError:
-        return "provider"
+        return "subagent"
     block = data.get("session_extraction") if isinstance(data, dict) else None
     mode = block.get("mode") if isinstance(block, dict) else None
     if mode is False:  # YAML 1.1: unquoted `off` → bool
         return "off"
-    return mode if mode in ("auto", "subagent", "provider", "off") else "provider"
+    return mode if mode in ("auto", "subagent", "provider", "off") else "subagent"
 
 
 def default_sessions_dir(project_root: Path) -> Path:

@@ -16,13 +16,13 @@ def _write(tmp_path: Path, body: str) -> Path:
     return cfg
 
 
-def test_default_mode_is_auto() -> None:
-    assert SessionExtractionConfig().mode == "auto"
+def test_default_mode_is_subagent() -> None:
+    assert SessionExtractionConfig().mode == "subagent"
 
 
-def test_absent_block_defaults_to_auto(tmp_path: Path) -> None:
+def test_absent_block_defaults_to_subagent(tmp_path: Path) -> None:
     cfg = _write(tmp_path, "session_indexing:\n  enabled: true\n")
-    assert load_session_extraction_config(cfg).mode == "auto"
+    assert load_session_extraction_config(cfg).mode == "subagent"
 
 
 def test_parses_auto(tmp_path: Path) -> None:
@@ -45,10 +45,10 @@ def test_parses_off_mode(tmp_path: Path) -> None:
     assert load_session_extraction_config(cfg).mode == "off"
 
 
-def test_invalid_mode_falls_back_to_auto(tmp_path: Path) -> None:
+def test_invalid_mode_falls_back_to_subagent(tmp_path: Path) -> None:
     cfg = _write(tmp_path, "session_extraction:\n  mode: bogus\n")
-    assert load_session_extraction_config(cfg).mode == "auto"
+    assert load_session_extraction_config(cfg).mode == "subagent"
 
 
-def test_missing_file_defaults_to_auto(tmp_path: Path) -> None:
-    assert load_session_extraction_config(tmp_path / "nope.yaml").mode == "auto"
+def test_missing_file_defaults_to_subagent(tmp_path: Path) -> None:
+    assert load_session_extraction_config(tmp_path / "nope.yaml").mode == "subagent"

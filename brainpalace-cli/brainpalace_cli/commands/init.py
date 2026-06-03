@@ -330,9 +330,10 @@ def apply_extract_engine(
     """Persist the session-summarization mode + reconcile Claude Code hooks.
 
     ``enabled`` is the resolved ``plan.extract``. When off → write
-    ``session_extraction.mode: off``; when on → write ``auto`` (the engine is
-    decided at runtime by plugin presence: the plugin owns its hooks; the server
-    defers when the plugin is present, with a 24h safety net).
+    ``session_extraction.mode: off``; when on → write ``subagent``: summarization
+    happens ONLY inside Claude Code (the plugin, free on your subscription). The
+    server never falls back to a paid provider on its own. (The ``provider`` and
+    ``auto`` engines remain available, but only as an explicit config opt-in.)
 
     Hook reconciliation follows the same plugin-presence rule:
     - **Plugin present** → the plugin owns all 3 hooks (SessionStart reminder +
@@ -341,9 +342,9 @@ def apply_extract_engine(
     - **Plugin absent** (CLI/MCP only) → install the SessionStart reminder via
       :func:`install_session_hooks` (which also prunes old extraction hooks).
 
-    Returns the resolved mode (``auto`` | ``off``).
+    Returns the resolved mode (``subagent`` | ``off``).
     """
-    mode = "auto" if enabled else "off"
+    mode = "subagent" if enabled else "off"
     write_session_config(state_dir, extract_mode=mode)
     home = home or Path.home()
     if claude_plugin_installed(project=project_root):
@@ -712,9 +713,9 @@ def _start_and_watch(
     default=None,
     help=(
         "SUMMARIZE each session into durable knowledge (summary, decisions, "
-        "triplets). ON by default. The engine is auto-picked: the Claude Code "
-        "plugin summarizes for free if installed, otherwise the server uses "
-        "your configured AI. Pass --no-extract to opt out."
+        "triplets). ON by default, summarized ONLY inside Claude Code (the "
+        "plugin, free on your Claude Code subscription — no separate API bill). "
+        "The server does not summarize on its own. Pass --no-extract to opt out."
     ),
 )
 def init_command(
@@ -936,18 +937,18 @@ def init_command(
                 arch = None  # respect XDG archive block
         write_session_config(resolved_state_dir, index=sess, archive=arch)
 
-        # Resolve + persist the session-summarization mode (auto), and reconcile
-        # the Claude Code hooks by plugin presence. Apply on a fresh config
-        # write, or whenever --extract/--no-extract was passed explicitly.
+        # Resolve + persist the session-summarization mode (subagent), and
+        # reconcile the Claude Code hooks by plugin presence. Apply on a fresh
+        # config write, or whenever --extract/--no-extract was passed explicitly.
         if provider_config_written or enable_extract is not None:
             extract_mode = apply_extract_engine(
                 resolved_state_dir, project_root, plan.extract
             )
-            if not json_output and extract_mode == "auto":
+            if not json_output and extract_mode == "subagent":
                 console.print(
-                    "[dim]Session summarization: on (auto — the plugin "
-                    "summarizes for free when installed, else the server uses "
-                    "your configured AI).[/]"
+                    "[dim]Session summarization: on (subagent — summarized only "
+                    "inside Claude Code, free on your Claude Code subscription. "
+                    "No server-side paid summarization).[/]"
                 )
 
         # B5: ensure .brainpalace/ is git-ignored for the project.

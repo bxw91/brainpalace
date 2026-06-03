@@ -5,7 +5,8 @@ last_validated: 2026-06-04
 # Install — alternative paths
 
 > **Using Claude Code? The recommended path is the plugin** — it installs the
-> CLI + server for you and summarizes your sessions for free:
+> CLI + server for you and summarizes your sessions for free on your Claude Code
+> subscription (no separate API bill — draws on your subscription's usage limits):
 > `claude plugins marketplace add bxw91/brainpalace && claude plugins install brainpalace@brainpalace-marketplace`
 > (then restart Claude Code). See [README → Install](../README.md#install). The
 > guided `setup.sh` also **offers the plugin first** when Claude Code is present.

@@ -223,7 +223,7 @@ states (archive on/off × index on/off) are legible:
 ```
 Session Archive:       on — 463 files, 12.3 MB (forever)
 Session Memory:        off (enable: brainpalace init --sessions)
-Session Summarization: 78% summarized (361/463 sessions, mode: auto)
+Session Summarization: 78% summarized (361/463 sessions, mode: subagent)
 ```
 
 The **Session Summarization** row reports coverage: the percent of archived
@@ -254,11 +254,11 @@ Session recall follows the tiered ladder (see [SESSION_CONTEXT.md](SESSION_CONTE
 
 Indexed turns give you raw recall. To store a *distilled* view of a session —
 a summary, the decisions made, and relationship triplets — submit an
-**extraction payload**. There are **two engines** that produce it (the `auto`
-default decides between them at runtime by plugin presence — see [Automatic summarization — `auto` engine, guaranteed](#automatic-summarization--auto-engine-guaranteed)):
+**extraction payload**. There are **two engines** that can produce it (see
+[Session summarization — `subagent` default](#session-summarization--subagent-default-claude-code-only)):
 the Claude Code **plugin subagent** (free on your subscription; the server never
-calls an LLM), or the **server provider engine** (the server summarizes with
-your configured AI when no plugin is installed). Either way the same payload is
+calls an LLM — **the default**), or the opt-in **server provider engine** (the
+server summarizes with your configured AI). Either way the same payload is
 stored. You can also submit one by hand:
 
 ```bash
@@ -352,7 +352,7 @@ Knob precedence: env var → project `session_extraction:` config → default.
 ```yaml
 # .brainpalace/config.yaml
 session_extraction:
-  mode: auto
+  mode: subagent
   drain_budget_bytes: 1048576   # 1 MB per turn
   drain_max_count: 8
   drain_cooldown_seconds: 300   # 5 min
@@ -362,48 +362,82 @@ Env overrides: `SESSION_DRAIN_BUDGET_BYTES`, `SESSION_DRAIN_MAX_COUNT`,
 
 Run it by hand anytime: `brainpalace drain-queue --json`.
 
-## Automatic summarization — `auto` engine, guaranteed
+## Session summarization — `subagent` default (Claude-Code-only)
 
 `brainpalace init` enables session summarization by default and writes
-`session_extraction.mode: auto` to `.brainpalace/config.yaml`. In `auto` the
-engine is **decided at runtime by plugin presence** — installing or uninstalling
-the Claude Code plugin flips it **live**, with no re-init:
+`session_extraction.mode: subagent` to `.brainpalace/config.yaml`. In `subagent`
+mode summaries are produced **only inside Claude Code** (the plugin, free on your
+subscription). **The server never summarizes on its own and never calls a paid
+provider.** If Claude Code did not summarize a session, it simply stays
+un-summarized — no surprise API bill.
 
 | Mode | Behaviour | Who summarizes | Cost |
 |------|-----------|----------------|------|
-| `auto` *(default)* | plugin present ⇒ defer to the plugin's subagent; plugin absent ⇒ the server distils | runtime-decided (subagent or provider) | free with plugin; else Ollama free / cloud metered |
-| `subagent` | force the plugin path | the plugin's `chat-session-extractor` subagent (Haiku), drained after your first turn | free (subscription) |
-| `provider` | force the server path | the **server**, with your configured summarization AI | Ollama = free; cloud = metered |
+| `subagent` *(default)* | plugin path only; server never distils | the plugin's `chat-session-extractor` subagent (Haiku), drained after your first turn | free† |
+| `provider` *(opt-in‡)* | force the server path | the **server**, with your configured summarization AI | Ollama = free; cloud = **metered** |
+| `auto` *(opt-in‡)* | plugin present ⇒ defer to subagent; plugin absent (or un-marked > 24h) ⇒ the server distils via provider | runtime-decided (subagent or provider) | free† with plugin; else Ollama free / **cloud metered** |
 | `off` | `brainpalace init --no-extract` | nobody | — |
 
-**Distill-time reconciliation (auto):** the server's distiller checks plugin
-presence **per session**. When the plugin is present it **defers** (the plugin's
-subagent owns extraction) — **unless** the session is un-marked AND older than a
-**24h grace window** (`SESSION_DISTILL_GRACE_HOURS`, default 24), the safety net
-for a disabled or never-reopened plugin. A **unified `.done` marker** (written by
-both the subagent submit and the provider distil) means a live engine flip never
-re-summarizes an already-extracted session.
+> **† "free" = no separate API bill.** The plugin's subagent runs on **your
+> Claude Code subscription** (Haiku), so it draws on your subscription's usage
+> limits rather than a metered API key. Ollama (`provider`/`auto`) is the only
+> truly-$0 server-side option (fully local).
+
+> **Why `subagent` is the default.** `provider` and `auto` can summarize via a
+> **paid** cloud AI (the `init` default summarization provider is metered), and
+> `auto`'s 24h safety net would fire that paid path automatically even with the
+> plugin installed. To keep summarization cost **opt-in, never surprising**, the
+> default keeps it inside Claude Code only.
+
+> **‡ Server-side summarization needs TWO locks lifted.** The provider distiller
+> is **disabled by default** (`SESSION_DISTILL_ENABLED` absent ⇒ off), *independently*
+> of `mode`. So `provider`/`auto` only ever bill when **both** hold:
+> `session_extraction.mode: provider` (or `auto`) **and** `SESSION_DISTILL_ENABLED=true`
+> (`1`/`true`/`yes`/`on`). This second lock is mode-independent, so it also keeps
+> any pre-existing `mode: auto` config from billing until you deliberately enable
+> it. To turn on server-side summarization:
+>
+> ```bash
+> # 1. choose the engine
+> #    .brainpalace/config.yaml → session_extraction.mode: provider
+> # 2. lift the global lock for the server process
+> export SESSION_DISTILL_ENABLED=true
+> ```
+
+**Opt-in: `auto` reconciliation.** When you set `mode: auto`, the server's
+distiller checks plugin presence **per session**. When the plugin is present it
+**defers** (the plugin's subagent owns extraction) — **unless** the session is
+un-marked AND older than a **24h grace window** (`SESSION_DISTILL_GRACE_HOURS`,
+default 24), the safety net for a disabled or never-reopened plugin. A **unified
+`.done` marker** (written by both the subagent submit and the provider distil)
+means a live engine flip never re-summarizes an already-extracted session.
 
 Plugin presence is detected via a **registry-first contract** (mirrored in server
 + CLI): parse `~/.claude/plugins/installed_plugins.json` for a `brainpalace@…`
 key, with a directory-glob fallback.
 
-Force a specific engine by setting `mode` by hand (`subagent`/`provider`).
+Force a specific engine by setting `mode` by hand (`subagent`/`provider`/`auto`).
 Precedence: the project `.brainpalace/config.yaml` wins over the global XDG
-config; absent in both ⇒ default `auto`.
+config; absent in both ⇒ default `subagent`.
 
-### THE GUARANTEE — every session gets summarized
+### Coverage guarantee — opt-in (`provider`/`auto` **and** `SESSION_DISTILL_ENABLED=true`)
 
-There is **no code path that silently skips a session.** The *only* ways
-summarization does not happen are:
+In the default `subagent` mode the server makes **no** summarization guarantee:
+if Claude Code doesn't run (plugin absent/disabled), sessions stay un-summarized
+by design. The "every session gets summarized" guarantee below applies **only
+when you opt into `provider` or `auto` AND set `SESSION_DISTILL_ENABLED=true`.**
 
-1. `session_extraction.mode: off` (`brainpalace init --no-extract`), or
-2. the kill switch `SESSION_DISTILL_ENABLED=false` (provider mode).
+With both locks lifted there is **no code path that silently skips a session.**
+The *only* ways summarization does not happen are:
 
-Everything else is **retried until it succeeds** — large transcripts (chunked +
-hierarchically merged, never skipped), malformed LLM output (retried, then left
-un-marked), provider outages, server restarts, missed real-time events, and
-old/pre-existing transcripts. The safety nets:
+1. `session_extraction.mode: off` (`brainpalace init --no-extract`),
+2. `session_extraction.mode: subagent` *(the default — plugin-only, no server fallback)*, or
+3. `SESSION_DISTILL_ENABLED` unset/false *(the default — provider distiller disabled)*.
+
+Otherwise (under `provider`/`auto` with the switch on) everything is **retried until it succeeds** —
+large transcripts (chunked + hierarchically merged, never skipped), malformed LLM
+output (retried, then left un-marked), provider outages, server restarts, missed
+real-time events, and old/pre-existing transcripts. The safety nets:
 
 - **provider mode (and `auto` without the plugin):** a per-session
   `.brainpalace/extracted/<id>.done` marker is written **only on full success**;
@@ -411,9 +445,10 @@ old/pre-existing transcripts. The safety nets:
   any quiescent, un-marked transcript. The live (still-growing) session is never
   distilled — only after it is idle ≥ 5 min or a newer session exists.
 - **subagent mode (and `auto` with the plugin):** the **durable**
-  `extract-queue.txt` holds pending ids until drained. In `auto`, the server's
-  24h safety net still distils any session the plugin left un-marked past the
-  grace window — so coverage holds even if the plugin is later disabled.
+  `extract-queue.txt` holds pending ids until drained. In `auto` only, the
+  server's 24h safety net still distils any session the plugin left un-marked
+  past the grace window — so coverage holds even if the plugin is later disabled.
+  In the default `subagent` mode there is no such fallback.
 
 ### Session filter contract (shared)
 

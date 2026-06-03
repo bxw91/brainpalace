@@ -11,7 +11,24 @@ from brainpalace_server.config.session_config import (
     load_session_indexing_config,
     resolve_session_capabilities,
     retain_cutoff,
+    session_distill_enabled,
 )
+
+
+def test_distill_disabled_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The billable provider distiller is OFF unless explicitly enabled — absent
+    # env ⇒ False (mode-independent lock against surprise summarization cost).
+    monkeypatch.delenv("SESSION_DISTILL_ENABLED", raising=False)
+    assert session_distill_enabled() is False
+
+
+def test_distill_enabled_only_when_truthy(monkeypatch: pytest.MonkeyPatch) -> None:
+    for truthy in ("1", "true", "yes", "on", "TRUE", "On"):
+        monkeypatch.setenv("SESSION_DISTILL_ENABLED", truthy)
+        assert session_distill_enabled() is True
+    for falsy in ("0", "false", "no", "off", ""):
+        monkeypatch.setenv("SESSION_DISTILL_ENABLED", falsy)
+        assert session_distill_enabled() is False
 
 
 def test_present_block_field_defaults() -> None:

@@ -1,15 +1,21 @@
 """Phase 080 — server-side session distiller (the *provider* engine).
 
-When the Claude Code plugin is **not** installed, the server itself distils each
-archived transcript into a :class:`SessionExtraction` using the configured
-summarization provider (Ollama free / cloud metered), then persists it via the
-same :class:`SessionExtractService` the plugin path uses.
+This engine is **doubly opt-in**: (1) the default ``mode: subagent`` summarizes
+only inside Claude Code and never invokes this module, and (2) the provider
+distiller is **disabled by default** — it runs only when ``SESSION_DISTILL_ENABLED``
+is set truthy. Both locks must be lifted: ``mode: provider``/``auto`` **and**
+``SESSION_DISTILL_ENABLED=true``. Then the server distils each archived transcript
+into a :class:`SessionExtraction` using the configured summarization provider
+(Ollama free / cloud metered), persisting it via the same
+:class:`SessionExtractService` the plugin path uses.
 
-THE GUARANTEE (see the plan): every session is summarized. There is **no code
-path that silently skips a session**. The only non-summarize paths are
-``mode != provider`` and the ``SESSION_DISTILL_ENABLED=false`` kill switch — both
-applied by the *caller* (lifespan), so this module, once invoked, only ever
-*succeeds-and-marks* or *fails-and-leaves-unmarked* (to be retried by catch-up).
+THE GUARANTEE (only when both locks are lifted): within ``provider``/``auto`` +
+``SESSION_DISTILL_ENABLED=true``, every session is summarized — there is **no code
+path that silently skips a session**. The non-summarize paths are ``mode !=
+provider`` (which includes the default ``subagent``) and the default-off
+``SESSION_DISTILL_ENABLED`` switch — both applied by the *caller* (lifespan), so
+this module, once invoked, only ever *succeeds-and-marks* or
+*fails-and-leaves-unmarked* (to be retried by catch-up).
 
 Execution model (Task 0-C: no periodic scheduler exists): real-time distills run
 behind a bounded :class:`asyncio.Semaphore` so the watcher never blocks; the

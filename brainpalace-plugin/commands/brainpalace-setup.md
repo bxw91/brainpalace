@@ -515,12 +515,15 @@ The provider is configured globally — new projects inherit it.
 > can connect on first start.
 
 > **Session summarization:** `brainpalace init` enables it by default and writes
-> `mode: auto` — the engine is decided **live** by plugin presence. Since you're
-> installing the plugin here, it summarizes your sessions **for free** (Haiku,
-> after your first turn); the plugin owns its own hooks. Without the plugin the
-> server falls back to your configured AI (prefer a local Ollama summarizer for
-> free + private), with a 24h safety net. Installing/uninstalling the plugin
-> flips the engine with no re-init. Opt out with `brainpalace init --no-extract`.
+> `mode: subagent` — sessions are summarized **only inside Claude Code**. Since
+> you're installing the plugin here, it summarizes your sessions **for free on
+> your Claude Code subscription** (Haiku, after your first turn — no separate API
+> bill; it draws on your subscription's usage limits); the plugin owns its own
+> hooks. The server never summarizes on its own, so there is **no surprise API
+> bill**. Want server-side summarization anyway? Opt in with `mode: provider`
+> (your configured AI — prefer a local Ollama summarizer for free + private) or
+> `mode: auto` (defer to the plugin, server fallback with a 24h safety net). Opt
+> out entirely with `brainpalace init --no-extract`.
 > See docs/SESSION_INDEXING.md.
 
 If Yes, run:

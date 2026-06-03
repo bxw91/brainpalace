@@ -53,8 +53,9 @@ same prerequisites and end with the same `brainpalace` CLI on your `PATH`.
 ### Install as a Claude Code plugin
 
 > **Recommended if you use Claude Code.** Richest UX, and it summarizes your
-> sessions for free (Haiku). Pick this over the CLI install if you're a Claude
-> Code user — it installs the CLI + server for you.
+> sessions for free on your Claude Code subscription (Haiku — no separate API
+> bill; it draws on your subscription's usage limits). Pick this over the CLI
+> install if you're a Claude Code user — it installs the CLI + server for you.
 
 Richest UX — 30 slash commands, 3 agents, 2 skills. The setup wizard inside
 Claude Code installs the CLI + server, configures provider keys, initialises
@@ -84,8 +85,8 @@ Full Claude Code reference: [`docs/PLUGIN_GUIDE.md`](docs/PLUGIN_GUIDE.md).
 ### Install as a CLI or MCP server
 
 > **Using Claude Code? Install the plugin instead** (above) — it includes
-> everything here plus free session summarization. This path is for CLI-only
-> use or non-Claude-Code editors over MCP.
+> everything here plus free session summarization on your Claude Code
+> subscription. This path is for CLI-only use or non-Claude-Code editors over MCP.
 
 Use this if you want `brainpalace` as a command-line tool, or if you want to
 connect an MCP-capable editor (Cursor, VS Code Copilot, Cline, Continue, Kilo
@@ -177,17 +178,18 @@ with optional cloud providers for embeddings and summarisation.
   *source*, not the install method. Other runtimes (OpenCode, Gemini CLI, Codex)
   have no passive capture — they push memory explicitly via the plugin's
   `/brainpalace-extract-session`. See [SESSION_INDEXING](docs/SESSION_INDEXING.md).
-- **Automatic session summarization — `auto` engine, guaranteed** — `init` writes
-  `mode: auto`; the engine is decided **live** by plugin presence. With the
-  Claude Code plugin installed → **subagent** (the plugin summarizes for free,
-  Haiku, after your first turn; it owns its hooks). Without it → **provider**
-  (the server summarizes with your configured AI; Ollama free + private).
-  Installing/uninstalling the plugin flips the engine with no re-init — the
-  server defers to the plugin when present (24h safety net for a
-  disabled/never-reopened plugin) and a unified `.done` marker means flips never
-  double-summarize. No session is ever silently skipped (retry + catch-up sweep
-  + durable queue); only `--no-extract` / `SESSION_DISTILL_ENABLED=false` stop it.
-  `backfill-sessions` summarizes old chats.
+- **Session summarization — `subagent` default (Claude-Code-only)** — `init`
+  writes `mode: subagent`: sessions are summarized **only inside Claude Code**
+  (the plugin, free on your Claude Code subscription — Haiku, after your first
+  turn, drawing on your subscription's usage limits, no separate API bill; it
+  owns its hooks). **The server never summarizes on its own** — no surprise API
+  bill; if Claude Code didn't summarize a session, it stays un-summarized. Opt
+  in to server-side summarization with `mode: provider` (your configured AI;
+  prefer local Ollama — free + private) or `mode: auto` (defer to the plugin,
+  server fallback with a 24h safety net). Under `provider`/`auto`, no session is
+  ever silently skipped (retry + catch-up sweep + durable queue); a unified
+  `.done` marker means flips never double-summarize. `backfill-sessions`
+  summarizes old chats.
 - **Persistent graph backend** — opt-in `store_type: sqlite` with **temporal
   validity** (per-edge validity windows, `invalidate`, `timeline`); scales past
   the in-memory default. See [GRAPHRAG_GUIDE](docs/GRAPHRAG_GUIDE.md).

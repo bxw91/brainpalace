@@ -34,9 +34,11 @@ def _transcripts(dir_: Path, sids: list[str]) -> Path:
 # --------------------------------------------------------------------------- #
 
 
-def test_read_extract_mode_default_provider(tmp_path):
+def test_read_extract_mode_default_subagent(tmp_path):
+    # No config / no block ⇒ subagent (never the billable provider engine),
+    # mirroring the server's SessionExtractionConfig default.
     (tmp_path / ".brainpalace").mkdir()
-    assert read_extract_mode(tmp_path) == "provider"
+    assert read_extract_mode(tmp_path) == "subagent"
 
 
 def test_read_extract_mode_off_from_yaml_bool(tmp_path):

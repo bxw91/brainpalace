@@ -692,12 +692,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                     )
                 app.state.session_index_service = sess_svc
 
-                # Phase 080: provider-engine distiller — the server summarizes
-                # archived transcripts when no plugin is installed. Built ONLY
-                # when mode == provider and SESSION_DISTILL_ENABLED is on, so its
-                # presence is the gate. Works even when index is OFF (it needs
-                # only storage_backend + embedder + summarizer). Never blocks
-                # startup; failure leaves distiller=None (archive still runs).
+                # Phase 080: provider-engine distiller — the (billable) server-side
+                # summarizer. Built ONLY when mode in (provider, auto) AND
+                # SESSION_DISTILL_ENABLED is truthy (disabled by default), so its
+                # presence is the single gate every distill path checks. With the
+                # default mode=subagent or the default-off switch it stays None →
+                # no server-side summarization ever runs. Works even when index is
+                # OFF (needs only storage_backend + embedder + summarizer). Never
+                # blocks startup; failure leaves distiller=None (archive still runs).
                 distiller = None
                 try:
                     from brainpalace_server.config.session_config import (

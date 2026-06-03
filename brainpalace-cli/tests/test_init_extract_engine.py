@@ -1,7 +1,8 @@
-"""`brainpalace init` writes mode=auto and reconciles Claude Code hooks.
+"""`brainpalace init` writes mode=subagent and reconciles Claude Code hooks.
 
-Engine is decided at runtime by plugin presence, so init always writes ``auto``
-(``off`` with --no-extract). Hook reconciliation follows plugin presence:
+Summarization happens ONLY inside Claude Code, so init writes ``subagent``
+(``off`` with --no-extract). The server never falls back to a paid provider.
+Hook reconciliation follows plugin presence:
 
 - Plugin present → plugin owns all 3 hooks; init only prunes old extraction
   hooks (does NOT install the reminder — avoids a double SessionStart).
@@ -37,24 +38,26 @@ def _patch(monkeypatch, tmp_path, *, plugin: bool):
     return calls
 
 
-def test_init_writes_auto_and_installs_reminder_when_no_plugin(tmp_path, monkeypatch):
+def test_init_writes_subagent_and_installs_reminder_when_no_plugin(
+    tmp_path, monkeypatch
+):
     calls = _patch(monkeypatch, tmp_path, plugin=False)
     result = CliRunner().invoke(
         init_command, ["--path", str(tmp_path), "--yes", "--no-start", "--extract"]
     )
     assert result.exit_code == 0, result.output
-    assert _cfg(tmp_path)["session_extraction"]["mode"] == "auto"
+    assert _cfg(tmp_path)["session_extraction"]["mode"] == "subagent"
     # No plugin → CLI installs the SessionStart reminder.
     assert len(calls) == 1
 
 
-def test_init_writes_auto_and_skips_reminder_when_plugin(tmp_path, monkeypatch):
+def test_init_writes_subagent_and_skips_reminder_when_plugin(tmp_path, monkeypatch):
     calls = _patch(monkeypatch, tmp_path, plugin=True)
     result = CliRunner().invoke(
         init_command, ["--path", str(tmp_path), "--yes", "--no-start", "--extract"]
     )
     assert result.exit_code == 0, result.output
-    assert _cfg(tmp_path)["session_extraction"]["mode"] == "auto"
+    assert _cfg(tmp_path)["session_extraction"]["mode"] == "subagent"
     # Plugin owns the reminder → init must NOT install it (no double SessionStart).
     assert calls == []
 
@@ -68,13 +71,13 @@ def test_init_no_extract_writes_off(tmp_path, monkeypatch):
     assert _cfg(tmp_path)["session_extraction"]["mode"] == "off"
 
 
-def test_init_prints_auto_note(tmp_path, monkeypatch):
+def test_init_prints_subagent_note(tmp_path, monkeypatch):
     _patch(monkeypatch, tmp_path, plugin=False)
     result = CliRunner().invoke(
         init_command, ["--path", str(tmp_path), "--yes", "--no-start", "--extract"]
     )
     assert result.exit_code == 0, result.output
-    assert "auto" in result.output
+    assert "Claude Code" in result.output
 
 
 def _settings_with_old_extraction_hooks(home):
@@ -118,7 +121,7 @@ def test_apply_extract_engine_plugin_present_prunes_only(tmp_path, monkeypatch):
 
     mode = apply_extract_engine(state, tmp_path, enabled=True, home=home)
 
-    assert mode == "auto"
+    assert mode == "subagent"
     settings = json.loads(settings_path.read_text())
     # Old extraction hook pruned; user's own hook preserved.
     assert not settings["hooks"].get("SessionEnd")
@@ -140,7 +143,7 @@ def test_apply_extract_engine_no_plugin_installs_reminder(tmp_path, monkeypatch)
 
     mode = apply_extract_engine(state, tmp_path, enabled=True, home=home)
 
-    assert mode == "auto"
+    assert mode == "subagent"
     settings = json.loads((home / ".claude" / "settings.json").read_text())
     assert "SessionStart" in settings["hooks"]
     script = home / ".claude" / "hooks" / "brainpalace-sessionstart.sh"

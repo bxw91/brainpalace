@@ -5,9 +5,9 @@ Detection contract (mirrored in the server — keep both in sync):
    key's name (the part before '@') == "brainpalace".
 2. FALLBACK (registry missing/unparseable): directory checks.
 
-``brainpalace init`` writes ``mode: auto``; this contract lets the engine be
-decided at runtime by plugin presence (the plugin owns its hooks; the server
-defers when the plugin is present).
+``brainpalace init`` writes ``mode: subagent`` (summarization only inside Claude
+Code). This contract still reconciles hooks by plugin presence, and the opt-in
+``mode: auto`` engine uses it to decide subagent-vs-provider at runtime.
 """
 
 from __future__ import annotations
