@@ -14,6 +14,7 @@ def _resolve(**kw):
         "no_watch": False,
         "sessions": None,
         "archive": None,
+        "extract": None,
         "yes": False,
         "is_tty": False,
     }

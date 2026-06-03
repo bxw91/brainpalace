@@ -8,15 +8,18 @@ import click
 
 from . import __version__
 from .commands import (
+    backfill_command,
     cache_group,
     config_group,
     context_command,
     doctor_command,
+    drain_queue_command,
     folders_group,
     index_command,
     init_command,
     inject_command,
     install_agent_command,
+    install_session_hooks_command,
     jobs_command,
     list_command,
     mcp_command,
@@ -124,6 +127,9 @@ cli.add_command(cache_group, name="cache")
 cli.add_command(uninstall_command, name="uninstall")
 cli.add_command(update_command, name="update")
 cli.add_command(install_agent_command, name="install-agent")
+cli.add_command(install_session_hooks_command, name="install-session-hooks")
+cli.add_command(backfill_command, name="backfill-sessions")
+cli.add_command(drain_queue_command, name="drain-queue")
 
 # Register MCP server (opt-in stdio shim for non-Claude-Code AI clients)
 cli.add_command(mcp_command, name="mcp")

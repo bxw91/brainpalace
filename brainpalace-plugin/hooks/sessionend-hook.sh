@@ -1,4 +1,5 @@
 #!/bin/bash
+# Note: runs in Claude Code's hook env; no-ops if 'brainpalace' is not on PATH.
 # SessionEnd hook for Claude Code (BrainPalace) — queue-and-drain extraction.
 #
 # Claude Code SessionEnd hooks are shell-only: they cannot run an LLM for free

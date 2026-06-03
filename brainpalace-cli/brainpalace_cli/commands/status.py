@@ -249,6 +249,25 @@ def status_command(
                         "[dim]off[/] (enable: brainpalace init --sessions)",
                     )
 
+            # Session summarization coverage (% of archived sessions distilled).
+            extract = features.get("session_extraction")
+            if isinstance(extract, dict) and extract.get("mode") != "off":
+                done = int(extract.get("summarized_sessions", 0) or 0)
+                total = int(extract.get("total_sessions", 0) or 0)
+                pct = float(extract.get("summarized_pct", 0.0) or 0.0)
+                mode = str(extract.get("mode", "auto"))
+                if total:
+                    table.add_row(
+                        "Session Summarization",
+                        f"[green]{pct:.0f}%[/] summarized "
+                        f"({done:,}/{total:,} sessions, mode: {mode})",
+                    )
+                else:
+                    table.add_row(
+                        "Session Summarization",
+                        f"[dim]no sessions yet[/] (mode: {mode})",
+                    )
+
             # Show embedding cache status if available (Phase 16)
             embedding_cache = indexing.embedding_cache
             if embedding_cache:

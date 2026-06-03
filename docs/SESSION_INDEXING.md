@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-02
+last_validated: 2026-06-04
 ---
 
 # Session Indexing
@@ -221,9 +221,15 @@ There is no separate curation command — the filesystem is the interface.
 states (archive on/off × index on/off) are legible:
 
 ```
-Session Archive: on — 463 files, 12.3 MB (forever)
-Session Memory:  off (enable: brainpalace init --sessions)
+Session Archive:       on — 463 files, 12.3 MB (forever)
+Session Memory:        off (enable: brainpalace init --sessions)
+Session Summarization: 78% summarized (361/463 sessions, mode: auto)
 ```
+
+The **Session Summarization** row reports coverage: the percent of archived
+sessions that carry a durable extraction (`.done`) marker, engine-agnostic (both
+the plugin subagent and the provider distiller write the unified marker). A
+backlog draining via the throttle shows this climb over time.
 
 Archive metrics:
 
@@ -248,9 +254,12 @@ Session recall follows the tiered ladder (see [SESSION_CONTEXT.md](SESSION_CONTE
 
 Indexed turns give you raw recall. To store a *distilled* view of a session —
 a summary, the decisions made, and relationship triplets — submit an
-**extraction payload**. The LLM that produces it runs inside your AI coding
-tool (the manual command in 070, the SessionEnd subagent in 080); the server
-never calls an LLM, so this costs nothing beyond your existing subscription.
+**extraction payload**. There are **two engines** that produce it (the `auto`
+default decides between them at runtime by plugin presence — see [Automatic summarization — `auto` engine, guaranteed](#automatic-summarization--auto-engine-guaranteed)):
+the Claude Code **plugin subagent** (free on your subscription; the server never
+calls an LLM), or the **server provider engine** (the server summarizes with
+your configured AI when no plugin is installed). Either way the same payload is
+stored. You can also submit one by hand:
 
 ```bash
 # payload.json matches the extraction schema (see below)
@@ -296,17 +305,152 @@ You don't have to hand-write the extraction JSON. Two paths, same contract:
 Claude Code `SessionEnd` hooks are shell-only and can't run an LLM for free at
 end-of-session. So extraction is split:
 
-1. **`templates/sessionend-hook.sh`** appends the just-ended `session_id` to a
+1. **`sessionend-hook.sh`** appends the just-ended `session_id` to a
    per-project queue (`.brainpalace/extract-queue.txt`). Instant, no LLM, only
    for indexed projects.
-2. The **SessionStart hook** drains that queue at the *next* session start: it
-   asks the in-session model to run the **`chat-session-extractor`** subagent on
-   each queued session, which extracts + submits. Free (subscription model);
-   no `claude -p` headless spend, no paid cron.
+2. The **UserPromptSubmit hook** (`userpromptsubmit-drain-hook.sh`)
+   drains that queue **after the first user turn** of the next session (NOT at
+   startup): it asks the in-session model to run the **`chat-session-extractor`**
+   subagent (pinned to **Haiku**) on each queued session, which extracts +
+   submits. Free (subscription model); no `claude -p` headless spend, no paid
+   cron. The queue is **durable** — a pending session is summarized at the next
+   Claude Code session, however much later.
 
-Install the SessionEnd hook alongside the SessionStart hook (see each
-template's header). Extraction is **best-effort** — if the model doesn't drain a
-queued session, the manual command is always available.
+These **two extraction hooks now ship with the Claude Code plugin**
+(`plugin.json` `hooks`, under `${CLAUDE_PLUGIN_ROOT}/hooks/`), alongside the
+plugin's **SessionStart reminder**. Installing the plugin gives you the complete
+hook set — nothing else to wire. **`brainpalace install-session-hooks`** now
+installs **only the SessionStart reminder** (for CLI/MCP-only users without the
+plugin) and **prunes** any old extraction hooks a prior version wrote, so the
+plugin and CLI never double-run. `brainpalace init` does the same automatically:
+plugin present ⇒ prune only (the plugin owns everything); plugin absent ⇒ install
+the reminder.
+
+#### Drain throttling — a big backlog never clogs one turn
+
+The drain hook doesn't dump the whole queue into one prompt. It calls
+**`brainpalace drain-queue`**, which releases a **bounded batch** per turn and
+requeues the rest:
+
+- **byte budget** (`drain_budget_bytes`, default **1 MB**): take queued ids
+  FIFO, summing each transcript's raw `.jsonl` size, until the next would exceed
+  the budget.
+- **count cap** (`drain_max_count`, default **8**): secondary guard so many tiny
+  sessions can't slip under the byte budget en masse.
+- **first-pick-always (no starvation):** the first queued id is taken *before*
+  the budget check, so a single oversized session drains **alone** rather than
+  stalling the queue. No upper "too big, skip" ceiling — the extractor chunks
+  oversized transcripts safely, so nothing is dropped.
+- **cooldown** (`drain_cooldown_seconds`, default **300** = 5 min): at most one
+  batch per window (tracked in `.brainpalace/last-drain`), so rapid-fire prompts
+  don't re-drain. A large historical backfill trickles out over your active
+  working time + across sessions; a freshly-ended session still surfaces on your
+  next turn (the cooldown has usually elapsed). Set `0` to drain every prompt.
+
+Knob precedence: env var → project `session_extraction:` config → default.
+
+```yaml
+# .brainpalace/config.yaml
+session_extraction:
+  mode: auto
+  drain_budget_bytes: 1048576   # 1 MB per turn
+  drain_max_count: 8
+  drain_cooldown_seconds: 300   # 5 min
+```
+Env overrides: `SESSION_DRAIN_BUDGET_BYTES`, `SESSION_DRAIN_MAX_COUNT`,
+`SESSION_DRAIN_COOLDOWN_SECONDS`.
+
+Run it by hand anytime: `brainpalace drain-queue --json`.
+
+## Automatic summarization — `auto` engine, guaranteed
+
+`brainpalace init` enables session summarization by default and writes
+`session_extraction.mode: auto` to `.brainpalace/config.yaml`. In `auto` the
+engine is **decided at runtime by plugin presence** — installing or uninstalling
+the Claude Code plugin flips it **live**, with no re-init:
+
+| Mode | Behaviour | Who summarizes | Cost |
+|------|-----------|----------------|------|
+| `auto` *(default)* | plugin present ⇒ defer to the plugin's subagent; plugin absent ⇒ the server distils | runtime-decided (subagent or provider) | free with plugin; else Ollama free / cloud metered |
+| `subagent` | force the plugin path | the plugin's `chat-session-extractor` subagent (Haiku), drained after your first turn | free (subscription) |
+| `provider` | force the server path | the **server**, with your configured summarization AI | Ollama = free; cloud = metered |
+| `off` | `brainpalace init --no-extract` | nobody | — |
+
+**Distill-time reconciliation (auto):** the server's distiller checks plugin
+presence **per session**. When the plugin is present it **defers** (the plugin's
+subagent owns extraction) — **unless** the session is un-marked AND older than a
+**24h grace window** (`SESSION_DISTILL_GRACE_HOURS`, default 24), the safety net
+for a disabled or never-reopened plugin. A **unified `.done` marker** (written by
+both the subagent submit and the provider distil) means a live engine flip never
+re-summarizes an already-extracted session.
+
+Plugin presence is detected via a **registry-first contract** (mirrored in server
++ CLI): parse `~/.claude/plugins/installed_plugins.json` for a `brainpalace@…`
+key, with a directory-glob fallback.
+
+Force a specific engine by setting `mode` by hand (`subagent`/`provider`).
+Precedence: the project `.brainpalace/config.yaml` wins over the global XDG
+config; absent in both ⇒ default `auto`.
+
+### THE GUARANTEE — every session gets summarized
+
+There is **no code path that silently skips a session.** The *only* ways
+summarization does not happen are:
+
+1. `session_extraction.mode: off` (`brainpalace init --no-extract`), or
+2. the kill switch `SESSION_DISTILL_ENABLED=false` (provider mode).
+
+Everything else is **retried until it succeeds** — large transcripts (chunked +
+hierarchically merged, never skipped), malformed LLM output (retried, then left
+un-marked), provider outages, server restarts, missed real-time events, and
+old/pre-existing transcripts. The safety nets:
+
+- **provider mode (and `auto` without the plugin):** a per-session
+  `.brainpalace/extracted/<id>.done` marker is written **only on full success**;
+  the server's **catch-up sweep** (on startup and after each archive) re-distils
+  any quiescent, un-marked transcript. The live (still-growing) session is never
+  distilled — only after it is idle ≥ 5 min or a newer session exists.
+- **subagent mode (and `auto` with the plugin):** the **durable**
+  `extract-queue.txt` holds pending ids until drained. In `auto`, the server's
+  24h safety net still distils any session the plugin left un-marked past the
+  grace window — so coverage holds even if the plugin is later disabled.
+
+### Session filter contract (shared)
+
+Both engines feed the LLM the **same moderate-filtered** view of a transcript, so
+the provider engine and the plugin agent can't drift. The contract (enforced by
+`tests/test_session_filter_contract.py` against `filter_transcript()`):
+
+- **Kept:** user/assistant **text**, condensed **thinking**, **tool_use** (tool
+  name + key inputs only — `file_path`, `command`, `path`, `pattern`, `query`,
+  `description`, `old_string`, `url`, `prompt`, `content`), and **truncated
+  tool_result**.
+- **Dropped:** `attachment`, `file-history-snapshot`, `queue-operation`, and any
+  non-conversational record type; arbitrary tool inputs outside the key set.
+
+### Backfilling old sessions
+
+`brainpalace backfill-sessions` summarizes a project's **pre-existing** chats in
+whichever engine is configured:
+
+```bash
+brainpalace backfill-sessions                 # this project, configured engine
+brainpalace backfill-sessions --limit 20      # cap how many transcripts
+brainpalace backfill-sessions --force         # provider: re-distil even marked ones
+```
+
+- **subagent mode:** appends old session ids to `extract-queue.txt` (deduped) —
+  drained at the next Claude Code first turn.
+- **provider mode:** calls `POST /sessions/distill` so the server distils them.
+  Largely redundant with the catch-up sweep; use it for on-demand / `--force`.
+
+### Cost & privacy (provider mode)
+
+Provider mode uses **whatever AI you configured** — there is no cost/privacy
+block in code. Transcripts can contain secrets, so for the provider engine prefer
+a **local Ollama** summarizer (free + private). CLI-only users are *informed*
+that installing the plugin is cheaper (subscription model); it is informational
+only, never enforced.
 
 ### Periodic curation (opt-in)
 

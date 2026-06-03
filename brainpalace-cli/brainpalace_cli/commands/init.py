@@ -17,6 +17,11 @@ from brainpalace_cli.commands.init_plan import (
     format_init_plan,
     resolve_init_plan,
 )
+from brainpalace_cli.commands.plugin_detect import claude_plugin_installed
+from brainpalace_cli.commands.session_hooks import (
+    install_session_hooks,
+    prune_extraction_hooks,
+)
 from brainpalace_cli.migration import migrate_state_dir
 from brainpalace_cli.xdg_paths import get_xdg_config_dir, migrate_legacy_paths
 
@@ -250,8 +255,9 @@ def write_session_config(
     state_dir: Path,
     index: bool | None = None,
     archive: bool | None = None,
+    extract_mode: str | None = None,
 ) -> None:
-    """Write the two independent session capabilities into config.yaml.
+    """Write the session capabilities + extraction engine into config.yaml.
 
     Deep-merges into the existing config.yaml so the provider/graphrag/storage
     blocks written by ``write_default_provider_config`` (and any XDG-inherited
@@ -259,10 +265,12 @@ def write_session_config(
     capabilities are set (``None`` leaves the existing value untouched), so a
     re-init that toggles one capability never clobbers the other. ``index``
     embeds transcripts (billable opt-in); ``archive`` copies raw transcripts
-    (durable backup, no embeddings). The server reads this block at startup
-    (``load_session_indexing_config``).
+    (durable backup, no embeddings); ``extract_mode`` selects the distillation
+    engine (``subagent`` | ``provider`` | ``off``) under ``session_extraction:``.
+    The server reads these blocks at startup (``load_session_indexing_config`` /
+    ``load_session_extraction_config``).
     """
-    if index is None and archive is None:
+    if index is None and archive is None and extract_mode is None:
         return
     config_path = state_dir / "config.yaml"
     data: dict[str, object] = {}
@@ -270,20 +278,79 @@ def write_session_config(
         loaded = yaml.safe_load(config_path.read_text()) or {}
         if isinstance(loaded, dict):
             data = loaded
-    block = data.get("session_indexing")
-    if not isinstance(block, dict):
-        block = {}
-    if index is not None:
-        block["enabled"] = bool(index)
-    if archive is not None:
-        archive_block = block.get("archive")
-        if not isinstance(archive_block, dict):
-            archive_block = {}
-        archive_block["enabled"] = bool(archive)
-        block["archive"] = archive_block
-    data["session_indexing"] = block
+    if index is not None or archive is not None:
+        block = data.get("session_indexing")
+        if not isinstance(block, dict):
+            block = {}
+        if index is not None:
+            block["enabled"] = bool(index)
+        if archive is not None:
+            archive_block = block.get("archive")
+            if not isinstance(archive_block, dict):
+                archive_block = {}
+            archive_block["enabled"] = bool(archive)
+            block["archive"] = archive_block
+        data["session_indexing"] = block
+    if extract_mode is not None:
+        extract_block = data.get("session_extraction")
+        if not isinstance(extract_block, dict):
+            extract_block = {}
+        extract_block["mode"] = extract_mode
+        data["session_extraction"] = extract_block
     with open(config_path, "w", encoding="utf-8") as f:
         yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
+
+
+def _prune_old_extraction_hooks(home: Path) -> None:
+    """Remove any old CLI-installed extraction hooks from ``settings.json``.
+
+    They are now owned by the Claude Code plugin; leaving them would double-run
+    with the plugin's SessionEnd/UserPromptSubmit. No-op when settings.json is
+    absent or unparseable. Used on the plugin-present path (where we must NOT
+    install the reminder either, to avoid a double SessionStart).
+    """
+    settings_path = home / ".claude" / "settings.json"
+    if not settings_path.exists():
+        return
+    try:
+        data = json.loads(settings_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return
+    settings_path.write_text(
+        json.dumps(prune_extraction_hooks(data), indent=2) + "\n", encoding="utf-8"
+    )
+
+
+def apply_extract_engine(
+    state_dir: Path,
+    project_root: Path,
+    enabled: bool,
+    home: Path | None = None,
+) -> str:
+    """Persist the session-summarization mode + reconcile Claude Code hooks.
+
+    ``enabled`` is the resolved ``plan.extract``. When off → write
+    ``session_extraction.mode: off``; when on → write ``auto`` (the engine is
+    decided at runtime by plugin presence: the plugin owns its hooks; the server
+    defers when the plugin is present, with a 24h safety net).
+
+    Hook reconciliation follows the same plugin-presence rule:
+    - **Plugin present** → the plugin owns all 3 hooks (SessionStart reminder +
+      both extraction hooks). We only prune any old CLI-installed extraction
+      hooks, and do NOT install the reminder (avoids a double SessionStart).
+    - **Plugin absent** (CLI/MCP only) → install the SessionStart reminder via
+      :func:`install_session_hooks` (which also prunes old extraction hooks).
+
+    Returns the resolved mode (``auto`` | ``off``).
+    """
+    mode = "auto" if enabled else "off"
+    write_session_config(state_dir, extract_mode=mode)
+    home = home or Path.home()
+    if claude_plugin_installed(project=project_root):
+        _prune_old_extraction_hooks(home)
+    else:
+        install_session_hooks(home)
+    return mode
 
 
 def ensure_gitignore_entry(project_root: Path, entry: str = ".brainpalace/") -> bool:
@@ -639,6 +706,17 @@ def _start_and_watch(
         "--no-archive to opt out."
     ),
 )
+@click.option(
+    "--extract/--no-extract",
+    "enable_extract",
+    default=None,
+    help=(
+        "SUMMARIZE each session into durable knowledge (summary, decisions, "
+        "triplets). ON by default. The engine is auto-picked: the Claude Code "
+        "plugin summarizes for free if installed, otherwise the server uses "
+        "your configured AI. Pass --no-extract to opt out."
+    ),
+)
 def init_command(
     path: str | None,
     host: str,
@@ -653,6 +731,7 @@ def init_command(
     yes: bool,
     enable_sessions: bool | None,
     enable_archive: bool | None,
+    enable_extract: bool | None,
 ) -> None:
     """Initialize a new BrainPalace project.
 
@@ -690,6 +769,7 @@ def init_command(
             no_watch=no_watch,
             sessions=enable_sessions,
             archive=enable_archive,
+            extract=enable_extract,
             yes=yes,
             is_tty=is_tty,
         )
@@ -855,6 +935,20 @@ def init_command(
             if enable_archive is None and "archive" in inherited:
                 arch = None  # respect XDG archive block
         write_session_config(resolved_state_dir, index=sess, archive=arch)
+
+        # Resolve + persist the session-summarization mode (auto), and reconcile
+        # the Claude Code hooks by plugin presence. Apply on a fresh config
+        # write, or whenever --extract/--no-extract was passed explicitly.
+        if provider_config_written or enable_extract is not None:
+            extract_mode = apply_extract_engine(
+                resolved_state_dir, project_root, plan.extract
+            )
+            if not json_output and extract_mode == "auto":
+                console.print(
+                    "[dim]Session summarization: on (auto — the plugin "
+                    "summarizes for free when installed, else the server uses "
+                    "your configured AI).[/]"
+                )
 
         # B5: ensure .brainpalace/ is git-ignored for the project.
         gitignore_added = ensure_gitignore_entry(project_root)

@@ -1,4 +1,5 @@
 #!/bin/bash
+# Note: runs in Claude Code's hook env; no-ops if 'brainpalace' is not on PATH.
 # Conditional SessionStart hook for Claude Code (BrainPalace).
 #
 # Emits a "prefer brainpalace query" reminder ONLY when the current project
@@ -63,33 +64,18 @@ if [ "$code" -eq 0 ]; then
     session_context="$(brainpalace context 2>/dev/null || true)"
 fi
 
-# Phase 080: drain the session-extraction queue (queue-and-drain). The
-# SessionEnd hook appends just-ended session_ids to this file; we hand them to
-# the in-session model so the free `chat-session-extractor` subagent runs (no
-# metered API). Read + clear the queue so each session is asked for once.
-extract_directive=""
-if [ "$code" -eq 0 ] || [ "$code" -eq 2 ]; then
-    project="$(brainpalace whoami 2>/dev/null | awk -F': ' '/^Project:/{print $2; exit}')"
-    [ -n "$project" ] || project="$(pwd)"
-    queue="$project/.brainpalace/extract-queue.txt"
-    if [ -s "$queue" ]; then
-        ids="$(tr '\n' ' ' <"$queue" 2>/dev/null | sed 's/ *$//')"
-        : >"$queue"  # clear (asked once; manual command remains the fallback)
-        if [ -n "$ids" ]; then
-            extract_directive="Prior sessions are pending knowledge extraction: ${ids}. Run the chat-session-extractor subagent on each (it submits via \`brainpalace submit-session\`). Best-effort background curation — do it alongside the user's first request, don't block on it."
-        fi
-    fi
-fi
+# Phase 080: session-extraction queue draining moved OUT of SessionStart into
+# `userpromptsubmit-drain-hook.sh`. Extraction must fire AFTER the first user
+# turn, not at startup — so the drain now lives on UserPromptSubmit.
 
 # Exit codes 0 (server up) and 2 (server down but project indexed) both emit
 # the reminder. For code 2, the reminder is still useful — it tells the AI
 # the project IS indexed so it should start the server rather than fall back
 # to native search.
-python3 - "$migration_note" "$session_context" "$extract_directive" <<'PY'
+python3 - "$migration_note" "$session_context" <<'PY'
 import json, sys
 note = sys.argv[1] if len(sys.argv) > 1 else ""
 context = sys.argv[2] if len(sys.argv) > 2 else ""
-extract = sys.argv[3] if len(sys.argv) > 3 else ""
 msg = (
     "BrainPalace is indexed for this project — prefer `brainpalace query` "
     "over Glob/Grep for codebase search. If the server is not running, "
@@ -100,9 +86,6 @@ if context.strip():
     # Frozen snapshot: loaded once at session start (Phase 035). Mid-session
     # memory writes take effect next session.
     msg += "\n\n" + context.strip()
-if extract.strip():
-    # Phase 080: queued prior sessions to extract via the free subagent path.
-    msg += "\n\n" + extract.strip()
 print(json.dumps({
     "hookSpecificOutput": {
         "hookEventName": "SessionStart",

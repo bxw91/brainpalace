@@ -7,7 +7,7 @@ parameters:
     required: false
 skills:
   - using-brainpalace
-last_validated: 2026-05-30
+last_validated: 2026-06-03
 ---
 
 # BrainPalace — Extract Session
@@ -41,7 +41,8 @@ by the SessionEnd subagent (see `docs/SESSION_INDEXING.md`).
 ## What to do
 
 1. **Locate + read** the session transcript JSONL.
-2. **Reduce it mentally:** keep user/assistant text, condensed thinking,
+2. **Reduce it mentally** per the shared **Session filter contract**
+   (docs/SESSION_INDEXING.md): keep user/assistant text, condensed thinking,
    `tool_use` (name + key inputs like `file_path`/`command`), and truncated
    `tool_result`. Ignore queue-ops, attachments, and file-history snapshots.
 3. **Produce ONE JSON object** matching the schema below. **Emit only the JSON**

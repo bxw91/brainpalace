@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request, status
+from pydantic import BaseModel, Field
 
 from brainpalace_server.config.session_config import load_session_indexing_config
 from brainpalace_server.models.session_extract import (
@@ -90,7 +91,7 @@ async def extract_session(
 
     memory_service = getattr(request.app.state, "memory_service", None)
 
-    return await SessionExtractService().store(
+    result = await SessionExtractService().store(
         payload,
         embedder=embedder,
         storage_backend=storage_backend,
@@ -99,3 +100,48 @@ async def extract_session(
         memory_service=memory_service,
         project_root=project_root,
     )
+    # Unified marker: any stored extraction (subagent submit OR provider distil)
+    # marks the session done, so `auto` engine flips never re-summarize it.
+    if project_root:
+        try:
+            from brainpalace_server.services.session_distill_service import write_marker
+
+            write_marker(project_root, payload.session_id)
+        except OSError:
+            pass
+    return result
+
+
+class DistillRequest(BaseModel):
+    """Paths to (re-)distil via the provider engine (Phase 080, backfill)."""
+
+    paths: list[str] = Field(default_factory=list)
+    force: bool = Field(
+        default=False,
+        description="Re-distil even already-marked sessions (bypass dedup + "
+        "quiescence).",
+    )
+
+
+@router.post(
+    "/distill",
+    summary="Enqueue provider-engine distillation of transcripts",
+    description="Schedule the server to summarize the given archived transcripts "
+    "(provider mode only). Reuses the same distiller as the live watcher; each "
+    "distill is gated quiescent + un-marked unless --force. 503 when the provider "
+    "engine is not active (mode != provider or SESSION_DISTILL_ENABLED=false).",
+)
+async def distill_sessions(req: DistillRequest, request: Request) -> dict[str, Any]:
+    distiller = getattr(request.app.state, "session_distiller", None)
+    if distiller is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Provider distiller not active (session_extraction.mode is not "
+            "'provider', or SESSION_DISTILL_ENABLED=false).",
+        )
+    enqueued = 0
+    for path in req.paths:
+        distiller.schedule(path, force=req.force)
+        enqueued += 1
+    logger.info("Session distill: enqueued %d (force=%s)", enqueued, req.force)
+    return {"enqueued": enqueued, "force": req.force}

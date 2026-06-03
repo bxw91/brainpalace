@@ -148,10 +148,20 @@ pick() {
 # Banner
 # -----------------------------------------------------------------------------
 
+# Look up the version that will be installed (latest on PyPI) so the user sees
+# it before committing to anything. Best-effort — never fatal.
+LATEST_CLI="$(latest_pypi_version brainpalace-cli 2>/dev/null || true)"
+if [[ -n "$LATEST_CLI" ]]; then
+    VERSION_LINE="Version to install: ${LATEST_CLI} (latest on PyPI)"
+else
+    VERSION_LINE="Version to install: latest on PyPI (couldn't reach PyPI to check)"
+fi
+
 clear >/dev/tty 2>/dev/null || true
 cat >/dev/tty <<EOF
 ${c_bold}BrainPalace — guided setup${c_reset}
 Source: $REPO_URL @ $REF
+$VERSION_LINE
 
 This script will ask before every action. Five steps (global-first):
   1. Install the brainpalace binary (pipx)
@@ -174,7 +184,7 @@ if command -v brainpalace >/dev/null 2>&1; then
     cur="$(printf '%s' "$CURRENT_VERSION" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
     say "Already installed: $CURRENT_VERSION  ($(command -v brainpalace))"
 
-    latest="$(latest_pypi_version brainpalace-cli || true)"
+    latest="$LATEST_CLI"   # already fetched for the banner
     prompt="Reinstall / upgrade now?"; default="n"
     if [[ -n "$latest" ]]; then
         if [[ -n "$cur" && "$cur" == "$latest" ]]; then
@@ -545,6 +555,24 @@ EOF
 fi
 
 # -----------------------------------------------------------------------------
+# Step 3b — offer the Claude Code plugin FIRST (best-effort, non-fatal).
+# Recommended path: free session summarization + the richest UX. Installing the
+# plugin makes `mode: auto` pick the plugin's subagent engine live.
+# -----------------------------------------------------------------------------
+if command -v claude >/dev/null 2>&1; then
+    if confirm "Install the BrainPalace Claude Code plugin? (recommended — free session summarization, richest UX)" "y"; then
+        say "Installing plugin via Claude Code…"
+        if timeout 120 claude plugins marketplace add bxw91/brainpalace </dev/tty >/dev/tty 2>&1 \
+           && timeout 120 claude plugins install brainpalace@brainpalace-marketplace </dev/tty >/dev/tty 2>&1; then
+            ok "Plugin installed."
+            warn "Restart Claude Code (or start a new session) — plugin hooks + the chat-session-extractor agent load at session start."
+        else
+            warn "Plugin install did not complete. Install it later: 'claude plugins marketplace add bxw91/brainpalace && claude plugins install brainpalace@brainpalace-marketplace'. Continuing with CLI/provider setup."
+        fi
+    fi
+fi
+
+# -----------------------------------------------------------------------------
 # Step 4 — optional project setup (init + start + index). LAST step, opt-in.
 # Inherits the global provider config written in Step 2.
 # -----------------------------------------------------------------------------
@@ -569,6 +597,11 @@ if confirm "Set up and index a project now?" "y"; then
     say "Running: brainpalace init --start $WATCH_FLAG"
     (cd "$PROJECT" && "$AB_BIN" init --start $WATCH_FLAG) >/dev/tty
     ok "Server initialised and started."
+    # init enables session summarization and auto-picks the engine (printed
+    # above): plugin → subagent (free, Haiku); else → provider (your configured
+    # AI). CLI-only? Installing the Claude Code plugin is cheaper (subscription),
+    # or use a local Ollama summarizer to keep provider mode free + private.
+    say "Session summarization: enabled (engine auto-picked; --no-extract to opt out)."
 
     if confirm "Index the project now?" "y"; then
         INDEX_PATH="$(ask "Path to index (relative to project root, or absolute)" ".")"

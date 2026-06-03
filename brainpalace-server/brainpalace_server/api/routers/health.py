@@ -2,6 +2,7 @@
 
 import logging
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Request
@@ -12,6 +13,7 @@ from brainpalace_server.config.provider_config import (
     load_provider_settings,
     validate_provider_config,
 )
+from brainpalace_server.config.session_config import load_session_extraction_config
 from brainpalace_server.models import HealthStatus, IndexingStatus
 from brainpalace_server.models.health import ProviderHealth, ProvidersStatus
 from brainpalace_server.providers.factory import ProviderRegistry
@@ -335,7 +337,54 @@ async def indexing_status(request: Request) -> dict[str, Any]:
         "graph_index": graph_index_info or {"enabled": False},
     }
 
+    # Session summarization coverage: how many archived sessions have a durable
+    # extraction (.done marker) vs the total archived. Engine-agnostic — both the
+    # plugin subagent and the provider distiller write the unified marker.
+    project_root = getattr(request.app.state, "project_root", "") or ""
+    try:
+        extract_mode = load_session_extraction_config().mode
+    except Exception:  # noqa: BLE001
+        extract_mode = "auto"
+    data["features"]["session_extraction"] = summarization_coverage(
+        project_root, int(archive_stats["archived_sessions"]), extract_mode
+    )
+
     return data
+
+
+def count_done_markers(project_root: str | Path) -> int:
+    """Number of ``.done`` extraction markers under the project state dir."""
+    if not project_root:
+        return 0
+    extracted_dir = Path(project_root) / ".brainpalace" / "extracted"
+    if not extracted_dir.is_dir():
+        return 0
+    try:
+        return sum(1 for _ in extracted_dir.glob("*.done"))
+    except OSError:
+        return 0
+
+
+def summarization_coverage(
+    project_root: str | Path, total_sessions: int, mode: str
+) -> dict[str, Any]:
+    """Build the ``session_extraction`` status feature block.
+
+    ``summarized_pct`` is clamped to [0, 100] (marker count can exceed archived
+    sessions — e.g. markers for sessions no longer archived).
+    """
+    summarized = count_done_markers(project_root)
+    pct = (
+        round(100.0 * min(summarized, total_sessions) / total_sessions, 1)
+        if total_sessions
+        else 0.0
+    )
+    return {
+        "mode": mode,
+        "summarized_sessions": summarized,
+        "total_sessions": total_sessions,
+        "summarized_pct": pct,
+    }
 
 
 @router.get(

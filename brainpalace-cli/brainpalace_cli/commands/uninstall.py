@@ -79,6 +79,21 @@ def discover_plugin_dirs(projects: list[Path], home: Path | None = None) -> list
     return [d for d in candidates if d.is_dir()]
 
 
+def discover_cc_marketplace_plugin(home: Path | None = None) -> list[Path]:
+    """Return brainpalace plugin dirs installed via the Claude Code marketplace.
+
+    These live under ``~/.claude/plugins/cache/<marketplace>/brainpalace`` and are
+    tracked in Claude Code's own registry (``installed_plugins.json``). They are
+    NOT removed here: deleting the cache by hand desyncs that registry, so the
+    user must uninstall via Claude Code's ``/plugin`` manager instead.
+    """
+    home = home or Path.home()
+    cache = home / ".claude" / "plugins" / "cache"
+    if not cache.is_dir():
+        return []
+    return sorted(p for p in cache.glob("*/brainpalace") if p.is_dir())
+
+
 def discover_mcp_configs(bases: list[Path]) -> list[tuple[Path, str, str]]:
     """Return existing MCP config files under each base as (path, fmt, key)."""
     found: list[tuple[Path, str, str]] = []
@@ -287,6 +302,24 @@ def _guided_uninstall() -> None:
             for d in plugin_dirs:
                 shutil.rmtree(d, ignore_errors=True)
             console.print("  [dim]plugins removed.[/]")
+
+    # Claude Code marketplace plugin — managed by Claude Code's own registry, so
+    # we advise (not delete): hand-removing the cache desyncs installed_plugins.json.
+    cc_market = discover_cc_marketplace_plugin()
+    if cc_market:
+        console.print(
+            "\n[yellow]Claude Code marketplace plugin detected[/] "
+            "(managed by Claude Code — not removed here):"
+        )
+        for d in cc_market:
+            console.print(f"  {d}")
+        console.print(
+            "  To remove it, in Claude Code run [bold]/plugin[/] → uninstall "
+            '"brainpalace"\n'
+            '  (and optionally remove the "brainpalace-marketplace").\n'
+            "  [dim]Don't delete the cache dir by hand — it desyncs Claude Code's "
+            "plugin registry.[/]"
+        )
 
     # 3. MCP client configs (surgical — keeps other servers).
     mcp = discover_mcp_configs(projects + [Path.home()])

@@ -6,7 +6,8 @@ triggers:
     type: message_pattern
 skills:
   - using-brainpalace
-last_validated: 2026-05-30
+model: haiku
+last_validated: 2026-06-03
 ---
 
 # Chat Session Extractor Agent
@@ -35,9 +36,11 @@ For each pending `session_id`:
 
 1. **Locate** the transcript JSONL. Claude Code stores it at
    `~/.claude/projects/<encoded-cwd>/<session_id>.jsonl` (cwd with `/` → `-`).
-2. **Reduce** it: keep user/assistant text, condensed thinking, `tool_use`
-   (name + key inputs such as `file_path`/`command`), truncated `tool_result`.
-   Ignore queue-ops, attachments, file-history snapshots.
+2. **Reduce** it per the shared **Session filter contract** (docs/SESSION_INDEXING.md):
+   keep user/assistant text, condensed thinking, `tool_use` (name + key inputs
+   such as `file_path`/`command`), truncated `tool_result`. Ignore queue-ops,
+   attachments, file-history snapshots. (The provider engine applies the same
+   contract via `filter_transcript()`, so both engines stay in sync.)
 3. **Emit one strict JSON object** matching the schema below (no extra keys).
 4. **Submit:** `brainpalace submit-session <session_id> --json -` (pipe the
    JSON to stdin), or write it to a temp file and pass `--json <file>`.

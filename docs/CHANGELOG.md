@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-02
+last_validated: 2026-06-03
 ---
 
 # Changelog
@@ -11,6 +11,62 @@ Versioning is **CalVer** `YY.M.N` — 2-digit year · month · Nth release that
 month (the counter resets monthly). It looks like SemVer but is not.
 
 ---
+
+## [Unreleased]
+
+## [26.6.13] - 2026-06-03
+
+### Added
+- **Plugin-first engine with `auto` reconciliation.** `session_extraction.mode`
+  defaults to `auto`: the server summarizes only when the Claude Code plugin is
+  NOT installed, and steps aside (with a 24h safety net) when it is — so
+  installing/uninstalling the plugin flips the engine live, no re-init, no
+  double-run. The plugin now owns all 3 session hooks (SessionStart reminder +
+  SessionEnd + UserPromptSubmit); `install-session-hooks` installs only the
+  SessionStart reminder and prunes the old extraction hooks. Plugin presence is
+  detected via a registry-first contract (`installed_plugins.json`, dir-glob
+  fallback) mirrored in server + CLI. A unified `.done` marker (written by both
+  the subagent submit and the provider distil) means engine flips never
+  re-summarize an already-extracted session. The CLI installer offers the plugin
+  first when Claude Code is present.
+- **Throttled, cooldown-paced queue drain (`brainpalace drain-queue`).** The
+  plugin's UserPromptSubmit drain no longer dumps the whole backlog into one
+  turn: it releases a bounded batch (FIFO under a **1 MB** byte budget + **8**
+  count cap; an oversized session drains alone — no starvation, no skip) and
+  paces repeated prompts with a **5-min cooldown**, so a big historical backfill
+  trickles out over active working time. Knobs: `drain_budget_bytes` /
+  `drain_max_count` / `drain_cooldown_seconds` (config or `SESSION_DRAIN_*` env).
+- **`brainpalace status` shows session-summarization coverage** — percent of
+  archived sessions with a durable extraction marker (e.g. `78% summarized
+  (361/463 sessions, mode: auto)`), engine-agnostic.
+- **Automatic session summarization — on by default, guaranteed.**
+  `brainpalace init` enables session distillation (`session_extraction.mode:
+  auto`): the **subagent** engine (the Claude Code plugin's
+  `chat-session-extractor`, drained after the first user turn, pinned to Haiku)
+  when the plugin is installed, else the **provider** engine (the server
+  summarizes with the configured AI; Ollama free / cloud metered). `--no-extract`
+  opts out (`off`). THE GUARANTEE: no code path silently skips a session —
+  large/malformed/failed/restarted/old transcripts are retried via the provider
+  **catch-up sweep** and the durable subagent **queue**; only `mode: off` or
+  `SESSION_DISTILL_ENABLED=false` stop it.
+- **`brainpalace backfill-sessions`** summarizes a project's pre-existing chats
+  in the resolved engine (`auto` resolves by plugin presence; subagent → durable
+  queue; provider → `POST /sessions/distill`, with `--force` to re-distil).
+- CLI-only (provider) users are *informed* the plugin is cheaper; recommend
+  Ollama for transcripts (which can hold secrets). Informational only.
+
+### Changed
+- **Guided `setup.sh` banner shows the version to be installed.** The intro now
+  prints "Version to install: X (latest on PyPI)" up front, so users see what
+  they're about to get before any step — fresh installs included (previously the
+  version only appeared on the reinstall prompt).
+- **Uninstall now flags a Claude Code marketplace plugin install.** Both
+  `brainpalace uninstall` (guided) and `scripts/uninstall.sh` detect a plugin
+  installed via the Claude Code marketplace
+  (`~/.claude/plugins/cache/<marketplace>/brainpalace`) and print how to remove
+  it from Claude Code (`/plugin` → uninstall "brainpalace") instead of deleting
+  the cache by hand, which would desync Claude Code's plugin registry. The
+  manual-teardown docs note the same.
 
 ## [26.6.12] - 2026-06-02
 

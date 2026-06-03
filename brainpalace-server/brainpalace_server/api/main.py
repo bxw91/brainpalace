@@ -632,6 +632,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.session_index_service = None
         app.state.session_indexing_config = None
         app.state.session_watcher = None
+        app.state.session_distiller = None
         app.state.session_archive_service = None
         app.state.session_archive_watcher = None
         app.state.session_archive_enabled = False
@@ -691,6 +692,70 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                     )
                 app.state.session_index_service = sess_svc
 
+                # Phase 080: provider-engine distiller — the server summarizes
+                # archived transcripts when no plugin is installed. Built ONLY
+                # when mode == provider and SESSION_DISTILL_ENABLED is on, so its
+                # presence is the gate. Works even when index is OFF (it needs
+                # only storage_backend + embedder + summarizer). Never blocks
+                # startup; failure leaves distiller=None (archive still runs).
+                distiller = None
+                try:
+                    from brainpalace_server.config.session_config import (
+                        load_session_extraction_config,
+                        session_distill_enabled,
+                        session_distill_grace_hours,
+                    )
+
+                    extract_mode = load_session_extraction_config().mode
+                    if (
+                        extract_mode in ("provider", "auto")
+                        and session_distill_enabled()
+                        and app.state.project_root
+                    ):
+                        from brainpalace_server.indexing import (
+                            get_embedding_generator,
+                        )
+                        from brainpalace_server.providers.factory import (
+                            ProviderRegistry,
+                        )
+                        from brainpalace_server.services import (
+                            session_distill_service as _distill,
+                        )
+                        from brainpalace_server.services.plugin_detect import (
+                            claude_plugin_installed,
+                        )
+
+                        distill_graph = None
+                        if getattr(settings, "ENABLE_GRAPH_INDEX", False):
+                            from brainpalace_server.storage.graph_store import (
+                                get_graph_store_manager,
+                            )
+
+                            distill_graph = get_graph_store_manager()
+                        _proj = app.state.project_root
+                        distiller = _distill.SessionDistiller(
+                            summarizer=ProviderRegistry.get_summarization_provider(
+                                load_provider_settings().summarization
+                            ),
+                            embedder=get_embedding_generator(),
+                            storage_backend=storage_backend,
+                            project_root=_proj,
+                            graph_store=distill_graph,
+                            memory_service=app.state.memory_service,
+                            digest_path=str(Path(_proj) / "BRAINPALACE_DECISIONS.md"),
+                            mode=extract_mode,
+                            plugin_present=lambda: claude_plugin_installed(
+                                project=Path(_proj)
+                            ),
+                            grace_hours=session_distill_grace_hours(),
+                        )
+                        app.state.session_distiller = distiller
+                        logger.info(
+                            "Session distiller enabled (engine=%s).", extract_mode
+                        )
+                except Exception as exc:  # noqa: BLE001 — never block startup
+                    logger.warning("Session distiller setup failed: %s", exc)
+
                 async def _boot_sessions() -> None:
                     try:
                         live_files = discover_session_files(sessions_dir)
@@ -698,6 +763,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                         cutoff = retain_cutoff(session_cfg.retain_days)
                         archived = 0
                         indexed = 0
+                        arch_paths: list[Path] = []
                         for live in live_files:
                             arch = None
                             if archive_service is not None:
@@ -705,6 +771,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                                 if arch is None:
                                     continue  # tombstoned / unreadable
                                 archived += 1
+                                arch_paths.append(arch)
                             if not caps.index_enabled or sess_svc is None:
                                 continue
                             if cutoff is not None:
@@ -724,6 +791,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                         logger.info(
                             "Session boot: %d archived, %d indexed", archived, indexed
                         )
+                        # Catch-up sweep (the no-gap net): distil every quiescent,
+                        # un-marked archived transcript. Recovers pending/failed/
+                        # restarted/old sessions automatically.
+                        if distiller is not None and arch_paths:
+                            n = await distiller.catch_up(arch_paths)
+                            if n:
+                                logger.info("Session distill catch-up: %d distilled", n)
                     except Exception as exc:  # noqa: BLE001
                         logger.warning("Session boot failed: %s", exc)
 
@@ -738,6 +812,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                         archive=archive_service,
                         debounce_ms=session_cfg.watch_debounce_ms,
                         index_enabled=caps.index_enabled,
+                        distiller=distiller,
                     )
                     await watcher.start()
                     app.state.session_watcher = watcher

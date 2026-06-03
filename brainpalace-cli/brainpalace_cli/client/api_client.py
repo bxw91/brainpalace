@@ -552,3 +552,11 @@ class DocServeClient:
     def submit_session_extract(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Persist a session extraction payload (Phase 060)."""
         return self._request("POST", "/sessions/extract", json=payload)
+
+    def submit_session_distill(
+        self, paths: list[str], force: bool = False
+    ) -> dict[str, Any]:
+        """Enqueue provider-engine distillation of transcripts (Phase 080)."""
+        return self._request(
+            "POST", "/sessions/distill", json={"paths": paths, "force": force}
+        )

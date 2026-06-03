@@ -186,6 +186,23 @@ else
     fi
 fi
 
+# Claude Code MARKETPLACE plugin — managed by Claude Code's own registry
+# (~/.claude/plugins/cache/<marketplace>/brainpalace, tracked in
+# installed_plugins.json). We advise rather than delete: hand-removing the cache
+# desyncs that registry.
+CC_MARKET=()
+if [[ -d "$HOME/.claude/plugins/cache" ]]; then
+    while IFS= read -r d; do CC_MARKET+=("$d"); done \
+        < <(find "$HOME/.claude/plugins/cache" -mindepth 2 -maxdepth 2 -type d -name brainpalace 2>/dev/null)
+fi
+if [[ ${#CC_MARKET[@]} -gt 0 ]]; then
+    warn "Claude Code marketplace plugin detected (managed by Claude Code — not removed here):"
+    for d in "${CC_MARKET[@]}"; do printf '     %s\n' "$d" >/dev/tty; done
+    say "  To remove it, in Claude Code run:  /plugin   → uninstall \"brainpalace\""
+    say "  (optionally also remove the \"brainpalace-marketplace\")."
+    say "  Do NOT delete the cache dir by hand — it desyncs Claude Code's plugin registry."
+fi
+
 # -----------------------------------------------------------------------------
 # Step 3 — Surgically remove the `brainpalace` entry from MCP client configs.
 # Done BEFORE package removal so the pipx venv python (PyYAML) is still around.

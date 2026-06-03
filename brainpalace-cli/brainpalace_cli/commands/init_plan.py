@@ -17,6 +17,7 @@ class InitPlan:
     watch:    "auto" (register + index project_root, live re-index) or "off".
     sessions: index transcripts — True/False to set, None to leave untouched.
     archive:  archive transcripts — True/False to set, None to leave untouched.
+    extract:  summarize sessions (distillation engine on) — True/False.
     confirm:  an interactive confirmation is needed before executing.
     billable: the plan triggers embedding spend (doc index via watch, or sessions).
     """
@@ -25,6 +26,7 @@ class InitPlan:
     watch: str
     sessions: bool | None
     archive: bool | None
+    extract: bool
     confirm: bool
     billable: bool
 
@@ -36,6 +38,7 @@ def resolve_init_plan(
     no_watch: bool,
     sessions: bool | None,
     archive: bool | None,
+    extract: bool | None,
     yes: bool,
     is_tty: bool,
 ) -> InitPlan:
@@ -66,6 +69,8 @@ def resolve_init_plan(
 
     archive_final: bool | None = archive if archive is not None else True
 
+    extract_final = extract if extract is not None else active
+
     billable = watch_final == "auto" or bool(sessions_final)
     confirm = is_tty and not yes
 
@@ -74,6 +79,7 @@ def resolve_init_plan(
         watch=watch_final,
         sessions=sessions_final,
         archive=archive_final,
+        extract=extract_final,
         confirm=confirm,
         billable=billable,
     )
@@ -90,6 +96,7 @@ def downgrade_to_config_only(plan: InitPlan) -> InitPlan:
         watch="off",
         sessions=False,
         archive=plan.archive,
+        extract=False,
         confirm=False,
         billable=False,
     )
@@ -106,6 +113,8 @@ def format_init_plan(plan: InitPlan) -> str:
         parts.append("archive transcripts")
     if plan.sessions:
         parts.append("embed transcripts")
+    if plan.extract:
+        parts.append("summarize sessions")
     if not parts:
         parts.append("write config only")
     line = "init will: " + " · ".join(parts)

@@ -6,7 +6,7 @@ context: brainpalace
 agent: setup-assistant
 skills:
   - configuring-brainpalace
-last_validated: 2026-06-02
+last_validated: 2026-06-04
 ---
 
 # Complete BrainPalace Setup
@@ -513,6 +513,15 @@ The provider is configured globally — new projects inherit it.
 > **Note:** If the storage backend chosen in Step 4 is `postgres`, run the
 > PostgreSQL sub-flow below (Step 10a) BEFORE `brainpalace init` so the server
 > can connect on first start.
+
+> **Session summarization:** `brainpalace init` enables it by default and writes
+> `mode: auto` — the engine is decided **live** by plugin presence. Since you're
+> installing the plugin here, it summarizes your sessions **for free** (Haiku,
+> after your first turn); the plugin owns its own hooks. Without the plugin the
+> server falls back to your configured AI (prefer a local Ollama summarizer for
+> free + private), with a 24h safety net. Installing/uninstalling the plugin
+> flips the engine with no re-init. Opt out with `brainpalace init --no-extract`.
+> See docs/SESSION_INDEXING.md.
 
 If Yes, run:
 

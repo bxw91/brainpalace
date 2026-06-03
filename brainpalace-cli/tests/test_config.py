@@ -140,6 +140,9 @@ class TestGetServerUrl:
         with (
             patch.dict(os.environ, {}, clear=True),
             patch("brainpalace_cli.config.get_state_dir", return_value=tmp_path),
+            # Hermetic: ignore any live server the dev machine may be running
+            # (CWD-based discovery would otherwise leak its real port in).
+            patch("brainpalace_cli.config.discover_server_url", return_value=None),
         ):
             url = get_server_url()
             assert url == "http://127.0.0.1:8000"

@@ -8,7 +8,22 @@ import pytest
 from click.testing import CliRunner
 
 from brainpalace_cli.cli import cli
-from brainpalace_cli.commands.uninstall import uninstall_command
+from brainpalace_cli.commands.uninstall import (
+    discover_cc_marketplace_plugin,
+    uninstall_command,
+)
+
+
+def test_discover_cc_marketplace_plugin_found(tmp_path: Path) -> None:
+    cache = tmp_path / ".claude" / "plugins" / "cache"
+    target = cache / "brainpalace-marketplace" / "brainpalace"
+    target.mkdir(parents=True)
+    (cache / "other-marketplace" / "somethingelse").mkdir(parents=True)
+    assert discover_cc_marketplace_plugin(home=tmp_path) == [target]
+
+
+def test_discover_cc_marketplace_plugin_none(tmp_path: Path) -> None:
+    assert discover_cc_marketplace_plugin(home=tmp_path) == []
 
 
 @pytest.fixture

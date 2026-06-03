@@ -1,5 +1,6 @@
 """CLI commands for brainpalace."""
 
+from .backfill import backfill_command
 from .cache import cache_group
 from .config import config_group
 from .context import context_command
@@ -17,6 +18,8 @@ from .query import query_command
 from .recall import recall_command
 from .remember import remember_command
 from .reset import reset_command
+from .session_drain import drain_queue_command
+from .session_hooks import install_session_hooks_command
 from .sessions import submit_session_command
 from .start import start_command
 from .status import status_command
@@ -27,15 +30,18 @@ from .update import update_command
 from .whoami import whoami_command
 
 __all__ = [
+    "backfill_command",
     "cache_group",
     "config_group",
     "context_command",
     "doctor_command",
+    "drain_queue_command",
     "folders_group",
     "index_command",
     "inject_command",
     "init_command",
     "install_agent_command",
+    "install_session_hooks_command",
     "jobs_command",
     "list_command",
     "mcp_command",

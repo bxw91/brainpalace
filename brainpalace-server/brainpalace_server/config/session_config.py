@@ -23,7 +23,7 @@ import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, Field
@@ -93,6 +93,65 @@ class SessionIndexingConfig(BaseModel):
     archive: SessionArchiveConfig = Field(default_factory=SessionArchiveConfig)
 
 
+#: Distillation engine: auto (decide by plugin presence at runtime) | subagent
+#: (Claude Code plugin) | provider (server LLM) | off. See ``session_extraction:``
+#: in config.yaml.
+ExtractMode = Literal["auto", "subagent", "provider", "off"]
+
+
+class SessionExtractionConfig(BaseModel):
+    """Parsed ``session_extraction:`` block — selects the distillation engine.
+
+    Authoritative engine selector. ``init`` writes ``auto``: the engine is
+    decided at runtime by plugin presence — the server defers to the plugin's
+    subagent when installed (with a 24h safety net) and distils itself with the
+    configured summarization AI when not. ``--no-extract`` ⇒ ``off``. Absent
+    block ⇒ default ``auto``.
+    """
+
+    mode: ExtractMode = Field(
+        default="auto",
+        description="auto (runtime by plugin) | subagent | provider | off.",
+    )
+
+
+def load_session_extraction_config(
+    config_path: Path | None = None,
+) -> SessionExtractionConfig:
+    """Load the ``session_extraction:`` block; default ``auto`` if absent.
+
+    Precedence: the project ``.brainpalace/config.yaml`` (resolved by
+    :func:`_find_config_file`, which walks up from CWD) wins over the global XDG
+    config. An invalid/malformed block falls back to the ``auto`` default
+    rather than raising — distillation must never be disabled by a config typo.
+    """
+    path = config_path or _find_config_file()
+    block: dict[str, Any] | None = None
+    if path and Path(path).exists():
+        try:
+            raw = yaml.safe_load(Path(path).read_text()) or {}
+            maybe = raw.get("session_extraction")
+            if isinstance(maybe, dict):
+                block = maybe
+        except (OSError, yaml.YAMLError, ValueError) as exc:
+            logger.warning("Could not parse session_extraction config: %s", exc)
+
+    if block is None:
+        return SessionExtractionConfig()
+    fields = {
+        k: v for k, v in block.items() if k in SessionExtractionConfig.model_fields
+    }
+    # YAML 1.1 parses an unquoted ``off`` as the boolean False — restore the
+    # intended "off" string so hand-written `mode: off` works without quotes.
+    if fields.get("mode") is False:
+        fields["mode"] = "off"
+    try:
+        return SessionExtractionConfig(**fields)
+    except ValueError as exc:
+        logger.warning("Invalid session_extraction block, using auto: %s", exc)
+        return SessionExtractionConfig()
+
+
 @dataclass(frozen=True)
 class SessionCapabilities:
     """Resolved on/off state for the two independent session capabilities."""
@@ -118,6 +177,26 @@ def _env_master_enabled() -> bool:
 def _env_archive_enabled() -> bool:
     """``SESSION_ARCHIVE_ENABLED`` master switch for the ARCHIVE capability."""
     return _env_flag("SESSION_ARCHIVE_ENABLED")
+
+
+def session_distill_enabled() -> bool:
+    """``SESSION_DISTILL_ENABLED`` kill switch for the PROVIDER distiller.
+
+    Absent ⇒ enabled (config ``mode`` then decides). ``false`` is one of the two
+    ONLY non-summarize paths (the other is ``mode != provider``).
+    """
+    return _env_flag("SESSION_DISTILL_ENABLED")
+
+
+def session_distill_grace_hours() -> float:
+    """Hours a session must be un-marked before the provider safety net distils it
+    in ``auto`` mode even when the plugin appears installed (covers a disabled or
+    never-reopened plugin). Default 24."""
+    raw = os.getenv("SESSION_DISTILL_GRACE_HOURS")
+    try:
+        return float(raw) if raw is not None else 24.0
+    except ValueError:
+        return 24.0
 
 
 def retain_cutoff(retain_days: int, now: float | None = None) -> float | None:

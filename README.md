@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-02
+last_validated: 2026-06-04
 ---
 
 <div align="center">
@@ -27,9 +27,9 @@ last_validated: 2026-06-02
 
 # BrainPalace
 
-**Local-first RAG for code & docs, with persistent memory for AI agents.**
+**Local-first RAG for code & docs, with persistent session-chat memory for AI agents.**
 BM25, vector, GraphRAG, and hybrid search over your codebase and
-documentation — plus session memory (Claude Code transcripts only), a temporal
+documentation — plus persistent session-chat memory (Claude Code transcripts only), a temporal
 knowledge graph, and git/LSP-aware indexing. Use it from the CLI, over MCP, or
 as a Claude Code plugin. Runs fully local on Ollama, or with cloud LLMs.
 
@@ -50,7 +50,42 @@ same prerequisites and end with the same `brainpalace` CLI on your `PATH`.
 
 ---
 
+### Install as a Claude Code plugin
+
+> **Recommended if you use Claude Code.** Richest UX, and it summarizes your
+> sessions for free (Haiku). Pick this over the CLI install if you're a Claude
+> Code user — it installs the CLI + server for you.
+
+Richest UX — 30 slash commands, 3 agents, 2 skills. The setup wizard inside
+Claude Code installs the CLI + server, configures provider keys, initialises
+the project, starts the server, and runs the first index — all from one
+slash command.
+
+1. **Install the plugin:**
+
+   ```bash
+   claude plugins marketplace add bxw91/brainpalace
+   claude plugins install brainpalace@brainpalace-marketplace
+   ```
+
+   Then **restart Claude Code** (or start a new session) — the plugin's hooks
+   and the `chat-session-extractor` agent load at session start.
+
+2. **Run the setup wizard** in Claude Code:
+
+   ```
+   /brainpalace-setup
+   ```
+
+Full Claude Code reference: [`docs/PLUGIN_GUIDE.md`](docs/PLUGIN_GUIDE.md).
+
+---
+
 ### Install as a CLI or MCP server
+
+> **Using Claude Code? Install the plugin instead** (above) — it includes
+> everything here plus free session summarization. This path is for CLI-only
+> use or non-Claude-Code editors over MCP.
 
 Use this if you want `brainpalace` as a command-line tool, or if you want to
 connect an MCP-capable editor (Cursor, VS Code Copilot, Cline, Continue, Kilo
@@ -103,29 +138,6 @@ Full teardown reference:
 
 ---
 
-### Install as a Claude Code plugin
-
-Richest UX — 30 slash commands, 3 agents, 2 skills. The setup wizard inside
-Claude Code installs the CLI + server, configures provider keys, initialises
-the project, starts the server, and runs the first index — all from one
-slash command.
-
-1. **Install the plugin:**
-
-   ```bash
-   claude plugins install github:bxw91/brainpalace
-   ```
-
-2. **Run the setup wizard** in Claude Code:
-
-   ```
-   /brainpalace-setup
-   ```
-
-Full Claude Code reference: [`docs/PLUGIN_GUIDE.md`](docs/PLUGIN_GUIDE.md).
-
----
-
 ### Need more control?
 
 CI / no-TTY, step-by-step manual install, low-level `install.sh` flags,
@@ -165,6 +177,17 @@ with optional cloud providers for embeddings and summarisation.
   *source*, not the install method. Other runtimes (OpenCode, Gemini CLI, Codex)
   have no passive capture — they push memory explicitly via the plugin's
   `/brainpalace-extract-session`. See [SESSION_INDEXING](docs/SESSION_INDEXING.md).
+- **Automatic session summarization — `auto` engine, guaranteed** — `init` writes
+  `mode: auto`; the engine is decided **live** by plugin presence. With the
+  Claude Code plugin installed → **subagent** (the plugin summarizes for free,
+  Haiku, after your first turn; it owns its hooks). Without it → **provider**
+  (the server summarizes with your configured AI; Ollama free + private).
+  Installing/uninstalling the plugin flips the engine with no re-init — the
+  server defers to the plugin when present (24h safety net for a
+  disabled/never-reopened plugin) and a unified `.done` marker means flips never
+  double-summarize. No session is ever silently skipped (retry + catch-up sweep
+  + durable queue); only `--no-extract` / `SESSION_DISTILL_ENABLED=false` stop it.
+  `backfill-sessions` summarizes old chats.
 - **Persistent graph backend** — opt-in `store_type: sqlite` with **temporal
   validity** (per-edge validity windows, `invalidate`, `timeline`); scales past
   the in-memory default. See [GRAPHRAG_GUIDE](docs/GRAPHRAG_GUIDE.md).

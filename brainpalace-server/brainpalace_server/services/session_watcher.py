@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     from brainpalace_server.services.session_archive_service import (
         SessionArchiveService,
     )
+    from brainpalace_server.services.session_distill_service import SessionDistiller
     from brainpalace_server.services.session_index_service import SessionIndexService
 
 logger = logging.getLogger(__name__)
@@ -41,6 +42,7 @@ class SessionWatcher:
         archive: SessionArchiveService | None = None,
         debounce_ms: int = 2000,
         index_enabled: bool = True,
+        distiller: SessionDistiller | None = None,
     ) -> None:
         self.sessions_dir = Path(sessions_dir)
         self.service = service
@@ -48,6 +50,10 @@ class SessionWatcher:
         self.archive = archive
         self.debounce_ms = debounce_ms
         self.index_enabled = index_enabled
+        # Phase 080: provider-engine distiller. Present ONLY when the resolved
+        # mode is `provider` and SESSION_DISTILL_ENABLED is on — so its presence
+        # is the gate. Distills run fire-and-forget; never block the watcher.
+        self.distiller = distiller
         self._stop_event: anyio.Event | None = None
         self._task: asyncio.Task[None] | None = None
 
@@ -74,6 +80,11 @@ class SessionWatcher:
                 archived = self.archive.sync(path)
                 if archived is None:
                     continue  # tombstoned / unreadable: skip entirely
+                # Phase 080: schedule a provider-engine distill of the archived
+                # transcript (gated quiescent + un-marked inside the distiller).
+                # Fire-and-forget — never blocks archiving/indexing.
+                if self.distiller is not None:
+                    self.distiller.schedule(archived)
 
             if not self.index_enabled or self.service is None:
                 # Archive-only: copied above (if archive set), never indexed.

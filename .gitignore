@@ -123,6 +123,11 @@ pip-delete-this-directory.txt
 
 # Local development data
 data/
+# …but the CLI ships hook templates as package data under data/hooks/.
+!brainpalace-cli/brainpalace_cli/data/
+!brainpalace-cli/brainpalace_cli/data/hooks/
+!brainpalace-cli/brainpalace_cli/data/hooks/**
+brainpalace-cli/brainpalace_cli/data/hooks/__pycache__/
 indexed_docs/
 test_output/
 e2e_workdir/

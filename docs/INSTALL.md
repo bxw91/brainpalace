@@ -1,8 +1,14 @@
 ---
-last_validated: 2026-06-02
+last_validated: 2026-06-04
 ---
 
 # Install — alternative paths
+
+> **Using Claude Code? The recommended path is the plugin** — it installs the
+> CLI + server for you and summarizes your sessions for free:
+> `claude plugins marketplace add bxw91/brainpalace && claude plugins install brainpalace@brainpalace-marketplace`
+> (then restart Claude Code). See [README → Install](../README.md#install). The
+> guided `setup.sh` also **offers the plugin first** when Claude Code is present.
 
 The [README](../README.md#install) ships the **guided installer**
 (`setup.sh`) as the one-command path. This file collects everything
@@ -347,6 +353,13 @@ rm -rf .codex/skills/brainpalace      ~/.codex/skills/brainpalace
 
 (Run the project-scope paths from each project root; the `~/...` paths are the
 global installs.)
+
+> **Installed via the Claude Code plugin marketplace instead?** Those skills live
+> under `~/.claude/plugins/cache/<marketplace>/brainpalace` and are tracked by
+> Claude Code's own registry — **don't `rm` that cache** (it desyncs
+> `installed_plugins.json`). Remove it from Claude Code: run `/plugin` → uninstall
+> "brainpalace" (and optionally the "brainpalace-marketplace"). The guided
+> `brainpalace uninstall` detects this and prints the same instruction.
 
 #### 3. Uninstall the package
 
