@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-04
+last_validated: 2026-06-05
 ---
 
 # Changelog
@@ -9,6 +9,45 @@ All notable changes to BrainPalace are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 Versioning is **CalVer** `YY.M.N` — 2-digit year · month · Nth release that
 month (the counter resets monthly). It looks like SemVer but is not.
+
+---
+
+## [26.6.19] - 2026-06-05
+
+### Changed
+- **`brainpalace init` now asks before embedding/summarizing chat sessions, and embedding is
+  opt-in.** An interactive init prompts *Summarize chat sessions? [Y/n]* (free — Claude Code Haiku
+  subagent) then *Embed chat sessions too? [y/N]* (billable — sends transcript content to your
+  embedding provider, named in the prompt), with plain-language explanations and the embedding
+  prompt referencing the summaries. **Session embedding no longer happens by default**: a bare
+  `init` and `--yes` keep it off (archive + summarize only); use `--sessions` to opt in,
+  `--no-extract` to skip summarization. Each prompt is skipped when its capability is set by an
+  explicit flag.
+- **`brainpalace init` second-part output now reflects real state.** The chat-summaries line
+  branches on the resolved engine + plugin presence — it warns (and points to
+  `brainpalace install-agent`) when the Claude Code plugin is absent, since the free Haiku
+  subagent can't run without it, and shows "off" when extraction is disabled. The Done block
+  surfaces the real **session-embedding** cost with its provider (e.g.
+  `Chat-session embedding enqueued → OpenAI text-embedding-3-large`) — clarifying that session
+  *embedding* (billable, server-side) is independent of session *summarization* (free subagent).
+- **`brainpalace init` preview names the real provider per action.** The abstract
+  `→ billable / free` lines are gone; each data-out step is tagged with its destination —
+  e.g. `embed chat sessions → OpenAI text-embedding-3-large`,
+  `summarize chat sessions → Claude Code Haiku (subscription)` (or `<Provider> <model> (API usage)`
+  in provider mode). "transcripts" → "chat sessions"; model-id date suffixes are trimmed; and
+  the summarize line is omitted when the Claude Code plugin is absent (no subagent to run it).
+
+### Fixed
+- **A Claude Code *marketplace* clone no longer counts as an installed plugin.** The
+  registry-missing detection fallback globbed `~/.claude/plugins/cache/*/brainpalace`, which
+  matches a marketplace clone (`cache/<name>-marketplace/brainpalace`) — a false positive that
+  made BrainPalace treat "marketplace added" as "plugin installed". The fallback now consults
+  explicit install dirs only; the authoritative `installed_plugins.json` registry check is
+  unchanged. Mirrored in the CLI and server detectors.
+- **An interactive init embed/summarize answer now wins over an XDG-inherited
+  `session_indexing` block.** A prompt answer is treated as an explicit choice (like
+  `--sessions`/`--no-sessions`), so declining embedding writes `session_indexing.enabled: false`
+  even when a global `~/.config/brainpalace/config.yaml` sets it true.
 
 ---
 

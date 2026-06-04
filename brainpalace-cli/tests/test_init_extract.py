@@ -48,8 +48,13 @@ def test_downgrade_disables_extract() -> None:
 
 
 def test_format_mentions_summarize_when_extract() -> None:
-    line = format_init_plan(_resolve(yes=True))
-    assert "summarize sessions" in line
+    line = format_init_plan(
+        _resolve(yes=True),
+        embedding=("openai", "text-embedding-3-large"),
+        summarize=("subagent",),
+    )
+    assert "summarize chat sessions" in line
+    assert "→ Claude Code Haiku (subscription)" in line
 
 
 def test_write_session_config_sets_extract_mode(tmp_path) -> None:

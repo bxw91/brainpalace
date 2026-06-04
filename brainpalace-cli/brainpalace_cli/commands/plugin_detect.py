@@ -3,7 +3,9 @@
 Detection contract (mirrored in the server — keep both in sync):
 1. PRIMARY: parse ~/.claude/plugins/installed_plugins.json; true if any plugin
    key's name (the part before '@') == "brainpalace".
-2. FALLBACK (registry missing/unparseable): directory checks.
+2. FALLBACK (registry missing/unparseable): EXPLICIT install dirs only
+   (``~/.claude/plugins/brainpalace`` or ``<project>/.claude/plugins/brainpalace``).
+   A marketplace cache clone is NOT treated as installed.
 
 ``brainpalace init`` writes ``mode: subagent`` (summarization only inside Claude
 Code). This contract still reconciles hooks by plugin presence, and the opt-in
@@ -38,13 +40,14 @@ def claude_plugin_installed(
     reg = _registry_has_brainpalace(home)
     if reg is not None:
         return reg
+    # Registry unreadable → fall back to EXPLICIT install dirs only. A plugin
+    # cached under a marketplace clone (``cache/<name>-marketplace/brainpalace``)
+    # is NOT an installed plugin — adding a marketplace must never read as
+    # installed, so the cache is deliberately not consulted here.
     roots = [home / ".claude" / "plugins" / "brainpalace"]
     if project:
         roots.append(project / ".claude" / "plugins" / "brainpalace")
-    if any(r.is_dir() for r in roots):
-        return True
-    cache = home / ".claude" / "plugins" / "cache"
-    return cache.is_dir() and any(cache.glob("*/brainpalace"))
+    return any(r.is_dir() for r in roots)
 
 
 @click.group("plugin")

@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-04
+last_validated: 2026-06-05
 ---
 
 # Install — alternative paths
@@ -33,23 +33,34 @@ auto-allocated port, with its own `.brainpalace/` state directory.
 ```bash
 cd /path/to/other-project
 brainpalace init        # confirm, then: write .brainpalace/, start server,
-                        # index docs (watch=auto), archive + embed transcripts
+                        # index docs (watch=auto), back up + embed chat sessions
 ```
 
-`brainpalace init` does the full setup by default. An interactive run shows the
-plan and asks once before the two billable embedding steps (document + transcript
-indexing); answer no to fall back to config-only. Opt out of individual pieces:
+`brainpalace init` sets up the project and **backs up chat sessions locally (free)**
+by default. An interactive run then **asks before the two session features**, each
+tagged with the real provider it uses:
+
+- **Summarize chat sessions?** `[Y/n]` — free, runs on the Claude Code Haiku subagent
+  (`→ Claude Code Haiku (subscription)`); makes past chats searchable by topic.
+- **Embed chat sessions too?** `[y/N]` — **opt-in, billable**; sends transcript content
+  to your embedding provider (`→ OpenAI text-embedding-3-large`) for full-text semantic
+  recall. Default **no** — summaries already cover the common case.
+
+Opt out / preset non-interactively:
 
 | Flag | Effect |
 |------|--------|
 | `--no-start` | write config only — no server, no indexing |
 | `--no-watch` | start the server but do not register/index the folder |
-| `--no-sessions` | everything except embedding transcripts |
+| `--sessions` | embed chat sessions (opt into the billable step) |
+| `--no-sessions` | never embed chat sessions |
+| `--no-extract` | never summarize chat sessions |
 | `--no-archive` | do not keep the raw transcript backup |
-| `--yes` / `-y` | skip the prompt and apply the full plan (use in scripts) |
+| `--yes` / `-y` | non-interactive: archive + summarize, **no embedding** (add `--sessions` to embed) |
 
 In a non-interactive context (CI, piped, `--json`) a bare `brainpalace init`
-stays config-only — it never starts or embeds without an explicit `--yes`.
+stays config-only — it never starts. `--yes` runs the setup but **does not embed
+chat sessions** unless `--sessions` is also passed.
 
 Then query as usual — `brainpalace` walks up from CWD to find the
 right server for whichever project you happen to be in:

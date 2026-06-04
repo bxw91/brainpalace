@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-04
+last_validated: 2026-06-05
 ---
 
 # Session Indexing
@@ -23,11 +23,15 @@ without the other:
 | Capability | What it does | Cost | Default |
 |---|---|---|---|
 | **archive** | Copies raw `.jsonl` transcripts into `.brainpalace/` as a durable backup. No embeddings. | Free (disk only) | **ON** — including existing projects |
-| **index** | Embeds archived transcripts into the vector store for semantic/keyword recall. | Billable (embedding tokens) | ON for new projects; **OFF** for existing |
+| **index** | Embeds archived transcripts into the vector store for semantic/keyword recall. | Billable (embedding tokens) | **OFF** by default — opt-in at `init` (or `--sessions`) |
 
 Archiving exists because Claude Code prunes transcripts older than ~30 days;
 the archive is a durable backup that survives that. Indexing is the billable,
-opt-in search layer on top.
+opt-in search layer on top. An interactive `brainpalace init` **asks** before
+enabling each session feature — *Summarize?* `[Y/n]` (free, Haiku subagent) then
+*Embed?* `[y/N]` (billable). Embedding is opt-in: a bare `init` (and `--yes`) keeps
+it **off**; pass `--sessions` to enable it non-interactively, `--no-extract` to skip
+summarization.
 
 ## Privacy & defaults — read this first
 
@@ -63,7 +67,7 @@ Add a `session_indexing:` block to your project `config.yaml` (the same file the
 
 ```yaml
 session_indexing:
-  enabled: true            # INDEX: embed transcripts (billable). init writes true; opt out: init --no-sessions
+  enabled: true            # INDEX: embed chat sessions via the embedding provider. init writes true; opt out: init --no-sessions
   retain_days: 0           # index age cutoff in days; <=0 = forever (no cutoff)
   include_user_turns: false # INDEX filter only — the archive is always full raw
   window: 4                 # turns per sliding window (3–5)

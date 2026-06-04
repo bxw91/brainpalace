@@ -6,7 +6,7 @@ last_validated: 2026-06-04
 
 ![Code & Docs RAG](https://img.shields.io/badge/Code_%26_Docs_RAG-1f6feb?style=for-the-badge)
 ![Mono-repo](https://img.shields.io/badge/Mono--repo-1f6feb?style=for-the-badge)
-![Session Memory](https://img.shields.io/badge/Session_Memory-1f6feb?style=for-the-badge)
+![Persistent Session Memory](https://img.shields.io/badge/Persistent_Session_Memory-1f6feb?style=for-the-badge)
 ![File Watcher](https://img.shields.io/badge/File_Watcher-1f6feb?style=for-the-badge)
 ![.gitignore-aware](https://img.shields.io/badge/.gitignore--aware-1f6feb?style=for-the-badge)
 
@@ -15,12 +15,12 @@ last_validated: 2026-06-04
 ![GraphRAG](https://img.shields.io/badge/GraphRAG-8957e5?style=for-the-badge)
 ![Hybrid](https://img.shields.io/badge/Hybrid-8957e5?style=for-the-badge)
 ![Multi-mode](https://img.shields.io/badge/Multi--mode-8957e5?style=for-the-badge)
-![Summaries](https://img.shields.io/badge/Summaries-8957e5?style=for-the-badge)
+![Summarisation](https://img.shields.io/badge/Summarisation-8957e5?style=for-the-badge)
 
 ![CLI](https://img.shields.io/badge/CLI-d29922?style=for-the-badge)
 ![MCP](https://img.shields.io/badge/MCP-d29922?style=for-the-badge)
-![Local LLM](https://img.shields.io/badge/Local_LLM-da3633?style=for-the-badge)
-![Cloud LLM](https://img.shields.io/badge/Cloud_LLM-da3633?style=for-the-badge)
+![Claude Code Plugin](https://img.shields.io/badge/Claude_Code_Plugin-d29922?style=for-the-badge)
+![Local-Cloud LLM](https://img.shields.io/badge/Local-Cloud_LLM-da3633?style=for-the-badge)
 ![Multi-instance](https://img.shields.io/badge/Multi--instance-6e7681?style=for-the-badge)
 
 </div>
@@ -52,7 +52,7 @@ same prerequisites and end with the same `brainpalace` CLI on your `PATH`.
 
 ### Install as a Claude Code plugin
 
-> **Recommended if you use Claude Code.** Richest UX, and it summarizes your
+> **Recommended if you use Claude Code.** Richest UX, and it summarises your
 > sessions for free on your Claude Code subscription (Haiku — no separate API
 > bill; it draws on your subscription's usage limits). Pick this over the CLI
 > install if you're a Claude Code user — it installs the CLI + server for you.
@@ -85,7 +85,7 @@ Full Claude Code reference: [`docs/PLUGIN_GUIDE.md`](docs/PLUGIN_GUIDE.md).
 ### Install as a CLI or MCP server
 
 > **Using Claude Code? Install the plugin instead** (above) — it includes
-> everything here plus free session summarization on your Claude Code
+> everything here plus free session summarisation on your Claude Code
 > subscription. This path is for CLI-only use or non-Claude-Code editors over MCP.
 
 Use this if you want `brainpalace` as a command-line tool, or if you want to
@@ -182,18 +182,18 @@ with optional cloud providers for embeddings and summarisation.
   *source*, not the install method. Other runtimes (OpenCode, Gemini CLI, Codex)
   have no passive capture — they push memory explicitly via the plugin's
   `/brainpalace-extract-session`. See [SESSION_INDEXING](docs/SESSION_INDEXING.md).
-- **Session summarization — `subagent` default (Claude-Code-only)** — `init`
-  writes `mode: subagent`: sessions are summarized **only inside Claude Code**
+- **Session summarisation — `subagent` default (Claude-Code-only)** — `init`
+  writes `mode: subagent`: sessions are summarised **only inside Claude Code**
   (the plugin, free on your Claude Code subscription — Haiku, after your first
   turn, drawing on your subscription's usage limits, no separate API bill; it
-  owns its hooks). **The server never summarizes on its own** — no surprise API
-  bill; if Claude Code didn't summarize a session, it stays un-summarized. Opt
-  in to server-side summarization with `mode: provider` (your configured AI;
+  owns its hooks). **The server never summarises on its own** — no surprise API
+  bill; if Claude Code didn't summarise a session, it stays un-summarised. Opt
+  in to server-side summarisation with `mode: provider` (your configured AI;
   prefer local Ollama — free + private) or `mode: auto` (defer to the plugin,
   server fallback with a 24h safety net). Under `provider`/`auto`, no session is
   ever silently skipped (retry + catch-up sweep + durable queue); a unified
-  `.done` marker means flips never double-summarize. `backfill-sessions`
-  summarizes old chats.
+  `.done` marker means flips never double-summarise. `backfill-sessions`
+  summarises old chats.
 - **Persistent graph backend** — opt-in `store_type: sqlite` with **temporal
   validity** (per-edge validity windows, `invalidate`, `timeline`); scales past
   the in-memory default. See [GRAPHRAG_GUIDE](docs/GRAPHRAG_GUIDE.md).

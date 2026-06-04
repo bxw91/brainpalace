@@ -106,13 +106,48 @@ def test_init_flag_overrides_xdg_default(tmp_path, monkeypatch):
     assert _cfg(tmp_path)["session_indexing"]["enabled"] is True
 
 
-def test_init_yes_non_interactive_enables_both(tmp_path, monkeypatch):
-    # --yes is explicit consent -> full all-on: INDEX and ARCHIVE both on.
+def test_init_yes_keeps_archive_but_embedding_is_opt_in(tmp_path, monkeypatch):
+    # --yes is non-interactive consent, but embedding is now OPT-IN: archive stays
+    # on, session indexing (embedding) stays OFF unless --sessions is passed.
     # --no-start keeps this config-only so no server subprocess is spawned.
     result = _run(
         ["--path", str(tmp_path), "--yes", "--no-start"], monkeypatch, tmp_path
     )
     assert result.exit_code == 0, result.output
     cfg = _cfg(tmp_path)
-    assert cfg["session_indexing"]["enabled"] is True
+    assert cfg["session_indexing"]["enabled"] is False  # opt-in, not auto-enabled
     assert cfg["session_indexing"]["archive"]["enabled"] is True
+
+
+def test_embed_prompt_no_wins_over_xdg_enabled_block(tmp_path, monkeypatch):
+    # XDG global enables session indexing, but the interactive embed prompt
+    # answer (No) is an explicit choice and must win over the inherited default.
+    xdg = tmp_path / "xdg"
+    xdg.mkdir()
+    (xdg / "config.yaml").write_text(
+        "embedding:\n  provider: openai\n  model: text-embedding-3-large\n"
+        "session_indexing:\n  enabled: true\n"
+    )
+    monkeypatch.setattr("brainpalace_cli.commands.init.get_xdg_config_dir", lambda: xdg)
+    monkeypatch.setenv("OPENAI_API_KEY", "x")
+    monkeypatch.setattr(
+        "brainpalace_cli.commands.init.claude_plugin_installed", lambda **k: False
+    )
+    monkeypatch.setattr("brainpalace_cli.commands.init._stdin_is_tty", lambda: True)
+    # summarize=n, embed=n, proceed=y  (--no-start ⇒ no server subprocess).
+    r = CliRunner().invoke(
+        init_command, ["--path", str(tmp_path), "--no-start"], input="n\nn\ny\n"
+    )
+    assert r.exit_code == 0, r.output
+    assert _cfg(tmp_path)["session_indexing"]["enabled"] is False
+
+
+def test_init_yes_with_sessions_flag_enables_embedding(tmp_path, monkeypatch):
+    # Explicit --sessions opts into embedding even non-interactively.
+    result = _run(
+        ["--path", str(tmp_path), "--yes", "--no-start", "--sessions"],
+        monkeypatch,
+        tmp_path,
+    )
+    assert result.exit_code == 0, result.output
+    assert _cfg(tmp_path)["session_indexing"]["enabled"] is True

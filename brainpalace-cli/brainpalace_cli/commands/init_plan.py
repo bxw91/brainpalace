@@ -6,6 +6,7 @@ Turns raw CLI inputs (explicit flags, ``--yes``, TTY presence) into a concrete
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 
@@ -65,7 +66,9 @@ def resolve_init_plan(
     if sessions is not None:
         sessions_final: bool | None = sessions
     else:
-        sessions_final = True if active else False
+        # Embedding chat sessions is billable + sends content to a provider, so it
+        # is OPT-IN: default off even with consent (set via flag or the init prompt).
+        sessions_final = False
 
     archive_final: bool | None = archive if archive is not None else True
 
@@ -102,27 +105,76 @@ def downgrade_to_config_only(plan: InitPlan) -> InitPlan:
     )
 
 
-def format_init_plan(plan: InitPlan) -> str:
-    """One/two-line human summary of the resolved plan for the confirm prompt."""
-    parts: list[str] = []
+_PROVIDER_NAMES = {
+    "openai": "OpenAI",
+    "cohere": "Cohere",
+    "anthropic": "Anthropic",
+    "gemini": "Gemini",
+    "grok": "Grok",
+}
+
+
+def _trim_model_id(model: str) -> str:
+    """Strip a trailing ``-YYYYMMDD`` date snapshot (e.g. claude-haiku-4-5-20251001)."""
+    return re.sub(r"-\d{8}$", "", model)
+
+
+def _provider_label(provider: str) -> str:
+    return _PROVIDER_NAMES.get(provider, provider.title())
+
+
+def _embed_tag(embedding: tuple[str, str] | None) -> str:
+    if not embedding:
+        return ""
+    provider, model = embedding
+    return f"{_provider_label(provider)} {_trim_model_id(model)}"
+
+
+def _summarize_tag(summarize: tuple[str, ...] | None) -> str | None:
+    """Tag for the summarize line, or None to omit the line entirely."""
+    if not summarize:
+        return None
+    if summarize[0] == "subagent":
+        return "Claude Code Haiku (subscription)"
+    if summarize[0] == "provider":
+        _, provider, model = summarize
+        return f"{_provider_label(provider)} {_trim_model_id(model)} (API usage)"
+    return None
+
+
+def format_init_plan(
+    plan: InitPlan,
+    *,
+    embedding: tuple[str, str] | None = None,
+    summarize: tuple[str, ...] | None = None,
+) -> str:
+    """Multi-line, per-action preview. Data-out actions carry a ``→ <provider>`` tag.
+
+    ``embedding`` is ``(provider, model)`` for the doc/chat embedding lines.
+    ``summarize`` is ``("subagent",)`` | ``("provider", name, model)`` | ``None``
+    (None ⇒ omit the summarize action entirely, e.g. the plugin is absent)."""
+    emb = _embed_tag(embedding)
+    summ = _summarize_tag(summarize)
+
+    rows: list[tuple[str, str]] = []  # (action, provider tag — "" = local, no tag)
     if plan.start:
-        parts.append("start server")
+        rows.append(("start server", ""))
     if plan.watch == "auto":
-        parts.append("index docs (watch=auto)")
+        rows.append(("index docs (watch=auto)", emb))
     if plan.archive:
-        parts.append("archive transcripts")
+        rows.append(("back up chat sessions", ""))
     if plan.sessions:
-        parts.append("embed transcripts")
-    if plan.extract:
-        parts.append("summarize sessions")
-    if not parts:
-        parts.append("write config only")
-    line = "init will: " + " · ".join(parts)
-    if plan.billable:
-        bill: list[str] = []
-        if plan.watch == "auto":
-            bill.append("document")
-        if plan.sessions:
-            bill.append("transcript")
-        line += "\n  → billable: " + " + ".join(bill) + " embedding"
-    return line
+        rows.append(("embed chat sessions", emb))
+    if plan.extract and summ is not None:
+        rows.append(("summarize chat sessions", summ))
+    if not rows:
+        return "init will: write config only"
+
+    width = max(len(action) for action, _ in rows)
+    lines = ["init will:"]
+    for action, tag in rows:
+        if tag:
+            lines.append(f"  · {action.ljust(width)}     → {tag}")
+        else:
+            lines.append(f"  · {action}")
+    return "\n".join(lines)

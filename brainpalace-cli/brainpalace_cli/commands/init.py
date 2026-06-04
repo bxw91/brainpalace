@@ -51,6 +51,13 @@ DEFAULT_CONFIG = {
 
 STATE_DIR_NAME = ".brainpalace"
 
+
+def _stdin_is_tty() -> bool:
+    """Whether stdin is an interactive terminal (seam for tests; CliRunner swaps
+    ``sys.stdin``, so this is monkeypatched rather than ``sys.stdin.isatty``)."""
+    return sys.stdin.isatty()
+
+
 # Embedding providers in preference order: (provider, model, api-key env var).
 # None env var = no key needed (local). `init` picks the first whose key is
 # present in the environment, so an OpenAI-only env doesn't force an edit.
@@ -118,6 +125,28 @@ def build_default_provider_config(
             "engine": bm25_engine,
         },
     }
+
+
+def _preview_embedding(project_root: Path) -> tuple[str, str]:
+    """Resolve the embedding ``(provider, model)`` the init will actually use.
+
+    Precedence mirrors the config write: existing project
+    ``.brainpalace/config.yaml`` → XDG global → env-detected default
+    (:func:`build_default_provider_config`). Used only to name the real provider
+    in the init preview."""
+    for cfg in (
+        project_root / STATE_DIR_NAME / "config.yaml",
+        get_xdg_config_dir() / "config.yaml",
+    ):
+        try:
+            data = yaml.safe_load(cfg.read_text()) or {}
+        except (OSError, ValueError):
+            continue
+        emb = data.get("embedding") if isinstance(data, dict) else None
+        if isinstance(emb, dict) and emb.get("provider") and emb.get("model"):
+            return str(emb["provider"]), str(emb["model"])
+    emb_default = build_default_provider_config()["embedding"]
+    return str(emb_default["provider"]), str(emb_default["model"])  # type: ignore[index]
 
 
 def write_default_provider_config(
@@ -542,6 +571,10 @@ def _emit_init_result(
     start_used: bool,
     watch: str,
     json_output: bool,
+    extract_on: bool = False,
+    plugin_present: bool = False,
+    sessions_on: bool = False,
+    embedding: tuple[str, str] | None = None,
 ) -> None:
     """Print the init result, including any post-init step outcomes."""
     if json_output:
@@ -593,16 +626,41 @@ def _emit_init_result(
     elif watched_ok:
         done.append(f"Folder watched + initial indexing enqueued: {project_root}")
 
+    # Surface the real (billable) session-embedding cost — it runs on the started
+    # server via the embedding provider, independent of summarization.
+    if sessions_on and start_used and embedding is not None:
+        from brainpalace_cli.commands.init_plan import (
+            _provider_label,
+            _trim_model_id,
+        )
+
+        prov, model = embedding
+        done.append(
+            f"Chat-session embedding enqueued → "
+            f"{_provider_label(prov)} {_trim_model_id(model)}"
+        )
+
     if done:
         console.print("\n[dim]Done:[/]")
         for item in done:
             console.print(f"  [green]✓[/] {item}")
 
-    console.print(
-        "\n[dim]Chat summaries:[/] run on the free Claude Code Haiku subagent "
-        "[bold]after your first prompt[/] — in batches of up to 8 sessions "
-        "(≤1 MB) with a 5-minute cool-down between batches."
-    )
+    # Chat summaries reflect the resolved engine + plugin presence: the subagent
+    # path only runs when the Claude Code plugin is actually installed.
+    if not extract_on:
+        console.print("\n[dim]Chat summaries:[/] off.")
+    elif plugin_present:
+        console.print(
+            "\n[dim]Chat summaries:[/] run on the free Claude Code Haiku subagent "
+            "[bold]after your first prompt[/] — in batches of up to 8 sessions "
+            "(≤1 MB) with a 5-minute cool-down between batches."
+        )
+    else:
+        console.print(
+            "\n[dim]Chat summaries:[/] configured (subagent) but the Claude Code "
+            "plugin [bold]isn't installed[/], so sessions won't be summarized yet. "
+            "Install it: [bold]brainpalace install-agent[/]"
+        )
 
     console.print("\n[dim]Next steps:[/]")
     for item in todo:
@@ -858,17 +916,21 @@ def init_command(
     a default config.json file.
 
     \b
-    A bare `brainpalace init` does everything by default: writes config, starts
-    the server, indexes the project (watch=auto), archives transcripts, and
-    embeds transcripts. Interactive runs confirm first (the two embedding steps
-    are billable); non-interactive/--json runs stay config-only unless --yes.
+    A bare `brainpalace init` writes config, starts the server, indexes the
+    project (watch=auto), and backs up chat sessions locally (free). An
+    interactive run then ASKS before the two session features: summarize chat
+    sessions (free, Claude Code Haiku subagent) and embed chat sessions (billable
+    — sends transcript content to your embedding provider). Embedding is OPT-IN:
+    the default and --yes do NOT embed sessions; pass --sessions to enable it
+    non-interactively. --json stays config-only unless --yes.
 
     \b
     Examples:
-      brainpalace init                  # Interactive: confirm, then full setup
-      brainpalace init --yes            # Non-interactive: full setup, no prompt
+      brainpalace init                  # Interactive: asks about summarize/embed
+      brainpalace init --yes            # Non-interactive: archive + summarize, no embed
+      brainpalace init --sessions       # Also embed chat sessions (billable)
       brainpalace init --no-start       # Config only (no server, no indexing)
-      brainpalace init --no-sessions    # Everything except embedding transcripts
+      brainpalace init --no-sessions    # Never embed chat sessions
       brainpalace init --no-watch       # Start, but do not index/watch the folder
       brainpalace init --path /my/proj  # Initialize a specific project
       brainpalace init --force          # Overwrite existing config
@@ -877,11 +939,19 @@ def init_command(
         # Trigger one-time migration from legacy ~/.brainpalace to XDG dirs
         migrate_legacy_paths()
 
+        # Resolve project root FIRST so the preview can name the real providers
+        # and detect the plugin (subagent summarization needs it). CWD when
+        # --path is omitted (B5).
+        if path:
+            project_root = Path(path).resolve()
+        else:
+            project_root = Path.cwd().resolve()
+
         # Resolve the action plan up front so both the already-initialized
         # branch and the fresh-init branch agree on what to do. Implicit
         # all-on defaults apply only with consent (TTY confirm or --yes);
         # --json forces non-interactive.
-        is_tty = sys.stdin.isatty() and not json_output
+        is_tty = _stdin_is_tty() and not json_output
         plan = resolve_init_plan(
             start=start,
             watch=watch,
@@ -892,16 +962,70 @@ def init_command(
             yes=yes,
             is_tty=is_tty,
         )
+        # Whether the user explicitly decided session embedding — via flag OR the
+        # interactive prompt below. An explicit choice wins over an XDG-inherited
+        # session_indexing block at write time.
+        sessions_chosen = enable_sessions is not None
+
         if plan.confirm:
-            console.print(format_init_plan(plan))
+            embedding = _preview_embedding(project_root)
+            plugin_present = claude_plugin_installed(project=project_root)
+
+            # Granular consent — ask only what an explicit flag didn't already set.
+            # Order: summarize first (free baseline recall), then embed (the paid
+            # detail upgrade that references the summaries).
+            extract_ans: bool = bool(plan.extract)
+            if enable_extract is None:
+                console.print(
+                    "\n[bold]Summarize chat sessions?[/] "
+                    "(distil past chats into summaries + a decisions digest)\n"
+                    "  Free — runs on the Claude Code Haiku subagent (needs the "
+                    "Claude Code plugin).\n"
+                    "  Makes past chats searchable by topic. Reads full transcripts; "
+                    "writes\n  BRAINPALACE_DECISIONS.md. Disable later: --no-extract."
+                )
+                extract_ans = click.confirm("Summarize chat sessions?", default=True)
+
+            sessions_ans: bool = bool(plan.sessions)
+            if enable_sessions is None:
+                from brainpalace_cli.commands.init_plan import (
+                    _provider_label,
+                    _trim_model_id,
+                )
+
+                prov, model = embedding
+                tag = f"{_provider_label(prov)} {_trim_model_id(model)}"
+                console.print(
+                    "\n[bold]Embed chat sessions too?[/] "
+                    "(search the FULL verbatim text, not just summaries)\n"
+                    "  Summaries above already make past chats searchable. Embedding "
+                    "adds search over\n  the complete raw transcripts — good for exact "
+                    f"code/commands — but sends that\n  content to {tag}. Cheap "
+                    "(usually a few cents), but a large history\n  adds many tokens. "
+                    "Enable later: --sessions."
+                )
+                sessions_ans = click.confirm("Embed chat sessions too?", default=False)
+                sessions_chosen = True  # prompt answer is an explicit choice
+
+            # Rebuild the plan from the answers (bools ⇒ explicit, so they win).
+            plan = resolve_init_plan(
+                start=start,
+                watch=watch,
+                no_watch=no_watch,
+                sessions=sessions_ans,
+                archive=enable_archive,
+                extract=extract_ans,
+                yes=yes,
+                is_tty=is_tty,
+            )
+            summarize: tuple[str, ...] | None = (
+                ("subagent",) if plan.extract and plugin_present else None
+            )
+            console.print(
+                format_init_plan(plan, embedding=embedding, summarize=summarize)
+            )
             if not click.confirm("Proceed?", default=True):
                 plan = downgrade_to_config_only(plan)
-
-        # Resolve project root — CWD when --path is omitted (B5).
-        if path:
-            project_root = Path(path).resolve()
-        else:
-            project_root = Path.cwd().resolve()
 
         # Defensive: refuse to create .brainpalace/ at a mono-repo workspace
         # root unless explicitly overridden.
@@ -966,6 +1090,9 @@ def init_command(
                     json_output=json_output,
                     bm25_engine=bm25_engine,
                 )
+                _ex_block = existing_config.get("session_extraction") or {}
+                _ex_mode = _ex_block.get("mode", "subagent")
+                _si_block = existing_config.get("session_indexing") or {}
                 _emit_init_result(
                     project_root=project_root,
                     resolved_state_dir=resolved_state_dir,
@@ -976,6 +1103,10 @@ def init_command(
                     start_used=True,
                     watch=plan.watch,
                     json_output=json_output,
+                    extract_on=_ex_mode not in ("off", False),
+                    plugin_present=claude_plugin_installed(project=project_root),
+                    sessions_on=bool(_si_block.get("enabled", True)),
+                    embedding=_preview_embedding(project_root),
                 )
                 return
             if json_output:
@@ -1053,8 +1184,8 @@ def init_command(
             sess = None
             arch = None
         else:
-            if enable_sessions is None and "enabled" in inherited:
-                sess = None  # respect XDG global default
+            if not sessions_chosen and "enabled" in inherited:
+                sess = None  # respect XDG global default (no explicit choice)
             if enable_archive is None and "archive" in inherited:
                 arch = None  # respect XDG archive block
         write_session_config(resolved_state_dir, index=sess, archive=arch)
@@ -1100,6 +1231,10 @@ def init_command(
             start_used=plan.start,
             watch=plan.watch,
             json_output=json_output,
+            extract_on=bool(plan.extract),
+            plugin_present=claude_plugin_installed(project=project_root),
+            sessions_on=bool(plan.sessions),
+            embedding=_preview_embedding(project_root),
         )
 
     except PermissionError as e:

@@ -31,12 +31,16 @@ def test_registry_without_brainpalace_is_false(tmp_path) -> None:
     assert claude_plugin_installed(home=home) is False
 
 
-def test_unparseable_registry_falls_back_to_dirs(tmp_path) -> None:
+def test_unparseable_registry_falls_back_to_install_dirs_only(tmp_path) -> None:
+    # Registry unreadable → explicit install dirs only; a marketplace cache clone
+    # does NOT count as installed.
     home = tmp_path / "home"
     p = home / ".claude" / "plugins"
     p.mkdir(parents=True)
     (p / "installed_plugins.json").write_text("{ not json")
     (p / "cache" / "brainpalace-marketplace" / "brainpalace").mkdir(parents=True)
+    assert claude_plugin_installed(home=home) is False
+    (p / "brainpalace").mkdir()  # explicit install dir
     assert claude_plugin_installed(home=home) is True
 
 

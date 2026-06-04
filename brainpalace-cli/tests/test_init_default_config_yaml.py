@@ -8,6 +8,7 @@ import pytest
 import yaml
 
 from brainpalace_cli.commands.init import (
+    _preview_embedding,
     build_default_provider_config,
     write_default_provider_config,
 )
@@ -157,3 +158,26 @@ def test_copies_xdg_global_when_present(tmp_path: Path, isolated_xdg: Path) -> N
     # Came from XDG, NOT the hardcoded Anthropic default.
     assert data["summarization"]["provider"] == "openai"
     assert data["summarization"]["model"] == "gpt-4o-mini"
+
+
+def test_preview_embedding_prefers_project_config(tmp_path, monkeypatch):
+    # An existing project config wins over env/XDG.
+    state = tmp_path / ".brainpalace"
+    state.mkdir()
+    (state / "config.yaml").write_text(
+        "embedding:\n  provider: cohere\n  model: embed-english-v3.0\n"
+    )
+    for key in _ALL_PROVIDER_KEYS:
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("OPENAI_API_KEY", "x")  # would lose to the project config
+    assert _preview_embedding(tmp_path) == ("cohere", "embed-english-v3.0")
+
+
+def test_preview_embedding_falls_back_to_env_default(
+    tmp_path, monkeypatch, isolated_xdg
+):
+    # No project/XDG config (isolated_xdg is empty) → env-detected default.
+    for key in _ALL_PROVIDER_KEYS:
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("OPENAI_API_KEY", "x")
+    assert _preview_embedding(tmp_path) == ("openai", "text-embedding-3-large")
