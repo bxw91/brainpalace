@@ -13,7 +13,8 @@ from ..client import (
     ServerError,
     exit_on_connection_error,
 )
-from ..config import get_server_url
+from ..config import get_server_url, get_state_dir
+from .bm25_project import set_project_bm25
 
 console = Console()
 
@@ -143,6 +144,17 @@ def list_folders_cmd(url: str | None, json_output: bool) -> None:
     default=None,
     help="Debounce interval in seconds for file watching (default: 30)",
 )
+@click.option(
+    "--language",
+    "text_language",
+    default=None,
+    help=(
+        "Set the project default BM25 language (ISO 639-1) used to tokenize indexed "
+        "folders (e.g. en, de, hr). Written to bm25.language in "
+        ".brainpalace/config.yaml. "
+        "No per-folder language isolation yet — this sets the project default."
+    ),
+)
 @click.option("--json", "json_output", is_flag=True, help="Output as JSON")
 def add_folder_cmd(
     folder_path: str,
@@ -150,6 +162,7 @@ def add_folder_cmd(
     include_code: bool,
     watch_mode: str | None,
     debounce_seconds: int | None,
+    text_language: str | None,
     json_output: bool,
 ) -> None:
     """Index documents from a folder (alias for 'brainpalace index').
@@ -161,9 +174,15 @@ def add_folder_cmd(
       brainpalace folders add ./docs
       brainpalace folders add ./src --include-code
       brainpalace folders add ./src --watch auto --debounce 10
+      brainpalace folders add ./docs --language hr
     """
     resolved_url = url or get_server_url()
     folder = Path(folder_path).resolve()
+
+    # Persist --language into project config BEFORE sending the index request.
+    if text_language is not None:
+        state_dir = get_state_dir()
+        set_project_bm25(state_dir, language=text_language)
 
     try:
         with DocServeClient(base_url=resolved_url) as client:

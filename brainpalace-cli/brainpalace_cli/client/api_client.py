@@ -235,6 +235,7 @@ class DocServeClient:
         languages: list[str] | None = None,
         file_paths: list[str] | None = None,
         time_decay: bool = True,
+        language: str | None = None,
     ) -> QueryResponse:
         """
         Query indexed documents.
@@ -248,6 +249,8 @@ class DocServeClient:
             source_types: Filter by source types (doc, code, test).
             languages: Filter by programming languages.
             file_paths: Filter by file path patterns.
+            language: BM25 query language override (ISO 639-1). Defaults to
+                the project bm25.language setting when None.
 
         Returns:
             QueryResponse with matching results.
@@ -267,6 +270,8 @@ class DocServeClient:
             request_data["languages"] = languages
         if file_paths is not None:
             request_data["file_paths"] = file_paths
+        if language is not None:
+            request_data["language"] = language
 
         data = self._request("POST", "/query/", json=request_data)
 

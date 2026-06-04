@@ -15,7 +15,7 @@ parameters:
     default: false
 skills:
   - using-brainpalace
-last_validated: 2026-05-30
+last_validated: 2026-06-04
 ---
 
 # BrainPalace Status
@@ -85,6 +85,7 @@ Indexed Folders    ./docs
 File Watcher       running (2 watched folder(s))
 Embedding Cache    1,200 entries, 85.3% hit rate (1,024 hits, 176 misses)
 Graph Index        Enabled - 45 entities, 120 rels
+BM25 Language      en (engine: stem)
 ```
 
 ### JSON Format
@@ -112,6 +113,12 @@ Graph Index        Enabled - 45 entities, 120 rels
       "hits": 1024,
       "misses": 176
     }
+  },
+  "bm25": {
+    "language": "en",
+    "engine": "stem",
+    "detect": false,
+    "detect_min_confidence": 0.6
   }
 }
 ```

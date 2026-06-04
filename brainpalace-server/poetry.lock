@@ -2673,23 +2673,6 @@ striprtf = ">=0.0.26,<0.0.27"
 pymupdf = ["pymupdf (>=1.23.21,<2)"]
 
 [[package]]
-name = "llama-index-retrievers-bm25"
-version = "0.6.5"
-description = "llama-index retrievers bm25 integration"
-optional = false
-python-versions = "<4.0,>=3.9"
-groups = ["main"]
-files = [
-    {file = "llama_index_retrievers_bm25-0.6.5-py3-none-any.whl", hash = "sha256:928a2859688ea2f6ce337686866d0ab4f8e8e040f23dbd1061fff57288f5f552"},
-    {file = "llama_index_retrievers_bm25-0.6.5.tar.gz", hash = "sha256:13138639fcf94fc8dd1874250a198b0c16fe1236c828f8a7ff9e46a67166fdb1"},
-]
-
-[package.dependencies]
-bm25s = ">=0.2.7.post1"
-llama-index-core = ">=0.13.1,<0.15"
-pystemmer = ">=2.2.0.1,<3"
-
-[[package]]
 name = "llama-index-workflows"
 version = "2.11.5"
 description = "An event-driven, async-first, step-based way to control the execution flow of AI applications like Agents."
@@ -4814,6 +4797,24 @@ files = [
 ]
 
 [[package]]
+name = "py3langid"
+version = "0.3.0"
+description = "Fork of the language identification tool langid.py, featuring a modernized codebase and faster execution times."
+optional = false
+python-versions = ">=3.8"
+groups = ["main"]
+files = [
+    {file = "py3langid-0.3.0-py3-none-any.whl", hash = "sha256:38f022eec31cf9a2bf6f142acb2a9b350fd7d0d5ae7762b1392c6d3567401fd3"},
+    {file = "py3langid-0.3.0.tar.gz", hash = "sha256:0a875a031a58aaf9dbda7bb8285fd75e801a7bd276216ffabe037901d4b449ec"},
+]
+
+[package.dependencies]
+numpy = {version = ">=2.0.0", markers = "python_version >= \"3.9\""}
+
+[package.extras]
+dev = ["pytest", "pytest-cov"]
+
+[[package]]
 name = "pyasn1"
 version = "0.6.1"
 description = "Pure-Python implementation of ASN.1 types and DER/BER/CER codecs (X.208)"
@@ -5389,24 +5390,6 @@ files = [
     {file = "pyyaml-6.0.3-cp39-cp39-win_amd64.whl", hash = "sha256:2e71d11abed7344e42a8849600193d15b6def118602c4c176f748e4583246007"},
     {file = "pyyaml-6.0.3.tar.gz", hash = "sha256:d76623373421df22fb4cf8817020cbb7ef15c725b9d5e45f17e189bfc384190f"},
 ]
-
-[[package]]
-name = "rank-bm25"
-version = "0.2.2"
-description = "Various BM25 algorithms for document ranking"
-optional = false
-python-versions = "*"
-groups = ["main"]
-files = [
-    {file = "rank_bm25-0.2.2-py3-none-any.whl", hash = "sha256:7bd4a95571adadfc271746fa146a4bcfd89c0cf731e49c3d1ad863290adbe8ae"},
-    {file = "rank_bm25-0.2.2.tar.gz", hash = "sha256:096ccef76f8188563419aaf384a02f0ea459503fdf77901378d4fd9d87e5e51d"},
-]
-
-[package.dependencies]
-numpy = "*"
-
-[package.extras]
-dev = ["pytest"]
 
 [[package]]
 name = "regex"
@@ -5995,6 +5978,25 @@ files = [
 ]
 
 [[package]]
+name = "simplemma"
+version = "1.2.0"
+description = "A lightweight toolkit for multilingual lemmatization and language detection."
+optional = true
+python-versions = ">=3.10"
+groups = ["main"]
+markers = "extra == \"lemma-hr\""
+files = [
+    {file = "simplemma-1.2.0-py3-none-any.whl", hash = "sha256:a02fcbbb9eecc9c0e56eaea0c482eb43bf8bec8e33f45024b321a483bf77d854"},
+    {file = "simplemma-1.2.0.tar.gz", hash = "sha256:f561a9f0f41400d52ed4a0674a3e0423df64c41f5390602d2f071d6b687c5e68"},
+]
+
+[package.extras]
+dev = ["black (==26.5.1)", "flake8 (==7.3.0)", "mypy (==2.1.0)", "simplemma[test]", "types-requests (==2.33.0.20260518)"]
+docs = ["mkdocs", "mkdocs-include-markdown-plugin", "mkdocs-material", "mkdocstrings", "mkdocstrings-python"]
+marisa-trie = ["marisa_trie (==1.4.1)", "platformdirs (==4.10.0)"]
+test = ["pytest (==9.0.3)", "pytest-cov (==7.1.0)"]
+
+[[package]]
 name = "six"
 version = "1.17.0"
 description = "Python 2 and 3 compatibility utilities"
@@ -6138,6 +6140,18 @@ anyio = ">=3.6.2,<5"
 
 [package.extras]
 full = ["httpx (>=0.27.0,<0.29.0)", "itsdangerous", "jinja2", "python-multipart (>=0.0.18)", "pyyaml"]
+
+[[package]]
+name = "stopwordsiso"
+version = "0.6.1"
+description = "Collection of stopwords for multiple languages. Using ISO 639-1 language code."
+optional = false
+python-versions = "*"
+groups = ["main"]
+files = [
+    {file = "stopwordsiso-0.6.1-py3-none-any.whl", hash = "sha256:c9bff4ed5fdddbfb56998c99d5b11460c2fea0134403e0c4104f63b7c665fffc"},
+    {file = "stopwordsiso-0.6.1.tar.gz", hash = "sha256:5be2b4f25afc296fca4f626710b98168949057f81a655e2dbdf670ddfce2af50"},
+]
 
 [[package]]
 name = "striprtf"
@@ -7561,9 +7575,10 @@ type = ["pytest-mypy"]
 
 [extras]
 graphrag = ["langextract"]
+lemma-hr = ["simplemma"]
 postgres = ["asyncpg", "sqlalchemy"]
 
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.10"
-content-hash = "c6f46e2a1ab82379ac582a3dd319f66eb9dc6fbc6ef6093418c403051c1ad3fb"
+content-hash = "d34b61b4dd1f74d81eb7f705d06246279f8406356147d1563c2a86a840a183a1"

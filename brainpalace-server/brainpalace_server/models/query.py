@@ -80,6 +80,15 @@ class QueryRequest(BaseModel):
         examples=[["docs/*.md"], ["src/**/*.py"]],
     )
 
+    # BM25 query language override
+    language: str | None = Field(
+        None,
+        description=(
+            "BM25 query language override (ISO 639-1). "
+            "Defaults to the project bm25.language setting."
+        ),
+    )
+
     # Graph entity type filtering (Feature 122 - Schema GraphRAG)
     entity_types: list[str] | None = Field(
         default=None,

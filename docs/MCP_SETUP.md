@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-05-30
+last_validated: 2026-06-04
 ---
 
 # MCP setup — connecting AI clients to BrainPalace
@@ -33,6 +33,18 @@ workspace or file path to override CWD-based server discovery — required for
 multi-root workspaces or any editor that lets the user switch projects within a
 single session. Without `path`, the long-lived MCP process is pinned to the
 directory it was spawned in. `whoami` keeps the older `file_path` name.
+
+### `query` parameters
+
+| Parameter      | Type            | Default    | Description                                                   |
+| -------------- | --------------- | ---------- | ------------------------------------------------------------- |
+| `query`        | string          | —          | Search query text (required).                                 |
+| `mode`         | string          | `"hybrid"` | Search mode: `bm25`, `vector`, `hybrid`, `graph`, `multi`.   |
+| `top_k`        | integer         | `8`        | Number of results to return (1–100).                          |
+| `languages`    | list of strings | `null`     | Filter results by programming language(s).                    |
+| `source_types` | list of strings | `null`     | Filter results by source type(s).                             |
+| `language`     | string          | `null`     | BM25 query language override (ISO 639-1, e.g. `"en"`, `"de"`, `"zh"`). Overrides the project `bm25.language` setting for this call only. Only affects BM25 tokenization — ignored for vector/graph modes. |
+| `path`         | string          | `null`     | Resolve the server owning this path instead of the MCP process CWD. |
 
 ## The `--ensure-server` flag
 

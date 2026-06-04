@@ -91,6 +91,7 @@ Note: server-down is distinct from project-not-indexed. The former means `.brain
 
 - [Search Modes](#search-modes)
 - [Mode Selection Guide](#mode-selection-guide)
+- [BM25 Language Override](#bm25-language-override)
 - [GraphRAG (Knowledge Graph)](#graphrag-knowledge-graph)
 - [Indexing & Folder Management](#indexing--folder-management)
 - [Content Injection](#content-injection)
@@ -121,6 +122,7 @@ Note: server-down is distinct from project-not-indexed. The former means `.brain
 | `--threshold` | 0.3 | Minimum similarity (0.0-1.0) |
 | `--top-k` | 5 | Number of results |
 | `--alpha` | 0.5 | Hybrid balance (0=BM25, 1=Vector) |
+| `--language` | project `bm25.language` (default `en`) | Per-query BM25 tokenization language override (ISO 639-1). Applies to `bm25` and `hybrid` modes; ignored for `vector`, `graph`, `multi`. |
 
 ---
 
@@ -142,6 +144,23 @@ brainpalace query "def process_payment" --mode bm25
 brainpalace query "how does error handling work" --mode bm25  # Wrong
 brainpalace query "how does error handling work" --mode vector  # Correct
 ```
+
+#### BM25 Language Override
+
+BM25 and hybrid modes apply language-aware stemming. By default the project language (`bm25.language`, default `en`) is used. Override per-query with `--language`:
+
+```bash
+# Query a German-language document set
+brainpalace query "Authentifizierungsablauf" --mode bm25 --language de
+
+# Hybrid search with French tokenization override
+brainpalace query "gestion des erreurs" --mode hybrid --language fr
+
+# Croatian (lemma engine must be configured at project level)
+brainpalace query "upravljanje pogreškama" --mode bm25 --language hr
+```
+
+The `--language` flag maps to `QueryRequest.language` and only affects BM25 tokenization for that single query. `vector`, `graph`, and `multi` modes are not affected by `--language`.
 
 ### Use Vector When
 
@@ -452,6 +471,7 @@ This skill focuses on **searching and querying**. Do NOT use for:
 9. **Incremental Indexing**: Re-index without `--force` for efficient updates
 10. **Injection Validation**: Always `--dry-run` injector scripts before full indexing
 11. **Job Monitoring**: Use `brainpalace jobs --watch` for long-running index jobs
+12. **BM25 Language**: Set the project language at init time (`brainpalace init --language de`); use `--language` per-query only when searching content in a different language than the project default
 
 ---
 

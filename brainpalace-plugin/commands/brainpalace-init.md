@@ -26,7 +26,7 @@ context: brainpalace
 agent: setup-assistant
 skills:
   - configuring-brainpalace
-last_validated: 2026-05-30
+last_validated: 2026-06-04
 ---
 
 # Initialize BrainPalace Project
@@ -50,6 +50,8 @@ Initializes the current project for BrainPalace by creating the necessary config
 | --port | No | Auto-select | Preferred server port (disables auto-port if set) |
 | --force / -f | No | false | Overwrite existing configuration |
 | --state-dir / -s | No | .brainpalace | Custom state directory for index data |
+| --language | No | en | Project default BM25 language (ISO 639-1, e.g. `en`, `de`, `fr`). Written to `bm25.language` in the project config. |
+| --bm25-engine | No | stem | BM25 tokenization engine: `stem` (Snowball/PyStemmer, ~27 languages) or `lemma` (simplemma, Croatian `hr` tier via the `hbs` data). |
 | --json | No | false | Output as JSON |
 
 ### Examples
@@ -60,6 +62,8 @@ Initializes the current project for BrainPalace by creating the necessary config
 /brainpalace:brainpalace-init --port 8080
 /brainpalace:brainpalace-init --state-dir /custom/path
 /brainpalace:brainpalace-init --force
+/brainpalace:brainpalace-init --language de
+/brainpalace:brainpalace-init --language hr --bm25-engine lemma
 ```
 
 ## Execution
@@ -72,6 +76,12 @@ brainpalace init --path /my/project
 brainpalace init --port 8080
 brainpalace init --state-dir /custom/path
 brainpalace init --force
+
+# Set the project BM25 language (default: en)
+brainpalace init --language de
+
+# Use the lemma engine for Croatian (requires brainpalace[lemma-hr])
+brainpalace init --language hr --bm25-engine lemma
 ```
 
 This creates the `.brainpalace/` directory structure in the project root.
@@ -169,7 +179,20 @@ embedding:
 summarization:
   provider: "anthropic"
   api_key: "sk-ant-..."
+
+# BM25 tokenization — written by `brainpalace init --language` / `--bm25-engine`
+bm25:
+  language: "en"           # ISO 639-1 project default (e.g. de, fr, es, ru, hr)
+  engine: "stem"           # stem (Snowball/PyStemmer, ~27 languages) or lemma (simplemma)
+  detect: false            # opt-in per-document language detection
+  detect_min_confidence: 0.6  # minimum confidence to accept detected language (0–1)
 ```
+
+**BM25 language notes:**
+- `--language` / `bm25.language` sets the project default; `--bm25-engine` / `bm25.engine` controls the tokenizer.
+- Supported languages: ~27 Snowball/PyStemmer codes (`en`, `de`, `fr`, `es`, `it`, `pt`, `nl`, `ru`, and more) plus a custom Croatian stemmer (`hr`). Unknown codes fall back to English.
+- `engine: lemma` requires the `simplemma` library (Croatian lemmatization via the Serbo-Croatian `hbs` data). Install the optional extra: `pip install 'brainpalace[lemma-hr]'`. For all other languages, `engine: stem` is recommended.
+- Changing `bm25.language` or `bm25.engine` changes tokenization; the BM25 index auto-rebuilds from the stored corpus on next server start (the analyzer fingerprint is persisted). To re-detect per-document languages, re-run indexing with `brainpalace index <path>`.
 
 **Note**: BrainPalace searches for config.yaml in multiple locations. Project-level config takes precedence over user-level (`~/.brainpalace/config.yaml`).
 

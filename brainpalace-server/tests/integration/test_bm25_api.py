@@ -17,14 +17,17 @@ class TestBM25QueryEndpoint:
         mock_vector_store.is_initialized = True
         mock_bm25_manager.is_initialized = True
 
-        # Setup mock search_with_filters results (new path via ChromaBackend)
+        # Setup mock search_with_filters results (new path via ChromaBackend).
+        # search_with_filters already returns scores normalized to [0, 1]; the
+        # top result is always 1.0.  keyword_search passes the score through
+        # unchanged — no second normalization.
         node_mock = NodeWithScore(
             node=TextNode(
                 text="Exact keyword match",
                 id_="chunk_bm25",
                 metadata={"source": "docs/keyword.md"},
             ),
-            score=10.0,  # Raw BM25 score (will be normalized to 1.0)
+            score=1.0,  # Already-normalized score as returned by search_with_filters
         )
         mock_bm25_manager.search_with_filters = AsyncMock(return_value=[node_mock])
 

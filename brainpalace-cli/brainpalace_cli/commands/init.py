@@ -90,7 +90,10 @@ def _pick_provider(
     return dict(fallback)
 
 
-def build_default_provider_config() -> dict[str, object]:
+def build_default_provider_config(
+    bm25_language: str = "en",
+    bm25_engine: str = "stem",
+) -> dict[str, object]:
     """Build the default config.yaml provider block from detected env keys.
 
     Graph indexing is enabled with the cheap AST-code-only path: no LLM cost on
@@ -110,10 +113,19 @@ def build_default_provider_config() -> dict[str, object]:
         "storage": {
             "backend": "chroma",
         },
+        "bm25": {
+            "language": bm25_language,
+            "engine": bm25_engine,
+        },
     }
 
 
-def write_default_provider_config(state_dir: Path, force: bool = False) -> bool:
+def write_default_provider_config(
+    state_dir: Path,
+    force: bool = False,
+    bm25_language: str = "en",
+    bm25_engine: str = "stem",
+) -> bool:
     """Write a sane default config.yaml in the project state dir.
 
     Phase L: ensures new projects get code-graph indexing on by default
@@ -122,7 +134,8 @@ def write_default_provider_config(state_dir: Path, force: bool = False) -> bool:
     Precedence:
     1. If a user-level config exists at XDG (~/.config/brainpalace/config.yaml),
        copy it — respects whichever embedding/summarization provider the
-       user configured globally.
+       user configured globally. The bm25 block is then merged/overwritten
+       with the explicitly passed language/engine values.
     2. Otherwise write a default provider block chosen from detected env keys
        (see build_default_provider_config) + graphrag code-only.
 
@@ -137,11 +150,16 @@ def write_default_provider_config(state_dir: Path, force: bool = False) -> bool:
     xdg_global = get_xdg_config_dir() / "config.yaml"
     if xdg_global.is_file():
         shutil.copy2(xdg_global, config_path)
+        # Merge bm25 block on top of the XDG copy.
+        _write_bm25_config(state_dir, bm25_language, bm25_engine)
         return True
 
     with open(config_path, "w", encoding="utf-8") as f:
         yaml.safe_dump(
-            build_default_provider_config(),
+            build_default_provider_config(
+                bm25_language=bm25_language,
+                bm25_engine=bm25_engine,
+            ),
             f,
             default_flow_style=False,
             sort_keys=False,
@@ -170,6 +188,70 @@ def _looks_like_monorepo_root(project_root: Path) -> bool:
     except OSError:
         return False
     return any(marker in contents for marker in MONOREPO_CLAUDE_MD_MARKERS)
+
+
+def _write_bm25_config(
+    state_dir: Path,
+    language: str,
+    engine: str,
+) -> None:
+    """Deep-merge bm25.{language,engine} into the project config.yaml.
+
+    Delegates to :func:`brainpalace_cli.commands.bm25_project.set_project_bm25`.
+    Idempotent: preserves all existing keys and only sets the bm25 block.
+    The server's ``load_bm25_config()`` reads this block at startup.
+    """
+    from brainpalace_cli.commands.bm25_project import set_project_bm25
+
+    set_project_bm25(state_dir, language=language, engine=engine)
+
+
+def _check_simplemma_importable() -> bool:
+    """Return True if simplemma can be imported (lemma engine is available)."""
+    try:
+        import importlib
+
+        importlib.import_module("simplemma")
+        return True
+    except ImportError:
+        return False
+
+
+def _preflight_lemma(engine: str, json_output: bool) -> None:
+    """Fail fast when engine=lemma but simplemma is not installed.
+
+    Mirrors the style of _preflight_providers: prints an actionable message
+    (the exact pip install command) and exits non-zero BEFORE the server
+    starts, so the user gets clear guidance instead of a cryptic mid-index
+    crash.
+    """
+    if engine != "lemma":
+        return
+    if _check_simplemma_importable():
+        return
+
+    install_hint = "pip install 'brainpalace[lemma-hr]'"
+    if json_output:
+        import json as _json
+
+        click.echo(
+            _json.dumps(
+                {
+                    "error": "lemma_preflight_failed",
+                    "message": (
+                        "simplemma is required for engine=lemma but is not installed."
+                    ),
+                    "install": install_hint,
+                }
+            )
+        )
+    else:
+        console.print(
+            "[red]BM25 lemma engine requires simplemma — not installed:[/]\n"
+            f"  {install_hint}\n"
+            "[dim]Re-run after installing, or switch to --bm25-engine stem.[/]"
+        )
+    raise SystemExit(1)
 
 
 def _preflight_providers(state_dir: Path, json_output: bool) -> None:
@@ -539,6 +621,7 @@ def _start_and_watch(
     gitignore_added: bool,
     watch: str,
     json_output: bool,
+    bm25_engine: str = "stem",
 ) -> list[dict[str, object]]:
     """Run the --start pipeline: provider preflight, server start, optional watch.
 
@@ -548,6 +631,10 @@ def _start_and_watch(
     any failing step; returns the collected post-init steps on success.
     """
     post_init_steps: list[dict[str, object]] = []
+
+    # Lemma pre-flight: engine=lemma requires simplemma; fail fast before server
+    # start so the user gets a clear install hint instead of a mid-index crash.
+    _preflight_lemma(bm25_engine, json_output)
 
     # Provider pre-flight: fail fast with an actionable message before
     # launching the server / queueing any index, so a misconfigured provider
@@ -718,6 +805,29 @@ def _start_and_watch(
         "The server does not summarize on its own. Pass --no-extract to opt out."
     ),
 )
+@click.option(
+    "--language",
+    "bm25_language",
+    default="en",
+    show_default=True,
+    help=(
+        "Project default natural language for BM25 indexing (ISO 639-1, e.g. "
+        "en, de, hr). Written to bm25.language in config.yaml."
+    ),
+)
+@click.option(
+    "--bm25-engine",
+    "bm25_engine",
+    default="stem",
+    show_default=True,
+    type=click.Choice(["stem", "lemma"], case_sensitive=False),
+    help=(
+        "BM25 stemming engine: 'stem' (Snowball, no extra deps) or 'lemma' "
+        "(simplemma, better recall for morphologically-rich languages). Written "
+        "to bm25.engine in config.yaml. engine=lemma requires simplemma: "
+        "pip install 'brainpalace[lemma-hr]'."
+    ),
+)
 def init_command(
     path: str | None,
     host: str,
@@ -733,6 +843,8 @@ def init_command(
     enable_sessions: bool | None,
     enable_archive: bool | None,
     enable_extract: bool | None,
+    bm25_language: str,
+    bm25_engine: str,
 ) -> None:
     """Initialize a new BrainPalace project.
 
@@ -846,6 +958,7 @@ def init_command(
                     gitignore_added=False,
                     watch=plan.watch,
                     json_output=json_output,
+                    bm25_engine=bm25_engine,
                 )
                 _emit_init_result(
                     project_root=project_root,
@@ -908,7 +1021,10 @@ def init_command(
         # graphrag edits in config.yaml (use `brainpalace config` to change
         # providers). Clobbering them on --force was a data-loss papercut.
         provider_config_written = write_default_provider_config(
-            resolved_state_dir, force=False
+            resolved_state_dir,
+            force=False,
+            bm25_language=bm25_language,
+            bm25_engine=bm25_engine,
         )
         if force and not provider_config_written and not json_output:
             console.print(
@@ -965,6 +1081,7 @@ def init_command(
                 gitignore_added=gitignore_added,
                 watch=plan.watch,
                 json_output=json_output,
+                bm25_engine=bm25_engine,
             )
 
         _emit_init_result(

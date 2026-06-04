@@ -1,0 +1,219 @@
+{
+  "_comment": [
+    "Croatian + English BM25 eval fixture for Task 15 (multi-language recall).",
+    "",
+    "Schema",
+    "------",
+    "docs[]:",
+    "  id       - unique document identifier (used in query relevance labels)",
+    "  lang     - ISO-639-1 language code ('hr' or 'en')",
+    "  text     - document body (short note / sentence)",
+    "",
+    "queries[]:",
+    "  id       - unique query identifier",
+    "  lang     - query language ('hr' or 'en')",
+    "  query    - search string (inflected form that DIFFERS from form in doc)",
+    "  relevant - list of doc ids that should appear in the top-1 result",
+    "",
+    "Design principle: for the Croatian arm, the query uses an inflected surface",
+    "form that is morphologically distinct from the form stored in the doc body.",
+    "Only a Croatian stemmer / lemmatizer that reduces both forms to the same root",
+    "will retrieve the correct document.  English tokenization (no Croatian-aware",
+    "normalisation) leaves the forms as separate tokens and cannot link them.",
+    "",
+    "Croatian inflection pairs exercised (root -> doc form | query form):",
+    "  lijecnik  -> lijecnika (genitive)  | lijecniku (dative)",
+    "  termin    -> termina   (genitive)  | terminu   (dative)",
+    "  pregled   -> pregleda  (genitive)  | pregledu  (dative)",
+    "  nalaz     -> nalaza    (genitive)  | nalazu    (dative)",
+    "  recept    -> recepta   (genitive)  | receptu   (dative)",
+    "  bolnica   -> bolnici   (locative)  | bolnicu   (accusative)",
+    "  pacijent  -> pacijenta (genitive)  | pacijentu (dative)",
+    "  lijek     -> lijeka    (genitive)  | lijeku    (dative)",
+    "  ordinacija-> ordinacije(genitive)  | ordinaciji(dative)",
+    "  krvni     -> krvnog    (gen.sg.m)  | krvnom    (dat.sg.m)",
+    "  tlak      -> tlaka     (genitive)  | tlaku     (dative)"
+  ],
+  "docs": [
+    {
+      "id": "hr-01",
+      "lang": "hr",
+      "text": "Potrebno je dogovoriti termin kod lijecnika sto prije."
+    },
+    {
+      "id": "hr-02",
+      "lang": "hr",
+      "text": "Rezultati pregleda bit ce gotovi za tri dana."
+    },
+    {
+      "id": "hr-03",
+      "lang": "hr",
+      "text": "Nalaz krvne slike upucuje na anemiju."
+    },
+    {
+      "id": "hr-04",
+      "lang": "hr",
+      "text": "Recept za antibiotike izdat ce se nakon pregleda."
+    },
+    {
+      "id": "hr-05",
+      "lang": "hr",
+      "text": "Pacijent je primljen u bolnicu zbog komplikacija."
+    },
+    {
+      "id": "hr-06",
+      "lang": "hr",
+      "text": "Lijek se uzima tri puta dnevno uz obrok."
+    },
+    {
+      "id": "hr-07",
+      "lang": "hr",
+      "text": "Ordinacija je otvorena radnim danom od sedam do petnaest sati."
+    },
+    {
+      "id": "hr-08",
+      "lang": "hr",
+      "text": "Molim vas potvrdite termina u petak popodne."
+    },
+    {
+      "id": "hr-09",
+      "lang": "hr",
+      "text": "Kontrolni pregleda planiran je za iduci tjedan."
+    },
+    {
+      "id": "hr-10",
+      "lang": "hr",
+      "text": "Specijalist je dao uputnicu za daljnja pretrazivanja."
+    },
+    {
+      "id": "hr-11",
+      "lang": "hr",
+      "text": "Vrijednosti krvnog tlaka su unutar normalnih granica."
+    },
+    {
+      "id": "hr-12",
+      "lang": "hr",
+      "text": "Doktor je prepisao lijek za smanjenje bolova."
+    },
+    {
+      "id": "hr-13",
+      "lang": "hr",
+      "text": "Pacijenta treba pratiti naredna dva tjedna."
+    },
+    {
+      "id": "hr-14",
+      "lang": "hr",
+      "text": "Bolnica raspolaze modernom opremom za dijagnostiku."
+    },
+    {
+      "id": "hr-15",
+      "lang": "hr",
+      "text": "Lijecnik je propisao terapiju za kronicnu bolest."
+    },
+    {
+      "id": "en-01",
+      "lang": "en",
+      "text": "Schedule a doctor appointment as soon as possible."
+    },
+    {
+      "id": "en-02",
+      "lang": "en",
+      "text": "The cache stores query results to avoid redundant database calls."
+    },
+    {
+      "id": "en-03",
+      "lang": "en",
+      "text": "Rate limiting prevents a single caller from overloading the API."
+    },
+    {
+      "id": "en-04",
+      "lang": "en",
+      "text": "The invoice total includes all line items plus applicable taxes."
+    },
+    {
+      "id": "en-05",
+      "lang": "en",
+      "text": "Authentication tokens expire after twenty-four hours and must be refreshed."
+    }
+  ],
+  "queries": [
+    {
+      "id": "hr-q01",
+      "lang": "hr",
+      "query": "lijecniku termin zakazati",
+      "relevant": ["hr-01", "hr-15"]
+    },
+    {
+      "id": "hr-q02",
+      "lang": "hr",
+      "query": "pregledu rezultati gotovi",
+      "relevant": ["hr-02", "hr-09"]
+    },
+    {
+      "id": "hr-q03",
+      "lang": "hr",
+      "query": "nalazu krvna slika anemija",
+      "relevant": ["hr-03"]
+    },
+    {
+      "id": "hr-q04",
+      "lang": "hr",
+      "query": "receptu antibiotici propisati",
+      "relevant": ["hr-04"]
+    },
+    {
+      "id": "hr-q05",
+      "lang": "hr",
+      "query": "pacijentu bolnicu primiti",
+      "relevant": ["hr-05", "hr-13"]
+    },
+    {
+      "id": "hr-q06",
+      "lang": "hr",
+      "query": "lijeku tri puta dnevno",
+      "relevant": ["hr-06", "hr-12"]
+    },
+    {
+      "id": "hr-q07",
+      "lang": "hr",
+      "query": "ordinaciji radno vrijeme",
+      "relevant": ["hr-07"]
+    },
+    {
+      "id": "hr-q08",
+      "lang": "hr",
+      "query": "tlaku krvni normalne granice",
+      "relevant": ["hr-11"]
+    },
+    {
+      "id": "en-q01",
+      "lang": "en",
+      "query": "doctor appointment schedule",
+      "relevant": ["en-01"]
+    },
+    {
+      "id": "en-q02",
+      "lang": "en",
+      "query": "cache query results database",
+      "relevant": ["en-02"]
+    },
+    {
+      "id": "en-q03",
+      "lang": "en",
+      "query": "rate limit API caller",
+      "relevant": ["en-03"]
+    },
+    {
+      "id": "en-q04",
+      "lang": "en",
+      "query": "invoice total line items tax",
+      "relevant": ["en-04"]
+    },
+    {
+      "id": "en-q05",
+      "lang": "en",
+      "query": "authentication token expire refresh",
+      "relevant": ["en-05"]
+    }
+  ]
+}

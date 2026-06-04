@@ -25,15 +25,15 @@ def test_bm25_build_index_empty_nodes_is_noop(tmp_path, caplog) -> None:
     # Defensive guard logs the skip
     messages = [r.message for r in caplog.records]
     assert any("empty nodes" in m for m in messages), messages
-    # And no retriever should be created
-    assert mgr._retriever is None
+    # And no index should be created
+    assert mgr._bm25 is None
 
 
 def test_bm25_build_index_then_empty_does_not_corrupt(tmp_path, caplog) -> None:
     """Calling build_index([]) after a real build must not blow away state.
 
     Operators rebuilding a partial index shouldn't lose their existing
-    retriever just because a follow-up incremental call had zero new nodes.
+    index just because a follow-up incremental call had zero new nodes.
     """
     mgr = BM25IndexManager(persist_dir=str(tmp_path))
     real_nodes = [
@@ -41,11 +41,11 @@ def test_bm25_build_index_then_empty_does_not_corrupt(tmp_path, caplog) -> None:
         TextNode(text="jumps over the lazy dog", id_="n2"),
     ]
     mgr.build_index(real_nodes)
-    assert mgr._retriever is not None
-    retriever_before = mgr._retriever
+    assert mgr._bm25 is not None
+    bm25_before = mgr._bm25
 
     with caplog.at_level(logging.INFO):
         mgr.build_index([])
 
-    # Existing retriever preserved (no-op leaves prior state intact)
-    assert mgr._retriever is retriever_before
+    # Existing index preserved (no-op leaves prior state intact)
+    assert mgr._bm25 is bm25_before

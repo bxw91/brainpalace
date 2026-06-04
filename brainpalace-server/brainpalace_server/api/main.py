@@ -28,6 +28,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from brainpalace_server import __version__
 from brainpalace_server.config import settings
+from brainpalace_server.config.bm25_config import load_bm25_config
 from brainpalace_server.config.provider_config import (
     ValidationSeverity,
     clear_settings_cache,
@@ -442,8 +443,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             else:
                 app.state.embedding_warning = None
 
+            _bm = load_bm25_config()
             bm25_manager = BM25IndexManager(
                 persist_dir=bm25_dir,
+                default_lang=_bm.language,
+                engine=_bm.engine,
             )
             bm25_manager.initialize()
             set_bm25_manager(bm25_manager)

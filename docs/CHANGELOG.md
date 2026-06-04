@@ -14,6 +14,48 @@ month (the counter resets monthly). It looks like SemVer but is not.
 
 ## [Unreleased]
 
+## [26.6.15] - 2026-06-04
+
+### Added
+- **Multi-language BM25 tokenization.** BrainPalace now tokenizes each document
+  with its own natural-language analyzer (normalize → tokenize → stopwords →
+  stem/lemmatize) rather than a language-agnostic tokenizer. Supported out of
+  the box: ~27 Snowball/PyStemmer languages (`en`, `de`, `fr`, `es`, `ru`, `it`,
+  `pt`, `nl`, `sv`, `fi`, `hu`, `ro`, `tr`, `ar`, and more — see `SNOWBALL` table
+  in `snowball.py`) plus a vendored Croatian (`hr`) stemmer. Stopwords via
+  `stopwordsiso`. Unknown codes fall back to English tokenization.
+
+  **New `bm25:` config block** in `.brainpalace/config.yaml`:
+  ```yaml
+  bm25:
+    language: en               # ISO 639-1 project default (default: en)
+    engine: stem               # stem (default) | lemma
+    detect: false              # opt-in per-document language detection (py3langid)
+    detect_min_confidence: 0.6
+  ```
+
+  **CLI:** `brainpalace init --language <iso> --bm25-engine <stem|lemma>`;
+  `brainpalace folders add <path> --language <iso>` (sets project default);
+  `brainpalace query "…" --language <iso>` (per-query override);
+  `brainpalace status` shows active language and engine.
+
+  **MCP:** the `query` tool accepts an optional `language` parameter
+  for per-call override.
+
+  **Croatian lemma tier:** `pip install 'brainpalace[lemma-hr]'` enables the
+  high-accuracy `simplemma`-backed lemmatizer (`engine: lemma`, Serbo-Croatian
+  `hbs` data).
+
+- **`bm25s` scoring engine.** The BM25 backend is now `bm25s` (used directly),
+  replacing the former LlamaIndex `BM25Retriever` wrapper. **Existing indexes
+  auto-migrate:** on the first server start after upgrade, BrainPalace rebuilds
+  the BM25 index from the stored corpus — no manual action required. Retrieval
+  quality and API are unchanged.
+
+  The analyzer fingerprint (language + engine) is persisted; if you later
+  reconfigure `language` or `engine`, the index auto-rebuilds from the stored
+  corpus on the next server start to stay in sync.
+
 ## [26.6.14] - 2026-06-04
 
 ### Changed

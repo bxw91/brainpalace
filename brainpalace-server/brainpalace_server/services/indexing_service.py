@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 from llama_index.core.schema import TextNode
 
 from brainpalace_server.config import settings
+from brainpalace_server.config.bm25_config import load_bm25_config
 from brainpalace_server.config.provider_config import load_provider_settings
 from brainpalace_server.indexing import (
     BM25IndexManager,
@@ -456,6 +457,31 @@ class IndexingService:
                 f"{len(code_documents)} code files"
             )
 
+            # Step 2a: Stamp text_language on each document before chunking so
+            # every resulting chunk carries the NL code its BM25 analyzer needs.
+            # Code chunks always use the "code" analyzer; doc chunks get either
+            # the detected language (detect=True) or the project default.
+            _bm25_cfg = load_bm25_config()
+            if _bm25_cfg.detect:
+                from brainpalace_server.indexing.text_analysis.detect import (
+                    detect_language,
+                )
+                from brainpalace_server.indexing.text_analysis.snowball import SNOWBALL
+
+                _allowed: set[str] = set(SNOWBALL) | {"hr"}
+                for _d in doc_documents:
+                    _d.metadata["text_language"] = detect_language(
+                        _d.text,
+                        allowed=_allowed,
+                        default=_bm25_cfg.language,
+                        min_confidence=_bm25_cfg.detect_min_confidence,
+                    )
+            else:
+                for _d in doc_documents:
+                    _d.metadata["text_language"] = _bm25_cfg.language
+            for _d in code_documents:
+                _d.metadata["text_language"] = "code"
+
             all_chunks: list[TextChunk | CodeChunk] = []
             total_to_process = len(documents)
 
@@ -600,6 +626,7 @@ class IndexingService:
                     "source_type",
                     "created_at",
                     "language",
+                    "text_language",
                     "heading_path",
                     "section_title",
                     "content_type",

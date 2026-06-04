@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-05-30
+last_validated: 2026-06-04
 ---
 
 # BrainPalace System Architecture
@@ -100,7 +100,7 @@ BrainPalace treats code as a first-class citizen with:
 |-----------|------|
 | **brainpalace-cli** | User-facing CLI for all operations |
 | **brainpalace-server** | FastAPI REST API server handling indexing and queries |
-| **BM25 Index** | Keyword-based retrieval using rank-bm25 |
+| **BM25 Index** | Keyword-based retrieval using `bm25s` with per-language `TextAnalyzer` |
 | **ChromaDB** | Vector similarity search with OpenAI embeddings |
 | **GraphRAG** | Knowledge graph for entity relationships |
 | **Fusion Engine** | Combines results using Reciprocal Rank Fusion |
@@ -174,9 +174,32 @@ Keyword-based retrieval for exact term matching.
 
 **Features**:
 - Persistent disk-based index
-- LlamaIndex BM25Retriever integration
+- `bm25s` scoring engine (direct, no LlamaIndex wrapper)
+- Per-language tokenization pipeline — see below
 - Language and source type filtering
 - Sub-50ms query latency
+
+#### BM25 tokenization pipeline
+
+BrainPalace owns the tokenization pipeline via a pluggable **`TextAnalyzer`**
+protocol (defined in `indexing/text_analysis/base.py`). Every analyzer runs the
+same four-stage pipeline: **normalize** (NFC + lowercase) → **tokenize** (Unicode
+`\w+`) → **stopword removal** → **stem or lemmatize**. The same analyzer instance
+is used for both indexing and querying, guaranteeing index/query symmetry.
+
+| Component | Location | Role |
+|-----------|----------|------|
+| `TextAnalyzer` protocol | `text_analysis/base.py` | Interface: `analyze(text) -> list[str]` |
+| `SNOWBALL` table + `SnowballAnalyzer` | `text_analysis/snowball.py` | 27 languages via PyStemmer |
+| `CroatianStemAnalyzer` / `CroatianLemmaAnalyzer` | `text_analysis/croatian.py` | Vendored Ljubešić–Pandžić stemmer; optional `simplemma` lemma tier (`hbs` data) |
+| `get_analyzer(code, engine)` | `text_analysis/registry.py` | Routes ISO 639-1 code + engine to the right analyzer; unknown codes fall back to English |
+| Stopwords | `text_analysis/stopwords.py` | `stopwordsiso` (~57 languages) |
+| Language detection | `text_analysis/detect.py` | Opt-in `py3langid` per-document detection |
+
+The analyzer fingerprint (language code + engine) is persisted alongside the
+corpus. If the fingerprint changes on server start — because `language` or
+`engine` was reconfigured — the BM25 index is automatically rebuilt from the
+stored corpus, so the index never drifts out of sync with its tokenization.
 
 ### 6. GraphRAG Index
 
@@ -331,12 +354,16 @@ User Query: brainpalace query "how does authentication work" --mode hybrid
 
 ### 5. LlamaIndex Foundation
 
-**Decision**: Build on LlamaIndex rather than implementing RAG primitives from scratch.
+**Decision**: Build on LlamaIndex for graph stores and code chunking, while owning
+the BM25 layer directly via `bm25s` and a custom `TextAnalyzer` pipeline.
 
 **Rationale**:
-- Battle-tested components (CodeSplitter, BM25Retriever)
+- Battle-tested components (CodeSplitter, graph stores, embeddings)
 - Active community and maintenance
-- Plugin ecosystem (graph stores, embeddings)
+- Plugin ecosystem
+- Owning BM25 tokenization enables per-language analysis and symmetric
+  index/query tokenization — not possible via the LlamaIndex BM25Retriever
+  wrapper that was replaced
 - Focus on code-specific innovations, not RAG basics
 
 ---

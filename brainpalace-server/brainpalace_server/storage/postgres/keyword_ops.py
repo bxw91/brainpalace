@@ -125,8 +125,13 @@ class KeywordOps:
         top_k: int,
         source_types: list[str] | None = None,
         languages: list[str] | None = None,
+        language: str | None = None,
     ) -> list[SearchResult]:
         """Perform full-text keyword search using tsvector.
+
+        ``language`` (BM25 tokenization override) is accepted for
+        StorageBackendProtocol conformity but ignored: the tsvector path has no
+        per-language BM25 analyzer.
 
         Uses ``websearch_to_tsquery()`` for user-friendly query syntax
         (supports AND, OR, quoted phrases, negation with ``-``).

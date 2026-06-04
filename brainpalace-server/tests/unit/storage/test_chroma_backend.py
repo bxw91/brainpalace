@@ -174,20 +174,25 @@ class TestKeywordSearch:
     async def test_keyword_search_normalizes_scores(
         self, chroma_backend, mock_bm25_manager
     ):
-        """Test keyword_search normalizes BM25 scores to 0-1 range."""
-        # Mock BM25 results with raw scores
+        """keyword_search passes through the 0-1 scores from search_with_filters.
+
+        Normalization is owned upstream by BM25IndexManager.search_with_filters
+        (Task 8); keyword_search must NOT re-normalize, or filtered results get
+        artificially inflated (Task 8 FIX-1).
+        """
+        # search_with_filters already returns scores normalized to 0-1
         mock_bm25_manager.search_with_filters.return_value = [
             NodeWithScore(
                 node=TextNode(text="result 1", id_="chunk_1", metadata={"key": "val1"}),
-                score=10.0,
+                score=1.0,
             ),
             NodeWithScore(
                 node=TextNode(text="result 2", id_="chunk_2", metadata={"key": "val2"}),
-                score=5.0,
+                score=0.5,
             ),
             NodeWithScore(
                 node=TextNode(text="result 3", id_="chunk_3", metadata={"key": "val3"}),
-                score=2.5,
+                score=0.25,
             ),
         ]
 
@@ -203,13 +208,14 @@ class TestKeywordSearch:
             top_k=5,
             source_types=["doc"],
             languages=["python"],
+            language=None,
         )
 
-        # Verify scores are normalized to 0-1 (max=10.0)
+        # Scores pass through unchanged (no second normalization)
         assert len(results) == 3
-        assert results[0].score == 1.0  # 10.0 / 10.0
-        assert results[1].score == 0.5  # 5.0 / 10.0
-        assert results[2].score == 0.25  # 2.5 / 10.0
+        assert results[0].score == 1.0
+        assert results[1].score == 0.5
+        assert results[2].score == 0.25
 
     @pytest.mark.asyncio
     async def test_keyword_search_empty_results(
