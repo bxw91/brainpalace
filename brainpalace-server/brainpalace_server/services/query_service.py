@@ -240,6 +240,7 @@ class QueryService:
                 "source_types": sorted(request.source_types or []),
                 "languages": sorted(request.languages or []),
                 "file_paths": sorted(request.file_paths or []),
+                "language": request.language,
             }
             cache_key = cache.make_cache_key(cache_params)
             cached = cache.get(cache_key)
@@ -291,6 +292,7 @@ class QueryService:
                 entity_types=request.entity_types,
                 relationship_types=request.relationship_types,
                 time_decay=request.time_decay,
+                language=request.language,
             )
         else:
             stage1_request = request
@@ -526,6 +528,7 @@ class QueryService:
             top_k=request.top_k,
             source_types=request.source_types,
             languages=request.languages,
+            language=request.language,
         )
 
         return [
@@ -579,6 +582,7 @@ class QueryService:
                 top_k=effective_top_k,
                 source_types=request.source_types,
                 languages=request.languages,
+                language=request.language,
             )
 
         # Convert BM25 SearchResults to QueryResults

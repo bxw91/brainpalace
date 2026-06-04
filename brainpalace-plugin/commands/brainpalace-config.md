@@ -6,7 +6,7 @@ context: brainpalace
 agent: setup-assistant
 skills:
   - configuring-brainpalace
-last_validated: 2026-06-02
+last_validated: 2026-06-04
 ---
 
 # Configure BrainPalace
@@ -23,6 +23,7 @@ Guides users through configuring all aspects of BrainPalace across 12 wizard ste
 7. **Reranking** - Two-stage search quality with cross-encoder reranking
 8. **Chunking and search tuning** - Chunk size, overlap, top-k, and similarity threshold
 9. **Server and deployment** - Host, port, instance mode, and multi-project setup
+10. **BM25 language** - Project default natural language for BM25 tokenization (`bm25.language`, `bm25.engine`)
 
 ## Usage
 
@@ -1062,6 +1063,69 @@ export BRAINPALACE_MODE=project
 # Enable verbose logging (default: false)
 # export DEBUG=true
 ```
+
+---
+
+## BM25 Language Configuration
+
+BM25 keyword search can be configured to use the correct stemmer/tokenizer for the project's primary language, improving retrieval quality for non-English content.
+
+### AskUserQuestion: BM25 Language
+
+After the chunking and search tuning step, ask:
+
+```
+What language is the majority of your indexed content written in?
+
+BrainPalace's BM25 index uses language-aware stemming/lemmatization.
+Default is English (en). Set this to match your documents.
+
+Examples: en (English), de (German), fr (French), es (Spanish),
+          ru (Russian), it (Italian), pt (Portuguese), nl (Dutch),
+          hr (Croatian, requires lemma engine + brainpalace[lemma-hr])
+
+Options:
+1. English (en) — default
+2. German (de)
+3. French (fr)
+4. Spanish (es)
+5. Other — enter ISO 639-1 code
+```
+
+### BM25 Config Block
+
+Add to `.brainpalace/config.yaml`:
+
+```yaml
+bm25:
+  language: "en"               # ISO 639-1 project default (e.g. de, fr, es, ru, hr)
+  engine: "stem"               # stem (Snowball/PyStemmer, ~27 languages) or lemma (simplemma)
+  detect: false                # opt-in per-document language detection
+  detect_min_confidence: 0.6   # minimum confidence to accept detected language (0–1)
+```
+
+Or set via `brainpalace init`:
+
+```bash
+brainpalace init --language de
+brainpalace init --language hr --bm25-engine lemma
+```
+
+### BM25 Config Keys Reference
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `bm25.language` | `en` | ISO 639-1 project default NL language for BM25 tokenization |
+| `bm25.engine` | `stem` | Tokenization engine: `stem` (Snowball/PyStemmer) or `lemma` (simplemma) |
+| `bm25.detect` | `false` | Enable per-document automatic language detection (opt-in) |
+| `bm25.detect_min_confidence` | `0.6` | Minimum confidence threshold (0–1) for language detection to override the default |
+
+### Notes
+
+- **Supported languages**: ~27 Snowball/PyStemmer language codes (`en`, `de`, `fr`, `es`, `it`, `pt`, `nl`, `ru`, `sv`, `da`, `fi`, `no`, `hu`, `ro`, `tr`, and more) plus a custom Croatian stemmer (`hr`). Unknown codes fall back to English tokenization.
+- **`engine: lemma`**: Requires the `simplemma` library (Croatian tier; lemmatizes via the Serbo-Croatian `hbs` data). Install with `pip install 'brainpalace[lemma-hr]'`. For all other languages, `engine: stem` is correct.
+- **Reindex on change**: Changing `bm25.language` or `bm25.engine` changes tokenization; the BM25 index auto-rebuilds from the stored corpus on the next server start (analyzer fingerprint is persisted). To re-detect per-document languages, re-run indexing.
+- **PostgreSQL BM25**: When `storage.backend: "postgres"` is used, BM25 is handled by PostgreSQL's native full-text search (`tsvector`). Language is configured via `storage.postgres.language` (e.g. `"english"`) — a separate setting from `bm25.language`.
 
 ---
 

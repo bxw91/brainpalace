@@ -178,6 +178,7 @@ class StorageBackendProtocol(Protocol):
         top_k: int,
         source_types: list[str] | None = None,
         languages: list[str] | None = None,
+        language: str | None = None,
     ) -> list[SearchResult]:
         """Perform keyword search (BM25 or tsvector).
 
@@ -185,7 +186,9 @@ class StorageBackendProtocol(Protocol):
             query: Search query string
             top_k: Maximum number of results to return
             source_types: Optional filter by source_type metadata
-            languages: Optional filter by language metadata
+            languages: Optional filter by programming-language metadata
+            language: Optional BM25 tokenization-language override (ISO 639-1);
+                defaults to the project bm25.language. Distinct from ``languages``.
 
         Returns:
             List of SearchResult objects sorted by score descending.

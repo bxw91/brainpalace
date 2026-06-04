@@ -26,6 +26,13 @@ class QueryInput(BaseModel):
     top_k: int = Field(default=8, ge=1, le=100)
     languages: list[str] | None = None
     source_types: list[str] | None = None
+    language: str | None = Field(
+        default=None,
+        description=(
+            "BM25 query language override; defaults to project bm25.language. "
+            "ISO 639-1 code (e.g. 'en', 'de', 'hr'). Only affects BM25 tokenization."
+        ),
+    )
     path: str | None = Field(default=None, description=_PATH_DESC)
 
 

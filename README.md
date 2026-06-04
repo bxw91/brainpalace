@@ -441,11 +441,88 @@ task before-push      # full quality gate — mandatory before merge
 Full setup and contribution workflow:
 [docs/DEVELOPERS_GUIDE.md](docs/DEVELOPERS_GUIDE.md).
 
+## Languages
+
+BrainPalace tokenizes each document in its own natural language (normalize →
+tokenize → stopwords → stem/lemmatize) so BM25 scoring is precise regardless of
+what language your docs are written in.
+
+### Supported languages
+
+~27 languages are supported via the Snowball/PyStemmer stemmer family
+(`ar`, `eu`, `ca`, `da`, `nl`, `en`, `fi`, `fr`, `de`, `el`, `hi`, `hu`,
+`id`, `ga`, `it`, `lt`, `ne`, `no`, `pt`, `ro`, `ru`, `sr`, `es`, `sv`,
+`ta`, `tr`, `hy`), plus a vendored Croatian (`hr`) stemmer based on the
+Ljubešić–Pandžić algorithm. Stopwords are sourced from `stopwordsiso`
+(~57 languages). Unknown language codes fall back to English tokenization.
+
+### Configuration
+
+Add a `bm25:` block to your `.brainpalace/config.yaml`:
+
+```yaml
+bm25:
+  language: en          # project default — ISO 639-1 (default: en)
+  engine: stem          # stem (default) | lemma
+  detect: false         # opt-in per-document language detection via py3langid
+  detect_min_confidence: 0.6
+```
+
+CLI equivalents:
+
+```bash
+brainpalace init --language fr --bm25-engine stem   # set at init time
+brainpalace folders add ./docs --language fr        # override project default
+brainpalace query "bonjour le monde" --language fr  # per-query override
+brainpalace status                                   # shows language/engine
+```
+
+#### Croatian high-accuracy lemma tier
+
+For Croatian text with higher accuracy, install the `lemma-hr` extra (requires
+`simplemma`, which lemmatizes Croatian via the Serbo-Croatian `hbs` data):
+
+```bash
+pip install 'brainpalace[lemma-hr]'
+# then set engine: lemma in config, or pass --bm25-engine lemma
+```
+
+### Reindex note
+
+Changing `language` or `engine` changes tokenization. BrainPalace
+auto-rebuilds the BM25 index from the stored corpus on the next server start.
+To re-detect per-document languages on existing content, re-run indexing.
+
+### How to add a language
+
+1. **Snowball-supported language** — add its ISO 639-1 code → PyStemmer
+   algorithm name to the `SNOWBALL` table in
+   `brainpalace-server/brainpalace_server/indexing/text_analysis/snowball.py`.
+   The table already maps 27 ISO codes to their PyStemmer algorithm names.
+   This is **all that's needed** for a Snowball language — `get_analyzer`
+   already routes any `code in SNOWBALL` to the stemmer automatically.
+
+2. **Non-Snowball language** — vendor a stemmer or lemmatizer and write an
+   analyzer module that implements the `TextAnalyzer` protocol (`analyze(text)
+   -> list[str]`; see `base.py` for the interface and `croatian.py` for a
+   reference implementation).
+
+3. **Register the non-Snowball analyzer** in
+   `brainpalace-server/brainpalace_server/indexing/text_analysis/registry.py`
+   by adding explicit routing for its code in `get_analyzer(code, engine)`.
+   (Snowball languages need no registry change — only the step-1 table entry.)
+
+4. **Stopwords** — if your language is among the ~57 covered by `stopwordsiso`,
+   nothing extra is needed. For absent languages, extend `stopwords.py` with a
+   static list.
+
+---
+
 ## Technology Stack
 
 - **Server**: FastAPI + Uvicorn
 - **Vector Store**: ChromaDB (HNSW, cosine similarity)
-- **BM25 Index**: LlamaIndex BM25Retriever
+- **BM25 Index**: `bm25s` (direct scoring engine) with per-language `TextAnalyzer` pipeline
 - **Graph Store**: LlamaIndex SimplePropertyGraphStore (JSON) or SQLite (persistent, temporal)
 - **Embeddings**: OpenAI · Cohere · Ollama
 - **Summarisation**: Anthropic · OpenAI · Gemini · Grok · Ollama

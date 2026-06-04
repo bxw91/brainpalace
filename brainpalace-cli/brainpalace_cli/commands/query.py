@@ -84,6 +84,15 @@ def _get_default_url() -> str:
     is_flag=True,
     help="Disable age-weighted ranking for this query (newer-ranked-higher).",
 )
+@click.option(
+    "--language",
+    "query_language",
+    default=None,
+    help=(
+        "BM25 query language override (ISO 639-1, e.g. en, de, hr). "
+        "Overrides the project bm25.language for this query only."
+    ),
+)
 def query_command(
     query_text: str,
     url: str | None,
@@ -98,6 +107,7 @@ def query_command(
     languages: str | None,
     file_paths: str | None,
     no_time_decay: bool,
+    query_language: str | None,
 ) -> None:
     """Search indexed documents with natural language or keyword query."""
     # Get URL from config if not specified
@@ -126,6 +136,7 @@ def query_command(
                 languages=languages_list,
                 file_paths=file_paths_list,
                 time_decay=not no_time_decay,
+                language=query_language,
             )
 
             if json_output:

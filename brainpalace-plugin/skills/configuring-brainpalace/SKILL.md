@@ -16,7 +16,7 @@ metadata:
   version: 7.0.0
   category: ai-tools
   author: bxw91
-  last_validated: 2026-06-02
+  last_validated: 2026-06-04
 ---
 
 # Configuring BrainPalace
@@ -30,6 +30,7 @@ Installation and configuration for BrainPalace document search with pluggable pr
 - [Prerequisites](#prerequisites)
 - [Installation](#installation)
 - [Provider Configuration](#provider-configuration)
+- [BM25 Language Configuration](#bm25-language-configuration)
 - [Project Initialization](#project-initialization)
 - [Verification](#verification)
 - [When Not to Use](#when-not-to-use)
@@ -114,6 +115,8 @@ The wizard asks the following questions in sequence:
 | 4 | Storage Backend | `storage.backend` (`chroma` or `postgres`) |
 | 5 | GraphRAG | `graphrag.enabled`, `graphrag.store_type`, `graphrag.use_code_metadata` |
 | 6 | Default Query Mode | Written as YAML comment: `# query.default_mode` |
+
+> **BM25 language is not a wizard step.** Set it via `brainpalace init --language <iso>` / `brainpalace folders add <path> --language <iso>`, or by editing the `bm25:` block in `config.yaml` directly — the config wizard does not ask about it.
 
 ### Embedding Provider Options
 
@@ -398,6 +401,67 @@ For Kuzu (persistent), install the optional extra first:
 ```bash
 pip install "brainpalace-rag[graphrag-kuzu]"
 ```
+
+### BM25 Language Configuration
+
+BM25 keyword search uses language-aware stemming/lemmatization. Setting the correct project language improves retrieval quality for inflected languages (German, French, Spanish, Russian, etc.).
+
+#### Set at Initialization
+
+```bash
+brainpalace init --language de              # German (Snowball stemmer)
+brainpalace init --language fr             # French
+brainpalace init --language es             # Spanish
+brainpalace init --language ru             # Russian
+brainpalace init --language hr --bm25-engine lemma  # Croatian (simplemma lemmatizer, hbs data)
+```
+
+For Croatian (`hr`) with `engine: lemma`, install the optional extra first:
+
+```bash
+pip install 'brainpalace[lemma-hr]'
+```
+
+#### Set via folders add
+
+```bash
+# Updates bm25.language project-wide (not per-folder)
+brainpalace folders add ./docs --language de
+```
+
+#### YAML Config Block
+
+```yaml
+# .brainpalace/config.yaml
+bm25:
+  language: "en"               # ISO 639-1 project default (default: en)
+  engine: "stem"               # stem (Snowball/PyStemmer) or lemma (simplemma)
+  detect: false                # opt-in per-document language detection
+  detect_min_confidence: 0.6   # confidence threshold for language detection (0–1)
+```
+
+#### BM25 Config Keys
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `bm25.language` | `en` | ISO 639-1 project default language |
+| `bm25.engine` | `stem` | `stem` (Snowball/PyStemmer, ~27 languages) or `lemma` (simplemma) |
+| `bm25.detect` | `false` | Enable per-document automatic language detection |
+| `bm25.detect_min_confidence` | `0.6` | Minimum detection confidence (0–1) |
+
+#### Supported Languages
+
+~27 Snowball/PyStemmer codes including: `en`, `de`, `fr`, `es`, `it`, `pt`, `nl`, `ru`, `sv`, `da`, `fi`, `no`, `hu`, `ro`, `tr`, plus a custom Croatian stemmer (`hr`). Unknown codes fall back to English tokenization.
+
+#### Reindex After Language Change
+
+Changing `bm25.language` or `bm25.engine` changes tokenization. The BM25 index auto-rebuilds from the stored corpus on the next server start (the analyzer fingerprint is persisted). To re-detect per-document languages when `bm25.detect: true`, re-run indexing:
+
+```bash
+brainpalace index ./docs
+```
+
+---
 
 ### Query Mode Selection
 

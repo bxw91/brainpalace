@@ -239,6 +239,7 @@ class PostgresBackend:
         top_k: int,
         source_types: list[str] | None = None,
         languages: list[str] | None = None,
+        language: str | None = None,
     ) -> list[SearchResult]:
         """Perform full-text keyword search.
 
@@ -249,6 +250,9 @@ class PostgresBackend:
             top_k: Maximum number of results.
             source_types: Optional source_type metadata filter.
             languages: Optional language metadata filter.
+            language: BM25 tokenization-language override (ISO 639-1). Accepted
+                for StorageBackendProtocol conformity; the tsvector path has no
+                per-language BM25 analyzer, so it is currently ignored here.
 
         Returns:
             List of SearchResult with 0-1 normalized scores.

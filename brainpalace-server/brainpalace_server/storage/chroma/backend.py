@@ -168,53 +168,44 @@ class ChromaBackend:
         top_k: int,
         source_types: list[str] | None = None,
         languages: list[str] | None = None,
+        language: str | None = None,
     ) -> list[SearchResult]:
-        """Perform BM25 keyword search with score normalization.
+        """Perform BM25 keyword search.
 
         Args:
             query: Search query string
             top_k: Maximum number of results
             source_types: Optional filter by source_type
-            languages: Optional filter by language
+            languages: Optional filter by language (programming language metadata)
+            language: BM25 query tokenization language override (ISO 639-1).
+                Forwarded to search_with_filters; None means use manager default.
 
         Returns:
-            List of SearchResult with scores normalized to 0-1 range
+            List of SearchResult with scores in 0-1 range (normalization
+            happens upstream in search_with_filters).
 
         Raises:
             StorageError: If search fails
         """
         try:
-            # BM25IndexManager.search_with_filters is already async
+            # BM25IndexManager.search_with_filters is already async and
+            # returns scores already normalized to [0, 1] (top result = 1.0).
             nodes_with_score = await self.bm25_manager.search_with_filters(
                 query=query,
                 top_k=top_k,
                 source_types=source_types,
                 languages=languages,
+                language=language,
             )
 
             if not nodes_with_score:
                 return []
 
-            # Normalize BM25 scores to 0-1 range (per-query normalization)
-            max_score = max(node.score or 0.0 for node in nodes_with_score)
-            if max_score == 0.0:
-                # All scores are zero, return with zero scores
-                return [
-                    SearchResult(
-                        text=node.node.get_content(),
-                        metadata=dict(node.node.metadata),
-                        score=0.0,
-                        chunk_id=node.node.node_id or "",
-                    )
-                    for node in nodes_with_score
-                ]
-
-            # Normalize to 0-1 by dividing by max
             return [
                 SearchResult(
                     text=node.node.get_content(),
                     metadata=dict(node.node.metadata),
-                    score=(node.score or 0.0) / max_score,
+                    score=node.score or 0.0,
                     chunk_id=node.node.node_id or "",
                 )
                 for node in nodes_with_score

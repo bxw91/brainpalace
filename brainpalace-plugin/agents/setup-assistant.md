@@ -18,6 +18,8 @@ triggers:
     type: error_pattern
   - pattern: "embedding dimension mismatch|dimension mismatch"
     type: error_pattern
+  - pattern: "bm25.*language|language.*bm25|stemm|lemma|non-english|multilingual.*brainpalace"
+    type: message_pattern
 skills:
   - configuring-brainpalace
 allowed_tools:
@@ -31,7 +33,7 @@ allowed_tools:
   - "Edit(~/.config/brainpalace/**)"
   - "Write(.claude/brainpalace/**)"
   - "Edit(.claude/brainpalace/**)"
-last_validated: 2026-06-02
+last_validated: 2026-06-04
 ---
 
 # Setup Assistant Agent
@@ -413,3 +415,40 @@ Config file locations (searched in order — matches the server's resolver):
 4. Walk up from CWD: `./.brainpalace/config.yaml`
 5. `~/.config/brainpalace/config.yaml` (XDG — preferred global)
 6. `~/.brainpalace/config.yaml` (legacy — deprecated, logs a migrate warning)
+
+### BM25 Language Setup
+
+When the user's project is primarily in a non-English language, or when they ask about BM25 accuracy, language-aware search, or stemming, ask whether to set the BM25 project language:
+
+```
+Is your indexed content primarily in English, or another language?
+
+BrainPalace's BM25 index uses language-aware stemming for better keyword
+retrieval. Setting the correct language improves search quality for
+inflected languages (German, French, Spanish, Russian, etc.).
+
+Default: English (en). Supported: ~27 Snowball languages + Croatian (hr).
+```
+
+If the user wants a non-English language, set it at init time:
+
+```bash
+# At initialization
+brainpalace init --language de              # German
+brainpalace init --language fr             # French
+brainpalace init --language hr --bm25-engine lemma  # Croatian (needs brainpalace[lemma-hr])
+
+# Or update the project config manually
+# .brainpalace/config.yaml
+# bm25:
+#   language: "de"
+#   engine: "stem"
+```
+
+For Croatian (`hr`) with the lemma engine, guide the user to install the extra:
+```bash
+pip install 'brainpalace[lemma-hr]'
+brainpalace init --language hr --bm25-engine lemma
+```
+
+After changing the language or engine, the BM25 index auto-rebuilds from the stored corpus on the next server start. To re-detect per-document languages (when `bm25.detect: true`), re-run indexing.

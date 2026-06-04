@@ -1,15 +1,25 @@
-"""BM25 index manager for persistence and retrieval."""
+"""BM25 index manager — bm25s engine + per-language tokenization (BrainPalace-owned)."""
 
+import json
 import logging
 from collections.abc import Sequence
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
-from llama_index.core.schema import BaseNode, NodeWithScore
-from llama_index.retrievers.bm25 import BM25Retriever
+import bm25s
+from llama_index.core.schema import BaseNode, NodeWithScore, TextNode
+from llama_index.core.vector_stores.utils import metadata_dict_to_node
 
 from brainpalace_server.config import settings
+from brainpalace_server.config.bm25_config import load_bm25_config
+from brainpalace_server.indexing.text_analysis import get_analyzer
+
+if TYPE_CHECKING:
+    from brainpalace_server.indexing.text_analysis import TextAnalyzer
 
 logger = logging.getLogger(__name__)
+_CONFIG_FILE = "analyzer_config.json"
+_SCHEMA_VERSION = 1
 
 
 class BM25IndexManager:
@@ -17,45 +27,88 @@ class BM25IndexManager:
     Manages the lifecycle of the BM25 index.
 
     Handles building the index from nodes, persisting it to disk,
-    and loading it for retrieval.
+    and loading it for retrieval. Uses the bm25s engine directly
+    with per-language tokenization via the text_analysis package.
     """
 
-    def __init__(self, persist_dir: str | None = None):
+    def __init__(
+        self,
+        persist_dir: str | None = None,
+        default_lang: str | None = None,
+        engine: str | None = None,
+    ):
         """
         Initialize the BM25 index manager.
 
         Args:
             persist_dir: Directory for index persistence.
+            default_lang: Default language for tokenization (e.g. "en", "hr").
+            engine: Tokenization engine ("stem" or "lemma").
         """
         self.persist_dir = persist_dir or settings.BM25_INDEX_PATH
-        self._retriever: BM25Retriever | None = None
+        if default_lang is None or engine is None:
+            cfg = load_bm25_config()
+            default_lang = default_lang or cfg.language
+            engine = engine or cfg.engine
+        self.default_lang = default_lang
+        self.engine = engine
+        self._bm25: bm25s.BM25 | None = None
+        self._corpus: list[dict[str, Any]] | None = None
 
     @property
     def is_initialized(self) -> bool:
         """Check if the index is initialized."""
-        return self._retriever is not None
+        return self._bm25 is not None
 
-    def initialize(self) -> None:
-        """
-        Load the index from disk if it exists.
+    @property
+    def corpus_size(self) -> int:
+        """Get the number of documents in the BM25 index."""
+        return len(self._corpus) if self._corpus else 0
 
-        Idempotent: once a retriever is loaded, repeat calls are a no-op.
-        The server lifespan calls this once explicitly and ChromaBackend
-        calls it again during its own initialize() — the guard avoids the
-        redundant second disk reload.
+    def _analyzer_for(self, lang: str) -> "TextAnalyzer":
+        return get_analyzer("code" if lang == "code" else lang, self.engine)
+
+    def _analyzer_versions(self) -> dict[str, str]:
+        return {"hr": "ljubesic-pandzic@1", "snowball": "pystemmer@2", "code": "v1"}
+
+    @staticmethod
+    def _entry_to_fields(entry: dict[str, Any]) -> tuple[str, str, dict[str, Any]]:
+        """Return ``(node_id, text, metadata)`` for a corpus entry, handling
+        BOTH the new BrainPalace shape and the legacy LlamaIndex shape.
+
+        - New shape (written by :meth:`build_index`): top-level ``"node_id"``,
+          ``"text"`` and ``"metadata"`` keys.
+        - Legacy LlamaIndex ``BM25Retriever`` shape: the payload was written as
+          ``node_to_metadata_dict(node) | {"node_id": node.node_id}`` — i.e. the
+          node serialized into a flat metadata dict (``_node_content``,
+          ``_node_type``, ``doc_id``/``document_id``, ``node_id``) with NO
+          top-level ``"text"`` or ``"metadata"``. Reconstructed via the official
+          ``metadata_dict_to_node`` inverse.
+
+        Raises on a payload that matches neither shape (unreadable corpus) so the
+        caller can degrade gracefully instead of silently dropping documents.
         """
-        if self._retriever is not None:
-            return
-        persist_path = Path(self.persist_dir)
-        if (persist_path / "retriever.json").exists():
-            try:
-                self._retriever = BM25Retriever.from_persist_dir(str(persist_path))
-                logger.info(f"BM25 index loaded from {self.persist_dir}")
-            except Exception as e:
-                logger.error(f"Failed to load BM25 index: {e}")
-                self._retriever = None
-        else:
-            logger.info("No existing BM25 index found")
+        if "text" in entry and "metadata" in entry:
+            return (
+                entry.get("node_id", ""),
+                entry["text"],
+                dict(entry["metadata"]),
+            )
+        # Legacy LlamaIndex payload → reconstruct the node. Raises ValueError if
+        # ``_node_content`` is absent (genuinely unreadable corpus).
+        node = metadata_dict_to_node(entry)
+        return node.node_id, node.get_content(), dict(node.metadata)
+
+    @staticmethod
+    def _guard_empty(tokens: list[str]) -> list[str]:
+        """Return tokens, or ["__empty__"] if the list is empty.
+
+        bm25s raises ``ValueError: max() iterable argument is empty`` when
+        every document in an index() call produces an empty token list (empty
+        vocabulary).  The placeholder keeps the document represented without
+        ever matching a real query token.
+        """
+        return tokens if tokens else ["__empty__"]
 
     def build_index(self, nodes: Sequence[BaseNode]) -> None:
         """
@@ -64,60 +117,151 @@ class BM25IndexManager:
         Args:
             nodes: List of LlamaIndex nodes.
         """
-        logger.info(f"Building BM25 index with {len(nodes)} nodes")
-        # LlamaIndex's BM25Retriever.from_defaults raises
-        # "Please pass exactly one of index, nodes, or docstore." when
-        # nodes=[]. Treat an empty node list as a no-op rather than failing
-        # the whole indexing job (issue #143).
         if not nodes:
-            logger.info("BM25 build_index called with empty nodes; skipping")
+            logger.info("BM25 build_index: empty nodes; skipping (issue #143)")
             return
-        self._retriever = BM25Retriever.from_defaults(nodes=nodes)
+        corpus_tokens, corpus = [], []
+        for node in nodes:
+            lang = node.metadata.get("text_language", self.default_lang)
+            tokens = self._analyzer_for(lang).analyze(node.get_content())
+            # bm25s crashes on index([[]]) when vocab is empty; use placeholder
+            # so the doc is represented but will never match a real query token.
+            corpus_tokens.append(self._guard_empty(tokens))
+            corpus.append(
+                {
+                    "node_id": node.node_id,
+                    "text": node.get_content(),
+                    "metadata": dict(node.metadata),
+                }
+            )
+        self._bm25 = bm25s.BM25(corpus=corpus)
+        self._bm25.index(corpus_tokens)
+        self._corpus = corpus
         self.persist()
 
     def persist(self) -> None:
         """Persist the current index to disk."""
-        if not self._retriever:
+        if self._bm25 is None:
             logger.warning("No BM25 index to persist")
             return
-
-        persist_path = Path(self.persist_dir)
-        persist_path.mkdir(parents=True, exist_ok=True)
-        self._retriever.persist(str(persist_path))
+        p = Path(self.persist_dir)
+        p.mkdir(parents=True, exist_ok=True)
+        self._bm25.save(str(p), corpus=self._corpus)
+        (p / _CONFIG_FILE).write_text(
+            json.dumps(
+                {
+                    "schema_version": _SCHEMA_VERSION,
+                    "default_lang": self.default_lang,
+                    "engine": self.engine,
+                    "analyzer_versions": self._analyzer_versions(),
+                }
+            )
+        )
         logger.info(f"BM25 index persisted to {self.persist_dir}")
 
-    def get_retriever(self, top_k: int = 5) -> BM25Retriever:
+    def initialize(self) -> None:
         """
-        Get the BM25 retriever instance.
+        Load the index from disk if it exists.
 
-        Args:
-            top_k: Number of results to return.
-
-        Returns:
-            The BM25Retriever instance.
-
-        Raises:
-            RuntimeError: If the index is not initialized.
+        Idempotent: once the index is loaded, repeat calls are a no-op.
+        The server lifespan calls this once explicitly and ChromaBackend
+        calls it again during its own initialize() — the guard avoids the
+        redundant second disk reload.
         """
-        if not self._retriever:
-            raise RuntimeError("BM25 index not initialized")
-
-        # Cap top_k to corpus size to avoid bm25s "k larger than available scores" error
-        corpus_size = len(self._retriever.corpus) if self._retriever.corpus else 0
-        if corpus_size > 0:
-            effective_top_k = min(top_k, corpus_size)
+        if self._bm25 is not None:
+            return
+        p = Path(self.persist_dir)
+        index_exists = (p / "params.index.json").exists() or (
+            p / "data.csc.index.npy"
+        ).exists()
+        if not index_exists:
+            # A legacy LlamaIndex BM25Retriever always writes the bm25s params
+            # files (params.index.json / data.csc.index.npy) next to its
+            # retriever.json, so a real upgrade hits the index_exists branch
+            # below — which now handles the legacy corpus shape via
+            # rebuild_from_corpus(). If only retriever.json exists the bm25s
+            # index is unusable and must be rebuilt from source.
+            logger.info("No existing BM25 index found")
+            return
+        cfg_path = p / _CONFIG_FILE
+        if not cfg_path.exists():
+            try:
+                self._bm25 = bm25s.BM25.load(str(p), load_corpus=True)
+                self._corpus = list(self._bm25.corpus)
+            except Exception as e:
+                logger.error(
+                    "BM25 index could not be loaded (%s). "
+                    "Re-run `brainpalace index <path>` to rebuild.",
+                    e,
+                )
+                self._bm25 = None
+                return
+            logger.warning("BM25 index has no analyzer_config; rebuilding from corpus")
+            self.rebuild_from_corpus()
+            return
+        saved = json.loads(cfg_path.read_text())
+        try:
+            self._bm25 = bm25s.BM25.load(str(p), load_corpus=True)
+            self._corpus = list(self._bm25.corpus)
+        except Exception as e:
+            logger.error(
+                "BM25 index could not be loaded (%s). "
+                "Re-run `brainpalace index <path>` to rebuild.",
+                e,
+            )
+            self._bm25 = None
+            return
+        if (
+            saved.get("engine") != self.engine
+            or saved.get("analyzer_versions") != self._analyzer_versions()
+            or saved.get("schema_version", 0) != _SCHEMA_VERSION
+        ):
+            logger.warning("BM25 analyzer fingerprint changed; rebuilding from corpus")
+            # Intentional: keep self.engine/default_lang as-constructed so the
+            # rebuild adopts the new config rather than loading the stale one.
+            self.rebuild_from_corpus()
         else:
-            effective_top_k = top_k
+            self.default_lang = saved.get("default_lang", self.default_lang)
+        logger.info(f"BM25 index loaded from {self.persist_dir}")
 
-        self._retriever.similarity_top_k = effective_top_k
-        return self._retriever
+    def rebuild_from_corpus(self) -> None:
+        """Re-tokenize the stored corpus with current analyzers. No re-embed.
 
-    @property
-    def corpus_size(self) -> int:
-        """Get the number of documents in the BM25 index."""
-        if not self._retriever or not self._retriever.corpus:
-            return 0
-        return len(self._retriever.corpus)
+        Robust to BOTH the new BrainPalace corpus shape and the legacy
+        LlamaIndex ``BM25Retriever`` shape (see :meth:`_entry_to_fields`).
+        After a successful rebuild ``self._corpus`` is normalized to the new
+        shape and re-persisted (with ``analyzer_config.json``), so the next
+        start takes the fast load path and never re-migrates.
+
+        A genuinely unreadable legacy corpus (a payload matching neither shape)
+        degrades gracefully: logs an actionable message and leaves
+        ``self._bm25 = None`` rather than crashing startup — mirroring the
+        ``bm25s.load`` guard philosophy in :meth:`initialize`.
+        """
+        if not self._corpus:
+            return
+        try:
+            normalized: list[dict[str, Any]] = []
+            toks: list[list[str]] = []
+            for entry in self._corpus:
+                node_id, text, metadata = self._entry_to_fields(entry)
+                normalized.append(
+                    {"node_id": node_id, "text": text, "metadata": metadata}
+                )
+                lang = metadata.get("text_language", self.default_lang)
+                toks.append(self._guard_empty(self._analyzer_for(lang).analyze(text)))
+        except Exception as e:
+            logger.error(
+                "BM25 corpus could not be read for rebuild (%s). "
+                "Re-run `brainpalace index <path>` to rebuild.",
+                e,
+            )
+            self._bm25 = None
+            return
+        self._corpus = normalized
+        self._bm25 = bm25s.BM25(corpus=normalized)
+        self._bm25.index(toks)
+        self.persist()
 
     async def search_with_filters(
         self,
@@ -126,6 +270,7 @@ class BM25IndexManager:
         source_types: list[str] | None = None,
         languages: list[str] | None = None,
         max_results: int | None = None,
+        language: str | None = None,
     ) -> list[NodeWithScore]:
         """
         Search the BM25 index with metadata filtering.
@@ -135,48 +280,57 @@ class BM25IndexManager:
             top_k: Number of results to return.
             source_types: Filter by source types (doc, code, test).
             languages: Filter by programming languages.
+            max_results: Override for internal retrieval count before filtering.
+            language: Language hint for query tokenization (overrides default_lang).
 
         Returns:
             List of NodeWithScore objects, filtered by metadata.
         """
-        if not self._retriever:
+        if self._bm25 is None:
             raise RuntimeError("BM25 index not initialized")
-
-        # Get results for filtering
-        retriever_top_k = max_results if max_results is not None else (top_k * 3)
-        retriever = self.get_retriever(top_k=retriever_top_k)
-        nodes = await retriever.aretrieve(query)
-
-        # Apply metadata filtering
-        filtered_nodes = []
-        for node in nodes:
-            metadata = node.node.metadata
-
-            # Check source type filter
-            if source_types:
-                source_type = metadata.get("source_type", "doc")
-                if source_type not in source_types:
-                    continue
-
-            # Check language filter
+        analyzer = get_analyzer(language or self.default_lang, self.engine)
+        q_tokens = analyzer.analyze(query)
+        if not q_tokens or self.corpus_size == 0:
+            return []
+        k = max_results if max_results is not None else top_k * 3
+        k = min(k, self.corpus_size)
+        results, scores = self._bm25.retrieve([q_tokens], k=k)
+        raw = [float(s) for s in scores[0]]
+        hi = max(raw) if raw else 0.0
+        nodes: list[NodeWithScore] = []
+        for payload, s in zip(results[0], raw):
+            norm = (s / hi) if hi > 0 else 0.0
+            nodes.append(
+                NodeWithScore(
+                    node=TextNode(
+                        id_=payload["node_id"],
+                        text=payload["text"],
+                        metadata=payload["metadata"],
+                    ),
+                    score=norm,
+                )
+            )
+        out = []
+        for n in nodes:
+            md = n.node.metadata
+            if source_types and md.get("source_type", "doc") not in source_types:
+                continue
             if languages:
-                language = metadata.get("language")
-                if not language or language not in languages:
+                lg = md.get("language")
+                if not lg or lg not in languages:
                     continue
-
-            filtered_nodes.append(node)
-
-        # Return top_k results after filtering
-        return filtered_nodes[:top_k]
+            out.append(n)
+        return out[:top_k]
 
     def reset(self) -> None:
         """Reset the BM25 index by deleting persistent files."""
-        self._retriever = None
-        persist_path = Path(self.persist_dir)
-        if persist_path.exists():
-            for file in persist_path.glob("*"):
-                file.unlink()
-            persist_path.rmdir()
+        self._bm25 = None
+        self._corpus = None
+        p = Path(self.persist_dir)
+        if p.exists():
+            for f in p.glob("*"):
+                f.unlink()
+            p.rmdir()
         logger.info("BM25 index reset")
 
 

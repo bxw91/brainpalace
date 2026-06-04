@@ -72,6 +72,9 @@ class ChunkMetadata:
     decorators: list[str] | None = None  # Python decorators or similar
     imports: list[str] | None = None  # Import statements in this chunk
 
+    # BM25 multi-language: detected or assigned natural-language code for this chunk
+    text_language: str | None = None
+
     # Additional flexible metadata
     extra: dict[str, Any] = field(default_factory=dict)
 
@@ -96,6 +99,8 @@ class ChunkMetadata:
             data["section_title"] = self.section_title
         if self.content_type:
             data["content_type"] = self.content_type
+        if self.text_language:
+            data["text_language"] = self.text_language
         if self.symbol_name:
             data["symbol_name"] = self.symbol_name
         if self.symbol_kind:
@@ -172,6 +177,7 @@ class CodeChunk:
         decorators: list[str] | None = None,
         imports: list[str] | None = None,
         extra: dict[str, Any] | None = None,
+        text_language: str | None = None,
     ) -> "CodeChunk":
         """Create a CodeChunk with properly structured metadata."""
         file_name = source.split("/")[-1] if "/" in source else source
@@ -195,6 +201,7 @@ class CodeChunk:
             return_type=return_type,
             decorators=decorators,
             imports=imports,
+            text_language=text_language,
             extra=extra or {},
         )
 
@@ -345,6 +352,7 @@ class ContextAwareChunker:
                         "heading_path",
                         "section_title",
                         "content_type",
+                        "text_language",
                     }
                 }
 
@@ -359,6 +367,7 @@ class ContextAwareChunker:
                     heading_path=doc_heading_path,
                     section_title=doc_section_title,
                     content_type=doc_content_type,
+                    text_language=document.metadata.get("text_language"),
                     extra=extra_metadata,
                 )
 
@@ -878,6 +887,9 @@ class CodeChunker:
                             symbol_name = overlapping_symbols[0]["name"]
                             symbol_kind = overlapping_symbols[0]["kind"]
 
+                doc_extra = {
+                    k: v for k, v in document.metadata.items() if k != "text_language"
+                }
                 chunk = CodeChunk.create(
                     chunk_id=f"chunk_{stable_id[:16]}",
                     text=chunk_text,
@@ -890,7 +902,8 @@ class CodeChunker:
                     symbol_kind=symbol_kind,
                     start_line=start_line,
                     end_line=end_line,
-                    extra=document.metadata.copy(),
+                    text_language=document.metadata.get("text_language"),
+                    extra=doc_extra,
                 )
                 chunks.append(chunk)
 

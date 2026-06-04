@@ -14,7 +14,7 @@ parameters:
     default: false
 skills:
   - using-brainpalace
-last_validated: 2026-05-30
+last_validated: 2026-06-04
 ---
 
 # Manage Indexed Folders
@@ -46,6 +46,7 @@ remove all chunks associated with a folder.
 | --force | No | false | Force re-indexing, bypass manifest (for add) |
 | --watch | No | off | Watch mode: `auto` (file watching) or `off` (for add) |
 | --debounce | No | 30 | Debounce interval in seconds for file watching (for add) |
+| --language | No | project default (`bm25.language`) | Set the project default BM25 language (ISO 639-1, e.g. `en`, `de`, `fr`). Writes `bm25.language` to the project config. There is no per-folder language; this sets the project-wide default. |
 | --json | No | false | Output as JSON (for list, add, remove) |
 
 ### Examples
@@ -57,6 +58,7 @@ remove all chunks associated with a folder.
 /brainpalace:brainpalace-folders add ./src --include-type python,docs
 /brainpalace:brainpalace-folders add ./docs --force
 /brainpalace:brainpalace-folders add ./src --watch auto --debounce 10
+/brainpalace:brainpalace-folders add ./docs --language de
 /brainpalace:brainpalace-folders remove ./old-docs
 /brainpalace:brainpalace-folders remove ./old-docs --yes
 ```
@@ -82,7 +84,13 @@ brainpalace folders add <path>
 brainpalace folders add <path> --include-code
 brainpalace folders add <path> --include-type python,docs
 brainpalace folders add <path> --include-code --force
+
+# Set the project default BM25 language (project-wide, not per-folder)
+brainpalace folders add <path> --language de
+brainpalace folders add <path> --language fr --include-type docs
 ```
+
+**Note on `--language`**: There is no per-folder BM25 language; `--language` writes `bm25.language` to the project config as the project-wide default. All folders use the same BM25 language. To change it, run `folders add` with a new `--language` value and then re-index (or restart the server — the BM25 index auto-rebuilds from the stored corpus when the language/engine changes).
 
 Note: `folders add` is an alias for `index` — re-adding an already-indexed folder triggers incremental re-indexing (only changed files processed).
 

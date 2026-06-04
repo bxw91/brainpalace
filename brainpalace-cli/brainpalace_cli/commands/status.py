@@ -18,6 +18,21 @@ from ..config import get_server_url
 console = Console()
 
 
+def _load_bm25_config_for_status() -> dict[str, str]:
+    """Load BM25 language/engine from the project config.yaml, if available.
+
+    Returns a dict with 'language' and 'engine' keys, or an empty dict when
+    no config.yaml is found (e.g. status run outside an initialized project).
+    """
+    try:
+        from brainpalace_server.config.bm25_config import load_bm25_config
+
+        cfg = load_bm25_config()
+        return {"language": cfg.language, "engine": cfg.engine}
+    except Exception:  # noqa: BLE001
+        return {}
+
+
 def _status_all(json_output: bool) -> None:
     """Show detailed status for every running registered server (B2b)."""
     import json
@@ -105,6 +120,7 @@ def status_command(
         _status_all(json_output)
         return
     resolved_url = url or get_server_url()
+    bm25_cfg = _load_bm25_config_for_status()
     try:
         with DocServeClient(base_url=resolved_url) as client:
             health = client.health()
@@ -113,7 +129,7 @@ def status_command(
             if json_output:
                 import json
 
-                output = {
+                output: dict[str, Any] = {
                     "health": {
                         "status": health.status,
                         "message": health.message,
@@ -131,6 +147,8 @@ def status_command(
                         "features": getattr(indexing, "features", None),
                     },
                 }
+                if bm25_cfg:
+                    output["bm25"] = bm25_cfg
                 click.echo(json.dumps(output, indent=2))
                 return
 
@@ -299,6 +317,12 @@ def status_command(
                     )
                 else:
                     table.add_row("Graph Index", "[dim]Disabled[/]")
+
+            # Show BM25 language/engine from local config.yaml (Task 16)
+            if bm25_cfg:
+                lang = bm25_cfg.get("language", "en")
+                engine = bm25_cfg.get("engine", "stem")
+                table.add_row("BM25 Language", f"{lang} (engine: {engine})")
 
             console.print(table)
 

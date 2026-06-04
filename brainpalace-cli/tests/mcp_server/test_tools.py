@@ -138,6 +138,7 @@ def test_query_happy_path(monkeypatch: pytest.MonkeyPatch) -> None:
         "mode": "bm25",
         "source_types": None,
         "languages": None,
+        "language": None,
     }
 
 
@@ -196,6 +197,49 @@ def test_query_path_overrides_cwd(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
     assert seen["start"] == Path("/elsewhere/project")
+
+
+def test_query_language_in_schema() -> None:
+    """``language`` field must be present in QueryInput's JSON schema."""
+    schema = schemas.QueryInput.model_json_schema()
+    assert (
+        "language" in schema["properties"]
+    ), "QueryInput JSON schema must include 'language' property for MCP clients"
+    lang_prop = schema["properties"]["language"]
+    # Field description should mention BM25 and ISO 639-1.
+    desc = lang_prop.get("description", "") or ""
+    assert "BM25" in desc, "language field description should mention BM25"
+    assert (
+        "ISO 639-1" in desc or "639-1" in desc
+    ), "language field description should mention ISO 639-1"
+
+
+def test_query_language_forwarded_to_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When ``language`` is set, handler must forward it to DocServeClient.query."""
+    fake = _FakeClient()
+    fake.query_response = QueryResponse(results=[], query_time_ms=1.0, total_results=0)
+    _patch_discovery(monkeypatch)
+    _install_fake_client(monkeypatch, fake)
+
+    asyncio.run(
+        tools.query_tool(schemas.QueryInput(query="Suche", mode="bm25", language="de"))
+    )
+
+    assert fake.last_query_args is not None
+    assert fake.last_query_args["language"] == "de"
+
+
+def test_query_language_none_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When ``language`` is omitted, handler must forward ``language=None``."""
+    fake = _FakeClient()
+    fake.query_response = QueryResponse(results=[], query_time_ms=1.0, total_results=0)
+    _patch_discovery(monkeypatch)
+    _install_fake_client(monkeypatch, fake)
+
+    asyncio.run(tools.query_tool(schemas.QueryInput(query="search")))
+
+    assert fake.last_query_args is not None
+    assert fake.last_query_args["language"] is None
 
 
 # ---------------------------------------------------------------------------
