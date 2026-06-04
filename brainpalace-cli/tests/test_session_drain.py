@@ -95,119 +95,138 @@ def test_size_unresolvable_is_inf(tmp_path):
 # --------------------------------------------------------------------------- #
 # drain_queue
 # --------------------------------------------------------------------------- #
-def _queue(project_root, ids):
-    state = project_root / ".brainpalace"
-    state.mkdir(parents=True, exist_ok=True)
-    (state / "extract-queue.txt").write_text("".join(f"{i}\n" for i in ids))
+def _patch_pending(monkeypatch, pairs):
+    """Make ``drain_queue`` source its batch from these ``(sid, archive_path)``."""
+    from brainpalace_cli.commands import session_drain as sd
+
+    monkeypatch.setattr(sd, "pending_ids", lambda root, now=None: list(pairs))
 
 
-def _read_queue(project_root):
-    q = project_root / ".brainpalace" / "extract-queue.txt"
-    return (
-        [ln.strip() for ln in q.read_text().splitlines() if ln.strip()]
-        if q.exists()
-        else []
-    )
+def _archived(tmp_path, *ids, size=10):
+    """Create tiny archived transcripts; return ``[(sid, path), ...]`` FIFO."""
+    a = tmp_path / "a"
+    a.mkdir(exist_ok=True)
+    pairs = []
+    for sid in ids:
+        f = a / f"{sid}.jsonl"
+        f.write_text("x" * size)
+        pairs.append((sid, str(f)))
+    return pairs
 
 
-def test_drain_takes_batch_and_requeues(tmp_path):
-    _queue(tmp_path, ["a", "b", "c"])
-    live = tmp_path / "live"
-    live.mkdir()
-    for sid in ("a", "b", "c"):
-        (live / f"{sid}.jsonl").write_text("x" * 10)  # tiny → cap is the limiter
-    res = drain_queue(
-        tmp_path,
-        budget=10_000,
-        cap=2,
-        cooldown=300,
-        now=1000.0,
-        sessions_dir=live,
-        archive_dir=tmp_path / "none",
-    )
+def test_drain_takes_batch_capped(tmp_path, monkeypatch):
+    _patch_pending(monkeypatch, _archived(tmp_path, "a", "b", "c"))
+    res = drain_queue(tmp_path, budget=10_000, cap=2, cooldown=300, now=1000.0)
     assert res["drained"] == ["a", "b"]  # cap=2 hits first
     assert res["remaining"] == 1
-    assert _read_queue(tmp_path) == ["c"]
     # last-drain timestamp persisted
     assert (tmp_path / ".brainpalace" / "last-drain").read_text().strip() == "1000.0"
 
 
-def test_drain_unresolved_sizes_drain_one_at_a_time(tmp_path):
-    # No live dir, no archive → every size is inf → only the first drains.
-    _queue(tmp_path, ["a", "b", "c"])
-    res = drain_queue(
-        tmp_path,
-        budget=10_000,
-        cap=8,
-        cooldown=0,
-        now=1000.0,
-        sessions_dir=tmp_path / "none",
-        archive_dir=tmp_path / "none",
-    )
+def test_drain_unresolved_sizes_drain_one_at_a_time(tmp_path, monkeypatch):
+    # Archive paths that don't exist → every size is inf → only the first drains.
+    pairs = [(sid, str(tmp_path / "gone" / f"{sid}.jsonl")) for sid in ("a", "b", "c")]
+    _patch_pending(monkeypatch, pairs)
+    res = drain_queue(tmp_path, budget=10_000, cap=8, cooldown=0, now=1000.0)
     assert res["drained"] == ["a"]
-    assert _read_queue(tmp_path) == ["b", "c"]
+    assert res["remaining"] == 2
 
 
-def test_drain_cooldown_blocks(tmp_path):
-    _queue(tmp_path, ["a", "b"])
+def test_drain_cooldown_blocks(tmp_path, monkeypatch):
+    _patch_pending(monkeypatch, _archived(tmp_path, "a", "b"))
+    (tmp_path / ".brainpalace").mkdir(parents=True, exist_ok=True)
     (tmp_path / ".brainpalace" / "last-drain").write_text("1000.0")
-    res = drain_queue(
-        tmp_path,
-        budget=10_000,
-        cap=8,
-        cooldown=300,
-        now=1100.0,  # 100s < 300s
-        sessions_dir=tmp_path / "none",
-        archive_dir=tmp_path / "none",
-    )
+    res = drain_queue(tmp_path, budget=10_000, cap=8, cooldown=300, now=1100.0)
     assert res["cooldown_active"] is True
     assert res["drained"] == []
     assert res["remaining"] == 2
-    assert _read_queue(tmp_path) == ["a", "b"]  # untouched
 
 
-def test_drain_cooldown_elapsed_proceeds(tmp_path):
-    _queue(tmp_path, ["a"])
+def test_drain_cooldown_elapsed_proceeds(tmp_path, monkeypatch):
+    _patch_pending(monkeypatch, _archived(tmp_path, "a"))
+    (tmp_path / ".brainpalace").mkdir(parents=True, exist_ok=True)
     (tmp_path / ".brainpalace" / "last-drain").write_text("1000.0")
-    res = drain_queue(
-        tmp_path,
-        budget=10_000,
-        cap=8,
-        cooldown=300,
-        now=1400.0,  # 400s ≥ 300s
-        sessions_dir=tmp_path / "none",
-        archive_dir=tmp_path / "none",
-    )
+    res = drain_queue(tmp_path, budget=10_000, cap=8, cooldown=300, now=1400.0)
     assert res["drained"] == ["a"]
 
 
-def test_drain_cooldown_zero_always_runs(tmp_path):
-    _queue(tmp_path, ["a"])
+def test_drain_cooldown_zero_always_runs(tmp_path, monkeypatch):
+    _patch_pending(monkeypatch, _archived(tmp_path, "a"))
+    (tmp_path / ".brainpalace").mkdir(parents=True, exist_ok=True)
     (tmp_path / ".brainpalace" / "last-drain").write_text("1399.999")
-    res = drain_queue(
-        tmp_path,
-        budget=10_000,
-        cap=8,
-        cooldown=0,
-        now=1400.0,
-        sessions_dir=tmp_path / "none",
-        archive_dir=tmp_path / "none",
-    )
+    res = drain_queue(tmp_path, budget=10_000, cap=8, cooldown=0, now=1400.0)
     assert res["drained"] == ["a"]
 
 
-def test_drain_empty_queue(tmp_path):
-    (tmp_path / ".brainpalace").mkdir(parents=True)
-    res = drain_queue(
-        tmp_path,
-        budget=10_000,
-        cap=8,
-        cooldown=300,
-        now=1000.0,
-        sessions_dir=tmp_path / "none",
-        archive_dir=tmp_path / "none",
-    )
+def test_drain_no_pending(tmp_path, monkeypatch):
+    _patch_pending(monkeypatch, [])
+    res = drain_queue(tmp_path, budget=10_000, cap=8, cooldown=300, now=1000.0)
     assert res == {"drained": [], "remaining": 0, "cooldown_active": False}
+
+
+def test_drain_sources_from_pending_not_queue(tmp_path, monkeypatch):
+    # No extract-queue.txt at all; pending comes from the gap selector.
+    _patch_pending(monkeypatch, _archived(tmp_path, "s1", "s2"))
+    res = drain_queue(tmp_path, budget=10_000, cap=8, cooldown=0, now=1000.0)
+    assert res["drained"] == ["s1", "s2"]
+    assert res["remaining"] == 0
+
+
+def test_resolve_quiescence_default(tmp_path):
+    from brainpalace_cli.commands.session_drain import resolve_quiescence
+
+    assert resolve_quiescence(tmp_path) == 1800
+
+
+def test_resolve_quiescence_from_config(tmp_path):
+    from brainpalace_cli.commands.session_drain import resolve_quiescence
+
+    state = tmp_path / ".brainpalace"
+    state.mkdir()
+    (state / "config.yaml").write_text(
+        "session_extraction:\n  quiescence_seconds: 900\n"
+    )
+    assert resolve_quiescence(tmp_path) == 900
+
+
+def test_resolve_quiescence_env_overrides(tmp_path, monkeypatch):
+    from brainpalace_cli.commands.session_drain import resolve_quiescence
+
+    monkeypatch.setenv("SESSION_QUIESCENCE_SECONDS", "120")
+    assert resolve_quiescence(tmp_path) == 120
+
+
+def test_pending_ids_passes_quiescence(tmp_path, monkeypatch):
+    # pending_ids forwards the resolved idle_seconds into the server predicate.
+    # The bundled server isn't importable in the CLI test venv, so inject a fake
+    # module chain that pending_ids' lazy import resolves to.
+    import sys
+    import types
+
+    from brainpalace_cli.commands import session_drain as sd
+
+    seen = {}
+
+    def fake_pending(project_root, archive_dir, *, now=None, idle_seconds=None):
+        seen["idle"] = idle_seconds
+        return []
+
+    distill = types.ModuleType("brainpalace_server.services.session_distill_service")
+    distill.pending_sessions = fake_pending  # type: ignore[attr-defined]
+    monkeypatch.setitem(
+        sys.modules, "brainpalace_server", types.ModuleType("brainpalace_server")
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "brainpalace_server.services",
+        types.ModuleType("brainpalace_server.services"),
+    )
+    monkeypatch.setitem(
+        sys.modules, "brainpalace_server.services.session_distill_service", distill
+    )
+    monkeypatch.setenv("SESSION_QUIESCENCE_SECONDS", "777")
+    sd.pending_ids(tmp_path, now=1000.0)
+    assert seen["idle"] == 777
 
 
 # --------------------------------------------------------------------------- #
@@ -247,8 +266,8 @@ def test_knob_env_overrides_config(tmp_path, monkeypatch):
 # --------------------------------------------------------------------------- #
 # CLI command
 # --------------------------------------------------------------------------- #
-def test_command_json_output(tmp_path):
-    _queue(tmp_path, ["a", "b"])
+def test_command_json_output(tmp_path, monkeypatch):
+    _patch_pending(monkeypatch, _archived(tmp_path, "a", "b"))
     r = CliRunner().invoke(
         drain_queue_command,
         [

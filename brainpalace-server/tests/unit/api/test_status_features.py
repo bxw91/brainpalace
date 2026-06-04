@@ -63,7 +63,7 @@ def _client(
     app.state.session_archive_enabled = (
         session_enabled if archive_enabled is None else archive_enabled
     )
-    app.state.session_watcher = SimpleNamespace(is_running=session_running)
+    app.state.session_reconciler = SimpleNamespace(is_running=session_running)
     app.state.memory_service = SimpleNamespace(load=lambda: [object()] * curated)
     if archive_stats is None:
         app.state.session_archive_service = None

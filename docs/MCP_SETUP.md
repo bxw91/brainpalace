@@ -291,3 +291,10 @@ one project.
   disconnect.
 - **No auto-init.** `--ensure-server` will not run `brainpalace init` for you.
   Initialise the project (`brainpalace init`) before connecting MCP clients.
+- **No session summarization / draining.** Chat-session summarization runs only
+  through the Claude Code plugin path (`SessionEnd`/`UserPromptSubmit` hooks +
+  the free Haiku `chat-session-extractor` subagent), after your first prompt, in
+  throttled batches. The opt-in time-driven drain
+  (`brainpalace drain-tick` / `/brainpalace-drain`, see
+  [SESSION_INDEXING.md](SESSION_INDEXING.md#opt-in-time-driven-drain-babysitter))
+  is a CLI/plugin feature — it is **not** exposed as an MCP tool.

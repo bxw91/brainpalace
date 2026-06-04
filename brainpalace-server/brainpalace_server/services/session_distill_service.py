@@ -137,6 +137,44 @@ def is_quiescent(
     return (now - mtime) >= idle_seconds
 
 
+def pending_sessions(
+    project_root: str | Path,
+    archive_dir: str | Path,
+    *,
+    idle_seconds: int = DEFAULT_IDLE_SECONDS,
+    now: float | None = None,
+) -> list[tuple[str, str]]:
+    """Archived sessions that still need (re-)summarizing.
+
+    A session is pending when its archived file is **quiescent** (idle ≥
+    ``idle_seconds`` — not actively growing) AND it is either unmarked or its
+    archive file is **newer than its ``.done`` marker** (new write, or a resumed
+    transcript that grew since the last summary). Returns ``(session_id,
+    archive_path)`` pairs.
+    """
+    from .session_archive_service import SessionArchiveService
+
+    now = time.time() if now is None else now
+    svc = SessionArchiveService(archive_dir)
+    pending: list[tuple[str, str]] = []
+    for sid, archive_path, _src_mtime in svc.iter_sessions():
+        if not archive_path.is_file():
+            continue
+        if not is_quiescent(archive_path, idle_seconds=idle_seconds, now=now):
+            continue
+        mp = marker_path(project_root, sid)
+        try:
+            if not mp.exists():
+                needs = True
+            else:
+                needs = archive_path.stat().st_mtime > mp.stat().st_mtime
+        except OSError:
+            needs = True
+        if needs:
+            pending.append((sid, str(archive_path)))
+    return pending
+
+
 # --------------------------------------------------------------------------- #
 # Prompt + JSON parsing
 # --------------------------------------------------------------------------- #

@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-02
+last_validated: 2026-06-04
 ---
 
 # Releasing BrainPalace
@@ -102,10 +102,14 @@ The version lives in **one place per package**: `pyproject.toml`.
     ```
     If the publish step fails, fix the cause and ship a new patch `N+1` — a PyPI
     version can never be re-uploaded.
-11. **(Optional, dev parity)** Refresh the cli lock so local dev pulls the
-    matching server: `(cd brainpalace-cli && poetry update brainpalace-rag --lock)`,
-    then commit on `stable`. The pin stays `^YY.M.1`; only the lock entry moves.
-    (Poetry caches the index — if the new version isn't picked up, clear it:
+11. **Refresh the cli lock** so the committed lock and local cli-from-source
+    builds pull the matching server: `(cd brainpalace-cli && poetry update
+    brainpalace-rag --lock)`, then commit on `stable`. The cli depends on
+    `brainpalace-rag` by PyPI version (not a local path), so `task install` for
+    the cli installs whatever the lock pins — without this step a cli-from-source
+    dev env keeps the *previous* server release. The pin stays `^YY.M.1`; only the
+    lock entry moves. Run it **after** step 10 confirms the new version is live on
+    PyPI. (Poetry caches the index — if the new version isn't picked up, clear it:
     `rm -rf ~/.cache/pypoetry/_http && poetry update brainpalace-rag --lock`.)
 
 ## Environment gotchas

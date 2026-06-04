@@ -77,3 +77,38 @@ def submit_session_command(
         f"{result.get('triplets_stored', 0)} triplet(s)"
         + (", digest updated" if result.get("digest_updated") else "")
     )
+
+
+@click.command("session-path")
+@click.argument("session_id")
+@click.option(
+    "--project",
+    "-p",
+    type=click.Path(file_okay=False),
+    default=None,
+    help="Project root (default: discover .brainpalace/ from cwd).",
+)
+def session_path_command(session_id: str, project: str | None) -> None:
+    """Print the ARCHIVED transcript path for a session id (empty if unarchived).
+
+    Reads ``.brainpalace/session_archive/manifest.json``. Prints nothing (exit 0)
+    when the session is not archived, so a caller can fall back to the live dir.
+    """
+    from pathlib import Path
+
+    from ..discovery import discover_project_dir
+
+    root = Path(project).resolve() if project else discover_project_dir(Path.cwd())
+    if root is None:
+        return
+    manifest = root / ".brainpalace" / "session_archive" / "manifest.json"
+    try:
+        data = json.loads(manifest.read_text())
+    except (OSError, ValueError):
+        return
+    # Top-level entry: key == session_id (subagents use composite keys).
+    entry = data.get(session_id) if isinstance(data, dict) else None
+    if isinstance(entry, dict):
+        ap = entry.get("archive_path")
+        if ap and Path(ap).is_file():
+            click.echo(ap)

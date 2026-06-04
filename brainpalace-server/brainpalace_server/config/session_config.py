@@ -56,6 +56,11 @@ class SessionArchiveConfig(BaseModel):
         default=0,
         description="Archive age cutoff in days; <=0 means keep forever.",
     )
+    reconcile_seconds: int = Field(
+        default=600,
+        ge=1,
+        description="Interval of the periodic archive copy/index sweep (seconds).",
+    )
 
 
 class SessionIndexingConfig(BaseModel):
@@ -115,6 +120,11 @@ class SessionExtractionConfig(BaseModel):
     mode: ExtractMode = Field(
         default="subagent",
         description="subagent (plugin-only, default) | auto | provider | off.",
+    )
+    quiescence_seconds: int = Field(
+        default=1800,
+        ge=0,
+        description="Idle seconds before a session is summarizable (quiescence gate).",
     )
 
 

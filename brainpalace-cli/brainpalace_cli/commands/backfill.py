@@ -1,11 +1,14 @@
 """`backfill-sessions` — summarize OLD chats in either engine (Phase 080).
 
-In **subagent** mode this appends old session ids to the durable
-``<project>/.brainpalace/extract-queue.txt`` (deduped) — drained at the next
-Claude Code first-turn. In **provider** mode it calls ``POST /sessions/distill``
-so the server distils each transcript (``--force`` re-distils already-marked
-ones). Provider mode is largely redundant with the server's catch-up sweep; this
-command is the on-demand / forced entry point.
+In **subagent** mode summarization is **archive-driven**: old sessions are
+archived under ``<project>/.brainpalace/session_archive/`` and the drain
+gap-selector (``brainpalace drain-queue``/``drain-tick``) picks them up
+automatically once quiescent — there is no queue to seed, so this command just
+confirms archiving is on and reports how many transcripts are present. In
+**provider** mode it calls ``POST /sessions/distill`` so the server distils each
+transcript (``--force`` re-distils already-marked ones). Provider mode is largely
+redundant with the server's catch-up sweep; this command is the on-demand /
+forced entry point.
 """
 
 from __future__ import annotations
@@ -72,27 +75,6 @@ def discover_transcripts(from_dir: Path, limit: int | None) -> list[Path]:
     return files[:limit] if limit else files
 
 
-def enqueue_subagent(project_root: Path, transcripts: list[Path]) -> int:
-    """Append transcript session-ids (file stems) to the extract queue, deduped."""
-    queue = project_root / ".brainpalace" / "extract-queue.txt"
-    queue.parent.mkdir(parents=True, exist_ok=True)
-    existing: set[str] = set()
-    if queue.exists():
-        existing = {
-            line.strip() for line in queue.read_text().splitlines() if line.strip()
-        }
-    added = 0
-    with queue.open("a", encoding="utf-8") as fh:
-        for t in transcripts:
-            sid = t.stem
-            if sid in existing:
-                continue
-            fh.write(sid + "\n")
-            existing.add(sid)
-            added += 1
-    return added
-
-
 @click.command("backfill-sessions")
 @click.option(
     "--project",
@@ -154,13 +136,18 @@ def backfill_command(
         return
 
     if mode == "subagent":
-        added = enqueue_subagent(project_root, transcripts)
+        # Archive-driven: no queue to seed. The drain gap-selector summarizes
+        # archived sessions automatically once they are quiescent.
+        found = len(transcripts)
         if json_output:
-            click.echo(json.dumps({"status": "queued", "mode": mode, "queued": added}))
+            click.echo(
+                json.dumps({"status": "archive-driven", "mode": mode, "found": found})
+            )
         else:
             console.print(
-                f"[green]Queued {added} session(s)[/] for extraction at the next "
-                "Claude Code first turn (subagent engine)."
+                f"[green]Archive-driven summarization is on[/] — {found} transcript(s) "
+                "present; the drain loop summarizes archived sessions automatically "
+                "(run `brainpalace drain-tick`)."
             )
         return
 

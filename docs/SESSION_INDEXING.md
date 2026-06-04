@@ -82,12 +82,20 @@ archive independently. A positive value skips files older than
 large transcript history can be a big embedding bill — set a positive cutoff if
 that matters (this only applies when *index* is enabled).
 
-**`watch_debounce_ms`** (default `30000`) batches the live session watcher. AI
-transcripts are written per message in bursts (long quiet during generation, then
-a burst of lines), so a short debounce fires redundant re-index passes mid-turn
-on an in-progress file. 30s batches a whole turn. Freshness is low-value here —
-recall targets *past* sessions, not the live one. Lower it only if you really
-want near-live indexing of the current session.
+**`session_archive.reconcile_seconds`** (default `600`, env
+`SESSION_ARCHIVE_RECONCILE_SECONDS`) sets the **copy/index sweep interval**. The
+server no longer copies on every transcript change; a periodic reconciler copies
+each session into the archive at most once per interval (and indexes it when index
+is on). A growing session is therefore re-copied at most once per interval, and its
+**final tail is always captured** on the first sweep after it goes quiet
+(`sync` dedups unchanged files — no re-copy, no re-summary). Freshness is low-value
+here — recall targets *past* sessions, not the live one. Lower it only if you want
+near-live archiving/indexing of the current session.
+
+**`session_extraction.quiescence_seconds`** (default `1800` = 30 min, env
+`SESSION_QUIESCENCE_SECONDS`) sets how long a session must be **idle** before it is
+summarizable, so a session you merely paused is never summarized mid-work. Honored
+by both the subagent drain and the provider distiller.
 
 By default BrainPalace resolves your session directory automatically by encoding
 the project path the way Claude Code does (`/` → `-`), e.g. project
@@ -279,7 +287,8 @@ This persists, idempotently on `session_id`:
   record of what was decided.
 
 Re-submitting the same `session_id` overwrites its chunks and digest block (no
-duplicates), so a SessionEnd hook can submit freely.
+duplicates), so a resumed-and-grown session can be re-summarized in full and
+cleanly supersede its previous summary.
 
 ### Extraction schema (summary)
 
@@ -297,24 +306,32 @@ You don't have to hand-write the extraction JSON. Two paths, same contract:
 - **Manual (any runtime):** `/brainpalace:brainpalace-extract-session` has your
   AI read the current transcript, distil it, and pipe it into
   `brainpalace submit-session`.
-- **Automatic (Claude Code):** the **queue-and-drain** hooks below extract
+- **Automatic (Claude Code):** the **archive-driven drain** below extracts
   finished sessions on their own — for free, on your subscription model.
 
-### Automatic extraction (Claude Code) — queue-and-drain
+### Automatic extraction (Claude Code) — archive-driven
 
-Claude Code `SessionEnd` hooks are shell-only and can't run an LLM for free at
-end-of-session. So extraction is split:
+Summarization is **archive-driven**: BrainPalace copies every Claude Code session
+into `.brainpalace/session_archive/` on a periodic sweep
+(`session_archive.reconcile_seconds`, default 600 s; default on). Each drain cycle
+summarizes the archived sessions that still need it — **new**,
+**resumed-and-grown** (the archived file is newer than its `.done` marker), or
+**late-copied** — once the session is **quiescent**
+(`session_extraction.quiescence_seconds`, idle ≥ 30 min by default, so it never
+summarizes a session you're still typing in). The free Haiku
+`chat-session-extractor` subagent reads the **archived** file (resolved by
+`brainpalace session-path`), distils it, and `submit-session` writes the `.done`
+marker; `SessionExtractService.store` is idempotent per session, so a resume
+produces a **full re-summary that supersedes** the previous one. There is no
+SessionEnd queue.
 
-1. **`sessionend-hook.sh`** appends the just-ended `session_id` to a
-   per-project queue (`.brainpalace/extract-queue.txt`). Instant, no LLM, only
-   for indexed projects.
-2. The **UserPromptSubmit hook** (`userpromptsubmit-drain-hook.sh`)
-   drains that queue **after the first user turn** of the next session (NOT at
-   startup): it asks the in-session model to run the **`chat-session-extractor`**
-   subagent (pinned to **Haiku**) on each queued session, which extracts +
-   submits. Free (subscription model); no `claude -p` headless spend, no paid
-   cron. The queue is **durable** — a pending session is summarized at the next
-   Claude Code session, however much later.
+The drain runs **after the first user turn** of a session (NOT at startup): the
+**UserPromptSubmit hook** (`userpromptsubmit-drain-hook.sh`) asks the in-session
+model to run the **`chat-session-extractor`** subagent (pinned to **Haiku**) on
+each pending session. Free (subscription model); no `claude -p` headless spend, no
+paid cron. The gap is recomputed from the durable archive every run, so a pending
+session is summarized at the next Claude Code session, however much later. The
+`sessionend-hook.sh` still ships but is now a **no-op** (queue retired).
 
 These **two extraction hooks now ship with the Claude Code plugin**
 (`plugin.json` `hooks`, under `${CLAUDE_PLUGIN_ROOT}/hooks/`), alongside the
@@ -328,18 +345,18 @@ the reminder.
 
 #### Drain throttling — a big backlog never clogs one turn
 
-The drain hook doesn't dump the whole queue into one prompt. It calls
-**`brainpalace drain-queue`**, which releases a **bounded batch** per turn and
-requeues the rest:
+The drain hook doesn't dump the whole gap into one prompt. It calls
+**`brainpalace drain-queue`**, which releases a **bounded batch** per turn; the
+rest stay pending and surface on a later turn:
 
-- **byte budget** (`drain_budget_bytes`, default **1 MB**): take queued ids
-  FIFO, summing each transcript's raw `.jsonl` size, until the next would exceed
-  the budget.
+- **byte budget** (`drain_budget_bytes`, default **1 MB**): take pending sessions
+  FIFO, summing each archived transcript's raw `.jsonl` size, until the next would
+  exceed the budget.
 - **count cap** (`drain_max_count`, default **8**): secondary guard so many tiny
   sessions can't slip under the byte budget en masse.
-- **first-pick-always (no starvation):** the first queued id is taken *before*
-  the budget check, so a single oversized session drains **alone** rather than
-  stalling the queue. No upper "too big, skip" ceiling — the extractor chunks
+- **first-pick-always (no starvation):** the first pending session is taken
+  *before* the budget check, so a single oversized session drains **alone** rather
+  than stalling the rest. No upper "too big, skip" ceiling — the extractor chunks
   oversized transcripts safely, so nothing is dropped.
 - **cooldown** (`drain_cooldown_seconds`, default **300** = 5 min): at most one
   batch per window (tracked in `.brainpalace/last-drain`), so rapid-fire prompts
@@ -361,6 +378,46 @@ Env overrides: `SESSION_DRAIN_BUDGET_BYTES`, `SESSION_DRAIN_MAX_COUNT`,
 `SESSION_DRAIN_COOLDOWN_SECONDS`.
 
 Run it by hand anytime: `brainpalace drain-queue --json`.
+
+### Opt-in time-driven drain (babysitter)
+
+Chat-session summarization runs on the free Claude Code Haiku subagent, **after your
+first prompt** — in batches of up to **8 sessions** (≤1 MB) with a **5-minute (300 s)
+cool-down** between batches. That turn-driven `UserPromptSubmit` path only fires on a
+real prompt — deliberately, so opening Claude Code never starts your subscription
+5-hour usage window. Two coverage gaps are accepted by design: a just-ended session
+waits for your next first prompt (gap A), and a session left open but idle never drains
+(gap B). Filling either automatically would start the 5h window against your wishes.
+
+If you *want* idle-time coverage, opt in with a dedicated, low-cost babysitter:
+
+```bash
+claude --model haiku        # orchestrator runs on free Haiku too
+> /loop 5m /brainpalace-drain
+```
+
+Each tick runs `brainpalace drain-tick`, which is:
+
+- **mode-gated** to the free `subagent` engine;
+- **single-drainer locked** (`<project>/.brainpalace/drain-loop.lock`) so parallel
+  worktrees / multiple babysitters dedup to one live drainer; a stale lock (dead pid or
+  older than 15 min) is reclaimed;
+- **self-terminating** after N consecutive empty drains
+  (`drain_loop_empty_stop`, env `SESSION_DRAIN_EMPTY_STOP`, default 3) so the loop can
+  never silently keep the 5h window open. It writes
+  `<project>/.brainpalace/drain-loop.heartbeat` each tick so a future session can detect
+  a dead loop.
+
+**Honest limits:** while the loop runs it keeps the 5h window open (each tick is a model
+turn); it self-terminates once the gap stays empty; and it dies on crash/close —
+losing **zero** data (the gap is recomputed from the durable archive each run; backlog
+drains on your next real work turn). Summarizing while Claude Code is fully closed is
+impossible on the free path by design — only the billable provider engine can do that,
+and it is disabled by default.
+
+`drain-tick` summarizes **archived** sessions that still need it, so OLD chats are picked
+up automatically (as long as they were archived) — no enqueue step. `brainpalace
+backfill-sessions` just confirms archiving is on.
 
 ## Session summarization — `subagent` default (Claude-Code-only)
 

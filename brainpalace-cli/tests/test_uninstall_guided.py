@@ -194,6 +194,25 @@ class TestRemainingStepsMessage:
         assert "pip uninstall" not in msg
         assert "API key" in msg or "_API_KEY" in msg
 
+    def test_cc_marketplace_plugin_listed_in_leftovers(self) -> None:
+        """The Claude Code marketplace plugin is surfaced in the final block."""
+        from pathlib import Path
+
+        mode, argv = package_uninstall_plan("pipx")
+        plugin = Path("/home/u/.claude/plugins/cache/mkt/brainpalace")
+        msg = remaining_steps_message("pipx", mode, argv, [plugin])
+        assert str(plugin) in msg
+        assert "/plugin" in msg
+        # plugin note comes before the API-key reminder
+        assert msg.index("/plugin") < msg.index("_API_KEY")
+
+    def test_no_cc_marketplace_plugin_no_plugin_lines(self) -> None:
+        """Without a detected plugin, no /plugin guidance is printed."""
+        mode, argv = package_uninstall_plan("pipx")
+        msg = remaining_steps_message("pipx", mode, argv, [])
+        assert "/plugin" not in msg
+        assert "marketplace plugin" not in msg
+
 
 class TestGuidedCommandFlow:
     """End-to-end guided teardown via the no-flag command."""
@@ -303,6 +322,68 @@ class TestGuidedCommandFlow:
 
         assert result.exit_code == 0
         assert ["pipx", "uninstall", "brainpalace-cli"] in execed
+
+    def test_cc_plugin_notice_printed_at_end(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """The Claude Code plugin notice appears in the final leftovers block,
+        after the global-state step — not interrupting the teardown mid-flow."""
+        cc_plugin = (
+            tmp_path / "home" / ".claude" / "plugins" / "cache" / "mkt" / "brainpalace"
+        )
+        cc_plugin.mkdir(parents=True)
+        registry = tmp_path / "registry.json"  # empty → no servers/state
+        xdg_config = tmp_path / "config" / "brainpalace"
+        xdg_config.mkdir(parents=True)
+
+        with (
+            patch(
+                "brainpalace_cli.commands.uninstall.get_registry_path",
+                return_value=registry,
+            ),
+            patch(
+                "brainpalace_cli.commands.uninstall.discover_plugin_dirs",
+                return_value=[],
+            ),
+            patch(
+                "brainpalace_cli.commands.uninstall.discover_cc_marketplace_plugin",
+                return_value=[cc_plugin],
+            ),
+            patch(
+                "brainpalace_cli.commands.uninstall.discover_mcp_configs",
+                return_value=[],
+            ),
+            patch(
+                "brainpalace_cli.commands.uninstall.get_xdg_config_dir",
+                return_value=xdg_config,
+            ),
+            patch(
+                "brainpalace_cli.commands.uninstall.get_xdg_state_dir",
+                return_value=tmp_path / "state" / "brainpalace",
+            ),
+            patch(
+                "brainpalace_cli.commands.uninstall.LEGACY_DIR",
+                new=tmp_path / ".brainpalace",
+            ),
+            patch(
+                "brainpalace_cli.commands.uninstall.detect_install_manager",
+                return_value=None,  # unknown → no exec prompt, message printed
+            ),
+        ):
+            result = runner.invoke(uninstall_command, input="y\n")  # global? yes
+
+        assert result.exit_code == 0
+        out = result.output
+        # The plugin notice is present, inside the final leftovers block.
+        # (The long path itself is soft-wrapped by rich, so assert on the stable
+        # guidance tokens rather than the contiguous path string.)
+        assert "Remaining steps (optional / manual)" in out
+        assert "marketplace plugin" in out
+        assert "/plugin" in out
+        # ...and the block appears AFTER the global-state step (i.e. at the end),
+        # not interrupting the teardown mid-flow.
+        assert out.index("Global state:") < out.index("Remaining steps")
+        assert out.index("Remaining steps") < out.index("marketplace plugin")
 
     def test_guided_skip_keeps_global(self, runner: CliRunner, tmp_path: Path) -> None:
         """Answering 'n' to the global prompt leaves global state intact."""

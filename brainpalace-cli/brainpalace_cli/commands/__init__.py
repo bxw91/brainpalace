@@ -20,8 +20,9 @@ from .recall import recall_command
 from .remember import remember_command
 from .reset import reset_command
 from .session_drain import drain_queue_command
+from .session_drain_loop import drain_tick_command
 from .session_hooks import install_session_hooks_command
-from .sessions import submit_session_command
+from .sessions import session_path_command, submit_session_command
 from .start import start_command
 from .status import status_command
 from .stop import stop_command
@@ -37,6 +38,7 @@ __all__ = [
     "context_command",
     "doctor_command",
     "drain_queue_command",
+    "drain_tick_command",
     "folders_group",
     "index_command",
     "inject_command",
@@ -52,6 +54,7 @@ __all__ = [
     "recall_command",
     "remember_command",
     "reset_command",
+    "session_path_command",
     "start_command",
     "submit_session_command",
     "status_command",

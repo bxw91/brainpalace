@@ -235,3 +235,27 @@ def test_full_session_deletion_purges_once(tmp_path: Path) -> None:
 
     assert purged == ["P"]  # one purge for the session, not per-file
     assert svc.stats()["archived_files"] == 0
+
+
+def _svc_with_manifest(tmp_path, entries):
+    svc = SessionArchiveService(tmp_path / "session_archive")
+    svc.archive_dir.mkdir(parents=True, exist_ok=True)
+    svc._manifest = entries  # type: ignore[attr-defined]
+    return svc
+
+
+def test_iter_sessions_yields_toplevel_only(tmp_path):
+    ap = tmp_path / "session_archive" / "s1.jsonl"
+    entries = {
+        "s1": {"session_id": "s1", "archive_path": str(ap), "src_mtime": 111.0},
+        # subagent: composite key, same session_id — must be folded out
+        "s1/sub_a": {"session_id": "s1", "archive_path": str(ap), "src_mtime": 111.0},
+        "s2": {
+            "session_id": "s2",
+            "archive_path": str(tmp_path / "x" / "s2.jsonl"),
+            "src_mtime": 222.0,
+        },
+    }
+    svc = _svc_with_manifest(tmp_path, entries)
+    got = sorted((sid, mt) for sid, _p, mt in svc.iter_sessions())
+    assert got == [("s1", 111.0), ("s2", 222.0)]  # one entry per session, no subagents

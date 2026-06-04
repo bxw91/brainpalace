@@ -272,7 +272,9 @@ async def indexing_status(request: Request) -> dict[str, Any]:
     # Consolidated per-feature status for `brainpalace status` (human view).
     # Reuses values already computed above; tolerant of missing app.state.
     session_cfg = getattr(request.app.state, "session_indexing_config", None)
-    session_watcher = getattr(request.app.state, "session_watcher", None)
+    # The periodic reconciler replaced the per-event session watcher; its
+    # is_running drives the "watcher_running" status field (kept for back-compat).
+    session_watcher = getattr(request.app.state, "session_reconciler", None)
     archive_enabled = bool(getattr(request.app.state, "session_archive_enabled", False))
     index_enabled = bool(getattr(request.app.state, "session_index_enabled", False))
     memory_service = getattr(request.app.state, "memory_service", None)

@@ -10,7 +10,6 @@ from click.testing import CliRunner
 from brainpalace_cli.commands.backfill import (
     backfill_command,
     discover_transcripts,
-    enqueue_subagent,
     read_extract_mode,
 )
 
@@ -51,23 +50,14 @@ def test_discover_transcripts_limit(tmp_path):
     assert len(discover_transcripts(d, limit=2)) == 2
 
 
-def test_enqueue_subagent_dedups(tmp_path):
-    proj = _project(tmp_path, "subagent")
-    d = _transcripts(tmp_path / "t", ["s1", "s2"])
-    files = discover_transcripts(d, None)
-    assert enqueue_subagent(proj, files) == 2
-    # Re-running adds nothing (deduped).
-    assert enqueue_subagent(proj, files) == 0
-    queue = (proj / ".brainpalace" / "extract-queue.txt").read_text().split()
-    assert sorted(queue) == ["s1", "s2"]
-
-
 # --------------------------------------------------------------------------- #
 # command
 # --------------------------------------------------------------------------- #
 
 
-def test_subagent_mode_queues(tmp_path):
+def test_subagent_mode_is_archive_driven(tmp_path):
+    # No queue is written; summarization is archive-driven (the drain gap-selector
+    # finds archived sessions). The command just reports what it found.
     proj = _project(tmp_path, "subagent")
     d = _transcripts(tmp_path / "t", ["x1", "x2"])
     result = CliRunner().invoke(
@@ -77,7 +67,10 @@ def test_subagent_mode_queues(tmp_path):
     assert result.exit_code == 0, result.output
     out = json.loads(result.output)
     assert out["mode"] == "subagent"
-    assert out["queued"] == 2
+    assert out["status"] == "archive-driven"
+    assert out["found"] == 2
+    # The retired queue file is never created.
+    assert not (proj / ".brainpalace" / "extract-queue.txt").exists()
 
 
 def test_provider_mode_calls_distill(tmp_path, monkeypatch):

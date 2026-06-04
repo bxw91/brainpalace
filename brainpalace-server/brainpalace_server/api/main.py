@@ -665,7 +665,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # Never blocks startup.
         app.state.session_index_service = None
         app.state.session_indexing_config = None
-        app.state.session_watcher = None
+        app.state.session_reconciler = None
         app.state.session_distiller = None
         app.state.session_archive_service = None
         app.state.session_archive_watcher = None
@@ -675,7 +675,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             from brainpalace_server.config.session_config import (
                 load_session_indexing_config,
                 resolve_session_capabilities,
-                retain_cutoff,
             )
 
             session_cfg = load_session_indexing_config()
@@ -686,10 +685,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
             if (caps.archive_enabled or caps.index_enabled) and app.state.project_root:
                 from brainpalace_server.services.session_index_service import (
-                    discover_session_files,
                     encode_project_to_sessions_dir,
                 )
-                from brainpalace_server.services.session_watcher import SessionWatcher
 
                 sessions_dir = (
                     Path(session_cfg.sessions_dir)
@@ -742,7 +739,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                         session_distill_grace_hours,
                     )
 
-                    extract_mode = load_session_extraction_config().mode
+                    extract_cfg = load_session_extraction_config()
+                    extract_mode = extract_cfg.mode
                     if (
                         extract_mode in ("provider", "auto")
                         and session_distill_enabled()
@@ -780,6 +778,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                             memory_service=app.state.memory_service,
                             digest_path=str(Path(_proj) / "BRAINPALACE_DECISIONS.md"),
                             mode=extract_mode,
+                            idle_seconds=extract_cfg.quiescence_seconds,
                             plugin_present=lambda: claude_plugin_installed(
                                 project=Path(_proj)
                             ),
@@ -792,66 +791,28 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 except Exception as exc:  # noqa: BLE001 — never block startup
                     logger.warning("Session distiller setup failed: %s", exc)
 
-                async def _boot_sessions() -> None:
-                    try:
-                        live_files = discover_session_files(sessions_dir)
-                        # retain_days <= 0 ⇒ keep forever (no cutoff).
-                        cutoff = retain_cutoff(session_cfg.retain_days)
-                        archived = 0
-                        indexed = 0
-                        arch_paths: list[Path] = []
-                        for live in live_files:
-                            arch = None
-                            if archive_service is not None:
-                                arch = archive_service.sync(live)
-                                if arch is None:
-                                    continue  # tombstoned / unreadable
-                                archived += 1
-                                arch_paths.append(arch)
-                            if not caps.index_enabled or sess_svc is None:
-                                continue
-                            if cutoff is not None:
-                                try:
-                                    if live.stat().st_mtime < cutoff:
-                                        continue
-                                except OSError:
-                                    continue
-                            await sess_svc.index_session_file(
-                                arch if arch is not None else live,
-                                include_user_turns=session_cfg.include_user_turns,
-                                window=session_cfg.window,
-                                stride=session_cfg.stride,
-                                origin_path=str(live) if arch is not None else None,
-                            )
-                            indexed += 1
-                        logger.info(
-                            "Session boot: %d archived, %d indexed", archived, indexed
-                        )
-                        # Catch-up sweep (the no-gap net): distil every quiescent,
-                        # un-marked archived transcript. Recovers pending/failed/
-                        # restarted/old sessions automatically.
-                        if distiller is not None and arch_paths:
-                            n = await distiller.catch_up(arch_paths)
-                            if n:
-                                logger.info("Session distill catch-up: %d distilled", n)
-                    except Exception as exc:  # noqa: BLE001
-                        logger.warning("Session boot failed: %s", exc)
-
-                asyncio.create_task(_boot_sessions())
-
-                # Live watcher: archives always, indexes only when enabled.
+                # Periodic reconcile: archives always, indexes only when enabled.
+                # The first tick runs immediately (the boot sweep — sync + index +
+                # distiller catch-up); thereafter copy cadence is
+                # session_archive.reconcile_seconds. Per-event copy is retired, so a
+                # growing session is re-copied at most once per interval (the final
+                # tail is captured on the first sweep after it goes quiet).
                 if archive_service is not None or sess_svc is not None:
-                    watcher = SessionWatcher(
-                        sessions_dir,
-                        sess_svc,
-                        session_cfg,
-                        archive=archive_service,
-                        debounce_ms=session_cfg.watch_debounce_ms,
-                        index_enabled=caps.index_enabled,
+                    from brainpalace_server.services.session_reconciler import (
+                        SessionReconciler,
+                    )
+
+                    reconciler = SessionReconciler(
+                        interval_seconds=session_cfg.archive.reconcile_seconds,
+                        sessions_dir=sessions_dir,
+                        archive_service=archive_service,
+                        sess_svc=sess_svc,
+                        session_cfg=session_cfg,
+                        caps=caps,
                         distiller=distiller,
                     )
-                    await watcher.start()
-                    app.state.session_watcher = watcher
+                    await reconciler.start()
+                    app.state.session_reconciler = reconciler
 
                 # Archive deletion watcher — purges chunks only when indexing.
                 if archive_service is not None:
@@ -1085,14 +1046,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             await _file_watcher.stop()
             logger.info("File watcher service stopped")
 
-    # Stop session watcher (Phase 050)
-    session_watcher = getattr(app.state, "session_watcher", None)
-    if session_watcher is not None:
+    # Stop session reconciler (periodic archive copy/index sweep)
+    session_reconciler = getattr(app.state, "session_reconciler", None)
+    if session_reconciler is not None:
         try:
-            await session_watcher.stop()
-            logger.info("Session watcher stopped")
+            await session_reconciler.stop()
+            logger.info("Session reconciler stopped")
         except Exception as exc:  # noqa: BLE001
-            logger.warning("Session watcher stop failed: %s", exc)
+            logger.warning("Session reconciler stop failed: %s", exc)
         _file_watcher = None
 
     archive_watcher_shutdown = getattr(app.state, "session_archive_watcher", None)

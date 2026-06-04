@@ -177,9 +177,20 @@ def package_uninstall_plan(manager: str | None) -> tuple[str, list[str]]:
     return "unknown", []
 
 
-def remaining_steps_message(manager: str | None, mode: str, argv: list[str]) -> str:
-    """Human-readable list of manual steps left after the guided teardown."""
-    lines = ["Remaining steps (manual):"]
+def remaining_steps_message(
+    manager: str | None,
+    mode: str,
+    argv: list[str],
+    cc_market: list[Path] | None = None,
+) -> str:
+    """Human-readable list of optional/manual steps left after the teardown.
+
+    Gathers everything the guided teardown can't (or shouldn't) do itself —
+    package removal, the Claude-Code-managed marketplace plugin, and the shell-rc
+    API key — into one block printed at the very end, so the user sees exactly
+    what's left in one place.
+    """
+    lines = ["Remaining steps (optional / manual):"]
     if mode == "manual" and argv:
         lines.append(
             "  - finish removing the package (can't self-delete the running env):"
@@ -193,6 +204,23 @@ def remaining_steps_message(manager: str | None, mode: str, argv: list[str]) -> 
         lines.append(
             "  - uninstall the package with your installer "
             "(pipx/uv/pip uninstall brainpalace-cli)."
+        )
+    # Claude Code marketplace plugin — managed by Claude Code's own registry, so
+    # we advise (not delete): hand-removing the cache desyncs installed_plugins.json.
+    if cc_market:
+        lines.append(
+            "  - remove the Claude Code marketplace plugin (managed by Claude "
+            "Code — not removed here):"
+        )
+        for d in cc_market:
+            lines.append(f"      {d}")
+        lines.append(
+            '      in Claude Code run /plugin → uninstall "brainpalace" '
+            '(and optionally the "brainpalace-marketplace").'
+        )
+        lines.append(
+            "      Don't delete the cache dir by hand — it desyncs Claude Code's "
+            "plugin registry."
         )
     lines.append(
         "  - remove any `export <PROVIDER>_API_KEY=…` from your shell rc "
@@ -304,22 +332,9 @@ def _guided_uninstall() -> None:
             console.print("  [dim]plugins removed.[/]")
 
     # Claude Code marketplace plugin — managed by Claude Code's own registry, so
-    # we advise (not delete): hand-removing the cache desyncs installed_plugins.json.
+    # we advise (not delete) at the very end, alongside the other optional/manual
+    # leftovers, rather than interrupting the teardown mid-flow.
     cc_market = discover_cc_marketplace_plugin()
-    if cc_market:
-        console.print(
-            "\n[yellow]Claude Code marketplace plugin detected[/] "
-            "(managed by Claude Code — not removed here):"
-        )
-        for d in cc_market:
-            console.print(f"  {d}")
-        console.print(
-            "  To remove it, in Claude Code run [bold]/plugin[/] → uninstall "
-            '"brainpalace"\n'
-            '  (and optionally remove the "brainpalace-marketplace").\n'
-            "  [dim]Don't delete the cache dir by hand — it desyncs Claude Code's "
-            "plugin registry.[/]"
-        )
 
     # 3. MCP client configs (surgical — keeps other servers).
     mcp = discover_mcp_configs(projects + [Path.home()])
@@ -366,11 +381,12 @@ def _guided_uninstall() -> None:
                 shutil.rmtree(d, ignore_errors=True)
             console.print("  [dim]global state removed.[/]")
 
-    # 6. Package removal + remaining manual steps.
+    # 6. Package removal + remaining optional/manual steps (incl. the Claude Code
+    #    marketplace plugin), all surfaced together at the end.
     manager = detect_install_manager()
     mode, argv = package_uninstall_plan(manager)
     console.print()
-    console.print(remaining_steps_message(manager, mode, argv))
+    console.print(remaining_steps_message(manager, mode, argv, cc_market))
     if mode == "exec" and argv:
         if Confirm.ask(
             f"\nRun `{' '.join(argv)}` now (replaces this process)?", default=True
@@ -386,8 +402,9 @@ def uninstall_command(yes: bool, json_output: bool) -> None:
 
     Run with no flags for a [bold]guided teardown[/] — confirms each step:
     stop servers, remove plugin dirs, strip MCP entries, delete per-project
-    and global state, then print the leftover manual steps (the package
-    uninstall for pip installs, and your shell-rc API key).
+    and global state, then print the leftover optional/manual steps all at the
+    end (the package uninstall for pip installs, the Claude-Code-managed
+    marketplace plugin, and your shell-rc API key).
 
     With ``--yes`` / ``--json`` it stays non-interactive and removes only the
     global data (XDG + legacy dirs) and stops servers — it does NOT remove

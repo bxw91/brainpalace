@@ -7,7 +7,7 @@ triggers:
 skills:
   - using-brainpalace
 model: haiku
-last_validated: 2026-06-03
+last_validated: 2026-06-04
 ---
 
 # Chat Session Extractor Agent
@@ -34,8 +34,12 @@ files.
 
 For each pending `session_id`:
 
-1. **Locate** the transcript JSONL. Claude Code stores it at
-   `~/.claude/projects/<encoded-cwd>/<session_id>.jsonl` (cwd with `/` → `-`).
+1. **Locate** the transcript JSONL. Prefer the BrainPalace **archive** copy:
+   run `brainpalace session-path <session_id>` — it prints the archived
+   `.brainpalace/session_archive/.../<session_id>.jsonl` path. If it prints
+   nothing (session not archived yet, or archive disabled), fall back to the live
+   Claude Code path `~/.claude/projects/<encoded-cwd>/<session_id>.jsonl`
+   (cwd with `/` → `-`). Read whichever resolved.
 2. **Reduce** it per the shared **Session filter contract** (docs/SESSION_INDEXING.md):
    keep user/assistant text, condensed thinking, `tool_use` (name + key inputs
    such as `file_path`/`command`), truncated `tool_result`. Ignore queue-ops,

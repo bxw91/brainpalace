@@ -2,12 +2,12 @@
 # Note: runs in Claude Code's hook env; no-ops if 'brainpalace' is not on PATH.
 # UserPromptSubmit drain hook for Claude Code (BrainPalace) — Phase 080.
 #
-# Drains the per-project session-extraction queue AFTER the first user turn of a
-# session (NOT at startup). The SessionEnd hook appends just-ended session_ids to
-# `<project>/.brainpalace/extract-queue.txt`; this hook asks the CLI to drain a
-# bounded batch and hands it to the in-session model so the free
-# `chat-session-extractor` subagent (pinned to Haiku) distils each. No metered
-# API spend.
+# Drains the per-project session-summarization gap AFTER the first user turn of a
+# session (NOT at startup). Summarization is archive-driven: `drain-queue` selects
+# the archived sessions still needing it (new / resumed-and-grown / unmarked, once
+# quiescent) — no SessionEnd queue. This hook asks the CLI to drain a bounded batch
+# and hands it to the in-session model so the free `chat-session-extractor`
+# subagent (pinned to Haiku) distils each. No metered API spend.
 #
 # Throttling lives in `brainpalace drain-queue` (so it is unit-tested, not in
 # bash): a per-turn byte budget + count cap bound one batch, first-pick-always

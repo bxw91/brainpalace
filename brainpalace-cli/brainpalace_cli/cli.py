@@ -14,6 +14,7 @@ from .commands import (
     context_command,
     doctor_command,
     drain_queue_command,
+    drain_tick_command,
     folders_group,
     index_command,
     init_command,
@@ -29,6 +30,7 @@ from .commands import (
     recall_command,
     remember_command,
     reset_command,
+    session_path_command,
     start_command,
     status_command,
     stop_command,
@@ -117,6 +119,7 @@ cli.add_command(recall_command, name="recall")
 cli.add_command(memories_group, name="memories")
 cli.add_command(context_command, name="context")
 cli.add_command(submit_session_command, name="submit-session")
+cli.add_command(session_path_command, name="session-path")
 cli.add_command(index_command, name="index")
 cli.add_command(inject_command, name="inject")
 cli.add_command(jobs_command, name="jobs")
@@ -132,6 +135,7 @@ cli.add_command(install_agent_command, name="install-agent")
 cli.add_command(install_session_hooks_command, name="install-session-hooks")
 cli.add_command(backfill_command, name="backfill-sessions")
 cli.add_command(drain_queue_command, name="drain-queue")
+cli.add_command(drain_tick_command, name="drain-tick")
 
 # Register MCP server (opt-in stdio shim for non-Claude-Code AI clients)
 cli.add_command(mcp_command, name="mcp")

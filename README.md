@@ -10,7 +10,7 @@ last_validated: 2026-06-04
 ![File Watcher](https://img.shields.io/badge/File_Watcher-1f6feb?style=for-the-badge)
 ![.gitignore-aware](https://img.shields.io/badge/.gitignore--aware-1f6feb?style=for-the-badge)
 
-![Multi-Lang BM25](https://img.shields.io/badge/BM25-8957e5?style=for-the-badge)
+![Multi-Lang BM25](https://img.shields.io/badge/Multi--Lang_BM25-8957e5?style=for-the-badge)
 ![Vector](https://img.shields.io/badge/Vector-8957e5?style=for-the-badge)
 ![GraphRAG](https://img.shields.io/badge/GraphRAG-8957e5?style=for-the-badge)
 ![Hybrid](https://img.shields.io/badge/Hybrid-8957e5?style=for-the-badge)

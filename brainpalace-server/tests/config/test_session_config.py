@@ -178,3 +178,23 @@ def test_retain_cutoff_forever_when_le_zero() -> None:
 def test_retain_cutoff_positive() -> None:
     now = 1_000_000.0
     assert retain_cutoff(2, now=now) == now - 2 * 86400
+
+
+def test_quiescence_default_is_1800():
+    from brainpalace_server.config.session_config import SessionExtractionConfig
+
+    assert SessionExtractionConfig().quiescence_seconds == 1800
+
+
+def test_quiescence_parsed_from_block(tmp_path):
+    from brainpalace_server.config.session_config import load_session_extraction_config
+
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text("session_extraction:\n  mode: subagent\n  quiescence_seconds: 600\n")
+    assert load_session_extraction_config(cfg).quiescence_seconds == 600
+
+
+def test_reconcile_default_is_600():
+    from brainpalace_server.config.session_config import SessionArchiveConfig
+
+    assert SessionArchiveConfig().reconcile_seconds == 600

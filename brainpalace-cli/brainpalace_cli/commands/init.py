@@ -598,6 +598,12 @@ def _emit_init_result(
         for item in done:
             console.print(f"  [green]✓[/] {item}")
 
+    console.print(
+        "\n[dim]Chat summaries:[/] run on the free Claude Code Haiku subagent "
+        "[bold]after your first prompt[/] — in batches of up to 8 sessions "
+        "(≤1 MB) with a 5-minute cool-down between batches."
+    )
+
     console.print("\n[dim]Next steps:[/]")
     for item in todo:
         console.print(f"  • {item}")

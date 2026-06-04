@@ -1,9 +1,11 @@
-"""`drain-queue` — size-throttled, cooldown-paced drain of the extraction queue.
+"""`drain-queue` — size-throttled, cooldown-paced drain of the summarization gap.
 
 The Claude Code plugin's UserPromptSubmit hook calls this once per prompt. It
-drains a **bounded batch** of pending session-ids from
-``<project>/.brainpalace/extract-queue.txt`` and hands them to the in-session
-model (which runs the free Haiku ``chat-session-extractor`` subagent on each).
+drains a **bounded batch** of sessions that still need (re-)summarizing —
+sourced from the **archive gap** (``pending_sessions``: quiescent archived
+transcripts that are new, resumed-and-grown, or unmarked), not a queue file —
+and hands them to the in-session model (which runs the free Haiku
+``chat-session-extractor`` subagent on each).
 
 Throttling (so a big backlog never clogs one interactive turn):
 
@@ -30,7 +32,6 @@ from __future__ import annotations
 import json
 import math
 import os
-import tempfile
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -47,6 +48,7 @@ _LARGE = math.inf
 DEFAULT_BUDGET_BYTES = 1_048_576  # 1 MB
 DEFAULT_MAX_COUNT = 8
 DEFAULT_COOLDOWN_SECONDS = 300  # 5 min
+DEFAULT_QUIESCENCE_SECONDS = 1800  # 30 min idle before summarizable
 
 
 def _extract_block(project_root: Path) -> dict[str, Any]:
@@ -102,6 +104,15 @@ def resolve_cooldown(project_root: Path) -> int:
     )
 
 
+def resolve_quiescence(project_root: Path) -> int:
+    return _knob_int(
+        "SESSION_QUIESCENCE_SECONDS",
+        "quiescence_seconds",
+        project_root,
+        DEFAULT_QUIESCENCE_SECONDS,
+    )
+
+
 def resolve_transcript_size(sid: str, sessions_dir: Path, archive_dir: Path) -> float:
     """Raw ``.jsonl`` byte size for a session id; ``inf`` if unresolvable.
 
@@ -147,24 +158,21 @@ def select_batch(
     return batch, ids[len(batch) :]
 
 
-def _read_queue(queue: Path) -> list[str]:
-    if not queue.exists():
-        return []
-    return [ln.strip() for ln in queue.read_text().splitlines() if ln.strip()]
+def pending_ids(project_root: Path, now: float | None = None) -> list[tuple[str, str]]:
+    """Sessions needing (re-)summarization, from the archive gap selector.
 
-
-def _atomic_write_lines(path: Path, lines: list[str]) -> None:
-    """Replace ``path`` atomically (crash mid-drain never drops queued ids)."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    body = "".join(f"{ln}\n" for ln in lines)
-    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=".queue-", suffix=".tmp")
+    Returns ``(session_id, archive_path)`` FIFO. Falls back to an empty list if
+    the bundled server isn't importable (e.g. archive disabled)."""
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            fh.write(body)
-        os.replace(tmp, path)
-    finally:
-        if os.path.exists(tmp):
-            os.unlink(tmp)
+        from brainpalace_server.services.session_distill_service import pending_sessions
+    except Exception:  # noqa: BLE001 — server unavailable ⇒ nothing to drain here
+        return []
+    archive_dir = project_root / ".brainpalace" / "session_archive"
+    idle = resolve_quiescence(project_root)
+    result: list[tuple[str, str]] = pending_sessions(
+        project_root, archive_dir, now=now, idle_seconds=idle
+    )
+    return result
 
 
 def drain_queue(
@@ -174,24 +182,22 @@ def drain_queue(
     cap: int,
     cooldown: int,
     now: float | None = None,
-    sessions_dir: Path | None = None,
-    archive_dir: Path | None = None,
 ) -> dict[str, Any]:
-    """Drain one throttled batch; requeue the rest. Returns a summary dict.
+    """Drain one throttled batch from the archive gap. Returns a summary dict.
 
     ``{"drained": [ids], "remaining": int, "cooldown_active": bool}``. On an
-    active cooldown (or empty queue) ``drained`` is empty and the queue is
-    untouched.
+    active cooldown (or no pending sessions) ``drained`` is empty. The gap is
+    recomputed every run (archive ∖ fresh ``.done`` markers) — there is no queue
+    file to rewrite.
     """
     import time as _time
 
     now = _time.time() if now is None else now
     state = project_root / ".brainpalace"
-    queue = state / "extract-queue.txt"
     last = state / "last-drain"
 
-    ids = _read_queue(queue)
-    if not ids:
+    pending = pending_ids(project_root, now=now)
+    if not pending:
         return {"drained": [], "remaining": 0, "cooldown_active": False}
 
     if cooldown > 0 and last.exists():
@@ -200,24 +206,18 @@ def drain_queue(
         except (OSError, ValueError):
             last_epoch = 0.0
         if now - last_epoch < cooldown:
-            return {"drained": [], "remaining": len(ids), "cooldown_active": True}
+            return {"drained": [], "remaining": len(pending), "cooldown_active": True}
 
-    if sessions_dir is None:
-        try:
-            from .backfill import default_sessions_dir
-
-            sessions_dir = default_sessions_dir(project_root)
-        except Exception:  # noqa: BLE001 — server resolver unavailable
-            # Fall back to archive-only sizing; unresolved ⇒ inf ⇒ solo drain.
-            sessions_dir = project_root / ".brainpalace" / "_no_live_dir"
-    if archive_dir is None:
-        archive_dir = state / "session_archive"
+    ids = [sid for sid, _ap in pending]
+    path_of = dict(pending)
 
     def size_of(sid: str) -> float:
-        return resolve_transcript_size(sid, sessions_dir, archive_dir)
+        try:
+            return float(Path(path_of[sid]).stat().st_size)
+        except OSError:
+            return _LARGE
 
     batch, rest = select_batch(ids, size_of, budget, cap)
-    _atomic_write_lines(queue, rest)
     state.mkdir(parents=True, exist_ok=True)
     last.write_text(str(now), encoding="utf-8")
     return {"drained": batch, "remaining": len(rest), "cooldown_active": False}

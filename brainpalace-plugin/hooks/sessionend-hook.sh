@@ -1,15 +1,13 @@
 #!/bin/bash
 # Note: runs in Claude Code's hook env; no-ops if 'brainpalace' is not on PATH.
-# SessionEnd hook for Claude Code (BrainPalace) — queue-and-drain extraction.
+# SessionEnd hook for Claude Code (BrainPalace) — retired queue (kept as no-op).
 #
-# Claude Code SessionEnd hooks are shell-only: they cannot run an LLM for free
-# at end-of-session. So this hook does the cheap half — it appends the
-# just-ended session_id to a per-project queue file. The companion SessionStart
-# hook drains that queue by asking the (already-running, subscription-tier)
-# in-session model to run the `chat-session-extractor` subagent. No metered API
-# spend; extraction happens at the next session start.
-#
-# Queue file: <project>/.brainpalace/extract-queue.txt (one session_id/line).
+# Summarization is now ARCHIVE-DRIVEN: the file watcher copies every session into
+# `.brainpalace/session_archive/`, and `brainpalace drain-tick`/`drain-queue`
+# summarize the archived sessions still needing it (gap = archive ∖ fresh `.done`
+# markers), gated by quiescence. There is no SessionEnd queue to append to, so
+# this hook does nothing but keep its install footprint (it still ships in
+# plugin.json). Left in place so existing settings.json entries stay valid.
 #
 # Install (one-time):
 #   1. cp sessionend-hook.sh ~/.claude/hooks/brainpalace-sessionend.sh
@@ -47,30 +45,14 @@ except Exception:
 
 [ -n "$session_id" ] || exit 0
 
-# Only queue for indexed projects (whoami exit 0=running, 2=indexed-not-running).
+# Only act for indexed projects (whoami exit 0=running, 2=indexed-not-running).
 brainpalace whoami >/dev/null 2>&1
 code=$?
 if [ "$code" -ne 0 ] && [ "$code" -ne 2 ]; then
     exit 0
 fi
 
-# Resolve the project root from whoami ("Project: <path>").
-project="$(brainpalace whoami 2>/dev/null | awk -F': ' '/^Project:/{print $2; exit}')"
-[ -n "$project" ] || project="$(pwd)"
-state_dir="$project/.brainpalace"
-[ -d "$state_dir" ] || exit 0
-
-queue="$state_dir/extract-queue.txt"
-
-# Dedup: skip if already queued.
-if [ -f "$queue" ] && grep -qxF "$session_id" "$queue" 2>/dev/null; then
-    exit 0
-fi
-printf '%s\n' "$session_id" >>"$queue"
-
-# Cap the queue at the most recent 50 entries.
-if [ -f "$queue" ] && [ "$(wc -l <"$queue")" -gt 50 ]; then
-    tail -n 50 "$queue" >"$queue.tmp" && mv "$queue.tmp" "$queue"
-fi
-
+# Phase 09x: queue retired — summarization is archive-driven (brainpalace
+# drain-tick). Nothing to append; the archive + gap-selector are the source of
+# truth. This hook is intentionally a no-op past the whoami gate.
 exit 0

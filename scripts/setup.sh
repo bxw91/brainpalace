@@ -635,6 +635,7 @@ if confirm "Set up and index a project now?" "y"; then
     # Installing the Claude Code plugin is cheaper (runs on your subscription),
     # or use a local Ollama summarizer to keep provider mode free + private.
     say "Session summarization: enabled (engine auto-picked; --no-extract to opt out)."
+    say "  Chat summaries run after your FIRST prompt — in batches of up to 8 sessions (<=1 MB), 5-min cool-down (free Haiku subagent)."
 
     if confirm "Index the project now?" "y"; then
         INDEX_PATH="$(ask "Path to index (relative to project root, or absolute)" ".")"

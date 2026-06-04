@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import shutil
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -205,6 +205,21 @@ class SessionArchiveService:
             "tombstoned": len(self._tombstones),
             "archived_bytes": archived_bytes,
         }
+
+    def iter_sessions(self) -> Iterator[tuple[str, Path, float]]:
+        """Yield ``(session_id, archive_path, src_mtime)`` for each TOP-LEVEL
+        archived transcript. Subagent entries (composite ``parent/stem`` keys)
+        are folded into their parent, so each session is yielded once."""
+        seen: set[str] = set()
+        for key, entry in self._manifest.items():
+            sid = entry.get("session_id")
+            ap = entry.get("archive_path")
+            if not sid or not ap or "/" in key:  # composite key ⇒ subagent ⇒ skip
+                continue
+            if sid in seen:
+                continue
+            seen.add(sid)
+            yield sid, Path(ap), float(entry.get("src_mtime") or 0.0)
 
     def backfill(self, live_paths: Iterable[str | Path]) -> list[Path]:
         produced: list[Path] = []

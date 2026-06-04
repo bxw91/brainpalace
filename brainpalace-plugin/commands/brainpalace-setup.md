@@ -528,7 +528,9 @@ The provider is configured globally — new projects inherit it.
 > your Claude Code subscription** (Haiku, after your first turn — no separate API
 > bill; it draws on your subscription's usage limits); the plugin owns its own
 > hooks. The server never summarizes on its own, so there is **no surprise API
-> bill**. Want server-side summarization anyway? Opt in with `mode: provider`
+> bill**. Summaries run **after your first prompt** in batches of up to **8 sessions**
+> (≤1 MB) with a **5-minute (300 s) cool-down** between batches — never on session start.
+> Want server-side summarization anyway? Opt in with `mode: provider`
 > (your configured AI — prefer a local Ollama summarizer for free + private) or
 > `mode: auto` (defer to the plugin, server fallback with a 24h safety net). Opt
 > out entirely with `brainpalace init --no-extract`.

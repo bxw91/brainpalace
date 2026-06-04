@@ -12,6 +12,44 @@ month (the counter resets monthly). It looks like SemVer but is not.
 
 ---
 
+## [26.6.18] - 2026-06-04
+
+### Added
+- **Opt-in time-driven session summarization (subagent path).** New
+  `brainpalace drain-tick` + `/brainpalace-drain` let you opt into idle-time queue
+  draining via a dedicated `claude --model haiku` + `/loop 5m /brainpalace-drain`
+  babysitter. Mode-gated, single-drainer locked, and self-terminating after 3 empty
+  drains so it never silently holds the Claude Code 5-hour usage window. No automatic
+  trigger is added; default session behavior is unchanged. Install-time + docs now state
+  how/when chat summarization runs (after your first prompt, batches of up to 8 sessions,
+  5-minute cool-down).
+
+### Changed
+- **Archive copy is now a periodic sweep, and quiescence is configurable.** Sessions are
+  copied into the archive every `session_archive.reconcile_seconds` (default 600 s) by a
+  periodic reconciler instead of per-transcript-change — a growing session is re-copied at
+  most once per interval, the final tail is still captured before summarization, and
+  unchanged files are never re-copied or re-summarized. The summarization idle gate is now
+  `session_extraction.quiescence_seconds` (default 1800 s = 30 min, up from a hardcoded
+  300 s), honored by both the subagent drain and the provider distiller. Env overrides:
+  `SESSION_ARCHIVE_RECONCILE_SECONDS`, `SESSION_QUIESCENCE_SECONDS`. The per-event
+  `SessionWatcher` is retired from the lifespan (replaced by `SessionReconciler`).
+- **Session summarization is now archive-driven.** The free subagent path summarizes
+  archived sessions that are new, resumed-and-grown, or late-copied (gap = archive minus
+  fresh `.done` markers), reading the archived file (not `~/.claude`), gated by quiescence
+  (see configurable idle gate above). Resumed sessions are re-summarized in full. The SessionEnd `extract-queue`
+  is retired (`sessionend-hook.sh` is now a no-op), and a new `brainpalace session-path`
+  resolves a session's archived transcript.
+- **`brainpalace uninstall` now groups every optional/manual leftover at the
+  very end.** The Claude-Code-managed marketplace plugin notice previously
+  printed mid-teardown (right after the plugin-dir step), so it scrolled past
+  before the run finished. It now appears in the final "Remaining steps
+  (optional / manual)" block alongside the package-uninstall and shell-rc API
+  key reminders — one place that tells the user exactly what's left to do by
+  hand after the guided steps complete. (`brainpalace-cli`)
+
+---
+
 ## [26.6.17] - 2026-06-04
 
 ### Fixed

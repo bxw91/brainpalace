@@ -68,3 +68,33 @@ def test_invalid_json_errors(monkeypatch) -> None:  # noqa: ANN001
     res = CliRunner().invoke(submit_session_command, ["--json", "-"], input="not json")
     assert res.exit_code != 0
     assert "Invalid JSON" in res.output
+
+
+def test_session_path_resolves_archive(tmp_path):
+    from pathlib import Path  # noqa: F401
+
+    from brainpalace_cli.commands.sessions import session_path_command
+
+    arch = tmp_path / ".brainpalace" / "session_archive"
+    arch.mkdir(parents=True)
+    f = arch / "s1.jsonl"
+    f.write_text("{}\n")
+    (arch / "manifest.json").write_text(
+        json.dumps(
+            {"s1": {"session_id": "s1", "archive_path": str(f), "src_mtime": 1.0}}
+        )
+    )
+    runner = CliRunner()
+    result = runner.invoke(session_path_command, ["s1", "--project", str(tmp_path)])
+    assert result.exit_code == 0
+    assert result.output.strip() == str(f)
+
+
+def test_session_path_unresolved_is_empty(tmp_path):
+    from brainpalace_cli.commands.sessions import session_path_command
+
+    (tmp_path / ".brainpalace").mkdir()
+    runner = CliRunner()
+    result = runner.invoke(session_path_command, ["nope", "--project", str(tmp_path)])
+    assert result.exit_code == 0
+    assert result.output.strip() == ""  # caller falls back to the live dir
