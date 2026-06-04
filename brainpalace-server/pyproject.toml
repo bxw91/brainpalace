@@ -57,6 +57,7 @@ sqlalchemy = {version = "^2.0.0", extras = ["asyncio"]}
 cachetools = ">=5.3"
 
 # Multi-language BM25 dependencies
+PyStemmer = "^2.2.0"                               # Snowball stemmers (import Stemmer); was only transitive
 bm25s = "^0.2.14"                                  # direct scoring engine (was only transitive)
 stopwordsiso = "^0.6.1"
 py3langid = "^0.3.0"
