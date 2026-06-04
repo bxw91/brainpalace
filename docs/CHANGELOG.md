@@ -12,6 +12,41 @@ month (the counter resets monthly). It looks like SemVer but is not.
 
 ---
 
+## [26.6.17] - 2026-06-04
+
+### Fixed
+- **An interrupted index no longer leaves orphan chunks with a 0-document
+  status.** The folder record + manifest were written only at the very end of the
+  pipeline, *after* the slow, rebuildable BM25 and graph steps. If the job was
+  killed during that tail (e.g. the timeout-wedge above, or a crash), the chunks
+  were already in the store but no manifest mapped them — so `total_documents`
+  read 0, the file watcher had no folder to watch, and the graph was lost. The
+  folder record + manifest are now persisted **immediately after the chunk
+  upsert**, before BM25/graph, so an interrupt leaves the store and manifest
+  consistent (document count + watcher intact, next run diffs incrementally) and
+  only the derived graph needs a rebuild. (`brainpalace-server`)
+- **`sentence_transformers` (and its heavy ML stack) is no longer imported at
+  module load.** The CrossEncoder reranker did a module-top
+  `from sentence_transformers import CrossEncoder`, so importing the reranker
+  package — and therefore the whole `services` package and test collection —
+  hard-failed in any environment without the dependency installed. The import is
+  now deferred into the model-load path (it was already lazily *loaded*), so the
+  module imports cleanly and the dependency is only required when a reranker is
+  actually used. (`brainpalace-server`)
+- **OpenAI-SDK provider clients now use a bounded request timeout, so a dropped
+  connection can no longer wedge an index job.** Every `AsyncOpenAI(...)` client
+  (OpenAI + Ollama embedding, OpenAI + Grok + Ollama summarization) was built
+  without an explicit `timeout`, inheriting the SDK's **600s read timeout × 2
+  retries**. On a flaky link a half-dead connection left the indexing worker
+  blocked inside `await ...create(...)` for up to ~30 min — and because job
+  cancellation is cooperative (checked *between* chunks), the job became
+  **uninterruptible**: `--cancel` was ignored and graceful shutdown timed out,
+  forcing a SIGKILL. Clients now default to a **60s** request timeout for cloud
+  providers (OpenAI, Grok) and **120s** for local Ollama, both overridable via
+  `config.params` (`timeout`, `max_retries`). (`brainpalace-server`)
+
+---
+
 ## [26.6.16] - 2026-06-04
 
 ### Changed

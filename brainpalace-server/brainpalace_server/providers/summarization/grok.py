@@ -13,6 +13,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Bound each API request so a half-dead connection can't wedge an index job on
+# the SDK's 600s default read timeout. Overridable via config.params.
+DEFAULT_REQUEST_TIMEOUT = 60.0
+DEFAULT_MAX_RETRIES = 2
+
 
 class GrokSummarizationProvider(BaseSummarizationProvider):
     """xAI Grok summarization provider.
@@ -59,6 +64,8 @@ class GrokSummarizationProvider(BaseSummarizationProvider):
         self._client = AsyncOpenAI(
             api_key=api_key,
             base_url=base_url,
+            timeout=config.params.get("timeout", DEFAULT_REQUEST_TIMEOUT),
+            max_retries=config.params.get("max_retries", DEFAULT_MAX_RETRIES),
         )
 
     @property

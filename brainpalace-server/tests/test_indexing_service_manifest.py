@@ -523,3 +523,55 @@ async def test_zero_change_run_succeeds(tmp_path: Path) -> None:
     saved_manifest = await tracker.load(abs_folder)
     assert saved_manifest is not None
     assert abs_file1 in saved_manifest.files
+
+
+# ---------------------------------------------------------------------------
+# Test: interrupt in the rebuildable tail still leaves a consistent manifest
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_manifest_persisted_before_derived_index_build(tmp_path: Path) -> None:
+    """An interrupt AFTER chunks are stored must still leave a manifest.
+
+    Regression guard for the orphan-chunk bug: the folder record + manifest are
+    persisted immediately after the chunk upsert, BEFORE the rebuildable BM25 and
+    graph steps. Here BM25 (the first post-persistence step) raises to simulate an
+    interrupt in that slow tail. The pipeline fails, but the stored chunks must
+    remain mapped by a saved manifest — not left as orphans with a 0-document
+    status. Previously the manifest was written last, so this scenario lost it.
+    """
+    folder = str(tmp_path / "docs")
+    Path(folder).mkdir()
+
+    file1 = str(tmp_path / "docs" / "a.md")
+    Path(file1).write_text("content a")
+
+    manifests_dir = tmp_path / "manifests"
+    tracker = ManifestTracker(manifests_dir=manifests_dir)
+
+    docs = [_make_doc(file1)]
+    chunk1 = _make_chunk("c1", file1)
+    storage = _make_storage_backend()
+
+    service = _make_indexing_service(storage, tracker, docs, [chunk1])
+
+    # Simulate an interrupt in the rebuildable tail (BM25 runs right after the
+    # manifest is persisted; graph runs after that).
+    service.bm25_manager.build_index = MagicMock(
+        side_effect=RuntimeError("interrupted in BM25")
+    )
+
+    request = IndexRequest(folder_path=folder)
+    with _patch_chunkers([chunk1]):
+        with pytest.raises(RuntimeError):
+            await service._run_indexing_pipeline(request, "job_interrupt")
+
+    # Chunks were upserted...
+    storage.upsert_documents.assert_called()
+    # ...and the manifest mapping those chunks survived the failure.
+    saved_manifest = await tracker.load(str(Path(folder).resolve()))
+    assert saved_manifest is not None
+    resolved_file1 = str(Path(file1).resolve())
+    assert resolved_file1 in saved_manifest.files
+    assert "c1" in saved_manifest.files[resolved_file1].chunk_ids

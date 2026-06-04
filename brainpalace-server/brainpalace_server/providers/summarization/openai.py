@@ -13,6 +13,12 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Bound each API request so a half-dead connection (e.g. a dropped link) can't
+# wedge an index job on the SDK's 600s default read timeout. Overridable via
+# config.params {"timeout", "max_retries"}.
+DEFAULT_REQUEST_TIMEOUT = 60.0
+DEFAULT_MAX_RETRIES = 2
+
 
 class OpenAISummarizationProvider(BaseSummarizationProvider):
     """OpenAI (GPT) summarization provider.
@@ -51,7 +57,11 @@ class OpenAISummarizationProvider(BaseSummarizationProvider):
             prompt_template=prompt_template,
         )
 
-        self._client = AsyncOpenAI(api_key=api_key)
+        self._client = AsyncOpenAI(
+            api_key=api_key,
+            timeout=config.params.get("timeout", DEFAULT_REQUEST_TIMEOUT),
+            max_retries=config.params.get("max_retries", DEFAULT_MAX_RETRIES),
+        )
 
     @property
     def provider_name(self) -> str:

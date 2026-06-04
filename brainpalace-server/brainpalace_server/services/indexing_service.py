@@ -326,9 +326,7 @@ class IndexingService:
                     ChunkEvictionService,
                 )
                 from brainpalace_server.services.manifest_tracker import (
-                    FileRecord,
                     FolderManifest,
-                    compute_file_checksum,
                 )
 
                 eviction_service = ChunkEvictionService(
@@ -696,6 +694,21 @@ class IndexingService:
                 dimensions=current_dimensions,
             )
 
+            # Persist the folder record + manifest NOW — right after the chunks are
+            # in the store, BEFORE the rebuildable BM25/graph tail. If the job is
+            # interrupted during that slow tail, the store and the manifest stay
+            # consistent (document count + watcher intact, next run can diff
+            # incrementally); only the derived graph needs a rebuild. Previously
+            # this ran at the very end, so an interrupt left orphan chunks with no
+            # manifest, no folder record, and a 0-document status.
+            eviction_summary_result = await self._persist_index_metadata(
+                abs_folder_path=abs_folder_path,
+                chunks=chunks,
+                request=request,
+                prior_manifest=prior_manifest,
+                eviction_summary=eviction_summary,
+            )
+
             # Step 5: Build BM25 index
             if progress_callback:
                 await progress_callback(95, 100, "Building BM25 index...")
@@ -792,78 +805,6 @@ class IndexingService:
             self._state.is_indexing = False
             self._indexed_folders.add(abs_folder_path)
 
-            # Register folder with FolderManager for persistent tracking (Phase 12)
-            if self.folder_manager is not None:
-                new_chunk_ids = [chunk.chunk_id for chunk in chunks]
-                existing = await self.folder_manager.get_folder(abs_folder_path)
-                if existing is not None:
-                    # Incremental/re-index: union with already-tracked ids so the
-                    # persisted chunk_count stays cumulative, not the per-run delta.
-                    merged_ids = _merge_chunk_ids(existing.chunk_ids, new_chunk_ids)
-                    # Preserve the folder's watch settings — re-registering must
-                    # not silently reset an auto-watched folder back to 'off'.
-                    watch_mode = existing.watch_mode
-                    watch_debounce_seconds = existing.watch_debounce_seconds
-                else:
-                    merged_ids = new_chunk_ids
-                    watch_mode = "off"
-                    watch_debounce_seconds = None
-                await self.folder_manager.add_folder(
-                    folder_path=abs_folder_path,
-                    chunk_count=len(merged_ids),
-                    chunk_ids=merged_ids,
-                    watch_mode=watch_mode,
-                    watch_debounce_seconds=watch_debounce_seconds,
-                    include_code=request.include_code,
-                )
-                logger.info(
-                    f"Registered folder {abs_folder_path} with FolderManager "
-                    f"({len(merged_ids)} chunks)"
-                )
-
-            # Save manifest after successful pipeline completion (Phase 14)
-            if self.manifest_tracker is not None and eviction_summary is not None:
-                import os as _os
-                from pathlib import Path as _Path
-
-                from brainpalace_server.services.manifest_tracker import (
-                    FileRecord,
-                    FolderManifest,
-                    compute_file_checksum,
-                )
-
-                new_manifest = FolderManifest(folder_path=abs_folder_path)
-                # Carry over unchanged files
-                if prior_manifest is not None:
-                    assert isinstance(prior_manifest, FolderManifest)
-                    for fp in eviction_summary.files_unchanged:
-                        if fp in prior_manifest.files:
-                            new_manifest.files[fp] = prior_manifest.files[fp]
-                # Record newly indexed files
-                file_to_chunks: dict[str, list[str]] = {}
-                for chunk in chunks:
-                    src = chunk.metadata.to_dict().get("source", "")
-                    if src:
-                        resolved_src = str(_Path(src).resolve())
-                        file_to_chunks.setdefault(resolved_src, []).append(
-                            chunk.chunk_id
-                        )
-                for fp, chunk_ids in file_to_chunks.items():
-                    checksum = await asyncio.to_thread(compute_file_checksum, fp)
-                    stat_result = await asyncio.to_thread(_os.stat, fp)
-                    new_manifest.files[fp] = FileRecord(
-                        checksum=checksum,
-                        mtime=stat_result.st_mtime,
-                        chunk_ids=chunk_ids,
-                    )
-                await self.manifest_tracker.save(new_manifest)
-                logger.info(
-                    f"Manifest saved with {len(new_manifest.files)} file entries"
-                )
-                from dataclasses import asdict
-
-                eviction_summary_result = asdict(eviction_summary)
-
             if progress_callback:
                 await progress_callback(100, 100, "Indexing complete!")
 
@@ -883,6 +824,96 @@ class IndexingService:
 
         finally:
             self._state.is_indexing = False
+
+    async def _persist_index_metadata(
+        self,
+        abs_folder_path: str,
+        chunks: list[Any],
+        request: Any,
+        prior_manifest: Any,
+        eviction_summary: Any,
+    ) -> dict[str, Any] | None:
+        """Persist the folder record + manifest once chunks are in the store.
+
+        Called immediately after the chunk upsert and BEFORE the rebuildable BM25
+        and graph steps, so the vector store and the manifest stay consistent even
+        if the job is interrupted during that slow tail: the stored chunks are
+        mapped by a saved manifest (document count + watcher stay correct, the next
+        run can diff incrementally) and only the derived graph needs a rebuild.
+        Previously this ran at the very end, so an interrupt left orphan chunks with
+        no manifest, no folder record, and a 0-document status.
+
+        Returns the eviction-summary dict for the index result, or None.
+        """
+        # Register folder with FolderManager for persistent tracking (Phase 12)
+        if self.folder_manager is not None:
+            new_chunk_ids = [chunk.chunk_id for chunk in chunks]
+            existing = await self.folder_manager.get_folder(abs_folder_path)
+            if existing is not None:
+                # Incremental/re-index: union with already-tracked ids so the
+                # persisted chunk_count stays cumulative, not the per-run delta.
+                merged_ids = _merge_chunk_ids(existing.chunk_ids, new_chunk_ids)
+                # Preserve the folder's watch settings — re-registering must
+                # not silently reset an auto-watched folder back to 'off'.
+                watch_mode = existing.watch_mode
+                watch_debounce_seconds = existing.watch_debounce_seconds
+            else:
+                merged_ids = new_chunk_ids
+                watch_mode = "off"
+                watch_debounce_seconds = None
+            await self.folder_manager.add_folder(
+                folder_path=abs_folder_path,
+                chunk_count=len(merged_ids),
+                chunk_ids=merged_ids,
+                watch_mode=watch_mode,
+                watch_debounce_seconds=watch_debounce_seconds,
+                include_code=request.include_code,
+            )
+            logger.info(
+                f"Registered folder {abs_folder_path} with FolderManager "
+                f"({len(merged_ids)} chunks)"
+            )
+
+        # Save manifest once chunks are stored (Phase 14)
+        eviction_summary_result: dict[str, Any] | None = None
+        if self.manifest_tracker is not None and eviction_summary is not None:
+            import os as _os
+            from dataclasses import asdict
+            from pathlib import Path as _Path
+
+            from brainpalace_server.services.manifest_tracker import (
+                FileRecord,
+                FolderManifest,
+                compute_file_checksum,
+            )
+
+            new_manifest = FolderManifest(folder_path=abs_folder_path)
+            # Carry over unchanged files
+            if prior_manifest is not None:
+                assert isinstance(prior_manifest, FolderManifest)
+                for fp in eviction_summary.files_unchanged:
+                    if fp in prior_manifest.files:
+                        new_manifest.files[fp] = prior_manifest.files[fp]
+            # Record newly indexed files
+            file_to_chunks: dict[str, list[str]] = {}
+            for chunk in chunks:
+                src = chunk.metadata.to_dict().get("source", "")
+                if src:
+                    resolved_src = str(_Path(src).resolve())
+                    file_to_chunks.setdefault(resolved_src, []).append(chunk.chunk_id)
+            for fp, chunk_ids in file_to_chunks.items():
+                checksum = await asyncio.to_thread(compute_file_checksum, fp)
+                stat_result = await asyncio.to_thread(_os.stat, fp)
+                new_manifest.files[fp] = FileRecord(
+                    checksum=checksum,
+                    mtime=stat_result.st_mtime,
+                    chunk_ids=chunk_ids,
+                )
+            await self.manifest_tracker.save(new_manifest)
+            logger.info(f"Manifest saved with {len(new_manifest.files)} file entries")
+            eviction_summary_result = asdict(eviction_summary)
+
+        return eviction_summary_result
 
     async def _rebuild_bm25_from_unchanged(
         self,

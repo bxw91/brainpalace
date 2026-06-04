@@ -1,15 +1,17 @@
 """SentenceTransformer CrossEncoder reranking provider."""
 
+from __future__ import annotations
+
 import asyncio
 import logging
 from typing import TYPE_CHECKING
-
-from sentence_transformers import CrossEncoder
 
 from brainpalace_server.providers.factory import ProviderRegistry
 from brainpalace_server.providers.reranker.base import BaseRerankerProvider
 
 if TYPE_CHECKING:
+    from sentence_transformers import CrossEncoder
+
     from brainpalace_server.config.provider_config import RerankerConfig
 
 logger = logging.getLogger(__name__)
@@ -26,7 +28,7 @@ class SentenceTransformerRerankerProvider(BaseRerankerProvider):
     Alternative: cross-encoder/ms-marco-MiniLM-L-12-v2 (slower, better accuracy)
     """
 
-    def __init__(self, config: "RerankerConfig") -> None:
+    def __init__(self, config: RerankerConfig) -> None:
         """Initialize the CrossEncoder reranker.
 
         Args:
@@ -45,6 +47,11 @@ class SentenceTransformerRerankerProvider(BaseRerankerProvider):
             Loaded CrossEncoder instance.
         """
         if self._cross_encoder is None:
+            # Import here, not at module top, so the heavy ML dependency is only
+            # required when a reranker is actually used — importing this module
+            # (e.g. during test collection) must not pull in sentence_transformers.
+            from sentence_transformers import CrossEncoder
+
             logger.info(f"Loading CrossEncoder model: {self._model}")
             self._cross_encoder = CrossEncoder(self._model)
             self._model_loaded = True

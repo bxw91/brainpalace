@@ -16,6 +16,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Bound each request so a stalled local server can't wedge an index job on the
+# SDK's 600s default read timeout. Higher than cloud defaults since local models
+# can be slow. Overridable via config.params {"timeout"}.
+DEFAULT_REQUEST_TIMEOUT = 120.0
+
 
 class OllamaSummarizationProvider(BaseSummarizationProvider):
     """Ollama summarization provider using local models.
@@ -57,6 +62,7 @@ class OllamaSummarizationProvider(BaseSummarizationProvider):
         self._client = AsyncOpenAI(
             api_key="ollama",  # Ollama doesn't need real key
             base_url=base_url,
+            timeout=config.params.get("timeout", DEFAULT_REQUEST_TIMEOUT),
         )
 
         # Optional parameters

@@ -35,6 +35,32 @@ class TestOpenAIEmbeddingProvider:
                 OpenAIEmbeddingProvider(config)
 
     @patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"})
+    def test_client_has_bounded_timeout_by_default(self) -> None:
+        """Client uses a bounded request timeout, not the SDK 600s default.
+
+        Regression guard: a bare AsyncOpenAI() defaults to a 600s read timeout,
+        which on a flaky link wedges the index job on a half-dead socket.
+        """
+        config = EmbeddingConfig(provider="openai", model="text-embedding-3-large")
+        provider = OpenAIEmbeddingProvider(config)
+
+        assert provider._client.timeout == 60.0
+        assert provider._client.max_retries == 2
+
+    @patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"})
+    def test_client_timeout_and_retries_overridable(self) -> None:
+        """timeout / max_retries are overridable via config.params."""
+        config = EmbeddingConfig(
+            provider="openai",
+            model="text-embedding-3-large",
+            params={"timeout": 15.0, "max_retries": 5},
+        )
+        provider = OpenAIEmbeddingProvider(config)
+
+        assert provider._client.timeout == 15.0
+        assert provider._client.max_retries == 5
+
+    @patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"})
     def test_get_dimensions(self) -> None:
         """Test dimension retrieval for known models."""
         config = EmbeddingConfig(provider="openai", model="text-embedding-3-large")

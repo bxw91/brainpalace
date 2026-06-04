@@ -13,6 +13,12 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Bound each API request so a half-dead connection (e.g. a dropped link) can't
+# wedge an index job on the SDK's 600s default read timeout. Overridable via
+# config.params {"timeout", "max_retries"}.
+DEFAULT_REQUEST_TIMEOUT = 60.0
+DEFAULT_MAX_RETRIES = 2
+
 # Model dimension mappings for OpenAI embedding models
 OPENAI_MODEL_DIMENSIONS: dict[str, int] = {
     "text-embedding-3-large": 3072,
@@ -50,7 +56,11 @@ class OpenAIEmbeddingProvider(BaseEmbeddingProvider):
         batch_size = config.params.get("batch_size", 100)
         super().__init__(model=config.model, batch_size=batch_size)
 
-        self._client = AsyncOpenAI(api_key=api_key)
+        self._client = AsyncOpenAI(
+            api_key=api_key,
+            timeout=config.params.get("timeout", DEFAULT_REQUEST_TIMEOUT),
+            max_retries=config.params.get("max_retries", DEFAULT_MAX_RETRIES),
+        )
         self._dimensions_override = config.params.get("dimensions")
 
     @property
