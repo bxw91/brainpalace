@@ -24,6 +24,7 @@ from .commands import (
     list_command,
     mcp_command,
     memories_group,
+    plugin_group,
     query_command,
     recall_command,
     remember_command,
@@ -121,6 +122,7 @@ cli.add_command(inject_command, name="inject")
 cli.add_command(jobs_command, name="jobs")
 cli.add_command(reset_command, name="reset")
 cli.add_command(config_group, name="config")
+cli.add_command(plugin_group, name="plugin")
 cli.add_command(folders_group, name="folders")
 cli.add_command(types_group, name="types")
 cli.add_command(cache_group, name="cache")

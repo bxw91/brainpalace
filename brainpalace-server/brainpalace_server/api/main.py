@@ -37,7 +37,12 @@ from brainpalace_server.config.provider_config import (
     validate_provider_config,
 )
 from brainpalace_server.indexing.bm25_index import BM25IndexManager, set_bm25_manager
-from brainpalace_server.job_queue import JobQueueService, JobQueueStore, JobWorker
+from brainpalace_server.job_queue import (
+    JobQueueService,
+    JobQueueStore,
+    JobWorker,
+    select_reenqueue_candidates,
+)
 from brainpalace_server.locking import (
     acquire_lock,
     cleanup_stale,
@@ -81,6 +86,32 @@ _job_worker: JobWorker | None = None
 
 # Module-level reference to file watcher service for cleanup
 _file_watcher: object = None
+
+
+def _silence_chromadb_telemetry() -> None:
+    """Hard-disable ChromaDB's PostHog product telemetry.
+
+    ChromaDB 0.5.x calls ``posthog.capture()`` with positional arguments that
+    posthog >= 3 rejects (``capture() takes 1 positional argument but 3 were
+    given``), logging a spurious ``ERROR`` for every telemetry event on startup
+    and indexing. The documented off-switches — ``anonymized_telemetry=False``
+    and the ``ANONYMIZED_TELEMETRY`` env var — are *not* honored in 0.5.23, so
+    we neutralize the telemetry client directly (no-op ``capture``) and raise
+    the relevant loggers above ERROR as a fallback. No telemetry is sent either
+    way; this only removes the noise. Safe across chromadb versions: the
+    monkeypatch is best-effort and the env/logger settings are harmless.
+    """
+    os.environ.setdefault("ANONYMIZED_TELEMETRY", "False")
+    try:
+        from chromadb.telemetry.product.posthog import Posthog
+
+        # Replace the bound capture with a no-op accepting any signature so
+        # neither the 0.5.x positional call nor any future shape can raise.
+        Posthog.capture = lambda self, *args, **kwargs: None  # type: ignore[method-assign]
+    except Exception:  # pragma: no cover - chromadb internals may move
+        pass
+    for name in ("chromadb.telemetry", "posthog", "backoff"):
+        logging.getLogger(name).setLevel(logging.CRITICAL)
 
 
 def _build_provider_fingerprint() -> str:
@@ -225,10 +256,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Record server start time for the /runtime/ endpoint (B8).
     app.state.started_at = datetime.now(timezone.utc).isoformat()
 
-    # Suppress ChromaDB telemetry noise (PostHog) during startup.
-    os.environ.setdefault("ANONYMIZED_TELEMETRY", "False")
-    logging.getLogger("chromadb.telemetry").setLevel(logging.WARNING)
-    logging.getLogger("posthog").setLevel(logging.WARNING)
+    # Hard-disable ChromaDB telemetry (PostHog) before any client is created.
+    # The config off-switch is broken in chromadb 0.5.x, so neutralize directly.
+    _silence_chromadb_telemetry()
 
     # Load and validate provider configuration
     # Clear cache first to ensure we pick up env vars set by CLI
@@ -912,27 +942,24 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             logger.info("Job queue service initialized")
 
             # D14 — auto-reindex affected folders after stuck-job recovery.
-            # Dedup by folder_path so a folder with multiple stale jobs only
-            # gets one re-enqueue; the C1 dedupe path handles overlap with
-            # any active PENDING/RUNNING jobs.
-            if stale_jobs:
-                seen_folders: set[str] = set()
-                for stale in stale_jobs:
-                    if stale.folder_path in seen_folders:
-                        continue
-                    seen_folders.add(stale.folder_path)
-                    try:
-                        resp = await job_service.reenqueue_from_record(stale)
-                        logger.info(
-                            "Re-enqueued reindex after stale-job recovery: "
-                            f"folder={stale.folder_path} job_id={resp.job_id} "
-                            f"dedupe_hit={resp.dedupe_hit}"
-                        )
-                    except Exception as exc:
-                        logger.warning(
-                            "Failed to re-enqueue reindex for "
-                            f"{stale.folder_path}: {exc}"
-                        )
+            # select_reenqueue_candidates dedupes by folder_path and excludes
+            # permanently-FAILED jobs (retry budget exhausted) so a job that
+            # deterministically crashes the server is not re-enqueued into an
+            # infinite loop; the C1 dedupe path handles overlap with any active
+            # PENDING/RUNNING jobs.
+            for stale in select_reenqueue_candidates(stale_jobs):
+                try:
+                    resp = await job_service.reenqueue_from_record(stale)
+                    logger.info(
+                        "Re-enqueued reindex after stale-job recovery: "
+                        f"folder={stale.folder_path} job_id={resp.job_id} "
+                        f"dedupe_hit={resp.dedupe_hit}"
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to re-enqueue reindex for "
+                        f"{stale.folder_path}: {exc}"
+                    )
 
             # Initialize and start job worker
             _job_worker = JobWorker(
@@ -987,24 +1014,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             app.state.job_service = job_service
 
             # D14 — see state-dir branch above.
-            if stale_jobs:
-                seen_folders = set()
-                for stale in stale_jobs:
-                    if stale.folder_path in seen_folders:
-                        continue
-                    seen_folders.add(stale.folder_path)
-                    try:
-                        resp = await job_service.reenqueue_from_record(stale)
-                        logger.info(
-                            "Re-enqueued reindex after stale-job recovery: "
-                            f"folder={stale.folder_path} job_id={resp.job_id} "
-                            f"dedupe_hit={resp.dedupe_hit}"
-                        )
-                    except Exception as exc:
-                        logger.warning(
-                            "Failed to re-enqueue reindex for "
-                            f"{stale.folder_path}: {exc}"
-                        )
+            for stale in select_reenqueue_candidates(stale_jobs):
+                try:
+                    resp = await job_service.reenqueue_from_record(stale)
+                    logger.info(
+                        "Re-enqueued reindex after stale-job recovery: "
+                        f"folder={stale.folder_path} job_id={resp.job_id} "
+                        f"dedupe_hit={resp.dedupe_hit}"
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to re-enqueue reindex for "
+                        f"{stale.folder_path}: {exc}"
+                    )
 
             _job_worker = JobWorker(
                 job_store=job_store,

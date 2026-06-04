@@ -14,6 +14,7 @@ from .jobs import jobs_command
 from .list_cmd import list_command
 from .mcp import mcp_command
 from .memories import memories_group
+from .plugin_detect import plugin_group
 from .query import query_command
 from .recall import recall_command
 from .remember import remember_command
@@ -46,6 +47,7 @@ __all__ = [
     "list_command",
     "mcp_command",
     "memories_group",
+    "plugin_group",
     "query_command",
     "recall_command",
     "remember_command",

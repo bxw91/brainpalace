@@ -12,10 +12,13 @@
 #
 # Covers (global-first):
 #   1. Install the `brainpalace` binary (CLI + server via pipx)
-#   2. Configure an embedding / summarisation provider GLOBALLY
-#   3. Wire an MCP client config at user scope (optional)
-#   4. Set up + index a project (optional — last step)
-#   5. Verify with `brainpalace status` and an optional sample query
+#   2. Decide chat-summary engine — offer the Claude Code plugin (free on the
+#      subscription) BEFORE the provider wizard, so the wizard words the
+#      summarization question correctly
+#   3. Configure an embedding / summarisation provider GLOBALLY
+#   4. Wire an MCP client config at user scope (optional)
+#   5. Set up + index a project (optional — last step)
+#   6. Verify with `brainpalace status` and an optional sample query
 #
 # Requires an interactive terminal (reads from /dev/tty). Exits with a
 # clear error if stdin / tty is not attached.
@@ -163,12 +166,13 @@ ${c_bold}BrainPalace — guided setup${c_reset}
 Source: $REPO_URL @ $REF
 $VERSION_LINE
 
-This script will ask before every action. Five steps (global-first):
+This script will ask before every action. Six steps (global-first):
   1. Install the brainpalace binary (pipx)
-  2. Configure provider globally
-  3. Wire MCP client at user scope (optional)
-  4. Set up + index a project (optional)
-  5. Verify
+  2. Chat summaries — Claude Code plugin (free on your subscription)
+  3. Configure provider globally
+  4. Wire MCP client at user scope (optional)
+  5. Set up + index a project (optional)
+  6. Verify
 
 EOF
 confirm "Continue?" "y" || { say "Aborted."; exit 0; }
@@ -177,7 +181,7 @@ confirm "Continue?" "y" || { say "Aborted."; exit 0; }
 # Step 1 — install
 # -----------------------------------------------------------------------------
 
-step "Step 1/5 — Install brainpalace binary"
+step "Step 1/6 — Install brainpalace binary"
 
 if command -v brainpalace >/dev/null 2>&1; then
     CURRENT_VERSION="$(brainpalace --version 2>/dev/null || echo unknown)"
@@ -245,12 +249,58 @@ fi
 AB_BIN="$(command -v brainpalace)"
 
 # -----------------------------------------------------------------------------
-# Step 2 — configure provider GLOBALLY (no project yet). Written to the XDG
+# Step 2 — chat/session summaries (Claude Code plugin). Decided BEFORE the
+# provider wizard so the wizard can word the summarization question correctly:
+#   - plugin present/installed -> chat summaries are FREE on the Claude Code
+#     subscription; the provider picked next is for CODE only.
+#   - no plugin                -> chat summarization is OFF by default (the
+#     server-side provider distiller is doubly opt-in: mode=provider/auto AND
+#     SESSION_DISTILL_ENABLED=true); the provider is for CODE only.
+# CHAT_SUMM is passed to every `config wizard --global` as --chat-summarizer
+# (wording-only; the server still resolves the engine 'auto' at runtime).
+# -----------------------------------------------------------------------------
+
+step "Step 2/6 — Chat summaries (Claude Code plugin)"
+
+CHAT_SUMM="provider"
+if command -v claude >/dev/null 2>&1; then
+    PLUGIN_INSTALLED="false"
+    # Single source of truth: the CLI's own detection, surfaced as JSON.
+    if PLUGIN_JSON="$("$AB_BIN" plugin status --json 2>/dev/null)"; then
+        case "$PLUGIN_JSON" in
+            *'"installed": true'*|*'"installed":true'*) PLUGIN_INSTALLED="true" ;;
+        esac
+    fi
+    if [[ "$PLUGIN_INSTALLED" == "true" ]]; then
+        say "Claude Code plugin detected — chat/session summaries run FREE on your"
+        say "Claude Code subscription. The provider you pick next is for code only."
+        CHAT_SUMM="plugin"
+    elif confirm "Install the BrainPalace Claude Code plugin? (recommended — free chat/session summarization on your Claude Code subscription, richest UX)" "y"; then
+        say "Installing plugin via Claude Code…"
+        if timeout 120 claude plugins marketplace add bxw91/brainpalace </dev/tty >/dev/tty 2>&1 \
+           && timeout 120 claude plugins install brainpalace@brainpalace-marketplace </dev/tty >/dev/tty 2>&1; then
+            ok "Plugin installed."
+            warn "Restart Claude Code (or start a new session) — plugin hooks + the chat-session-extractor agent load at session start."
+            CHAT_SUMM="plugin"
+        else
+            warn "Plugin install did not complete. Install it later: 'claude plugins marketplace add bxw91/brainpalace && claude plugins install brainpalace@brainpalace-marketplace'. Continuing with CLI/provider setup."
+            CHAT_SUMM="provider"
+        fi
+    fi
+else
+    say "Claude CLI not found — chat/session summaries are handled by the Claude"
+    say "Code plugin (free). Without it, chat summarization is OFF by default"
+    say "(opt in with SESSION_DISTILL_ENABLED=true). The provider you pick next is"
+    say "for code only. Install the plugin later for free chat summaries."
+fi
+
+# -----------------------------------------------------------------------------
+# Step 3 — configure provider GLOBALLY (no project yet). Written to the XDG
 # global config that every later `brainpalace init` inherits, so the project
 # step can be deferred to the end and made optional.
 # -----------------------------------------------------------------------------
 
-step "Step 2/5 — Provider / API key (global)"
+step "Step 3/6 — Provider / API key (global)"
 
 say "Configure the embedding/summarization provider ONCE, globally."
 say "Every project you set up later inherits ~/.config/brainpalace/config.yaml."
@@ -300,7 +350,7 @@ case "$PROVIDER" in
         ;;
     wizard)
         say "Launching brainpalace config wizard (global) ..."
-        (cd "$HOME" && "$AB_BIN" config wizard --global) </dev/tty >/dev/tty
+        (cd "$HOME" && "$AB_BIN" config wizard --global --chat-summarizer "$CHAT_SUMM") </dev/tty >/dev/tty
         ;;
     ollama)
         OLLAMA_URL="$(ask "Ollama base URL" "${OLLAMA_BASE_URL:-http://127.0.0.1:11434}")"
@@ -310,7 +360,7 @@ case "$PROVIDER" in
             warn "Could not reach $OLLAMA_URL — wizard will still let you continue."
         fi
         say "Launching wizard (global) with OLLAMA_BASE_URL=$OLLAMA_URL"
-        (cd "$HOME" && OLLAMA_BASE_URL="$OLLAMA_URL" "$AB_BIN" config wizard --global) </dev/tty >/dev/tty
+        (cd "$HOME" && OLLAMA_BASE_URL="$OLLAMA_URL" "$AB_BIN" config wizard --global --chat-summarizer "$CHAT_SUMM") </dev/tty >/dev/tty
         ;;
     *)
         VAR="${PROVIDER_ENV[$PROVIDER]:-}"
@@ -333,7 +383,7 @@ case "$PROVIDER" in
             fi
         fi
         say "Launching brainpalace config wizard (global) ..."
-        (cd "$HOME" && "$AB_BIN" config wizard --global) </dev/tty >/dev/tty
+        (cd "$HOME" && "$AB_BIN" config wizard --global --chat-summarizer "$CHAT_SUMM") </dev/tty >/dev/tty
         ;;
 esac
 
@@ -387,12 +437,12 @@ PY
 fi
 
 # -----------------------------------------------------------------------------
-# Step 3 — MCP client wiring (optional), user scope by default so it's
+# Step 4 — MCP client wiring (optional), user scope by default so it's
 # machine-wide. Runs BEFORE the project step; project scope falls back to
 # $HOME when no project has been chosen yet.
 # -----------------------------------------------------------------------------
 
-step "Step 3/5 — Wire an MCP client (optional, global)"
+step "Step 4/6 — Wire an MCP client (optional, global)"
 
 say "If you only use the CLI (or the Claude Code plugin), pick 'none'."
 say "Otherwise pick the MCP client you use — its config file is written with an"
@@ -555,30 +605,11 @@ EOF
 fi
 
 # -----------------------------------------------------------------------------
-# Step 3b — offer the Claude Code plugin FIRST (best-effort, non-fatal).
-# Recommended path: free session summarization on your Claude Code subscription
-# (no separate API bill) + the richest UX. Installing the plugin makes
-# `mode: auto` pick the plugin's subagent engine live.
-# -----------------------------------------------------------------------------
-if command -v claude >/dev/null 2>&1; then
-    if confirm "Install the BrainPalace Claude Code plugin? (recommended — free session summarization on your Claude Code subscription, richest UX)" "y"; then
-        say "Installing plugin via Claude Code…"
-        if timeout 120 claude plugins marketplace add bxw91/brainpalace </dev/tty >/dev/tty 2>&1 \
-           && timeout 120 claude plugins install brainpalace@brainpalace-marketplace </dev/tty >/dev/tty 2>&1; then
-            ok "Plugin installed."
-            warn "Restart Claude Code (or start a new session) — plugin hooks + the chat-session-extractor agent load at session start."
-        else
-            warn "Plugin install did not complete. Install it later: 'claude plugins marketplace add bxw91/brainpalace && claude plugins install brainpalace@brainpalace-marketplace'. Continuing with CLI/provider setup."
-        fi
-    fi
-fi
-
-# -----------------------------------------------------------------------------
-# Step 4 — optional project setup (init + start + index). LAST step, opt-in.
-# Inherits the global provider config written in Step 2.
+# Step 5 — optional project setup (init + start + index). LAST step, opt-in.
+# Inherits the global provider config written in Step 3.
 # -----------------------------------------------------------------------------
 
-step "Step 4/5 — Set up a project (optional)"
+step "Step 5/6 — Set up a project (optional)"
 
 WATCH="off"
 if confirm "Set up and index a project now?" "y"; then
@@ -594,7 +625,7 @@ if confirm "Set up and index a project now?" "y"; then
         WATCH_FLAG="--watch auto"
     fi
 
-    # init --start inherits the global provider config written in Step 2.
+    # init --start inherits the global provider config written in Step 3.
     say "Running: brainpalace init --start $WATCH_FLAG"
     (cd "$PROJECT" && "$AB_BIN" init --start $WATCH_FLAG) >/dev/tty
     ok "Server initialised and started."
@@ -623,10 +654,10 @@ else
 fi
 
 # -----------------------------------------------------------------------------
-# Step 5 — verify
+# Step 6 — verify
 # -----------------------------------------------------------------------------
 
-step "Step 5/5 — Verify"
+step "Step 6/6 — Verify"
 
 if [[ -n "$PROJECT" ]]; then
     (cd "$PROJECT" && "$AB_BIN" status) >/dev/tty || warn "status returned non-zero"

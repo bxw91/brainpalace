@@ -12,7 +12,47 @@ month (the counter resets monthly). It looks like SemVer but is not.
 
 ---
 
-## [Unreleased]
+## [26.6.16] - 2026-06-04
+
+### Changed
+- **Setup wizard now distinguishes CODE vs CHAT summarization and is
+  plugin-aware.** The summarization provider does two jobs — it always summarizes
+  **code** during indexing, and is the **fallback** for **chat/session** summaries
+  only when the Claude Code plugin is absent. The wizard now explains this and
+  rewords the prompt: with the plugin it asks for the *code* summarization
+  provider (chat is FREE on the Claude Code subscription); without it, it notes
+  chat summarization is **OFF by default** (the server-side provider distiller is
+  doubly opt-in — `mode: provider`/`auto` **and** `SESSION_DISTILL_ENABLED=true`)
+  and tips installing the plugin. New wording-only
+  `brainpalace config wizard --chat-summarizer [plugin|provider|auto]` flag
+  (default `auto` self-detects the plugin) — it does **not** change the written
+  config or the session engine (`auto`, resolved at runtime). `scripts/setup.sh`
+  now decides the plugin **before** the provider wizard (was last) and passes the
+  flag through; new `brainpalace plugin status --json` is the single detection
+  source the shell reuses. Plugin docs synced. (`brainpalace-cli`,
+  `scripts/setup.sh`, `brainpalace-plugin`)
+
+### Fixed
+- **Stuck-job recovery no longer loops forever on a poison job.** When an
+  indexing job crashed the server at the process level (e.g. a native segfault
+  in the vector store while indexing a corrupt index), the D14 auto-reindex
+  recovery re-enqueued *every* stale job on restart — including jobs already
+  marked permanently `FAILED` after exhausting their retry budget. Each
+  re-enqueue minted a fresh `retry_count=0` job, defeating the retry cap and
+  turning a single crash into an infinite crash-loop (server starts → re-runs
+  the same job → crashes → repeats, leaving a stale lock each time). Recovery
+  now excludes permanently-FAILED jobs via `select_reenqueue_candidates`; only
+  jobs reset to `PENDING` (still under the retry cap) are re-enqueued, so a
+  deterministically-crashing job fails cleanly instead of looping.
+  (`api/main.py`, `job_queue/job_store.py`)
+- **ChromaDB PostHog telemetry no longer spams `ERROR` logs.** chromadb 0.5.x
+  calls `posthog.capture()` with positional arguments that posthog ≥ 3 rejects
+  (`capture() takes 1 positional argument but 3 were given`), logging a spurious
+  `ERROR` for every telemetry event on startup and indexing. The documented
+  off-switches (`anonymized_telemetry=False`, the `ANONYMIZED_TELEMETRY` env
+  var) are not honored in 0.5.23, so the server now neutralizes the telemetry
+  client directly (no-op `capture`) and raises the telemetry loggers above
+  `ERROR`. No telemetry was ever sent; this removes the noise. (`api/main.py`)
 
 ## [26.6.15] - 2026-06-04
 

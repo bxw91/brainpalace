@@ -124,6 +124,14 @@ For Ollama, also record `embedding.base_url: "http://localhost:11434/v1"`.
 
 ### Step 3: Wizard — Summarization Provider
 
+> **What this provider is for.** It makes short LLM summaries of your **CODE**
+> during indexing (improves search quality) — always needed, independent of any
+> plugin. Your **chat/session** summaries are a separate job, handled **FREE** by
+> the Claude Code plugin. Without the plugin, chat summarization is **OFF by
+> default** — the server-side provider distiller is doubly opt-in (`mode:
+> provider`/`auto` **and** `SESSION_DISTILL_ENABLED=true`). So in practice this
+> provider is for **code only** unless you explicitly opt in.
+
 Use AskUserQuestion to ask which summarization provider to use. **Default** to
 the provider chosen for embedding in Step 2 when it can also summarize
 (`openai` → OpenAI, `ollama` → Ollama); otherwise default to whichever

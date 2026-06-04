@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-02
+last_validated: 2026-06-04
 ---
 
 # Provider Configuration Guide
@@ -21,6 +21,10 @@ Embeddings convert text into vector representations for semantic search.
 ### Summarization Providers
 
 Summarization generates concise descriptions of code and documents during indexing.
+**Chat/session** summaries are a separate job, handled **FREE** by the Claude Code
+plugin; without the plugin, chat summarization is **OFF by default** (the server-side
+provider distiller is doubly opt-in — `mode: provider`/`auto` **and**
+`SESSION_DISTILL_ENABLED=true`). So this provider is for code only unless you opt in.
 
 | Provider | Models | API Key | Characteristics |
 |----------|--------|---------|-----------------|

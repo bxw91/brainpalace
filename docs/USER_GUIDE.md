@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-02
+last_validated: 2026-06-04
 ---
 
 # BrainPalace User Guide
@@ -12,6 +12,7 @@ This guide covers how to use BrainPalace for document indexing and semantic sear
 - [Plugin Commands](#plugin-commands)
 - [Plugin Agents](#plugin-agents)
 - [Search Modes](#search-modes)
+- [Multi-Language Search (BM25)](#multi-language-search-bm25)
 - [Two-Stage Retrieval with Reranking](#two-stage-retrieval-with-reranking)
 - [Indexing](#indexing)
 - [Folder Management](#folder-management)
@@ -267,6 +268,10 @@ TF-IDF based search. Best for exact terms, function names, error codes.
 /brainpalace-bm25 "getUserById"
 ```
 
+BM25 tokenizes each document in **its own natural language** (stemming +
+stopwords), so keyword search works precisely for non-English content. See
+[Multi-Language Search (BM25)](#multi-language-search-bm25).
+
 ### GRAPH (Knowledge Graph)
 
 Traverses entity relationships. Best for dependency and relationship queries.
@@ -283,6 +288,59 @@ Combines all modes using Reciprocal Rank Fusion. Best for maximum recall.
 ```
 /brainpalace-multi "everything about data validation"
 ```
+
+---
+
+## Multi-Language Search (BM25)
+
+BrainPalace tokenizes each document with its **own natural-language analyzer**
+(normalize → tokenize → drop stopwords → stem/lemmatize) before BM25 scoring, so
+keyword and hybrid search are accurate regardless of the language your docs are
+written in. ~27 Snowball/PyStemmer languages are supported out of the box
+(`en`, `de`, `fr`, `es`, `ru`, `it`, `pt`, `nl`, `sv`, `fi`, `hu`, `ro`, `tr`,
+`ar`, …) plus a custom Croatian (`hr`) stemmer. Unknown codes fall back to
+English. (Full list + "how to add a language": see the project README.)
+
+### Set the project language
+
+`bm25:` block in `.brainpalace/config.yaml`:
+
+```yaml
+bm25:
+  language: en               # ISO 639-1 project default (default: en)
+  engine: stem               # stem (default) | lemma
+  detect: false              # opt-in per-document language detection
+  detect_min_confidence: 0.6
+```
+
+Or via the CLI:
+
+```bash
+brainpalace init --language hr --bm25-engine stem    # set at init
+brainpalace folders add ./docs --language hr         # sets the project default
+brainpalace status                                   # shows active language + engine
+```
+
+### Override the language per query
+
+```bash
+brainpalace query "liječnik" --mode bm25 --language hr
+```
+
+The `--language` flag (also exposed on the MCP `query` tool) overrides
+tokenization for that one query; it defaults to the project `bm25.language`.
+
+### Engines
+
+- **`stem`** (default) — Snowball/PyStemmer stemmers; covers all supported languages.
+- **`lemma`** — higher-accuracy lemmatization for Croatian via
+  `pip install 'brainpalace[lemma-hr]'` (uses `simplemma`). For other languages,
+  `stem` is correct.
+
+> **Reindex note:** changing `language`/`engine` changes tokenization. The BM25
+> index auto-rebuilds from its stored corpus on the next server start to keep
+> index and query in sync. To re-detect per-document languages (`detect: true`),
+> re-run indexing.
 
 ---
 

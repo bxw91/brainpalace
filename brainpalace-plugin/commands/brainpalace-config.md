@@ -104,6 +104,12 @@ ollama list 2>/dev/null | head -10
 
 ### Step 3: Use AskUserQuestion for Provider Selection
 
+> **Summarization provider is for CODE.** It always makes short LLM summaries of
+> your **CODE** during indexing (search quality). **Chat/session** summaries are
+> a separate job, handled **FREE** by the Claude Code plugin. Without the plugin,
+> chat summarization is **OFF by default** — the server-side provider distiller
+> is doubly opt-in (`mode: provider`/`auto` **and** `SESSION_DISTILL_ENABLED=true`).
+
 ```
 Which provider setup would you like for BrainPalace?
 

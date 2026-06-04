@@ -10,7 +10,7 @@ last_validated: 2026-06-04
 ![File Watcher](https://img.shields.io/badge/File_Watcher-1f6feb?style=for-the-badge)
 ![.gitignore-aware](https://img.shields.io/badge/.gitignore--aware-1f6feb?style=for-the-badge)
 
-![BM25](https://img.shields.io/badge/BM25-8957e5?style=for-the-badge)
+![Multi-Lang BM25](https://img.shields.io/badge/BM25-8957e5?style=for-the-badge)
 ![Vector](https://img.shields.io/badge/Vector-8957e5?style=for-the-badge)
 ![GraphRAG](https://img.shields.io/badge/GraphRAG-8957e5?style=for-the-badge)
 ![Hybrid](https://img.shields.io/badge/Hybrid-8957e5?style=for-the-badge)
@@ -28,7 +28,7 @@ last_validated: 2026-06-04
 # BrainPalace
 
 **Local-first RAG for code & docs, with persistent session-chat memory for AI agents.**
-BM25, vector, GraphRAG, and hybrid search over your codebase and
+BM25 (multi-lang), vector, GraphRAG, and hybrid search over your codebase and
 documentation — plus persistent session-chat memory (Claude Code transcripts only), a temporal
 knowledge graph, and git/LSP-aware indexing. Use it from the CLI, over MCP, or
 as a Claude Code plugin. Runs fully local on Ollama, or with cloud LLMs.
@@ -166,6 +166,10 @@ with optional cloud providers for embeddings and summarisation.
 
 - **Hybrid search** — BM25 + vector + GraphRAG, fused per query (`hybrid`,
   `multi`) or selectable per call (`bm25`, `vector`, `graph`).
+- **Multi-language search** — BM25 tokenizes each document in its own natural
+  language (stemming + stopwords), so keyword/hybrid search is precise for
+  non-English docs. ~27 Snowball languages + a Croatian stemmer; `stem` or
+  `lemma` engine; per-query `--language` override. See [Languages](#languages).
 - **Session intelligence** — capture AI-coding sessions into curated memory
   (`remember`/`recall`, markdown source-of-truth), searchable summaries +
   decisions, and a **typed knowledge graph** (Decision / Error / File / …).
@@ -452,8 +456,7 @@ what language your docs are written in.
 ~27 languages are supported via the Snowball/PyStemmer stemmer family
 (`ar`, `eu`, `ca`, `da`, `nl`, `en`, `fi`, `fr`, `de`, `el`, `hi`, `hu`,
 `id`, `ga`, `it`, `lt`, `ne`, `no`, `pt`, `ro`, `ru`, `sr`, `es`, `sv`,
-`ta`, `tr`, `hy`), plus a vendored Croatian (`hr`) stemmer based on the
-Ljubešić–Pandžić algorithm. Stopwords are sourced from `stopwordsiso`
+`ta`, `tr`, `hy`), plus a vendored Croatian (`hr`) stemmer. Stopwords are sourced from `stopwordsiso`
 (~57 languages). Unknown language codes fall back to English tokenization.
 
 ### Configuration
@@ -471,9 +474,9 @@ bm25:
 CLI equivalents:
 
 ```bash
-brainpalace init --language fr --bm25-engine stem   # set at init time
-brainpalace folders add ./docs --language fr        # override project default
-brainpalace query "bonjour le monde" --language fr  # per-query override
+brainpalace init --language es --bm25-engine stem   # set at init time
+brainpalace folders add ./docs --language es        # override project default
+brainpalace query "buenos dias" --language es  # per-query override
 brainpalace status                                   # shows language/engine
 ```
 

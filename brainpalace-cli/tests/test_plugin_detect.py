@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import json
 
-from brainpalace_cli.commands.plugin_detect import claude_plugin_installed
+from click.testing import CliRunner
+
+from brainpalace_cli.commands.plugin_detect import (
+    claude_plugin_installed,
+    plugin_group,
+)
 
 
 def test_detects_global_install(tmp_path) -> None:
@@ -64,3 +69,23 @@ def test_unparseable_registry_falls_back_to_dirs(tmp_path) -> None:
     (p / "installed_plugins.json").write_text("{ not json")
     (p / "cache" / "brainpalace-marketplace" / "brainpalace").mkdir(parents=True)
     assert claude_plugin_installed(home=home) is True
+
+
+def test_plugin_status_json_installed(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "brainpalace_cli.commands.plugin_detect.claude_plugin_installed",
+        lambda: True,
+    )
+    result = CliRunner().invoke(plugin_group, ["status", "--json"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output) == {"installed": True}
+
+
+def test_plugin_status_json_absent(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "brainpalace_cli.commands.plugin_detect.claude_plugin_installed",
+        lambda: False,
+    )
+    result = CliRunner().invoke(plugin_group, ["status", "--json"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output) == {"installed": False}

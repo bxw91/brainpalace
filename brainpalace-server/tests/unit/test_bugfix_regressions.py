@@ -52,13 +52,36 @@ class TestBugfix03TelemetrySuppression:
             / "main.py"
         )
         source = main_path.read_text()
-        # Both logger suppressions must be present
+        # Both logger suppressions must be present (raised above ERROR).
         assert (
             "chromadb.telemetry" in source
-        ), "main.py must set chromadb.telemetry logger to WARNING level"
-        assert (
-            "posthog" in source.lower()
-        ), "main.py must set posthog logger to WARNING level"
+        ), "main.py must suppress the chromadb.telemetry logger"
+        assert "posthog" in source.lower(), "main.py must suppress the posthog logger"
+
+    def test_silence_chromadb_telemetry_neutralizes_capture(self) -> None:
+        """BUGFIX-03: _silence_chromadb_telemetry makes Posthog.capture a no-op.
+
+        chromadb 0.5.x calls posthog.capture() positionally; posthog>=3 made
+        those args keyword-only, so capture() raises TypeError and chromadb logs
+        a spurious ERROR per event. The documented off-switch is broken in
+        0.5.23, so the fix must neutralize capture directly regardless of the
+        call signature, and raise the telemetry logger above ERROR.
+        """
+        import logging
+
+        from chromadb.telemetry.product.posthog import Posthog
+
+        from brainpalace_server.api.main import _silence_chromadb_telemetry
+
+        original = Posthog.__dict__.get("capture")
+        try:
+            _silence_chromadb_telemetry()
+            # The 0.5.x positional-style call must NOT raise after the fix.
+            assert Posthog.capture(object(), "ClientStartEvent", {"k": "v"}) is None
+            assert logging.getLogger("chromadb.telemetry").level == logging.CRITICAL
+        finally:
+            if original is not None:
+                Posthog.capture = original  # type: ignore[method-assign]
 
     def test_vector_store_disables_telemetry(self) -> None:
         """BUGFIX-03: VectorStoreManager must pass anonymized_telemetry=False."""

@@ -15,6 +15,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import click
+
 
 def _registry_has_brainpalace(home: Path) -> bool | None:
     """True/False from the CC registry; None if it can't be read/parsed."""
@@ -43,3 +45,36 @@ def claude_plugin_installed(
         return True
     cache = home / ".claude" / "plugins" / "cache"
     return cache.is_dir() and any(cache.glob("*/brainpalace"))
+
+
+@click.group("plugin")
+def plugin_group() -> None:
+    """Inspect the BrainPalace Claude Code plugin.
+
+    \b
+    Commands:
+      status - Report whether the plugin is installed
+    """
+    pass
+
+
+@plugin_group.command("status")
+@click.option("--json", "json_output", is_flag=True, help="Output as JSON")
+def plugin_status(json_output: bool) -> None:
+    """Report whether the BrainPalace Claude Code plugin is installed.
+
+    Single source of truth for detection (shared with setup.sh, which parses
+    the --json output instead of re-implementing the registry/dir checks).
+
+    \b
+    Examples:
+      brainpalace plugin status            # human-readable
+      brainpalace plugin status --json     # {"installed": true|false}
+    """
+    installed = claude_plugin_installed()
+    if json_output:
+        click.echo(json.dumps({"installed": installed}))
+    elif installed:
+        click.echo("BrainPalace Claude Code plugin: installed")
+    else:
+        click.echo("BrainPalace Claude Code plugin: not installed")

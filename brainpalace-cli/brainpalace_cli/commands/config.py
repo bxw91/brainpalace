@@ -12,6 +12,7 @@ import yaml
 from rich.console import Console
 from rich.table import Table
 
+from brainpalace_cli.commands.plugin_detect import claude_plugin_installed
 from brainpalace_cli.config_migrate import (
     MigrationResult,
     diff_config_file,
@@ -179,7 +180,17 @@ def config_group() -> None:
     help="Write to the global ~/.config/brainpalace/config.yaml (XDG) that all "
     "projects inherit, instead of the current project's .brainpalace/.",
 )
-def wizard(global_: bool) -> None:
+@click.option(
+    "--chat-summarizer",
+    "chat_summarizer",
+    type=click.Choice(["plugin", "provider", "auto"]),
+    default="auto",
+    help="Who summarizes chat/session transcripts: 'plugin' (free on the Claude "
+    "Code subscription), 'provider' (the summarization provider's API), or "
+    "'auto' (detect the plugin). Wording-only — does NOT change the written "
+    "config or the session engine (engine stays 'auto', resolved at runtime).",
+)
+def wizard(global_: bool, chat_summarizer: str) -> None:
     """Interactive configuration wizard for BrainPalace providers."""
     # Check existing config for validation issues before prompting
     existing_config = _find_config_file()
@@ -229,13 +240,34 @@ def wizard(global_: bool) -> None:
         summ_default = "gemini"
     else:
         summ_default = "anthropic"
+    # Resolve who handles CHAT/session summaries so we can word the prompt
+    # accordingly. The provider below is for CODE either way; the plugin (when
+    # present) adds chat summaries FREE via a Haiku subagent. Wording-only — the
+    # written config and the session engine ('auto') are unchanged.
+    if chat_summarizer == "auto":
+        chat_by_plugin = claude_plugin_installed()
+    else:
+        chat_by_plugin = chat_summarizer == "plugin"
+
+    if chat_by_plugin:
+        click.echo(
+            "\nChat-session summarization will run through Claude Code plugin (using"
+            "\nHaiku subagent) — so this provider is for CODE only."
+        )
+    else:
+        click.echo(
+            "\nChat-session summarization is OFF. Enable it by installing the Claude"
+            " Code\nplugin (free, Haiku subagent), or set SESSION_DISTILL_ENABLED=true"
+            " to use\nthe code summarization provider/model below."
+        )
+
     summ_provider: str = click.prompt(
-        "\nSummarization provider",
+        "\nCode summarization provider",
         type=click.Choice(["anthropic", "openai", "ollama", "gemini"]),
         default=summ_default,
     )
     summ_model: str = click.prompt(
-        "\nSummarization model",
+        "\nCode summarization model",
         default=SUMMARIZATION_DEFAULT_MODELS[summ_provider],
     )
 

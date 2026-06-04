@@ -47,9 +47,7 @@ def _write_legacy_index(persist_dir, nodes, token_lists):
 def test_legacy_corpus_payload_has_no_top_level_text_or_metadata():
     """Guard: the legacy payload really lacks the new-shape keys."""
     payload = _legacy_corpus_payload(
-        TextNode(
-            text="termin kod liječnika", id_="n1", metadata={"source_type": "doc"}
-        )
+        TextNode(text="termin kod liječnika", id_="n1", metadata={"source_type": "doc"})
     )
     assert "text" not in payload
     assert "metadata" not in payload

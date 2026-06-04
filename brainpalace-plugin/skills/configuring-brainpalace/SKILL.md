@@ -130,6 +130,12 @@ The wizard asks the following questions in sequence:
 
 ### Summarization Provider Options
 
+> **Provider is for CODE.** The summarization provider always summarizes your
+> **CODE** during indexing (search quality). **Chat/session** summaries are a
+> separate job, handled **FREE** by the Claude Code plugin. Without the plugin,
+> chat summarization is **OFF by default** — the server-side provider distiller
+> is doubly opt-in (`mode: provider`/`auto` **and** `SESSION_DISTILL_ENABLED=true`).
+
 | Option | Provider Key | Model | Notes |
 |--------|-------------|-------|-------|
 | Ollama (FREE, local) | `ollama` | `llama3.2` | Requires Ollama running locally |

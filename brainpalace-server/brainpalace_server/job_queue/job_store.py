@@ -70,6 +70,37 @@ else:
         pass
 
 
+def select_reenqueue_candidates(stale_jobs: list[JobRecord]) -> list[JobRecord]:
+    """Choose which recovered stale jobs to auto-reindex (D14).
+
+    Picks at most one job per folder and **excludes permanently-FAILED jobs**.
+
+    A stale job is marked FAILED by ``_handle_stale_jobs`` only after its retry
+    budget is exhausted. Re-enqueuing such a job mints a fresh ``retry_count=0``
+    job for the same folder, which defeats the retry cap: a job that
+    deterministically crashes the server on every run (e.g. a native segfault in
+    the vector store while indexing a corrupt index) would loop forever instead
+    of staying failed. Only jobs reset to PENDING — still under the retry cap —
+    are eligible for re-enqueue.
+
+    Args:
+        stale_jobs: Records returned by ``JobQueueStore.initialize()``.
+
+    Returns:
+        Deduped-by-folder list of jobs to re-enqueue, FAILED jobs removed.
+    """
+    seen_folders: set[str] = set()
+    candidates: list[JobRecord] = []
+    for job in stale_jobs:
+        if job.status == JobStatus.FAILED:
+            continue
+        if job.folder_path in seen_folders:
+            continue
+        seen_folders.add(job.folder_path)
+        candidates.append(job)
+    return candidates
+
+
 class JobQueueStore:
     """JSONL-based persistent job queue with atomic writes and crash recovery.
 
