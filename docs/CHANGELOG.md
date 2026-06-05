@@ -12,6 +12,16 @@ month (the counter resets monthly). It looks like SemVer but is not.
 
 ---
 
+## [26.6.21] - 2026-06-05
+
+### Fixed
+- **CI quality gate: `TestSentenceTransformerWarmUp` tests no longer hit the network.**
+  `test_warm_up_success` mocks `_ensure_model_loaded` so no HuggingFace download is attempted
+  in CI; `test_availability_caching` mocks `hf_hub_download`. The v26.6.20 publish failed
+  because these tests required a cached model only present on the developer machine.
+
+---
+
 ## [26.6.20] - 2026-06-05
 
 ### Fixed

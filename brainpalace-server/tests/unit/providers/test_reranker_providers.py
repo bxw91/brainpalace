@@ -544,8 +544,15 @@ class TestSentenceTransformerWarmUp:
         # Before warm_up, model is not loaded
         assert provider._model_loaded is False
 
-        # Warm up should succeed
-        result = provider.warm_up()
+        def _mock_load() -> MagicMock:
+            provider._model_loaded = True
+            provider._availability_checked = True
+            provider._is_available_cached = True
+            return MagicMock()
+
+        with patch.object(provider, "_ensure_model_loaded", side_effect=_mock_load):
+            result = provider.warm_up()
+
         assert result is True
         assert provider._model_loaded is True
         assert provider._availability_checked is True
@@ -559,14 +566,15 @@ class TestSentenceTransformerWarmUp:
         )
         provider = SentenceTransformerRerankerProvider(config)
 
-        # First call sets the cache
-        result1 = provider.is_available()
-        assert result1 is True
-        assert provider._availability_checked is True
+        with patch("huggingface_hub.hf_hub_download", return_value="/fake/path"):
+            # First call sets the cache
+            result1 = provider.is_available()
+            assert result1 is True
+            assert provider._availability_checked is True
 
-        # Second call returns cached result
-        result2 = provider.is_available()
-        assert result2 is True
+            # Second call returns cached result (no network hit)
+            result2 = provider.is_available()
+            assert result2 is True
 
 
 class TestOllamaCircuitBreaker:
