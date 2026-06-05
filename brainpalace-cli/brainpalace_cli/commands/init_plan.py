@@ -19,6 +19,8 @@ class InitPlan:
     sessions: index transcripts — True/False to set, None to leave untouched.
     archive:  archive transcripts — True/False to set, None to leave untouched.
     extract:  summarize sessions (distillation engine on) — True/False.
+    git_history: index this repo's git commit history — True/False. Privacy-first
+                 OPT-IN: default off even with --yes/TTY (commits may carry secrets).
     confirm:  an interactive confirmation is needed before executing.
     billable: the plan triggers embedding spend (doc index via watch, or sessions).
     """
@@ -28,6 +30,7 @@ class InitPlan:
     sessions: bool | None
     archive: bool | None
     extract: bool
+    git_history: bool
     confirm: bool
     billable: bool
 
@@ -40,6 +43,7 @@ def resolve_init_plan(
     sessions: bool | None,
     archive: bool | None,
     extract: bool | None,
+    git_history: bool | None,
     yes: bool,
     is_tty: bool,
 ) -> InitPlan:
@@ -74,6 +78,10 @@ def resolve_init_plan(
 
     extract_final = extract if extract is not None else active
 
+    # Git-history indexing is privacy-first: commits can carry secrets, so it is
+    # OPT-IN — default off even with --yes/TTY (set via flag or the init prompt).
+    git_history_final = bool(git_history) if git_history is not None else False
+
     billable = watch_final == "auto" or bool(sessions_final)
     confirm = is_tty and not yes
 
@@ -83,6 +91,7 @@ def resolve_init_plan(
         sessions=sessions_final,
         archive=archive_final,
         extract=extract_final,
+        git_history=git_history_final,
         confirm=confirm,
         billable=billable,
     )
@@ -100,6 +109,7 @@ def downgrade_to_config_only(plan: InitPlan) -> InitPlan:
         sessions=False,
         archive=plan.archive,
         extract=False,
+        git_history=False,
         confirm=False,
         billable=False,
     )
@@ -167,6 +177,8 @@ def format_init_plan(
         rows.append(("embed chat sessions", emb))
     if plan.extract and summ is not None:
         rows.append(("summarize chat sessions", summ))
+    if plan.git_history:
+        rows.append(("index git history", ""))
     if not rows:
         return "init will: write config only"
 

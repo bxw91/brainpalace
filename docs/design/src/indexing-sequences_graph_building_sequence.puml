@@ -11,7 +11,7 @@ participant "CodeMetadataExtractor" as CME
 participant "LLMEntityExtractor" as LLM
 participant "Anthropic API" as Claude
 participant "GraphStoreManager" as GSM
-database "Property Graph\n(Kuzu/Memory)" as Graph
+database "Property Graph\n(SQLite/Memory)" as Graph
 
 == Feature Check ==
 

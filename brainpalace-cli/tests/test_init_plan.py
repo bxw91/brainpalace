@@ -17,11 +17,36 @@ def _resolve(**kw):
         "sessions": None,
         "archive": None,
         "extract": None,
+        "git_history": None,
         "yes": False,
         "is_tty": False,
     }
     base.update(kw)
     return resolve_init_plan(**base)
+
+
+class TestResolveGitHistory:
+    def test_git_history_defaults_off_even_with_yes(self) -> None:
+        assert _resolve(yes=True).git_history is False
+
+    def test_git_history_defaults_off_in_tty(self) -> None:
+        assert _resolve(is_tty=True).git_history is False
+
+    def test_git_history_explicit_flag_wins(self) -> None:
+        assert _resolve(git_history=True).git_history is True
+        assert _resolve(git_history=False, yes=True).git_history is False
+
+    def test_downgrade_clears_git_history(self) -> None:
+        full = _resolve(is_tty=True, git_history=True)
+        assert downgrade_to_config_only(full).git_history is False
+
+    def test_format_includes_git_history_when_on(self) -> None:
+        out = format_init_plan(
+            _resolve(yes=True, git_history=True),
+            embedding=("openai", "text-embedding-3-large"),
+            summarize=None,
+        )
+        assert "index git history" in out
 
 
 class TestResolveStartWatch:

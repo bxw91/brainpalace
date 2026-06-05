@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-04
+last_validated: 2026-06-05
 ---
 
 # Provider Configuration Guide
@@ -30,7 +30,7 @@ provider distiller is doubly opt-in — `mode: provider`/`auto` **and**
 |----------|--------|---------|-----------------|
 | Anthropic | claude-haiku-4-5-20251001, claude-sonnet-4-5-20250514, claude-opus-4-5-20251101 | ANTHROPIC_API_KEY | High quality, code-aware, fast |
 | OpenAI | gpt-5, gpt-5-mini | OPENAI_API_KEY | Versatile, good code understanding |
-| Gemini | gemini-3-flash, gemini-3-pro | GOOGLE_API_KEY | Fast, good for large contexts |
+| Gemini | gemini-3.1-flash-lite, gemini-3.5-flash | GOOGLE_API_KEY | Fast, good for large contexts |
 | Grok | grok-4 | XAI_API_KEY | xAI's model, conversational style |
 | Ollama | llama4:scout, mistral-small3.2, qwen3-coder, gemma3 | None (local) | Privacy-first, no API costs |
 
@@ -291,13 +291,13 @@ ANTHROPIC_API_KEY=sk-ant-...
 
 ```bash
 SUMMARIZATION_PROVIDER=gemini
-SUMMARIZATION_MODEL=gemini-3-flash
+SUMMARIZATION_MODEL=gemini-3.1-flash-lite
 GOOGLE_API_KEY=...
 ```
 
 **Available Models:**
-- `gemini-3-flash`: Fast, efficient
-- `gemini-3-pro`: Higher quality
+- `gemini-3.1-flash-lite`: Fast, efficient
+- `gemini-3.5-flash`: Higher quality
 
 ### Grok Configuration
 
@@ -434,7 +434,7 @@ Error: Rate limit exceeded
 |----------|-------|-------|--------|
 | Anthropic | claude-haiku-4-5-20251001 | $0.80 | $4.00 |
 | OpenAI | gpt-5-mini | $0.50 | $1.50 |
-| Gemini | gemini-3-flash | $0.10 | $0.40 |
+| Gemini | gemini-3.1-flash-lite | $0.10 | $0.40 |
 | Ollama | Any | Free (local compute) |
 
 *Prices as of 2026, subject to change.*

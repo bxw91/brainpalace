@@ -6,7 +6,7 @@ context: brainpalace
 agent: setup-assistant
 skills:
   - configuring-brainpalace
-last_validated: 2026-06-04
+last_validated: 2026-06-05
 ---
 
 # Configure BrainPalace
@@ -17,7 +17,7 @@ Guides users through configuring all aspects of BrainPalace across 12 wizard ste
 1. **Providers** - Ollama (local/free) or cloud providers (OpenAI, Anthropic, Gemini)
 2. **Storage backend** - ChromaDB (local-first) or PostgreSQL + pgvector
 3. **Indexing excludes** - Detect and exclude large directories (node_modules, .venv, etc.)
-4. **GraphRAG** - Knowledge graph extraction and indexing (AST, LangExtract, or Kuzu)
+4. **GraphRAG** - Knowledge graph extraction and indexing (AST, LangExtract; sqlite or simple store)
 5. **Caching** - Embedding cache and query result cache configuration
 6. **File watcher** - Automatic re-indexing when files change
 7. **Reranking** - Two-stage search quality with cross-encoder reranking
@@ -234,7 +234,7 @@ Create config file (~/.config/brainpalace/config.yaml):
 
   summarization:
     provider: "gemini"
-    model: "gemini-2.0-flash"
+    model: "gemini-3.1-flash-lite"
     api_key: "AIza..."
   EOF
 
@@ -244,7 +244,7 @@ OR use environment variables:
 export EMBEDDING_PROVIDER=gemini
 export EMBEDDING_MODEL=text-embedding-004
 export SUMMARIZATION_PROVIDER=gemini
-export SUMMARIZATION_MODEL=gemini-2.0-flash
+export SUMMARIZATION_MODEL=gemini-3.1-flash-lite
 export GOOGLE_API_KEY="AIza..."
 ```
 
@@ -320,9 +320,9 @@ Provider Options:
    - Models: text-embedding-3-large, claude-haiku
 
 3. GOOGLE GEMINI (Cloud)
-   - Google's models
+   - Google's models (summarization only — Gemini embeddings are not supported)
    - Requires: GOOGLE_API_KEY
-   - Models: text-embedding-004, gemini-2.0-flash
+   - Models: gemini-3.1-flash-lite (summarization)
 
 4. CUSTOM MIX
    - Choose different providers for each function
@@ -596,7 +596,7 @@ Options:
 1. Disabled (Default) - Standard vector + BM25 hybrid search only
 2. AST + LangExtract (Recommended for mixed repos) - GraphRAG with JSON persistence,
    AST/code metadata for code chunks, and LangExtract for docs/prose chunks
-3. Kuzu + AST + LangExtract - Same extractor behavior with Kuzu persistent graph store
+3. sqlite + AST + LangExtract - Same extractor behavior with the sqlite persistent + temporal graph store
 4. AST only - GraphRAG with JSON persistence and AST/code metadata only
 ```
 
@@ -605,7 +605,7 @@ Options:
 The CLI wizard prompt text mirrors the current command implementation:
 
 - `2) AST for code + LangExtract for docs (recommended for mixed repos)`
-- `3) Kuzu + AST for code + LangExtract for docs`
+- `3) sqlite + AST for code + LangExtract for docs`
 - `4) AST for code only`
 
 ### If Option 2 (AST + LangExtract, simple JSON persistence):
@@ -623,34 +623,23 @@ graphrag:
 Or via environment variables:
 ```bash
 export ENABLE_GRAPH_INDEX=true
-export GRAPH_STORE_TYPE=simple          # JSON persistence, no kuzu needed
+export GRAPH_STORE_TYPE=simple          # in-memory JSON (no temporal validity)
 export GRAPH_USE_CODE_METADATA=true     # AST-based relationship extraction
 export GRAPH_DOC_EXTRACTOR=langextract  # LangExtract for document chunks
 ```
 
-### If Option 3 (Kuzu + AST + LangExtract):
+### If Option 3 (sqlite + AST + LangExtract):
 
-First check if kuzu is installed:
-
-```bash
-python3 -c "import kuzu" 2>/dev/null && echo "kuzu available" || echo "kuzu NOT installed"
-```
-
-If not installed:
-```
-Kuzu requires the optional graphrag-kuzu dependency:
-  cd brainpalace-server && poetry install --extras graphrag-kuzu
-
-Or install directly:
-  uv pip install kuzu
-```
+The `sqlite` store is built on the Python stdlib `sqlite3` — no extra dependency
+to install. It is persistent across restarts and adds temporal validity
+(decision history, supersession) that the in-memory `simple` store lacks.
 
 Add to config.yaml:
 
 ```yaml
 graphrag:
   enabled: true
-  store_type: "kuzu"
+  store_type: "sqlite"
   use_code_metadata: true
   doc_extractor: "langextract"
 ```

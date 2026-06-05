@@ -145,6 +145,7 @@ def status_command(
                         or {"running": False, "watched_folders": 0},
                         "embedding_cache": indexing.embedding_cache,
                         "features": getattr(indexing, "features", None),
+                        "graph_index": getattr(indexing, "graph_index", None),
                     },
                 }
                 if bm25_cfg:
@@ -329,12 +330,41 @@ def status_command(
                 if graph_status.get("enabled"):
                     entities = graph_status.get("entity_count", 0)
                     rels = graph_status.get("relationship_count", 0)
+                    store = str(graph_status.get("store_type", "simple"))
+                    if store == "sqlite":
+                        store_note = "sqlite, temporal"
+                    elif store == "simple":
+                        store_note = "simple — no temporal validity"
+                    else:
+                        store_note = store
                     table.add_row(
                         "Graph Index",
-                        f"[green]Enabled[/] - {entities} entities, {rels} rels",
+                        f"[green]Enabled[/] ({store_note}) - "
+                        f"{entities} entities, {rels} rels",
                     )
                 else:
                     table.add_row("Graph Index", "[dim]Disabled[/]")
+
+            lsp = features.get("lsp")
+            if isinstance(lsp, dict):
+                if lsp.get("enabled"):
+                    langs = ", ".join(lsp.get("languages", []) or [])
+                    table.add_row("LSP", f"[green]enabled[/] ({langs})")
+                else:
+                    table.add_row(
+                        "LSP", "[dim]disabled[/] (set BRAINPALACE_LSP_LANGUAGES)"
+                    )
+
+            git_idx = features.get("git_index")
+            if isinstance(git_idx, dict):
+                if git_idx.get("enabled"):
+                    commits = int(git_idx.get("commit_count", 0) or 0)
+                    table.add_row("Git Index", f"[green]on[/] — {commits:,} commits")
+                else:
+                    table.add_row(
+                        "Git Index",
+                        "[dim]off[/] (enable: brainpalace init --git-history)",
+                    )
 
             # Show BM25 language/engine from local config.yaml (Task 16)
             if bm25_cfg:

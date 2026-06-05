@@ -29,7 +29,7 @@ flowchart TB
     subgraph GraphLayer["Graph Storage"]
         GraphManager[GraphStoreManager]
         SimpleStore[(SimplePropertyGraphStore<br/>JSON Persistence)]
-        KuzuStore[(Kuzu<br/>Embedded Graph DB)]
+        SQLiteStore[(SQLite<br/>Embedded Graph DB)]
     end
 
     Chunks --> VectorManager
@@ -42,7 +42,7 @@ flowchart TB
 
     Triplets --> GraphManager
     GraphManager -->|"default"| SimpleStore
-    GraphManager -->|"optional"| KuzuStore
+    GraphManager -->|"optional"| SQLiteStore
 
     classDef data fill:#90EE90,stroke:#333,stroke-width:2px,color:darkgreen
     classDef manager fill:#87CEEB,stroke:#333,stroke-width:2px,color:darkblue
@@ -50,7 +50,7 @@ flowchart TB
 
     class Chunks,Embeddings,Nodes,Triplets data
     class VectorManager,BM25Manager,GraphManager manager
-    class ChromaDB,BM25Index,SimpleStore,KuzuStore storage
+    class ChromaDB,BM25Index,SimpleStore,SQLiteStore storage
 ```
 
 ## Storage Comparison
@@ -61,7 +61,7 @@ flowchart TB
 | **Data Type** | Float vectors (3072-dim) | Tokenized text | Triplets |
 | **Query Type** | Approximate NN | Exact match | Graph traversal |
 | **Speed** | O(log n) | O(1) lookup | O(depth * edges) |
-| **Persistence** | SQLite + Parquet | JSON files | JSON or Kuzu DB |
+| **Persistence** | SQLite + Parquet | JSON files | JSON or SQLite DB |
 | **Memory** | High (vectors) | Medium (index) | Medium (graph) |
 
 ## Vector Store (ChromaDB)
@@ -387,7 +387,7 @@ flowchart TB
     subgraph Backends["Storage Backends"]
         direction TB
         Simple[SimplePropertyGraphStore]
-        Kuzu[KuzuPropertyGraphStore]
+        SQLite[SQLitePropertyGraphStore]
         Minimal[_MinimalGraphStore]
     end
 
@@ -397,22 +397,22 @@ flowchart TB
         MetaJSON[graph_metadata.json]
     end
 
-    subgraph KuzuStore["Kuzu Persistence"]
+    subgraph SQLiteStore["SQLite Persistence"]
         direction TB
-        KuzuDB[kuzu_db/]
+        SQLiteDB[sqlite_db/]
     end
 
     GraphStoreManager --> Backends
     Simple --> SimpleStore
-    Kuzu --> KuzuStore
+    SQLite --> SQLiteStore
 
     classDef manager fill:#87CEEB,stroke:#333,stroke-width:2px,color:darkblue
     classDef backend fill:#FFE4B5,stroke:#333,stroke-width:2px,color:black
     classDef storage fill:#E6E6FA,stroke:#333,stroke-width:2px,color:darkblue
 
     class Init,AddTriplet,Persist,Load,Clear manager
-    class Simple,Kuzu,Minimal backend
-    class GraphJSON,MetaJSON,KuzuDB storage
+    class Simple,SQLite,Minimal backend
+    class GraphJSON,MetaJSON,SQLiteDB storage
 ```
 
 ### GraphStoreManager Interface
@@ -423,7 +423,7 @@ class GraphStoreManager:
 
     def __init__(self, persist_dir: Path, store_type: str = "simple"):
         self.persist_dir = persist_dir
-        self.store_type = store_type  # "simple" or "kuzu"
+        self.store_type = store_type  # "simple" or "sqlite"
         self._graph_store: Optional[Any] = None
         self._entity_count = 0
         self._relationship_count = 0
@@ -473,7 +473,7 @@ flowchart LR
         SFeatures["In-Memory<br/>JSON Persistence<br/>No Dependencies<br/>Default Backend"]
     end
 
-    subgraph Kuzu["KuzuPropertyGraphStore"]
+    subgraph SQLite["SQLitePropertyGraphStore"]
         direction TB
         KFeatures["Embedded DB<br/>Native Persistence<br/>Optional Install<br/>Cypher-like Queries"]
     end
@@ -484,15 +484,15 @@ flowchart LR
     end
 
     classDef simple fill:#90EE90,stroke:#333,stroke-width:2px,color:darkgreen
-    classDef kuzu fill:#87CEEB,stroke:#333,stroke-width:2px,color:darkblue
+    classDef sqlite fill:#87CEEB,stroke:#333,stroke-width:2px,color:darkblue
     classDef minimal fill:#FFE4B5,stroke:#333,stroke-width:2px,color:black
 
     class SFeatures simple
-    class KFeatures kuzu
+    class KFeatures sqlite
     class MFeatures minimal
 ```
 
-| Feature | Simple | Kuzu | Minimal |
+| Feature | Simple | SQLite | Minimal |
 |---------|--------|------|---------|
 | **Install** | Included | Optional pip | Fallback |
 | **Persistence** | JSON | Native DB | JSON |
@@ -507,7 +507,7 @@ flowchart LR
 ├── graph_index/
 │   ├── graph_store_llamaindex.json  # LlamaIndex format
 │   ├── graph_metadata.json          # Entity/relationship counts
-│   └── kuzu_db/                     # Kuzu database (if enabled)
+│   └── sqlite_db/                     # SQLite database (if enabled)
 ```
 
 ## Multi-Instance State Management
@@ -726,5 +726,5 @@ collection = client.get_or_create_collection(
 ### Graph Performance
 
 - **Simple store**: Linear scan O(n) for queries
-- **Kuzu**: Indexed lookup O(log n) for entity queries
+- **SQLite**: Indexed lookup O(log n) for entity queries
 - **Traversal**: O(depth * average_degree)

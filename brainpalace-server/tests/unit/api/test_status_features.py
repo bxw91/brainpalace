@@ -134,6 +134,37 @@ def test_archive_on_index_off_independent():
     assert feats["session_archive"]["archived_files"] == 5
 
 
+def test_status_reports_lsp_and_git_index_features():
+    client = _client(
+        session_enabled=True, session_running=True, curated=0, session_chunks=0
+    )
+    feats = client.get("/status").json()["features"]
+
+    assert "lsp" in feats
+    assert isinstance(feats["lsp"]["enabled"], bool)
+    assert "languages" in feats["lsp"]
+
+    assert "git_index" in feats
+    assert isinstance(feats["git_index"]["enabled"], bool)
+    assert "commit_count" in feats["git_index"]
+
+
+def test_status_lsp_languages_reflect_env(monkeypatch):
+    from brainpalace_server.config.settings import get_settings
+
+    monkeypatch.setenv("BRAINPALACE_LSP_LANGUAGES", "python, go")
+    get_settings.cache_clear()
+    try:
+        client = _client(
+            session_enabled=True, session_running=True, curated=0, session_chunks=0
+        )
+        lsp = client.get("/status").json()["features"]["lsp"]
+        assert lsp["enabled"] is True
+        assert lsp["languages"] == ["python", "go"]
+    finally:
+        get_settings.cache_clear()
+
+
 def test_session_memory_includes_archive_counts():
     client = _client(
         session_enabled=True,

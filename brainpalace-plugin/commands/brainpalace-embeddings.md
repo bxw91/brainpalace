@@ -3,14 +3,14 @@ name: brainpalace-embeddings
 description: Configure the embedding provider for vector search
 parameters:
   - name: provider
-    description: Embedding provider (openai, cohere, ollama, gemini, grok, sentence-transformers)
+    description: Embedding provider (openai, cohere, ollama)
     required: false
   - name: model
     description: Model name for the provider
     required: false
 skills:
   - using-brainpalace
-last_validated: 2026-05-30
+last_validated: 2026-06-05
 ---
 
 # BrainPalace Embeddings Configuration
@@ -29,7 +29,7 @@ Configures the embedding provider used for vector/semantic search. Embeddings co
 
 | Parameter | Required | Default | Description |
 |-----------|----------|---------|-------------|
-| provider | No | - | Provider name: openai, cohere, ollama, gemini, grok, sentence-transformers |
+| provider | No | - | Provider name: openai, cohere, ollama |
 | --model | No | Provider default | Specific model to use |
 
 ## Available Providers
@@ -202,7 +202,7 @@ Multi-language    | Limited       | Excellent     | Limited
 ### Invalid Provider
 
 ```
-Error: Unknown provider 'xyz'. Valid options: openai, cohere, ollama, gemini, grok, sentence-transformers
+Error: Unknown provider 'xyz'. Valid options: openai, cohere, ollama
 ```
 
 ### Model Not Available

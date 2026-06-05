@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-05-30
+last_validated: 2026-06-05
 ---
 
 # Git History Indexing
@@ -27,8 +27,7 @@ Git-history indexing is **OFF by default** and strictly opt-in per project.
   counts** are rendered into the chunk (a diff *stat*), **not patch bodies**, so
   the indexed text is the commit message + a file list. Review your history
   before enabling on a repo with a leaky past.
-- **History is never copied.** The repo on disk *is* the source-of-truth. Agent
-  Brain stores only derived commit chunks (gitignored, rebuildable) that
+- **History is never copied.** The repo on disk *is* the source-of-truth. BrainPalace stores only derived commit chunks (gitignored, rebuildable) that
   **reference** the commit `sha`; it never duplicates the repo into its store.
 - **Global kill-switch.** `GIT_INDEXING_ENABLED=false` in the server environment
   forces git indexing off regardless of any project config.
@@ -45,6 +44,23 @@ git_indexing:
   max_files: 50        # max changed file paths rendered into a commit chunk
   # repo_path: /custom/path   # optional; defaults to the project root
 ```
+
+### Mono-repo: limiting which commits are indexed
+
+When one `.git/` at the workspace root serves several projects (each with its
+own `.brainpalace/` subfolder), git indexing walks the **whole** repo's history
+by default — not just the subfolder's commits. To restrict it, set
+`git_indexing.path_filter` to the subfolder path(s):
+
+```yaml
+git_indexing:
+  enabled: true
+  path_filter:
+    - services/api
+```
+
+This runs `git log -- services/api`, so only commits that touched those paths
+are indexed.
 
 ## What gets indexed
 

@@ -305,6 +305,10 @@ def _exec_package(argv: list[str]) -> None:
     Used for pipx/uv, which run from their own venv, so removing the
     brainpalace-cli venv is safe. Does not return on success.
     """
+    # pipx/uv treat an argument as a path when a matching directory exists in
+    # cwd (e.g. running from inside the brainpalace repo where brainpalace-cli/
+    # is a subdir). Change to HOME first so the package name is unambiguous.
+    os.chdir(Path.home())
     os.execvp(argv[0], argv)
 
 

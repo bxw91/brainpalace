@@ -80,10 +80,12 @@ class Settings(BaseSettings):
     CONTEXT_BUDGET_TOKENS: int = 3000  # Frozen-snapshot budget (~chars/4 estimate)
 
     # GraphRAG Configuration (Feature 113)
-    ENABLE_GRAPH_INDEX: bool = False  # Master switch for graph indexing
-    # "simple" (in-memory, JSON-persisted, zero-setup default) or "sqlite"
-    # (persistent, incrementally-writable, temporal-validity — Phase 090).
-    GRAPH_STORE_TYPE: str = "simple"
+    # Master switch for graph indexing. On by default; `brainpalace init` also
+    # writes graphrag.enabled=true into the project config.yaml.
+    ENABLE_GRAPH_INDEX: bool = True
+    # "sqlite" (default: persistent, incrementally-writable, temporal-validity —
+    # Phase 090) or "simple" (in-memory, JSON-persisted, zero-setup, no temporal).
+    GRAPH_STORE_TYPE: str = "sqlite"
     # Legacy CWD-relative default — normal operation resolves via storage_paths.py.
     GRAPH_INDEX_PATH: str = "./graph_index"  # Path for graph persistence
     GRAPH_EXTRACTION_MODEL: str = "claude-haiku-4-5"  # Model for entity extraction

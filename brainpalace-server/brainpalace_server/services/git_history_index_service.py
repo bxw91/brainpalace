@@ -105,7 +105,9 @@ class GitHistoryIndexService:
         state = self._load_state()
         last_sha = state.get(target)
 
-        commits = load_commits(target, depth=config.depth, since_sha=last_sha)
+        commits = load_commits(
+            target, depth=config.depth, since_sha=last_sha, paths=config.path_filter
+        )
         summary["commits_total"] = len(commits)
         if not commits:
             return summary

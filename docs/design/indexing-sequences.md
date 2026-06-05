@@ -552,7 +552,7 @@ participant "CodeMetadataExtractor" as CME
 participant "LLMEntityExtractor" as LLM
 participant "Anthropic API" as Claude
 participant "GraphStoreManager" as GSM
-database "Property Graph\n(Kuzu/Memory)" as Graph
+database "Property Graph\n(SQLite/Memory)" as Graph
 
 == Feature Check ==
 
@@ -712,7 +712,7 @@ deactivate GIM
 2. **Graph Store Initialization Phase**
    - GraphStoreManager initializes if not already done
    - Creates or loads the property graph database
-   - Supports in-memory or Kuzu persistent storage
+   - Supports in-memory or SQLite persistent storage
 
 3. **Document Iteration Phase**
    - Processes each document chunk from the indexing pipeline
@@ -799,7 +799,7 @@ Triplets:
 - LLM extraction adds ~200-500ms per chunk (Claude API)
 - Consider disabling LLM extraction for large codebases
 - Memory graph store is faster but not persistent
-- Kuzu provides persistence but adds I/O overhead
+- SQLite provides persistence but adds I/O overhead
 
 ---
 

@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-05-30
+last_validated: 2026-06-05
 ---
 
 # Configuration Reference
@@ -209,7 +209,7 @@ brainpalace query "search term" --top-k 10 --threshold 0.5
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `ENABLE_GRAPH_INDEX` | `false` | Master switch for GraphRAG |
+| `ENABLE_GRAPH_INDEX` | `true` | Master switch for GraphRAG (brainpalace init writes graphrag.enabled: true) |
 
 **Example**:
 
@@ -222,18 +222,18 @@ export ENABLE_GRAPH_INDEX="true"
 
 | Variable | Default | Options | Description |
 |----------|---------|---------|-------------|
-| `GRAPH_STORE_TYPE` | `simple` | `simple` \| `sqlite` | Graph backend. `simple`: in-memory + JSON, zero-setup default. `sqlite`: persistent, incremental, temporal-validity (large/session graphs). Unknown values downgrade to `simple`. See [GRAPHRAG_GUIDE](GRAPHRAG_GUIDE.md#storage-backends). |
+| `GRAPH_STORE_TYPE` | `sqlite` | `simple` \| `sqlite` | Graph backend. `sqlite`: persistent, incremental, temporal-validity — default for all new projects. `simple`: in-memory + JSON, opt-in lightweight mode (temporal validity unavailable). Unknown values downgrade to `simple`. See [GRAPHRAG_GUIDE](GRAPHRAG_GUIDE.md#storage-backends). |
 | `GRAPH_INDEX_PATH` | `./graph_index` | Path | Storage location |
 
 **Examples**:
 
 ```bash
-# In-memory store, JSON-persisted (zero-setup default)
-export GRAPH_STORE_TYPE="simple"
-
-# Persistent SQLite store — incremental writes + temporal validity.
+# Persistent SQLite store — incremental writes + temporal validity (default).
 # Migrates an existing simple JSON graph on first use.
 export GRAPH_STORE_TYPE="sqlite"
+
+# In-memory store, JSON-persisted (opt-in lightweight mode; temporal validity unavailable).
+export GRAPH_STORE_TYPE="simple"
 ```
 
 ### Entity Extraction
@@ -501,6 +501,7 @@ These opt-in subsystems have dedicated guides; the key switches:
 | `session_indexing:` block / `SESSION_INDEXING_ENABLED` | off | Index runtime JSONL transcripts as `session_turn` chunks. See [SESSION_INDEXING](SESSION_INDEXING.md). |
 | `BRAINPALACE_PROMOTE_DECISIONS` | `true` | Promote durable session decisions into curated memory (Phase 140). |
 | `git_indexing:` block / `GIT_INDEXING_ENABLED` | off | Index git commits (message + diff stat) as `git_commit` chunks. See [GIT_HISTORY](GIT_HISTORY.md). |
+| `git_indexing.path_filter` | (empty) | List of repo-relative paths; when set, only commits that touched these paths are indexed (`git log -- <paths>`). Empty = all commits. Use in a mono-repo where one `.git/` serves many projects. |
 | `BRAINPALACE_LSP_LANGUAGES` | `""` (inert) | Comma-separated language allow-list for the opt-in LSP cross-reference graph (requires the server binary). See [LSP_INTEGRATION](LSP_INTEGRATION.md). |
 
 ---
@@ -695,7 +696,7 @@ BM25_INDEX_PATH=/data/brainpalace/bm25
 
 # GraphRAG (optional)
 ENABLE_GRAPH_INDEX=true
-GRAPH_STORE_TYPE=simple
+GRAPH_STORE_TYPE=sqlite
 GRAPH_INDEX_PATH=/data/brainpalace/graph
 GRAPH_USE_CODE_METADATA=true
 GRAPH_USE_LLM_EXTRACTION=true

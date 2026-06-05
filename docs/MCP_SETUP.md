@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-04
+last_validated: 2026-06-06
 ---
 
 # MCP setup — connecting AI clients to BrainPalace
@@ -56,6 +56,24 @@ the spawn-time CWD project if discovery finds none. It never auto-runs
 `brainpalace init` — an uninitialised project is left alone so the failure
 stays explicit. Start failures are caught and logged to stderr so the MCP
 handshake never hangs.
+
+### Initialising for CLI-only / MCP installs
+
+Because the MCP shim never auto-runs `brainpalace init`, run it yourself once per
+project. Two `init` defaults worth knowing:
+
+- **Graph store defaults to `sqlite`.** New projects get GraphRAG enabled with
+  `graphrag.store_type: sqlite` (persistent, incrementally-writable, temporal
+  validity). The legacy `simple` store is in-memory JSON with no temporal
+  tracking. **Existing projects** still on `simple` can upgrade by re-running
+  `brainpalace init --migrate-graph-store` (or set `graphrag.store_type: sqlite`
+  in the project config); the existing graph replays into sqlite on next start
+  (JSON kept for rollback). Without a TTY the upgrade only runs with the flag.
+- **Git-history indexing is opt-in (default OFF).** Commit messages/diffs can
+  contain secrets, so it is not indexed unless you ask. Opt in with
+  `brainpalace init --git-history`, or set `git_indexing.enabled: true` in the
+  project `.brainpalace/config.yaml`. Without a TTY (MCP/CI installs), the
+  question is skipped and the default (off) applies — use the flag to enable.
 
 ---
 

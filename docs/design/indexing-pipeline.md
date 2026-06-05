@@ -605,7 +605,7 @@ flowchart TB
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `ENABLE_GRAPH_INDEX` | false | Master switch |
-| `GRAPH_STORE_TYPE` | "simple" | Backend (simple or kuzu) |
+| `GRAPH_STORE_TYPE` | "simple" | Backend (simple or sqlite) |
 | `GRAPH_MAX_TRIPLETS_PER_CHUNK` | 10 | Triplet limit per chunk |
 | `GRAPH_USE_CODE_METADATA` | true | Use AST metadata |
 | `GRAPH_USE_LLM_EXTRACTION` | true | Use LLM extraction |

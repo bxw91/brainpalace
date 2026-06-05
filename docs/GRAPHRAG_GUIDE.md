@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-05-30
+last_validated: 2026-06-05
 ---
 
 # GraphRAG Integration Guide
@@ -142,12 +142,12 @@ for new projects with sensible defaults.
 
 ```yaml
 graphrag:
-  enabled: true                                    # Master switch (default: false)
-  store_type: "simple"                             # "simple" (default) or "sqlite" (persistent — see Backends below)
+  enabled: true                                    # Master switch (default: true)
+  store_type: "sqlite"                             # "sqlite" (default — persistent + temporal) or "simple" (in-memory, JSON)
   index_path: ".brainpalace/data/graph_index"      # Storage location (relative to project root)
   use_code_metadata: true                          # Extract entities from AST metadata (fast, free)
   use_llm_extraction: false                        # LLM-based extraction (thorough, costs tokens)
-  extraction_model: "claude-haiku-4-5-20251001"   # Model for LLM extraction
+  extraction_model: "claude-haiku-4-5"             # Model for LLM extraction
   max_triplets_per_chunk: 10                       # Limit triplets extracted per chunk
   traversal_depth: 2                               # Graph traversal depth for queries
   rrf_k: 60                                        # Reciprocal Rank Fusion constant
@@ -160,12 +160,12 @@ The full environment variable ↔ config.yaml mapping:
 
 | Environment Variable | config.yaml Key | Default |
 |---------------------|-----------------|---------|
-| `ENABLE_GRAPH_INDEX` | `graphrag.enabled` | `false` |
-| `GRAPH_STORE_TYPE` | `graphrag.store_type` | `simple` |
+| `ENABLE_GRAPH_INDEX` | `graphrag.enabled` | `true` (master switch; brainpalace init also writes graphrag.enabled: true) |
+| `GRAPH_STORE_TYPE` | `graphrag.store_type` | `sqlite` |
 | `GRAPH_INDEX_PATH` | `graphrag.index_path` | `.brainpalace/data/graph_index` |
 | `GRAPH_USE_CODE_METADATA` | `graphrag.use_code_metadata` | `true` |
 | `GRAPH_USE_LLM_EXTRACTION` | `graphrag.use_llm_extraction` | `false` |
-| `GRAPH_EXTRACTION_MODEL` | `graphrag.extraction_model` | `claude-haiku-4-5-20251001` |
+| `GRAPH_EXTRACTION_MODEL` | `graphrag.extraction_model` | `claude-haiku-4-5` |
 | `GRAPH_MAX_TRIPLETS_PER_CHUNK` | `graphrag.max_triplets_per_chunk` | `10` |
 | `GRAPH_TRAVERSAL_DEPTH` | `graphrag.traversal_depth` | `2` |
 | `GRAPH_RRF_K` | `graphrag.rrf_k` | `60` |
@@ -450,22 +450,22 @@ BrainPalace ships two graph backends. Both implement the same property-graph
 surface, so retrieval results are identical (verified by a parity test) — the
 choice is operational, not behavioural.
 
-**`simple` (default) — SimplePropertyGraphStore.** An in-memory property graph
-persisted to JSON (`graph_store_llamaindex.json`) under the project state dir.
-Zero configuration, no external database, whole graph loaded on boot and
-rewritten on every persist. Best for small/medium graphs.
-
-**`sqlite` — persistent, incremental, temporal (Phase 090).** A plain
+**`sqlite` (default) — persistent, incremental, temporal (Phase 090).** A plain
 `sqlite3`-backed store (`graph_store.db`, stdlib only — no native build, no
 external DB). Each triplet is written incrementally (no whole-file rewrite) and
-rows are loaded per query, so memory stays bounded as the graph grows. Recommend
-it once the graph passes the `brainpalace doctor` node ceiling, or as soon as
-session-graph extraction (Phase 100) is feeding it. Enable with:
+rows are loaded per query, so memory stays bounded as the graph grows. `brainpalace init`
+defaults to `sqlite`; it is the recommended backend for all new projects.
+
+**`simple` — opt-in lightweight in-memory mode.** An in-memory property graph
+persisted to JSON (`graph_store_llamaindex.json`) under the project state dir.
+Zero configuration, no external database, whole graph loaded on boot and
+rewritten on every persist. Best for small/medium graphs or environments where
+persistence is not needed. Switch to it with:
 
 ```yaml
 graphrag:
   enabled: true
-  store_type: "sqlite"
+  store_type: "simple"
 ```
 
 On the **first** boot with `store_type: sqlite`, an existing `simple` JSON graph
@@ -475,8 +475,13 @@ is migrated into the DB once (the JSON is left in place for rollback safety).
 can be **invalidated** (closed) without deletion, queries return only
 currently-valid edges by default, and an entity's full edge history is available
 as a **timeline** — the substrate for supersedes-chains and stale-decision
-penalties (Phase 140). The `simple` backend has no temporal notion; its
-behaviour equals `sqlite` with all edges open.
+penalties (Phase 140).
+
+> ⚠️ **Temporal features require `sqlite`.** With `store_type: simple`,
+> temporal validity is **unavailable**: no `valid_from`/`valid_until`, no
+> invalidation, no `as_of` / point-in-time queries, and no decision
+> supersession history. `simple` behaves as `sqlite` with every edge
+> permanently open. `brainpalace init` now defaults to `sqlite` so these work.
 
 The embedded-DB (Kuzu) backend earlier versions exposed has been removed; an
 unknown `store_type` left in an old config is downgraded to `simple`

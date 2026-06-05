@@ -20,7 +20,7 @@ flowchart TB
     subgraph GraphLayer["Graph Storage"]
         GraphManager[GraphStoreManager]
         SimpleStore[(SimplePropertyGraphStore<br/>JSON Persistence)]
-        KuzuStore[(Kuzu<br/>Embedded Graph DB)]
+        SQLiteStore[(SQLite<br/>Embedded Graph DB)]
     end
 
     Chunks --> VectorManager
@@ -33,7 +33,7 @@ flowchart TB
 
     Triplets --> GraphManager
     GraphManager -->|"default"| SimpleStore
-    GraphManager -->|"optional"| KuzuStore
+    GraphManager -->|"optional"| SQLiteStore
 
     classDef data fill:#90EE90,stroke:#333,stroke-width:2px,color:darkgreen
     classDef manager fill:#87CEEB,stroke:#333,stroke-width:2px,color:darkblue
@@ -41,4 +41,4 @@ flowchart TB
 
     class Chunks,Embeddings,Nodes,Triplets data
     class VectorManager,BM25Manager,GraphManager manager
-    class ChromaDB,BM25Index,SimpleStore,KuzuStore storage
+    class ChromaDB,BM25Index,SimpleStore,SQLiteStore storage

@@ -6,7 +6,7 @@ context: brainpalace
 agent: setup-assistant
 skills:
   - configuring-brainpalace
-last_validated: 2026-06-04
+last_validated: 2026-06-05
 ---
 
 # Complete BrainPalace Setup
@@ -147,7 +147,7 @@ Options:
 2. Ollama + Mistral (FREE, local) - mistral-small3.2, better summarization quality, no API key needed
 3. Anthropic - claude-haiku-4-5-20251001, fast and cost-effective, requires ANTHROPIC_API_KEY
 4. OpenAI - gpt-4o-mini, OpenAI summarization, requires OPENAI_API_KEY
-5. Google Gemini - gemini-2.0-flash, Google's model, requires GOOGLE_API_KEY
+5. Google Gemini - gemini-3.1-flash-lite, Google's model, requires GOOGLE_API_KEY
 6. Grok (xAI) - grok-3-mini-fast, xAI's fast model, requires XAI_API_KEY
 ```
 
@@ -207,17 +207,20 @@ Note: To use graph mode, index documents with:
   brainpalace index ./src --include-code
 
 Options:
-1. No (Default) - Use standard vector + BM25 hybrid search only
-2. Yes - SimplePropertyGraphStore - In-memory graph, no extra dependencies
-3. Yes - Kuzu (Persistent) - Disk-based graph database, best for large codebases
+1. Yes - SQLite (Default, Recommended) - Persistent, incrementally-writable, temporal-validity tracking
+2. Yes - SimplePropertyGraphStore - In-memory JSON graph, no temporal tracking
+3. No - Use standard vector + BM25 hybrid search only
 ```
+
+> **Default store is `sqlite`.** `brainpalace init` enables GraphRAG with
+> `graphrag.store_type: sqlite` — persistent, incrementally-writable, and
+> temporal-validity aware. The legacy `simple` store is in-memory JSON with no
+> temporal tracking.
 
 If enabled, record:
 - `graphrag.enabled: true`
-- `graphrag.store_type: "simple"` or `graphrag.store_type: "kuzu"`
+- `graphrag.store_type: "sqlite"` (default) or `"simple"`
 - `graphrag.use_code_metadata: true`
-
-If Kuzu is selected, note: install with `pip install "brainpalace-rag[graphrag-kuzu]"`.
 
 If GraphRAG is disabled, record `graphrag.enabled: false`.
 
@@ -535,6 +538,15 @@ The provider is configured globally — new projects inherit it.
 > `mode: auto` (defer to the plugin, server fallback with a 24h safety net). Opt
 > out entirely with `brainpalace init --no-extract`.
 > See docs/SESSION_INDEXING.md.
+
+> **Git-history indexing (opt-in, default OFF):** `brainpalace init` can index
+> this repo's git commit history (commit message + changed-file list) into
+> searchable chunks. It is **off by default** because commit messages and diffs
+> can contain secrets, so it is a deliberate opt-in. Interactive `init` asks a
+> yes/no question (default **no**); pass `--git-history` / `--no-git-history` to
+> decide non-interactively. When enabled, `git_indexing.enabled: true` is written
+> to `.brainpalace/config.yaml`. Nothing is copied — chunks reference the commit
+> sha.
 
 If Yes, run:
 

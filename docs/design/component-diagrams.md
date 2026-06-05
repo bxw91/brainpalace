@@ -259,7 +259,7 @@ package "FastAPI Application" {
             + persist()
             + clear()
             ----
-            Backend: Simple/Kuzu
+            Backend: Simple/SQLite
         }
     }
 
@@ -680,7 +680,7 @@ package "Storage Layer" {
         component [GraphStoreManager] <<manager>> as graph_mgr {
             ..Configuration..
             - persist_dir: ./graph_index
-            - store_type: simple | kuzu
+            - store_type: simple | sqlite
             - enabled: ENABLE_GRAPH_INDEX
         }
 
@@ -691,7 +691,7 @@ package "Storage Layer" {
             - Basic traversal
         }
 
-        component [KuzuPropertyGraphStore] <<backend>> as kuzu_graph {
+        component [SQLitePropertyGraphStore] <<backend>> as sqlite_graph {
             ..Features..
             - Embedded graph DB
             - Cypher-like queries
@@ -711,7 +711,7 @@ package "Storage Layer" {
         graph_mgr -up- gquery_if
         graph_mgr -up- gpersist_if
         graph_mgr --> simple_graph : default
-        graph_mgr --> kuzu_graph : optional
+        graph_mgr --> sqlite_graph : optional
         simple_graph --> graph_files
     }
 }
@@ -748,7 +748,7 @@ end note
 |---------|---------|-------------|----------|
 | **Vector** | ChromaDB | SQLite + Parquet | Semantic similarity search |
 | **BM25** | LlamaIndex BM25Retriever | JSON files | Keyword matching |
-| **Graph** | Simple/Kuzu | JSON/Embedded DB | Entity relationships |
+| **Graph** | Simple/SQLite | JSON/Embedded DB | Entity relationships |
 
 ---
 

@@ -147,7 +147,7 @@ flowchart TB
 | **BrainPalace Server** | Core RAG API server | Python + FastAPI + Uvicorn |
 | **ChromaDB** | Vector similarity search | ChromaDB with cosine similarity |
 | **BM25 Index** | Keyword-based retrieval | LlamaIndex BM25Retriever |
-| **Graph Store** | Knowledge graph storage | SimplePropertyGraphStore / Kuzu |
+| **Graph Store** | Knowledge graph storage | SimplePropertyGraphStore / SQLite |
 
 ## Advantages of This Architecture
 
@@ -261,7 +261,7 @@ sequenceDiagram
 | **Embeddings** | OpenAI text-embedding-3-large | Semantic vectors (3072 dims) |
 | **Vector DB** | ChromaDB | Similarity search |
 | **Keyword Search** | LlamaIndex BM25Retriever | Term-based retrieval |
-| **Graph Store** | SimplePropertyGraphStore/Kuzu | Knowledge graph |
+| **Graph Store** | SimplePropertyGraphStore/SQLite | Knowledge graph |
 | **AST Parsing** | tree-sitter | Code analysis |
 | **Summarization** | Anthropic Claude Haiku | Code summaries |
 | **Config** | Pydantic Settings | Environment-based config |

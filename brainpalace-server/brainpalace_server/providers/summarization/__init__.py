@@ -3,7 +3,7 @@
 This module provides summarization/LLM implementations for:
 - Anthropic (Claude 4.5 Haiku, Sonnet, Opus)
 - OpenAI (GPT-5, GPT-5 Mini)
-- Gemini (gemini-3-flash, gemini-3-pro)
+- Gemini (gemini-3.1-flash-lite, gemini-3.5-flash)
 - Grok (grok-4, grok-4-fast)
 - Ollama (llama4:scout, mistral-small3.2, qwen3-coder, gemma3)
 """

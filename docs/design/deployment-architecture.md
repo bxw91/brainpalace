@@ -611,7 +611,7 @@ spec:
 | `DOC_SERVE_STATE_DIR` | No | - | Override state directory |
 | `DOC_SERVE_MODE` | No | project | project or shared |
 | `ENABLE_GRAPH_INDEX` | No | false | Enable GraphRAG |
-| `GRAPH_STORE_TYPE` | No | simple | simple or kuzu |
+| `GRAPH_STORE_TYPE` | No | simple | simple or sqlite |
 
 ### Production Checklist
 

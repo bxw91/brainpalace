@@ -134,9 +134,9 @@ def test_embed_prompt_no_wins_over_xdg_enabled_block(tmp_path, monkeypatch):
         "brainpalace_cli.commands.init.claude_plugin_installed", lambda **k: False
     )
     monkeypatch.setattr("brainpalace_cli.commands.init._stdin_is_tty", lambda: True)
-    # summarize=n, embed=n, proceed=y  (--no-start ⇒ no server subprocess).
+    # summarize=n, embed=n, git-history=n, proceed=y  (--no-start ⇒ no server).
     r = CliRunner().invoke(
-        init_command, ["--path", str(tmp_path), "--no-start"], input="n\nn\ny\n"
+        init_command, ["--path", str(tmp_path), "--no-start"], input="n\nn\nn\ny\n"
     )
     assert r.exit_code == 0, r.output
     assert _cfg(tmp_path)["session_indexing"]["enabled"] is False

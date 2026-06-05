@@ -91,7 +91,7 @@ note right of bm25_mgr
 end note
 
 note right of graph_mgr
-    Backend: Simple/Kuzu
+    Backend: Simple/SQLite
     + add_triplet()
     + query()
 end note

@@ -37,6 +37,13 @@ class GitIndexingConfig(BaseModel):
         default=None,
         description="Override the repo to index (defaults to the project root).",
     )
+    path_filter: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Repo-relative paths; when non-empty, only commits touching these "
+            "paths are indexed (git log -- <paths>). Empty = all commits."
+        ),
+    )
 
 
 def _env_master_enabled() -> bool:

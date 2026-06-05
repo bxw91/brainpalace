@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-05-30
+last_validated: 2026-06-05
 ---
 
 # Graph Search Guide
@@ -122,11 +122,11 @@ GraphRAG must be explicitly enabled during server startup:
 ### Environment Variables (server)
 
 ```bash
-# Required: master switch (default: false)
+# Required: master switch (default: true)
 export ENABLE_GRAPH_INDEX=true
 
 # Optional backends
-export GRAPH_STORE_TYPE=simple      # or kuzu
+export GRAPH_STORE_TYPE=sqlite      # "sqlite" (default, persistent + temporal) or "simple" (in-memory)
 export GRAPH_INDEX_PATH=./graph_index
 
 # Extraction controls
@@ -145,7 +145,7 @@ export GRAPH_RRF_K=60               # RRF constant for multi mode
 ```bash
 # .env file in project root
 ENABLE_GRAPH_INDEX=true
-GRAPH_STORE_TYPE=simple
+GRAPH_STORE_TYPE=sqlite
 GRAPH_INDEX_PATH=./graph_index
 GRAPH_USE_CODE_METADATA=true
 GRAPH_USE_LLM_EXTRACTION=true
@@ -156,9 +156,8 @@ GRAPH_EXTRACTION_MODEL=claude-haiku-4-5
 
 ### Optional Dependencies
 
-- Default simple store: included.
+- Default sqlite store: built-in (stdlib), no extras needed.
 - Enhanced extraction: `pip install "brainpalace-rag[graphrag]"`
-- Kuzu backend: `pip install "brainpalace-rag[graphrag-kuzu]"`
 
 ### Starting with Graph Enabled
 
@@ -316,15 +315,15 @@ brainpalace status --json | jq '.graph_index'
 GRAPH_STORE_TYPE=simple
 ```
 
-### Kuzu Store (Production)
+### SQLite Store (Default)
 
-- Persistent graph database
-- Better performance for large graphs
-- ACID compliant
-- Best for: Production, large codebases
+- Persistent graph database (stdlib sqlite3, no native build needed)
+- Incremental writes, bounded memory
+- Temporal validity (valid_from/valid_until edges, point-in-time queries)
+- Best for: All projects — default for new installs
 
 ```bash
-GRAPH_STORE_TYPE=kuzu
+GRAPH_STORE_TYPE=sqlite
 ```
 
 ## Performance Considerations
@@ -339,7 +338,7 @@ GRAPH_STORE_TYPE=kuzu
 ### Memory Usage
 
 - Graph index adds ~200-500MB for typical codebases
-- Kuzu store uses disk-based storage for large graphs
+- SQLite store uses disk-based storage; memory stays bounded as the graph grows
 - Entity count scales with code complexity
 
 ### Optimization Tips
@@ -347,7 +346,7 @@ GRAPH_STORE_TYPE=kuzu
 1. **Limit traversal depth**: Start with 2, increase only if needed
 2. **Use graph mode for relationships**: Skip vector/BM25 overhead
 3. **Index selectively**: Focus on code files, skip generated content
-4. **Consider Kuzu**: For codebases with 10k+ entities
+4. **sqlite is the default**: handles codebases of any size with bounded memory
 
 ## Comparison: Graph vs Other Modes
 
@@ -385,7 +384,7 @@ Error: Graph index not enabled
 - High traversal depth
 - Simple store with large dataset
 
-**Solution:** Reduce traversal depth or switch to Kuzu store.
+**Solution:** Reduce traversal depth. With `simple` store on a large graph, switch to `sqlite` (the default).
 
 ## Best Practices
 

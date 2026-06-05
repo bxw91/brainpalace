@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-02
+last_validated: 2026-06-05
 ---
 
 # BrainPalace Configuration Guide
@@ -75,10 +75,10 @@ storage:
   #   user: "brainpalace"
   #   password: "brainpalace_dev"
 
-# GraphRAG configuration (optional, default: disabled)
+# GraphRAG configuration (optional, default: enabled)
 graphrag:
-  enabled: false
-  store_type: "simple"  # "simple" (in-memory) or "kuzu" (persistent disk)
+  enabled: true
+  store_type: "sqlite"  # "sqlite" (default, persistent + temporal) or "simple" (in-memory)
   use_code_metadata: true
 
 # Query mode (informational — set per-request with --mode flag)
@@ -270,13 +270,13 @@ GraphRAG enables graph-based retrieval using entity relationships extracted from
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `ENABLE_GRAPH_INDEX` | No | `false` | Master switch to enable graph indexing |
-| `GRAPH_STORE_TYPE` | No | `simple` | Graph backend: `simple` (in-memory) or `kuzu` (persistent) |
+| `ENABLE_GRAPH_INDEX` | No | `true` | Master switch to enable graph indexing |
+| `GRAPH_STORE_TYPE` | No | `sqlite` | Graph backend: `sqlite` (default, persistent + temporal) or `simple` (in-memory) |
 | `GRAPH_INDEX_PATH` | No | `./graph_index` | Path for graph persistence |
 | `GRAPH_EXTRACTION_MODEL` | No | `claude-haiku-4-5` | Model for entity extraction |
 | `GRAPH_MAX_TRIPLETS_PER_CHUNK` | No | `10` | Maximum triplets extracted per document chunk |
 | `GRAPH_USE_CODE_METADATA` | No | `true` | Extract entities from AST metadata (imports, classes) |
-| `GRAPH_USE_LLM_EXTRACTION` | No | `true` | Use LLM for semantic entity extraction |
+| `GRAPH_USE_LLM_EXTRACTION` | No | `false` | Use LLM for semantic entity extraction |
 | `GRAPH_TRAVERSAL_DEPTH` | No | `2` | Depth for graph traversal in queries |
 | `GRAPH_RRF_K` | No | `60` | Reciprocal Rank Fusion constant for multi-mode queries |
 
@@ -286,7 +286,7 @@ GraphRAG enables graph-based retrieval using entity relationships extracted from
 # ~/.config/brainpalace/config.yaml
 graphrag:
   enabled: true
-  store_type: "simple"  # "simple" or "kuzu"
+  store_type: "sqlite"  # "sqlite" (default, persistent + temporal) or "simple" (in-memory)
   index_path: "./graph_index"
   extraction_model: "claude-haiku-4-5"
   max_triplets_per_chunk: 10
@@ -302,8 +302,8 @@ graphrag:
 # Enable GraphRAG
 export ENABLE_GRAPH_INDEX=true
 
-# Use Kuzu for persistent graph storage (optional)
-export GRAPH_STORE_TYPE=kuzu
+# Use sqlite for persistent graph storage (default)
+export GRAPH_STORE_TYPE=sqlite
 export GRAPH_INDEX_PATH=".brainpalace/graph_index"
 
 # Entity extraction settings
@@ -374,13 +374,8 @@ brainpalace query "how do services work" --mode multi
 
 | Store | Persistence | Performance | Use Case |
 |-------|-------------|-------------|----------|
-| `simple` | In-memory only | Fast, no disk I/O | Development, small projects |
-| `kuzu` | Persistent to disk | Graph-optimized queries | Production, large codebases |
-
-**Note**: Kuzu requires the optional `graphrag-kuzu` dependency:
-```bash
-poetry install --extras graphrag-kuzu
-```
+| `sqlite` | Persistent to disk, incremental writes | Bounded memory, temporal validity | Default — all new projects |
+| `simple` | In-memory only | Fast, no disk I/O | Lightweight opt-in, no temporal features |
 
 ### Troubleshooting GraphRAG
 
@@ -466,7 +461,7 @@ summarization:
 
 graphrag:
   enabled: true
-  store_type: "kuzu"  # Persistent for large codebases
+  store_type: "sqlite"  # Default — persistent + temporal validity
   use_code_metadata: true  # Extract imports, classes from AST
   use_llm_extraction: true  # Extract semantic relationships
   traversal_depth: 2

@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-02
+last_validated: 2026-06-05
 ---
 
 # BrainPalace Plugin Guide
@@ -637,7 +637,7 @@ Provides Claude with knowledge about:
 |----------|--------|-------|---------|
 | Anthropic | claude-haiku-4-5-20251001, claude-sonnet-4-5-20250514 | No | ANTHROPIC_API_KEY |
 | OpenAI | gpt-5, gpt-5-mini | No | OPENAI_API_KEY |
-| Gemini | gemini-3-flash, gemini-3-pro | No | GOOGLE_API_KEY |
+| Gemini | gemini-3.1-flash-lite, gemini-3.5-flash | No | GOOGLE_API_KEY |
 | Grok | grok-4, grok-4-fast | No | GROK_API_KEY |
 | Ollama | llama4:scout, mistral-small3.2, qwen3-coder | Yes | None |
 

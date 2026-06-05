@@ -11,7 +11,7 @@ flowchart TB
     subgraph Backends["Storage Backends"]
         direction TB
         Simple[SimplePropertyGraphStore]
-        Kuzu[KuzuPropertyGraphStore]
+        SQLite[SQLitePropertyGraphStore]
         Minimal[MinimalGraphStore]
     end
 
@@ -21,19 +21,19 @@ flowchart TB
         MetaJSON[graph_metadata.json]
     end
 
-    subgraph KuzuStore["Kuzu Persistence"]
+    subgraph SQLiteStore["SQLite Persistence"]
         direction TB
-        KuzuDB[kuzu_db folder]
+        SQLiteDB[sqlite_db folder]
     end
 
     GraphStoreManager --> Backends
     Simple --> SimpleStore
-    Kuzu --> KuzuStore
+    SQLite --> SQLiteStore
 
     classDef managerStyle fill:#87CEEB,stroke:#333,stroke-width:2px,color:darkblue
     classDef backendStyle fill:#FFE4B5,stroke:#333,stroke-width:2px,color:black
     classDef storageStyle fill:#E6E6FA,stroke:#333,stroke-width:2px,color:darkblue
 
     class Init,AddTriplet,Persist,Load,Clear managerStyle
-    class Simple,Kuzu,Minimal backendStyle
-    class GraphJSON,MetaJSON,KuzuDB storageStyle
+    class Simple,SQLite,Minimal backendStyle
+    class GraphJSON,MetaJSON,SQLiteDB storageStyle

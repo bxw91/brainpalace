@@ -74,8 +74,8 @@ export ENABLE_GRAPH_INDEX=true
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `ENABLE_GRAPH_INDEX` | `false` | Enable/disable GraphRAG features |
-| `GRAPH_STORE_TYPE` | `simple` | Graph backend: `simple` (JSON) or `kuzu` (embedded DB) |
+| `ENABLE_GRAPH_INDEX` | `true` | Enable/disable GraphRAG features (`brainpalace init` writes `graphrag.enabled: true`) |
+| `GRAPH_STORE_TYPE` | `sqlite` | Graph backend: `sqlite` (persistent + temporal, default) or `simple` (in-memory JSON) |
 | `GRAPH_MAX_TRIPLETS_PER_CHUNK` | `10` | Maximum entities to extract per document chunk |
 | `GRAPH_USE_CODE_METADATA` | `true` | Extract relationships from code AST metadata |
 | `GRAPH_USE_LLM_EXTRACTION` | `true` | Use LLM for entity extraction from documents |
@@ -126,11 +126,11 @@ curl -X POST "http://localhost:8000/index?rebuild_graph=true" \
 
 For enhanced GraphRAG features, install optional dependency groups:
 
-```bash
-# For Kuzu graph store (production workloads)
-poetry install --with graphrag-kuzu
+The default `sqlite` graph store needs no extra dependency (Python stdlib —
+persistent + temporal). Only the enhanced extractor is optional:
 
-# For enhanced entity extraction
+```bash
+# For enhanced (LLM/LangExtract) entity extraction
 poetry install --with graphrag
 ```
 

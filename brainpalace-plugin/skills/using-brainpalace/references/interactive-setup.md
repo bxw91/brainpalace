@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-05-30
+last_validated: 2026-06-05
 ---
 
 # Interactive Setup Guide
@@ -77,7 +77,7 @@ Choose embedding and summarization providers independently.
 |----------|-------|-----------------|
 | Anthropic | claude-haiku-4-5-20251001 | High quality |
 | OpenAI | gpt-5-mini | Fast, cost-effective |
-| Gemini | gemini-3-flash | Google's model |
+| Gemini | gemini-3.1-flash-lite | Google's model |
 | Grok | grok-4 | xAI's model |
 | Ollama | llama4:scout | Local, no API key |
 

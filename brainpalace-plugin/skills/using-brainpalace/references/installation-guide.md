@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-02
+last_validated: 2026-06-05
 ---
 
 # BrainPalace Installation Guide
@@ -128,10 +128,10 @@ pip install "brainpalace-rag[graphrag]" brainpalace-cli
 
 ### With All Features
 
-Includes GraphRAG with Kuzu database backend for production use:
+Includes GraphRAG with full feature set (sqlite backend is built-in, no extras needed):
 
 ```bash
-pip install "brainpalace-rag[graphrag-all]" brainpalace-cli
+pip install "brainpalace-rag[graphrag]" brainpalace-cli
 ```
 
 ## Installation Extras Reference
@@ -139,8 +139,7 @@ pip install "brainpalace-rag[graphrag-all]" brainpalace-cli
 | Extra | Includes | Use Case |
 |-------|----------|----------|
 | (none) | Core RAG, ChromaDB, BM25, LlamaIndex | Basic document search |
-| `graphrag` | + langextract, SimplePropertyGraphStore | Development GraphRAG |
-| `graphrag-all` | + Kuzu database | Production GraphRAG |
+| `graphrag` | + langextract, graph stores (sqlite built-in) | GraphRAG (all projects) |
 
 ---
 
@@ -260,13 +259,13 @@ xcode-select --install
 pip install --no-cache-dir brainpalace-rag
 ```
 
-### Kuzu installation issues (graphrag-all)
+### GraphRAG installation issues
 
-Kuzu requires a C++ compiler:
+If `pip install "brainpalace-rag[graphrag]"` fails, ensure build tools are available:
 
 ```bash
 # Ubuntu/Debian
-sudo apt-get install g++
+sudo apt-get install build-essential
 
 # macOS (already included with Xcode)
 xcode-select --install

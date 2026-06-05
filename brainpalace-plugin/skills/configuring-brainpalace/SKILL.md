@@ -16,7 +16,7 @@ metadata:
   version: 7.0.0
   category: ai-tools
   author: bxw91
-  last_validated: 2026-06-04
+  last_validated: 2026-06-05
 ---
 
 # Configuring BrainPalace
@@ -125,7 +125,6 @@ The wizard asks the following questions in sequence:
 | Ollama (FREE, local) | `ollama` | `nomic-embed-text` | Requires Ollama running locally |
 | OpenAI | `openai` | `text-embedding-3-large` | Requires `OPENAI_API_KEY` |
 | Cohere | `cohere` | `embed-multilingual-v3.0` | Requires `COHERE_API_KEY`, multi-language support |
-| Google Gemini | `gemini` | `text-embedding-004` | Requires `GOOGLE_API_KEY` |
 | Custom | (user-specified) | (user-specified) | Specify provider, model, and base_url |
 
 ### Summarization Provider Options
@@ -142,7 +141,7 @@ The wizard asks the following questions in sequence:
 | Ollama + Mistral (FREE, local) | `ollama` | `mistral-small3.2` | Better summarization quality |
 | Anthropic | `anthropic` | `claude-haiku-4-5-20251001` | Requires `ANTHROPIC_API_KEY` |
 | OpenAI | `openai` | `gpt-4o-mini` | Requires `OPENAI_API_KEY` |
-| Google Gemini | `gemini` | `gemini-2.0-flash` | Requires `GOOGLE_API_KEY` |
+| Google Gemini | `gemini` | `gemini-3.1-flash-lite` (cheapest; premium e.g. `gemini-3.5-flash` or `gemini-3.1-pro-preview` can be set manually) | Requires `GOOGLE_API_KEY` |
 | Grok (xAI) | `grok` | `grok-3-mini-fast` | Requires `XAI_API_KEY` |
 
 ### Config.yaml Written by Wizard
@@ -204,15 +203,13 @@ Expected: Version number displayed (e.g., `3.0.0` or current version)
 
 ```bash
 pip install "brainpalace-rag[graphrag]" brainpalace-cli
-# Kuzu backend (optional):
-pip install "brainpalace-rag[graphrag-kuzu]" brainpalace-cli
 ```
 
 ### Enable GraphRAG (server)
 
 ```bash
-export ENABLE_GRAPH_INDEX=true            # Master switch (default: false)
-export GRAPH_STORE_TYPE=simple            # or kuzu
+export ENABLE_GRAPH_INDEX=true            # Master switch (default: true)
+export GRAPH_STORE_TYPE=sqlite            # "sqlite" (default, persistent + temporal) or "simple" (in-memory)
 export GRAPH_INDEX_PATH=./graph_index
 export GRAPH_USE_CODE_METADATA=true       # Extract from AST metadata
 export GRAPH_USE_LLM_EXTRACTION=true      # Use LLM extractor when available
@@ -383,17 +380,20 @@ GraphRAG enables graph-based entity-relationship extraction for advanced query m
 
 ```yaml
 graphrag:
-  enabled: false          # Master switch (default: false)
-  store_type: "simple"    # "simple" (in-memory) or "kuzu" (persistent disk)
+  enabled: true           # Master switch (default: true)
+  store_type: "sqlite"    # "sqlite" (default, persistent + temporal) or "simple" (in-memory)
   use_code_metadata: true # Extract entities from AST metadata (imports, classes)
 ```
+
+**`sqlite` is the default** and enables temporal validity (valid_from/valid_until edges,
+point-in-time queries, decision supersession). `simple` disables all temporal features.
 
 **Corresponding environment variables**:
 
 | Env Var | Config Key | Default | Description |
 |---------|-----------|---------|-------------|
-| `ENABLE_GRAPH_INDEX` | `graphrag.enabled` | `false` | Master switch |
-| `GRAPH_STORE_TYPE` | `graphrag.store_type` | `simple` | `simple` or `kuzu` |
+| `ENABLE_GRAPH_INDEX` | `graphrag.enabled` | `true` | Master switch |
+| `GRAPH_STORE_TYPE` | `graphrag.store_type` | `sqlite` | `simple` or `sqlite` |
 | `GRAPH_USE_CODE_METADATA` | `graphrag.use_code_metadata` | `true` | AST metadata extraction |
 
 **Note**: GraphRAG requires the `--include-code` flag during indexing to extract code structure:
@@ -402,11 +402,7 @@ graphrag:
 brainpalace index ./src --include-code
 ```
 
-For Kuzu (persistent), install the optional extra first:
-
-```bash
-pip install "brainpalace-rag[graphrag-kuzu]"
-```
+The `sqlite` backend (default) is built into the stdlib — no optional extras needed.
 
 ### BM25 Language Configuration
 
@@ -482,7 +478,7 @@ BrainPalace supports the following query modes, selectable per request with `--m
 | `multi` | Fuses vector + BM25 + graph with RRF | GraphRAG + ChromaDB backend |
 
 **Note**: `graph` and `multi` modes are not available with PostgreSQL backend.
-GraphRAG uses an in-memory/Kuzu graph store that is separate from the vector
+GraphRAG uses a graph store (sqlite default, simple opt-in) that is separate from the vector
 store — it currently integrates only with ChromaDB.
 
 **Per-request override**:

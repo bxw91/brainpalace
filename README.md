@@ -176,8 +176,10 @@ with optional cloud providers for embeddings and summarisation.
   Cross-session linking supersedes stale decisions and promotes durable ones
   into memory. **Automatic (passive) capture indexes Claude Code transcripts
   only** (`~/.claude/projects/…/*.jsonl`) — it's a *server* feature, so it works
-  from **either install** (CLI-only or the plugin); no plugin required — it's
-  **on by default for new projects** (`brainpalace init`; opt out with
+  from **either install** (CLI-only or the plugin) — archiving needs no plugin.
+  (Session *summarisation* in the default `subagent` mode does need the Claude
+  Code plugin; CLI-only installs archive but don't summarise.)
+  **On by default for new projects** (`brainpalace init`; opt out with
   `init --no-sessions`). "Claude Code-specific" is about the transcript
   *source*, not the install method. Other runtimes (OpenCode, Gemini CLI, Codex)
   have no passive capture — they push memory explicitly via the plugin's
@@ -211,10 +213,14 @@ with optional cloud providers for embeddings and summarisation.
   queries: "what calls X", "modules importing Y", "classes extending Z".
 - **Cross-encoder reranking** — opt-in two-stage retrieval for higher
   precision on the top-k.
-- **`.gitignore`-aware indexing + watching** — every project `.gitignore`
-  (nested files, negation patterns) honoured at index and watch time.
+- **`.gitignore`-aware indexing + watching** — honours every project
+  `.gitignore` (full Git semantics, nested + negation), plus the repo-local
+  `.git/info/exclude`, your global `core.excludesFile`, and a built-in default
+  exclude list (`node_modules`, `__pycache__`, `.venv`, `dist`, `build`, …).
 - **File watcher** — per-folder, debounced, post-enqueue cooldown.
-  Default OFF, opt-in per folder (`auto`).
+  `brainpalace folders add` defaults to `--watch auto` (live re-index on
+  change); `brainpalace index <path>` leaves a folder's watch setting
+  unchanged. Disable with `--watch off`.
 - **Multi-instance** — one server per project, automatic port allocation,
   `.brainpalace/runtime.json` discovery. Helpers: `whoami`, `status --all`,
   `stop --url`.
@@ -334,7 +340,7 @@ Found 2 results in 540ms
 > **What "session memory" needs.** Automatic capture indexes **Claude Code
 > transcripts only** (`~/.claude/projects/<encoded>/*.jsonl`). It's a **server**
 > feature — it works whether you installed BrainPalace via the **CLI** or as the
-> **Claude Code plugin** (no plugin required); enable it with `brainpalace init
+> **Claude Code plugin** — archiving needs no plugin; enable it with `brainpalace init
 > --sessions` (opt-in, off by default). The Claude-Code restriction is about the
 > *transcript format it reads*, not how you installed BrainPalace. Other runtimes
 > (OpenCode, Gemini CLI, Codex) have no passive capture — they push durable memory
@@ -355,7 +361,7 @@ Found 2 results in 540ms
 |----------|--------|-------|
 | Anthropic | claude-haiku-4-5-20251001, claude-sonnet-4-5-20250514 | No |
 | OpenAI | gpt-5, gpt-5-mini | No |
-| Gemini | gemini-3-flash, gemini-3-pro | No |
+| Gemini | gemini-3.1-flash-lite, gemini-3.5-flash | No |
 | Grok | grok-4, grok-4-fast | No |
 | Ollama | llama4:scout, mistral-small3.2, qwen3-coder | Yes |
 
@@ -529,6 +535,9 @@ To re-detect per-document languages on existing content, re-run indexing.
 - **Graph Store**: LlamaIndex SimplePropertyGraphStore (JSON) or SQLite (persistent, temporal)
 - **Embeddings**: OpenAI · Cohere · Ollama
 - **Summarisation**: Anthropic · OpenAI · Gemini · Grok · Ollama
+  > Session summarization can also run **free on your Claude Code subscription**
+  > (Haiku subagent, default `subagent` mode) — this is a separate path from the
+  > API summarization providers above and needs the Claude Code plugin.
 - **AST Parsing**: tree-sitter (10+ languages)
 - **CLI**: Click + Rich
 - **MCP**: Anthropic `mcp` SDK (stdio transport)

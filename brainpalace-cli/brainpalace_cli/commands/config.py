@@ -37,7 +37,7 @@ SUMMARIZATION_DEFAULT_MODELS = {
     "anthropic": "claude-haiku-4-5-20251001",
     "openai": "gpt-5-mini",
     "ollama": "llama3.2:latest",
-    "gemini": "gemini-3-flash",
+    "gemini": "gemini-3.1-flash-lite",
 }
 
 

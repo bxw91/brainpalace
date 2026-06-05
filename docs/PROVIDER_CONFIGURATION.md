@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-05-30
+last_validated: 2026-06-05
 ---
 
 # Provider Configuration Reference
@@ -57,7 +57,7 @@ brainpalace-serve
 | **Anthropic** | - | claude-haiku-4-5-20251001<br>claude-sonnet-4-5-20250219<br>claude-opus-4-6 | - | ANTHROPIC_API_KEY |
 | **Ollama** | nomic-embed-text (768d)<br>mxbai-embed-large (1024d)<br>all-minilm (384d) | llama3.2<br>mistral<br>codellama | llama3.2<br>mistral | (none - local) |
 | **Cohere** | embed-english-v3.0 (1024d)<br>embed-multilingual-v3.0 (1024d)<br>embed-english-light-v3.0 (384d) | - | - | COHERE_API_KEY |
-| **Gemini** | - | gemini-1.5-flash<br>gemini-1.5-pro | - | GOOGLE_API_KEY |
+| **Gemini** | - | gemini-3.1-flash-lite<br>gemini-3.5-flash | - | GOOGLE_API_KEY |
 | **Grok** | - | grok-beta | - | XAI_API_KEY |
 | **SentenceTransformers** | - | - | cross-encoder/ms-marco-MiniLM-L-6-v2<br>cross-encoder/ms-marco-MiniLM-L-12-v2 | (none - local) |
 
@@ -247,7 +247,7 @@ embedding:
 
 summarization:
   provider: gemini
-  model: gemini-1.5-flash
+  model: gemini-3.1-flash-lite
   api_key_env: GOOGLE_API_KEY
   # base_url: null            # Uses default Google AI endpoint
   # params: {}                # Provider-specific parameters

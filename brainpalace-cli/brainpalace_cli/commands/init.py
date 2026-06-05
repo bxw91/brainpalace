@@ -71,7 +71,7 @@ _EMBEDDING_FALLBACK = {"provider": "openai", "model": "text-embedding-3-large"}
 _SUMMARIZATION_PREFERENCE = [
     ("anthropic", "claude-haiku-4-5-20251001", "ANTHROPIC_API_KEY"),
     ("openai", "gpt-5-mini", "OPENAI_API_KEY"),
-    ("gemini", "gemini-2.0-flash", "GEMINI_API_KEY"),
+    ("gemini", "gemini-3.1-flash-lite", "GEMINI_API_KEY"),
     ("grok", "grok-4-fast", "XAI_API_KEY"),
 ]
 _SUMMARIZATION_FALLBACK = {
@@ -104,8 +104,10 @@ def build_default_provider_config(
     """Build the default config.yaml provider block from detected env keys.
 
     Graph indexing is enabled with the cheap AST-code-only path: no LLM cost on
-    docs, no extra dependencies. Users can run `brainpalace config wizard` to
-    override (e.g. switch to LangExtract on docs).
+    docs, no extra dependencies. The store defaults to ``sqlite`` (persistent,
+    incrementally-writable, temporal-validity) rather than the in-memory
+    ``simple`` store. Users can run `brainpalace config wizard` to override
+    (e.g. switch to LangExtract on docs).
     """
     return {
         "embedding": _pick_provider(_EMBEDDING_PREFERENCE, _EMBEDDING_FALLBACK),
@@ -114,7 +116,7 @@ def build_default_provider_config(
         ),
         "graphrag": {
             "enabled": True,
-            "store_type": "simple",
+            "store_type": "sqlite",
             "use_code_metadata": True,
         },
         "storage": {
@@ -410,6 +412,80 @@ def write_session_config(
         data["session_extraction"] = extract_block
     with open(config_path, "w", encoding="utf-8") as f:
         yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
+
+
+def write_git_config(state_dir: Path, enabled: bool | None = None) -> None:
+    """Deep-merge the ``git_indexing.enabled`` opt-in into config.yaml.
+
+    ``None`` leaves the existing block untouched (no-op), so a re-init that
+    doesn't ask the question never clobbers a prior choice. Preserves the
+    provider/graphrag/session blocks already written. Git-history indexing is
+    privacy-first (commits can carry secrets), hence written only when chosen.
+    """
+    if enabled is None:
+        return
+    config_path = state_dir / "config.yaml"
+    data: dict[str, object] = {}
+    if config_path.exists():
+        loaded = yaml.safe_load(config_path.read_text()) or {}
+        if isinstance(loaded, dict):
+            data = loaded
+    block = data.get("git_indexing")
+    if not isinstance(block, dict):
+        block = {}
+    block["enabled"] = bool(enabled)
+    data["git_indexing"] = block
+    with open(config_path, "w", encoding="utf-8") as f:
+        yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
+
+
+def read_graphrag_store_type(state_dir: Path) -> str | None:
+    """Return the project's configured ``graphrag.store_type``, or None.
+
+    None when there is no config.yaml, no ``graphrag`` block, or no explicit
+    ``store_type`` (in which case the server's default — now ``sqlite`` — applies
+    and there is nothing to migrate).
+    """
+    config_path = state_dir / "config.yaml"
+    if not config_path.exists():
+        return None
+    try:
+        data = yaml.safe_load(config_path.read_text()) or {}
+    except yaml.YAMLError:
+        return None
+    block = data.get("graphrag") if isinstance(data, dict) else None
+    if isinstance(block, dict) and block.get("store_type") is not None:
+        return str(block["store_type"])
+    return None
+
+
+def migrate_graph_store_to_sqlite(state_dir: Path) -> bool:
+    """Flip an existing ``graphrag.store_type: simple`` to ``sqlite`` in place.
+
+    A one-time, in-place config upgrade so an already-indexed project gains the
+    persistent + temporal SQLite graph store. Only changes the value when it is
+    currently ``simple``; every other config key is preserved. Returns True if a
+    change was written, False otherwise (already sqlite / absent / unreadable) —
+    so it is idempotent. The server replays the existing ``simple`` JSON graph
+    into SQLite on next boot (JSON kept for rollback); no re-indexing is needed.
+    """
+    config_path = state_dir / "config.yaml"
+    if not config_path.exists():
+        return False
+    try:
+        data = yaml.safe_load(config_path.read_text()) or {}
+    except yaml.YAMLError:
+        return False
+    if not isinstance(data, dict):
+        return False
+    block = data.get("graphrag")
+    if not isinstance(block, dict) or block.get("store_type") != "simple":
+        return False
+    block["store_type"] = "sqlite"
+    data["graphrag"] = block
+    with open(config_path, "w", encoding="utf-8") as f:
+        yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
+    return True
 
 
 def _prune_old_extraction_hooks(home: Path) -> None:
@@ -870,6 +946,28 @@ def _start_and_watch(
     ),
 )
 @click.option(
+    "--git-history/--no-git-history",
+    "enable_git_history",
+    default=None,
+    help=(
+        "INDEX this repo's git commit history (message + diff stat) as "
+        "searchable chunks. OFF by default — commits can contain secrets, so "
+        "this is a deliberate opt-in. Interactive runs ask (default no)."
+    ),
+)
+@click.option(
+    "--migrate-graph-store/--no-migrate-graph-store",
+    "enable_graph_migrate",
+    default=None,
+    help=(
+        "On an already-initialized project whose graph store is the legacy "
+        "in-memory 'simple' backend, upgrade graphrag.store_type to 'sqlite' "
+        "(persistent + temporal; the existing graph is replayed into sqlite on "
+        "next start, with the JSON kept for rollback). Interactive runs ask "
+        "(default yes). No effect on fresh inits or projects already on sqlite."
+    ),
+)
+@click.option(
     "--language",
     "bm25_language",
     default="en",
@@ -907,6 +1005,8 @@ def init_command(
     enable_sessions: bool | None,
     enable_archive: bool | None,
     enable_extract: bool | None,
+    enable_git_history: bool | None,
+    enable_graph_migrate: bool | None,
     bm25_language: str,
     bm25_engine: str,
 ) -> None:
@@ -959,6 +1059,7 @@ def init_command(
             sessions=enable_sessions,
             archive=enable_archive,
             extract=enable_extract,
+            git_history=enable_git_history,
             yes=yes,
             is_tty=is_tty,
         )
@@ -1007,6 +1108,20 @@ def init_command(
                 sessions_ans = click.confirm("Embed chat sessions too?", default=False)
                 sessions_chosen = True  # prompt answer is an explicit choice
 
+            git_history_ans: bool = bool(plan.git_history)
+            if enable_git_history is None:
+                console.print(
+                    "\n[bold]Index git commit history?[/] "
+                    "(make past commits searchable: message + changed-file list)\n"
+                    "  [yellow]Off by default[/] — commit diffs/messages can "
+                    "contain secrets, so this is opt-in.\n"
+                    "  Nothing is copied; chunks reference the commit sha. "
+                    "Enable later: --git-history."
+                )
+                git_history_ans = click.confirm(
+                    "Index git commit history?", default=False
+                )
+
             # Rebuild the plan from the answers (bools ⇒ explicit, so they win).
             plan = resolve_init_plan(
                 start=start,
@@ -1015,6 +1130,7 @@ def init_command(
                 sessions=sessions_ans,
                 archive=enable_archive,
                 extract=extract_ans,
+                git_history=git_history_ans,
                 yes=yes,
                 is_tty=is_tty,
             )
@@ -1068,6 +1184,39 @@ def init_command(
         # run the start/watch pipeline so a first run that aborted at the
         # provider preflight can be resumed without --force.
         if config_path.exists() and not force:
+            # One-time graph-store upgrade for already-indexed projects still on
+            # the legacy in-memory 'simple' store. sqlite is now the default
+            # (persistent + temporal); the server replays the existing simple
+            # JSON graph into sqlite on next boot (JSON kept for rollback). Only
+            # offered when the project explicitly has store_type: simple. Runs
+            # before the start/no-start split so a plain re-init upgrades too.
+            if read_graphrag_store_type(resolved_state_dir) == "simple":
+                if enable_graph_migrate is True:
+                    do_migrate = True
+                elif enable_graph_migrate is False:
+                    do_migrate = False
+                elif is_tty:
+                    console.print(
+                        "\n[bold]Upgrade graph store to sqlite?[/] "
+                        "(this project uses the legacy in-memory 'simple' store)\n"
+                        "  sqlite adds persistence + temporal validity (decision "
+                        "history). Your existing\n  graph is migrated automatically "
+                        "on next start; the JSON is kept for rollback."
+                    )
+                    do_migrate = click.confirm(
+                        "Upgrade graph store to sqlite?", default=True
+                    )
+                else:
+                    # Non-interactive without an explicit flag: stay conservative
+                    # (no surprise data change) unless --yes opts into defaults.
+                    do_migrate = bool(yes)
+                if do_migrate and migrate_graph_store_to_sqlite(resolved_state_dir):
+                    if not json_output:
+                        console.print(
+                            "[dim]Graph store upgraded: simple → sqlite. The existing "
+                            "graph migrates on next server start (JSON kept for "
+                            "rollback).[/]"
+                        )
             if plan.start:
                 try:
                     existing_config = json.loads(config_path.read_text())
@@ -1189,6 +1338,16 @@ def init_command(
             if enable_archive is None and "archive" in inherited:
                 arch = None  # respect XDG archive block
         write_session_config(resolved_state_dir, index=sess, archive=arch)
+
+        # Git-history opt-in (privacy-first; only written when chosen). Guard like
+        # the session blocks so a re-init over an existing project leaves a prior
+        # choice untouched.
+        git_choice = (
+            plan.git_history
+            if (provider_config_written or enable_git_history is not None)
+            else None
+        )
+        write_git_config(resolved_state_dir, enabled=git_choice if git_choice else None)
 
         # Resolve + persist the session-summarization mode (subagent), and
         # reconcile the Claude Code hooks by plugin presence. Apply on a fresh

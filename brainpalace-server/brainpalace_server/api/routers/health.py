@@ -314,6 +314,16 @@ async def indexing_status(request: Request) -> dict[str, Any]:
         except Exception:  # noqa: BLE001
             pass
 
+    from brainpalace_server.config.git_config import load_git_indexing_config
+    from brainpalace_server.config.settings import get_settings
+
+    _lsp_raw = (get_settings().BRAINPALACE_LSP_LANGUAGES or "").strip()
+    _lsp_langs = [x.strip() for x in _lsp_raw.split(",") if x.strip()]
+    try:
+        _git_cfg_enabled = load_git_indexing_config().enabled
+    except Exception:  # noqa: BLE001
+        _git_cfg_enabled = False
+
     fw = file_watcher_info or {}
     data["features"] = {
         "doc_indexing": {
@@ -353,6 +363,14 @@ async def indexing_status(request: Request) -> dict[str, Any]:
             "tombstoned": int(archive_stats["tombstoned"]),
         },
         "graph_index": graph_index_info or {"enabled": False},
+        "lsp": {
+            "enabled": bool(_lsp_langs),
+            "languages": _lsp_langs,
+        },
+        "git_index": {
+            "enabled": bool(_git_cfg_enabled),
+            "commit_count": int(data.get("git_commits", 0) or 0),
+        },
     }
 
     # Session summarization coverage: how many archived sessions have a durable

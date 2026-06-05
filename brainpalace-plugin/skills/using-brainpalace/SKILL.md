@@ -21,7 +21,7 @@ metadata:
   version: 7.0.0
   category: ai-tools
   author: bxw91
-  last_validated: 2026-03-19
+  last_validated: 2026-06-05
 ---
 
 # BrainPalace Expert Skill

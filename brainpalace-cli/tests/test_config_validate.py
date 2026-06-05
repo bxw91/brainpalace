@@ -10,11 +10,19 @@ from click.testing import CliRunner
 from brainpalace_cli.cli import cli
 from brainpalace_cli.config_schema import (
     POSTGRES_KNOWN_FIELDS,
+    VALID_EMBEDDING_PROVIDERS,
+    VALID_SUMMARIZATION_PROVIDERS,
     ConfigValidationError,
     format_validation_errors,
     validate_config_dict,
     validate_config_file,
 )
+
+
+def test_gemini_not_valid_embedding_provider():
+    assert "gemini" not in VALID_EMBEDDING_PROVIDERS
+    assert "gemini" in VALID_SUMMARIZATION_PROVIDERS
+
 
 # ---------------------------------------------------------------------------
 # Helper fixtures
@@ -227,7 +235,7 @@ class TestFormatValidationErrors:
                 field="embedding.provider",
                 message="Invalid embedding provider",
                 line_number=3,
-                suggestion="Use one of: openai, ollama, cohere, gemini",
+                suggestion="Use one of: openai, ollama, cohere",
             )
         ]
         output = format_validation_errors(errors)

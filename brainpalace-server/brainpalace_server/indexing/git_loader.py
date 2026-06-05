@@ -45,7 +45,9 @@ class CommitRecord:
     lines_deleted: int = 0
 
 
-def _build_args(depth: int, since_sha: str | None) -> list[str]:
+def _build_args(
+    depth: int, since_sha: str | None, paths: list[str] | None = None
+) -> list[str]:
     args = [
         "log",
         f"--max-count={depth}",
@@ -55,6 +57,9 @@ def _build_args(depth: int, since_sha: str | None) -> list[str]:
     ]
     if since_sha:
         args.append(f"{since_sha}..HEAD")
+    if paths:
+        args.append("--")
+        args.extend(paths)
     return args
 
 
@@ -129,6 +134,7 @@ def load_commits(
     repo_path: str | Path,
     depth: int = DEFAULT_DEPTH,
     since_sha: str | None = None,
+    paths: list[str] | None = None,
 ) -> list[CommitRecord]:
     """Return commit records newest-first, or ``[]`` for a non-repo / failure."""
     repo = Path(repo_path)
@@ -136,7 +142,7 @@ def load_commits(
         return []
     try:
         proc = subprocess.run(
-            ["git", "-C", str(repo), *_build_args(depth, since_sha)],
+            ["git", "-C", str(repo), *_build_args(depth, since_sha, paths)],
             check=True,
             capture_output=True,
             text=True,

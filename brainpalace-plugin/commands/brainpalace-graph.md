@@ -15,7 +15,7 @@ parameters:
     default: 0.3
 skills:
   - using-brainpalace
-last_validated: 2026-05-30
+last_validated: 2026-06-05
 ---
 
 # BrainPalace Graph Search
@@ -51,13 +51,12 @@ GraphRAG must be enabled before using graph search:
 ```bash
 # Enable graph indexing
 export ENABLE_GRAPH_INDEX=true
-export GRAPH_STORE_TYPE=simple       # or kuzu
+export GRAPH_STORE_TYPE=simple       # or sqlite
 export GRAPH_USE_CODE_METADATA=true
 export GRAPH_USE_LLM_EXTRACTION=true
 
 # Optional dependencies
 pip install "brainpalace-rag[graphrag]"          # LLM extractor
-pip install "brainpalace-rag[graphrag-kuzu]"     # Kuzu backend
 
 # Start server
 brainpalace start

@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-05
+last_validated: 2026-06-06
 ---
 
 # Changelog
@@ -9,6 +9,67 @@ All notable changes to BrainPalace are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 Versioning is **CalVer** `YY.M.N` — 2-digit year · month · Nth release that
 month (the counter resets monthly). It looks like SemVer but is not.
+
+---
+
+## [Unreleased]
+
+## [26.6.22] - 2026-06-06
+
+### Added
+- **`brainpalace init --git-history / --no-git-history`** + an interactive prompt (default
+  **no**) to opt into indexing git commit history (message + changed-file list) as searchable
+  chunks. Privacy-first: written to `git_indexing.enabled` only when enabled.
+- **`git_indexing.path_filter`** config — limit git-history indexing to commits touching
+  specific repo-relative paths (`git log -- <paths>`); empty = all commits. For mono-repos
+  where one `.git/` serves several projects.
+- **`brainpalace init --migrate-graph-store / --no-migrate-graph-store`** + an interactive
+  prompt (default **yes**) to upgrade an already-initialized project from the legacy `simple`
+  graph store to `sqlite`. The existing graph is replayed into sqlite on next start (JSON kept
+  for rollback); non-interactive runs only migrate with the explicit flag (or `--yes`).
+- **`brainpalace status` rows:** LSP (enabled languages / disabled), Git Index (on + commit
+  count / off), and the graph store type with a temporal-availability note
+  (`sqlite, temporal` vs `simple — no temporal validity`).
+
+### Changed
+- **GraphRAG defaults flipped to on + persistent.** `ENABLE_GRAPH_INDEX` now defaults to
+  `true` and `GRAPH_STORE_TYPE` to `sqlite` (was `false`/`simple`) in `settings.py`;
+  `brainpalace init` writes `graphrag.store_type: sqlite`. Existing projects keep their
+  configured `store_type` until they opt into the migration above.
+- **Gemini removed from CLI embedding providers.** `VALID_EMBEDDING_PROVIDERS` and the wizard
+  texts no longer offer `gemini` for embeddings (the server has no Gemini embedding provider);
+  Gemini remains a summarization provider.
+
+### Documentation
+- **Graph defaults corrected across all docs.** `ENABLE_GRAPH_INDEX` default updated to
+  `true`; `GRAPH_STORE_TYPE` default updated to `sqlite` in `GRAPHRAG_GUIDE.md`,
+  `CONFIGURATION.md`, and the configuring-brainpalace plugin skill. `brainpalace init`
+  also writes `graphrag.enabled: true` by default.
+- **`git_indexing.path_filter` documented.** New config key limits git-history indexing to
+  specific repo-relative paths (runs `git log -- <paths>`), useful in mono-repos where one
+  `.git/` serves multiple sub-projects. Documented in `CONFIGURATION.md` and `GIT_HISTORY.md`.
+- **Temporal/simple warning added.** Explicit `⚠️` callout in `GRAPHRAG_GUIDE.md` that
+  `store_type: simple` makes temporal validity **unavailable** — no `valid_from`/`valid_until`,
+  no invalidation, no `as_of` queries, no decision supersession. `sqlite` is now the default
+  so these features work out of the box.
+- **"Agent Brain" rename.** `GIT_HISTORY.md` updated to use the correct product name
+  BrainPalace throughout.
+- **Embedding provider tables corrected.** `brainpalace-embeddings.md` command and
+  configuring-brainpalace skill now list only the real embedding providers: OpenAI, Cohere,
+  Ollama. Gemini, Grok, and sentence-transformers removed from embedding provider lists
+  (they are not embedding providers; Gemini/Grok remain in summarization lists).
+- **`kuzu` backend scrubbed from all docs.** The embedded-DB Kuzu backend was removed from
+  the codebase; references replaced with `sqlite`/`SQLitePropertyGraphStore` across the README,
+  server README, plugin commands (config/graph/setup), skills, reference guides, and the
+  `docs/design/*` architecture diagrams + their `.puml`/`.mmd` sources. (Server code retains a
+  graceful `store_type: kuzu` → `simple` downgrade so old configs never crash.)
+- **`GRAPH_EXTRACTION_MODEL` standardized to short form** `claude-haiku-4-5` (was
+  `claude-haiku-4-5-20251001`) in GRAPHRAG_GUIDE.md defaults table and YAML examples.
+- **Gemini model IDs updated to the current generation.** The superseded `gemini-2.0`/
+  `1.5` (and stale `gemini-3-*`) names were swept across code defaults, docs, and skills to
+  the live IDs: default `gemini-3.1-flash-lite` (cheapest, stable), premium `gemini-3.5-flash`,
+  pro `gemini-3.1-pro-preview`. Gemini removed from CLI embedding providers (server has no
+  Gemini embedding).
 
 ---
 

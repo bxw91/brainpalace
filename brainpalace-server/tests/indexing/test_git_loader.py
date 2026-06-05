@@ -7,7 +7,11 @@ from pathlib import Path
 
 import pytest
 
-from brainpalace_server.indexing.git_loader import CommitRecord, load_commits
+from brainpalace_server.indexing.git_loader import (
+    CommitRecord,
+    _build_args,
+    load_commits,
+)
 
 
 def _run(repo: Path, *args: str) -> str:
@@ -88,3 +92,18 @@ def test_since_sha_returns_only_newer_commits(git_repo: Path) -> None:
     subjects = [c.subject for c in commits]
     assert subjects == ["add c.txt", "add b.txt"]
     assert all(c.sha != first for c in commits)
+
+
+def test_build_args_appends_path_filter() -> None:
+    args = _build_args(depth=10, since_sha=None, paths=["services/api", "libs/x"])
+    assert args[-3:] == ["--", "services/api", "libs/x"]
+
+
+def test_build_args_path_filter_after_revision_range() -> None:
+    args = _build_args(depth=10, since_sha="abc123", paths=["pkg"])
+    assert "abc123..HEAD" in args
+    assert args[-2:] == ["--", "pkg"]
+
+
+def test_build_args_no_paths_no_separator() -> None:
+    assert "--" not in _build_args(depth=10, since_sha=None, paths=[])

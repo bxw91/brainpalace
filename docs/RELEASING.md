@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-04
+last_validated: 2026-06-05
 ---
 
 # Releasing BrainPalace
@@ -119,4 +119,5 @@ The version lives in **one place per package**: `pyproject.toml`.
   (`unset VIRTUAL_ENV && .venv/bin/python -m pytest ...`).
 - `pipx upgrade <name>` / `pipx install <name>` from inside the repo treats
   `<name>` as a path if a matching subdir exists — run it from another directory
-  (e.g. `$HOME` or `/tmp`).
+  (e.g. `$HOME` or `/tmp`). `brainpalace uninstall` handles this automatically
+  by changing to `$HOME` before exec-ing pipx/uv.

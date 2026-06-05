@@ -33,7 +33,7 @@ allowed_tools:
   - "Edit(~/.config/brainpalace/**)"
   - "Write(.claude/brainpalace/**)"
   - "Edit(.claude/brainpalace/**)"
-last_validated: 2026-06-04
+last_validated: 2026-06-06
 ---
 
 # Setup Assistant Agent
@@ -345,7 +345,7 @@ Guide users through configuring all supported providers:
 |----------|---------|--------|
 | Anthropic | `ANTHROPIC_API_KEY` | claude-haiku-4-5-20251001 |
 | OpenAI | `OPENAI_API_KEY` | gpt-5, gpt-5-mini |
-| Gemini | `GOOGLE_API_KEY` | gemini-3-flash, gemini-3-pro |
+| Gemini | `GOOGLE_API_KEY` | gemini-3.1-flash-lite, gemini-3.5-flash |
 | Grok | `XAI_API_KEY` | grok-4 |
 | Ollama | (none - local) | llama4:scout, qwen3-coder |
 
@@ -387,6 +387,43 @@ export ENABLE_RERANKING=true
 export RERANKER_PROVIDER=sentence-transformers
 export RERANKER_MODEL=cross-encoder/ms-marco-MiniLM-L-6-v2
 ```
+
+---
+
+## `brainpalace init` Questions (Graph Store + Git History)
+
+When guiding a user through `brainpalace init`, explain two defaults:
+
+### Graph store defaults to `sqlite`
+
+`brainpalace init` enables GraphRAG with **`graphrag.store_type: sqlite`** — a
+persistent, incrementally-writable store with **temporal-validity** tracking
+(entities/relationships know when they were valid). The legacy `simple` store is
+in-memory JSON with no temporal tracking. Most users should keep `sqlite`.
+
+**Upgrading existing projects.** A project created before `sqlite` became the
+default keeps `store_type: simple`. Re-running `brainpalace init` offers a one-time
+upgrade — interactive runs ask (default **yes**), or pass `--migrate-graph-store` /
+`--no-migrate-graph-store`. The server replays the existing `simple` JSON graph
+into sqlite on the next start (JSON kept for rollback); no re-indexing is needed.
+
+### Git-history indexing question (opt-in, default NO)
+
+Interactive `brainpalace init` asks whether to index the repo's **git commit
+history** (commit message + changed-file list) into searchable chunks:
+
+```
+Index git commit history? [y/N]
+```
+
+- **Off by default.** Commit messages and diffs can contain secrets, so this is a
+  deliberate **opt-in** — the default answer is **no**.
+- Non-interactive control: `brainpalace init --git-history` /
+  `brainpalace init --no-git-history`.
+- When enabled, `git_indexing.enabled: true` is written to
+  `.brainpalace/config.yaml`. Nothing is copied — chunks reference the commit sha.
+- A user can enable it later by re-running `brainpalace init --git-history` or by
+  setting `git_indexing.enabled: true` in `.brainpalace/config.yaml`.
 
 ---
 

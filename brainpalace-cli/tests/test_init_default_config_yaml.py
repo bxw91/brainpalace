@@ -53,7 +53,7 @@ def test_writes_default_config_when_absent(tmp_path: Path, isolated_xdg: Path) -
     data = yaml.safe_load(config_path.read_text())
     assert data["graphrag"]["enabled"] is True
     assert data["graphrag"]["use_code_metadata"] is True
-    assert data["graphrag"]["store_type"] == "simple"
+    assert data["graphrag"]["store_type"] == "sqlite"
     # docs not opt-in by default (no LLM cost)
     assert "doc_extractor" not in data["graphrag"]
 

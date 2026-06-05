@@ -26,7 +26,7 @@ context: brainpalace
 agent: setup-assistant
 skills:
   - configuring-brainpalace
-last_validated: 2026-06-04
+last_validated: 2026-06-06
 ---
 
 # Initialize BrainPalace Project
@@ -52,6 +52,8 @@ Initializes the current project for BrainPalace by creating the necessary config
 | --state-dir / -s | No | .brainpalace | Custom state directory for index data |
 | --language | No | en | Project default BM25 language (ISO 639-1, e.g. `en`, `de`, `fr`). Written to `bm25.language` in the project config. |
 | --bm25-engine | No | stem | BM25 tokenization engine: `stem` (Snowball/PyStemmer, ~27 languages) or `lemma` (simplemma, Croatian `hr` tier via the `hbs` data). |
+| --git-history / --no-git-history | No | off | Index this repo's git commit history (message + changed-file list) as searchable chunks. **Off by default** — commit messages/diffs can contain secrets, so it is a deliberate opt-in. Interactive runs ask (default no); written to `git_indexing.enabled` only when enabled. |
+| --migrate-graph-store / --no-migrate-graph-store | No | (ask) | On an **already-initialized** project still on the legacy `simple` graph store, upgrade `graphrag.store_type` to `sqlite` (persistent + temporal). Interactive runs ask (default **yes**); the existing graph is replayed into sqlite on next start (JSON kept for rollback). No effect on fresh inits or projects already on sqlite. |
 | --json | No | false | Output as JSON |
 
 ### Examples
@@ -64,7 +66,27 @@ Initializes the current project for BrainPalace by creating the necessary config
 /brainpalace:brainpalace-init --force
 /brainpalace:brainpalace-init --language de
 /brainpalace:brainpalace-init --language hr --bm25-engine lemma
+/brainpalace:brainpalace-init --git-history    # opt into git-history indexing
 ```
+
+> **Git-history indexing (opt-in).** `init` can index your git commit history
+> (commit message + changed-file list) into searchable chunks. It is **off by
+> default** because commit messages and diffs can leak secrets. Interactive runs
+> ask a yes/no question (default **no**); pass `--git-history` / `--no-git-history`
+> to decide non-interactively. When enabled, `git_indexing.enabled: true` is
+> written to `.brainpalace/config.yaml`. Nothing is copied — chunks reference the
+> commit sha.
+
+> **Graph store default.** New projects get GraphRAG enabled with the **`sqlite`**
+> store (`graphrag.store_type: sqlite`): persistent, incrementally-writable, with
+> temporal-validity tracking. (The legacy `simple` in-memory JSON store has no
+> temporal tracking.)
+
+> **Upgrading an existing project.** Projects created before `sqlite` became the
+> default keep `store_type: simple`. Re-run `brainpalace init` to upgrade: an
+> interactive run asks (default **yes**), or pass `--migrate-graph-store` /
+> `--no-migrate-graph-store`. The server replays the existing `simple` JSON graph
+> into sqlite on the next start (JSON kept for rollback); no re-indexing needed.
 
 ## Execution
 
@@ -186,6 +208,16 @@ bm25:
   engine: "stem"           # stem (Snowball/PyStemmer, ~27 languages) or lemma (simplemma)
   detect: false            # opt-in per-document language detection
   detect_min_confidence: 0.6  # minimum confidence to accept detected language (0–1)
+
+# GraphRAG — written by `brainpalace init` (on by default)
+graphrag:
+  enabled: true
+  store_type: "sqlite"     # default: persistent + temporal validity (simple = in-memory JSON, no temporal)
+  use_code_metadata: true
+
+# Git-history indexing — written ONLY when `--git-history` / the init prompt opts in
+git_indexing:
+  enabled: false           # opt-in; commit messages/diffs can contain secrets
 ```
 
 **BM25 language notes:**

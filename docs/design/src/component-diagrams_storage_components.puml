@@ -52,7 +52,7 @@ package "Storage Layer" {
     package "Graph Storage" {
         component [GraphStoreManager] <<manager>> as graph_mgr
         component [SimplePropertyGraphStore] <<backend>> as simple_graph
-        component [KuzuPropertyGraphStore] <<backend>> as kuzu_graph
+        component [SQLitePropertyGraphStore] <<backend>> as sqlite_graph
         folder "graph_index/" <<persist>> as graph_files
 
         interface "add_triplet()" as triplet_if
@@ -63,7 +63,7 @@ package "Storage Layer" {
         graph_mgr -up- gquery_if
         graph_mgr -up- gpersist_if
         graph_mgr --> simple_graph : default
-        graph_mgr --> kuzu_graph : optional
+        graph_mgr --> sqlite_graph : optional
         simple_graph --> graph_files
     }
 }
@@ -99,7 +99,7 @@ end note
 note right of graph_mgr
     Configuration:
     - persist_dir: ./graph_index
-    - store_type: simple | kuzu
+    - store_type: simple | sqlite
     - enabled: ENABLE_GRAPH_INDEX
 end note
 

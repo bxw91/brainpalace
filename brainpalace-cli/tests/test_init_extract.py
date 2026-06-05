@@ -18,6 +18,7 @@ _BASE = {
     "sessions": None,
     "archive": None,
     "extract": None,
+    "git_history": None,
     "yes": False,
     "is_tty": False,
 }

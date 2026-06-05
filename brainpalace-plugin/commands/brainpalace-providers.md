@@ -8,7 +8,7 @@ parameters:
     default: list
 skills:
   - using-brainpalace
-last_validated: 2026-05-30
+last_validated: 2026-06-05
 ---
 
 # BrainPalace Providers
@@ -85,7 +85,7 @@ Options:
 1. Ollama (llama3.2) - FREE, local, no API key required
 2. Anthropic (claude-haiku-4-5-20251001) - High quality
 3. OpenAI (gpt-5-mini) - Fast, cost-effective
-4. Gemini (gemini-3-flash) - Google's model
+4. Gemini (gemini-3.1-flash-lite) - Google's model
 5. Grok (grok-4) - xAI's model
 ```
 
@@ -120,7 +120,7 @@ Provider    | Models                                       | API Key Required
 ------------|----------------------------------------------|------------------
 Anthropic   | claude-haiku-4-5-20251001, claude-sonnet-4-5-20250514 | ANTHROPIC_API_KEY
 OpenAI      | gpt-5, gpt-5-mini                            | OPENAI_API_KEY
-Gemini      | gemini-3-flash, gemini-3-pro                 | GOOGLE_API_KEY
+Gemini      | gemini-3.1-flash-lite, gemini-3.5-flash                 | GOOGLE_API_KEY
 Grok        | grok-4                                       | XAI_API_KEY
 Ollama      | llama4:scout, mistral-small3.2, qwen3-coder  | None (local)
 ```

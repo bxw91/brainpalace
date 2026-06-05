@@ -286,7 +286,7 @@ classDiagram
         +clear() None
 
         -_initialize_simple_store() None
-        -_initialize_kuzu_store() None
+        -_initialize_sqlite_store() None
         -_persist_simple_store() None
         -_load_simple_store() bool
         -_update_counts() None
@@ -300,7 +300,7 @@ classDiagram
         +get_triplets() list
     }
 
-    class KuzuPropertyGraphStore {
+    class SQLitePropertyGraphStore {
         <<llama_index_graph_stores>>
         +database_path str
     }
@@ -314,7 +314,7 @@ classDiagram
     }
 
     GraphStoreManager --> SimplePropertyGraphStore : uses
-    GraphStoreManager --> KuzuPropertyGraphStore : uses
+    GraphStoreManager --> SQLitePropertyGraphStore : uses
     GraphStoreManager --> _MinimalGraphStore : fallback
 ```
 

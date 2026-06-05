@@ -10,7 +10,7 @@ parameters:
     required: false
 skills:
   - using-brainpalace
-last_validated: 2026-05-30
+last_validated: 2026-06-05
 ---
 
 # BrainPalace Summarizer Configuration
@@ -73,13 +73,13 @@ Google's models with large context windows.
 
 | Model | Speed | Use Case |
 |-------|-------|----------|
-| gemini-3-flash | Fast | Cost-effective |
-| gemini-3-pro | Medium | Higher quality |
+| gemini-3.1-flash-lite | Fast | Cost-effective |
+| gemini-3.5-flash | Medium | Higher quality |
 
 **Configuration:**
 ```bash
 export SUMMARIZATION_PROVIDER=gemini
-export SUMMARIZATION_MODEL=gemini-3-flash
+export SUMMARIZATION_MODEL=gemini-3.1-flash-lite
 export GOOGLE_API_KEY=...
 ```
 
@@ -136,7 +136,7 @@ Options:
 1. Ollama (llama3.2) - FREE, local, no API key required
 2. Anthropic (claude-haiku-4-5-20251001) - High quality, code-aware
 3. OpenAI (gpt-5-mini) - Fast, cost-effective
-4. Gemini (gemini-3-flash) - Large context support
+4. Gemini (gemini-3.1-flash-lite) - Large context support
 5. Grok (grok-4) - xAI's model
 ```
 

@@ -17,23 +17,25 @@ def _invoke(tmp_path, monkeypatch, *, args, stdin, plugin=True):
 
 
 def test_prompts_shown_and_decline_is_config_only(tmp_path, monkeypatch):
-    # summarize=Y, embed=N, proceed=N → config-only, but prompts were shown.
-    r = _invoke(tmp_path, monkeypatch, args=[], stdin="y\nn\nn\n")
+    # summarize=Y, embed=N, git-history=N, proceed=N → config-only, prompts shown.
+    r = _invoke(tmp_path, monkeypatch, args=[], stdin="y\nn\nn\nn\n")
     assert r.exit_code == 0, r.output
     assert "Summarize chat sessions?" in r.output
     assert "Embed chat sessions" in r.output
+    assert "Index git commit history?" in r.output
     # the embed prompt names the resolved provider
     assert "OpenAI text-embedding-3-large" in r.output
 
 
 def test_explicit_flags_skip_prompts(tmp_path, monkeypatch):
-    # Both capabilities set by flag → no prompts; just the proceed confirm.
+    # All capabilities set by flag → no prompts; just the proceed confirm.
     r = _invoke(
         tmp_path,
         monkeypatch,
-        args=["--no-sessions", "--no-extract"],
+        args=["--no-sessions", "--no-extract", "--no-git-history"],
         stdin="n\n",
     )
     assert r.exit_code == 0, r.output
     assert "Summarize chat sessions?" not in r.output
     assert "Embed chat sessions" not in r.output
+    assert "Index git commit history?" not in r.output

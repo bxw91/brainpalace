@@ -69,7 +69,7 @@ This document provides an index of all design diagrams in the BrainPalace docume
 | BM25 Architecture | [storage-architecture.md](storage-architecture.md) | [PNG](images/storage-architecture_architecture_2.png) | BM25IndexManager internals |
 | BM25 Filtering | [storage-architecture.md](storage-architecture.md) | [PNG](images/storage-architecture_bm25_filtering_strategy.png) | Over-fetch and post-filter |
 | Graph Architecture | [storage-architecture.md](storage-architecture.md) | [PNG](images/storage-architecture_architecture_3.png) | GraphStoreManager internals |
-| Backend Comparison | [storage-architecture.md](storage-architecture.md) | [PNG](images/storage-architecture_backend_comparison.png) | Simple vs Kuzu vs Minimal |
+| Backend Comparison | [storage-architecture.md](storage-architecture.md) | [PNG](images/storage-architecture_backend_comparison.png) | Simple vs SQLite vs Minimal |
 | Directory Structure | [storage-architecture.md](storage-architecture.md) | [PNG](images/storage-architecture_directory_structure.png) | Per-project state files |
 | Lock Protocol | [storage-architecture.md](storage-architecture.md) | [PNG](images/storage-architecture_lock_protocol.png) | Instance lock management |
 | Path Resolution | [storage-architecture.md](storage-architecture.md) | [PNG](images/storage-architecture_storage_path_resolution.png) | Storage path configuration |

@@ -62,7 +62,7 @@ class EmbeddingConfig(BaseModel):
 
     provider: str = Field(
         default="openai",
-        description="Embedding provider: openai, ollama, cohere, gemini",
+        description="Embedding provider: openai, ollama, cohere",
     )
     model: str = Field(
         default="text-embedding-3-large",

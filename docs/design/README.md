@@ -50,7 +50,7 @@ brainpalace-skill/      # Claude Code skill integration
 |--------|---------|------------|
 | **Vector Store** | Semantic similarity | ChromaDB (HNSW, cosine) |
 | **BM25 Index** | Keyword retrieval | LlamaIndex BM25Retriever |
-| **Graph Store** | Entity relationships | SimplePropertyGraphStore / Kuzu |
+| **Graph Store** | Entity relationships | SimplePropertyGraphStore / SQLite |
 
 ### Key Configurations
 

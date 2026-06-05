@@ -28,7 +28,7 @@ VALID_TOP_LEVEL_KEYS = {
     "project",
 }
 
-VALID_EMBEDDING_PROVIDERS = {"openai", "ollama", "cohere", "gemini"}
+VALID_EMBEDDING_PROVIDERS = {"openai", "ollama", "cohere"}
 VALID_SUMMARIZATION_PROVIDERS = {"anthropic", "openai", "ollama", "gemini", "grok"}
 VALID_RERANKER_PROVIDERS = {"sentence-transformers", "ollama"}
 VALID_STORAGE_BACKENDS = {"chroma", "postgres"}
@@ -465,7 +465,7 @@ def format_validation_errors(errors: list[ConfigValidationError]) -> str:
 
           Line 3: embedding.provider = "badprovider"
             Error: Invalid embedding provider: 'badprovider'
-            Fix: Use one of: cohere, gemini, ollama, openai
+            Fix: Use one of: cohere, ollama, openai
 
     Args:
         errors: List of :class:`ConfigValidationError` objects.
