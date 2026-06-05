@@ -49,6 +49,10 @@ class IndexingStatus:
     progress_percent: float
     last_indexed_at: str | None
     indexed_folders: list[str]
+    code_documents: int = 0
+    doc_documents: int = 0
+    code_chunks: int = 0
+    doc_chunks: int = 0
     file_watcher: dict[str, Any] | None = None
     embedding_cache: dict[str, Any] | None = None
     migration: dict[str, Any] | None = None
@@ -213,6 +217,10 @@ class DocServeClient:
         return IndexingStatus(
             total_documents=data.get("total_documents", 0),
             total_chunks=data.get("total_chunks", 0),
+            code_documents=data.get("code_documents", 0),
+            doc_documents=data.get("doc_documents", 0),
+            code_chunks=data.get("total_code_chunks", 0),
+            doc_chunks=data.get("total_doc_chunks", 0),
             indexing_in_progress=data.get("indexing_in_progress", False),
             current_job_id=data.get("current_job_id"),
             progress_percent=data.get("progress_percent", 0.0),

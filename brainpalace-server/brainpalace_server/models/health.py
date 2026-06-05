@@ -64,6 +64,12 @@ class IndexingStatus(BaseModel):
         ge=0,
         description="Total number of documents indexed",
     )
+    code_documents: int = Field(
+        default=0, ge=0, description="Indexed code files (by extension)"
+    )
+    doc_documents: int = Field(
+        default=0, ge=0, description="Indexed documentation files (by extension)"
+    )
     total_chunks: int = Field(
         default=0,
         ge=0,

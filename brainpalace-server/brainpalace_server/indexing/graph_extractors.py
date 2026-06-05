@@ -30,6 +30,8 @@ from brainpalace_server.models.graph import (
 
 logger = logging.getLogger(__name__)
 
+_LANGEXTRACT_WARNED = False
+
 
 class LLMEntityExtractor:
     """Wrapper for LLM-based entity extraction.
@@ -715,10 +717,14 @@ class LangExtractExtractor:
             import langextract  # noqa: F401 (check availability)
             from langextract import extract_relations
         except ImportError:
-            logger.warning(
-                "langextract not installed; document graph extraction disabled. "
-                "Install: cd brainpalace-server && poetry install --extras graphrag"
-            )
+            global _LANGEXTRACT_WARNED
+            if not _LANGEXTRACT_WARNED:
+                _LANGEXTRACT_WARNED = True
+                logger.warning(
+                    "langextract not installed; document graph extraction "
+                    "disabled. Install: cd brainpalace-server && "
+                    "poetry install --extras graphrag"
+                )
             return []
 
         max_count = max_triplets or self.max_triplets

@@ -175,8 +175,16 @@ def status_command(
             table.add_column("Value")
 
             table.add_row("Server Version", health.version)
-            table.add_row("Total Documents", str(indexing.total_documents))
-            table.add_row("Total Chunks", str(indexing.total_chunks))
+            table.add_row(
+                "Total Documents",
+                f"{indexing.total_documents} "
+                f"({indexing.code_documents} code · {indexing.doc_documents} docs)",
+            )
+            table.add_row(
+                "Total Chunks",
+                f"{indexing.total_chunks} "
+                f"({indexing.code_chunks} code · {indexing.doc_chunks} docs)",
+            )
 
             if indexing.indexing_in_progress:
                 table.add_row(
@@ -267,24 +275,34 @@ def status_command(
                         "[dim]off[/] (enable: brainpalace init --sessions)",
                     )
 
-            # Session summarization coverage (% of archived sessions distilled).
+            # Session summarization — distillation of transcripts (free, runs
+            # via the Claude Code subagent); independent of embedding/index.
+            # Always shown so the capability is visible even when off — it is a
+            # separate switch from Session Memory (embedding) and Session
+            # Archive (raw backup).
             extract = features.get("session_extraction")
-            if isinstance(extract, dict) and extract.get("mode") != "off":
-                done = int(extract.get("summarized_sessions", 0) or 0)
-                total = int(extract.get("total_sessions", 0) or 0)
-                pct = float(extract.get("summarized_pct", 0.0) or 0.0)
-                mode = str(extract.get("mode", "auto"))
-                if total:
+            if isinstance(extract, dict):
+                mode = str(extract.get("mode", "off"))
+                if mode == "off":
                     table.add_row(
                         "Session Summarization",
-                        f"[green]{pct:.0f}%[/] summarized "
-                        f"({done:,}/{total:,} sessions, mode: {mode})",
+                        "[dim]off[/] (free; enable: brainpalace init)",
                     )
                 else:
-                    table.add_row(
-                        "Session Summarization",
-                        f"[dim]no sessions yet[/] (mode: {mode})",
-                    )
+                    done = int(extract.get("summarized_sessions", 0) or 0)
+                    total = int(extract.get("total_sessions", 0) or 0)
+                    pct = float(extract.get("summarized_pct", 0.0) or 0.0)
+                    if total:
+                        table.add_row(
+                            "Session Summarization",
+                            f"[green]{pct:.0f}%[/] summarized "
+                            f"({done:,}/{total:,} sessions, mode: {mode})",
+                        )
+                    else:
+                        table.add_row(
+                            "Session Summarization",
+                            f"[dim]no sessions yet[/] (mode: {mode})",
+                        )
 
             # Show embedding cache status if available (Phase 16)
             embedding_cache = indexing.embedding_cache

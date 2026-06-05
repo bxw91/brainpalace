@@ -29,10 +29,15 @@ class _FakeResp:
 def _make_project(
     home: Path, name: str = "proj", runtime: dict[str, Any] | None = None
 ) -> Path:
-    """Create ``home/name/.brainpalace/`` and optionally write runtime.json."""
+    """Create an *initialized* ``home/name/.brainpalace/`` project.
+
+    Always writes a ``config.yaml`` marker so the dir counts as a real project
+    root (discovery skips bare scaffolds). Optionally also writes runtime.json.
+    """
     proj = home / name
     ab = proj / ".brainpalace"
     ab.mkdir(parents=True)
+    (ab / "config.yaml").write_text("api: {}\n")
     if runtime is not None:
         (ab / "runtime.json").write_text(json.dumps(runtime))
     return proj

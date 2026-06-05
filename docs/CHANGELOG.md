@@ -12,6 +12,50 @@ month (the counter resets monthly). It looks like SemVer but is not.
 
 ---
 
+## [26.6.20] - 2026-06-05
+
+### Fixed
+- **Fresh-folder `watch=auto` is now persisted at the start of indexing**, not only on clean
+  completion. The folder record was written `watch=off` mid-job (before the rebuildable
+  BM25/graph tail) and only upgraded to `auto` at clean completion, so a first index killed
+  mid-tail left a brand-new folder unwatched. An explicit `--watch` flag now always wins (upgrade
+  `off→auto` or downgrade, new folder or re-index); a flagless re-index still preserves the
+  folder's existing setting.
+- **Indexing now honours `.git/info/exclude` and the global `core.excludesFile`** in addition to
+  `.gitignore`, matching Git's ignore precedence — local-only excludes (including potential
+  secrets) are no longer indexed. `info/exclude` is located via `--git-common-dir` so linked
+  worktrees resolve correctly. Falls back to `.gitignore`-only when git is unavailable or the
+  directory is not a repo.
+- **Indexing progress now advances through the whole pipeline** instead of sitting at one value
+  and then jumping to 100%. Progress persistence is throttled by percent-of-total (so the
+  store / BM25 / graph phase markers surface), the percent bands are rebalanced to give the
+  embedding and graph phases proportional width, and the graph-build phase reports per-document
+  progress (it was previously a silent no-op).
+- **`langextract not installed` is logged once per process** instead of once per document.
+- **Project discovery now ignores an uninitialized `.brainpalace/` scaffold.** In a monorepo, a
+  stray `.brainpalace/` inside a sub-package (no `config.json`/`config.yaml`/`runtime.json`) was
+  mistaken for a project root, shadowing the real repo root for files beneath it (phantom nested
+  project, double-indexing). Discovery and project-root resolution now require an initialized
+  `.brainpalace/` and otherwise keep walking up to the real project / git root.
+
+### Changed
+- **`brainpalace status` splits documents and chunks into code vs doc counts**
+  (`N (X code · Y docs)`). The split is derived durably — documents from the persisted manifests
+  (by file extension), chunks from the vector store's `source_type` filter — so it survives a
+  server restart without a reindex.
+- **`brainpalace status` always shows session summarization as its own row.** Summarization
+  (free, distillation) is independent of session embedding (`Session Memory`, billable) and raw
+  archive (`Session Archive`); the `Session Summarization` row was previously hidden when off,
+  obscuring the separation. It now renders in every state (`off` / coverage %).
+
+### Deprecated
+- **`BRAINPALACE_CHECKPOINT_INTERVAL` / `progress_checkpoint_interval` no longer affect
+  indexing-progress cadence.** Progress persistence is now percent-based (`PROGRESS_MIN_PERCENT`);
+  the legacy file-count checkpoint setting is still accepted for backward-compatible construction
+  but is ignored.
+
+---
+
 ## [26.6.19] - 2026-06-05
 
 ### Changed

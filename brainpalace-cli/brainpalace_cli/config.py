@@ -14,7 +14,7 @@ import yaml
 from pydantic import BaseModel, Field
 
 from brainpalace_cli.discovery import discover_server_url
-from brainpalace_cli.xdg_paths import get_xdg_config_dir
+from brainpalace_cli.xdg_paths import get_xdg_config_dir, is_initialized_state_dir
 
 logger = logging.getLogger(__name__)
 
@@ -324,12 +324,16 @@ def resolve_project_root_with_strategy(
 
     start = (start_path or Path.cwd()).resolve()
 
-    # 1. Nearest .brainpalace/ (or legacy .claude/brainpalace/) ancestor.
+    # 1. Nearest *initialized* .brainpalace/ (or legacy .claude/brainpalace/)
+    #    ancestor. A bare scaffold (no config.yaml / runtime.json) is skipped so
+    #    a stray dir in a monorepo sub-package does not shadow the real root.
     current = start
     while True:
-        if (current / STATE_DIR_NAME).is_dir():
+        state_dir = current / STATE_DIR_NAME
+        if state_dir.is_dir() and is_initialized_state_dir(state_dir):
             return current, "brainpalace_dir"
-        if (current / LEGACY_STATE_DIR_NAME).is_dir():
+        legacy_dir = current / LEGACY_STATE_DIR_NAME
+        if legacy_dir.is_dir() and is_initialized_state_dir(legacy_dir):
             return current, "legacy_claude_dir"
         if current == current.parent:
             break

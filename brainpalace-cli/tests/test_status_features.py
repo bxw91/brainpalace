@@ -74,3 +74,39 @@ def test_status_file_watcher_zero_folders_is_clear():
     result = _invoke({"file_watcher": {"enabled": True, "watched_folders": 0}})
     assert result.exit_code == 0, result.output
     assert "0 folders" in result.output
+
+
+def test_status_renders_session_summarization_off():
+    # Summarization is a separate capability from embedding (Session Memory)
+    # and raw archive — it must be shown even when off, not hidden.
+    result = _invoke(
+        {
+            "session_extraction": {
+                "mode": "off",
+                "summarized_pct": 0.0,
+                "summarized_sessions": 0,
+                "total_sessions": 30,
+            },
+        }
+    )
+    assert result.exit_code == 0, result.output
+    out = result.output
+    assert "Summarization" in out
+    assert "off" in out
+
+
+def test_status_renders_session_summarization_on():
+    result = _invoke(
+        {
+            "session_extraction": {
+                "mode": "subagent",
+                "summarized_pct": 40.0,
+                "summarized_sessions": 12,
+                "total_sessions": 30,
+            },
+        }
+    )
+    assert result.exit_code == 0, result.output
+    out = result.output
+    assert "Summarization" in out
+    assert "subagent" in out

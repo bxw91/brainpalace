@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import os
 import uuid
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -55,6 +57,45 @@ def _merge_chunk_ids(existing_ids: list[str], new_ids: list[str]) -> list[str]:
     instead of being overwritten with the per-run delta.
     """
     return sorted(set(existing_ids) | set(new_ids))
+
+
+def _classify_documents(paths: set[str]) -> dict[str, int]:
+    """Split a set of indexed file paths into code vs doc counts by extension.
+
+    Code := extension in DocumentLoader.CODE_EXTENSIONS; everything else
+    (e.g. .md, .html) is a doc — matching the loader's own default.
+    """
+    code_exts = DocumentLoader.CODE_EXTENSIONS
+    code = sum(1 for p in paths if Path(p).suffix.lower() in code_exts)
+    total = len(paths)
+    return {"code": code, "doc": total - code, "total": total}
+
+
+def _resolve_watch_settings(
+    *,
+    has_existing: bool,
+    existing_watch_mode: str | None,
+    existing_debounce: int | None,
+    request_watch_mode: str | None,
+    request_debounce: int | None,
+) -> tuple[str, int | None]:
+    """Decide the (watch_mode, debounce) to persist for a folder index.
+
+    Rules:
+      - An explicit ``request.watch_mode`` (not None) always wins — it can
+        upgrade off->auto or downgrade auto->off, on a new folder or a
+        re-index. This is what lets a fresh first index persist 'auto'
+        immediately, before the rebuildable BM25/graph tail, so an interrupt
+        mid-tail can't strand the folder as unwatched.
+      - No flag on this run + an existing folder -> preserve its settings
+        (a plain reindex must not silently reset auto back to off).
+      - No flag + new folder -> default 'off'.
+    """
+    if request_watch_mode is not None:
+        return request_watch_mode, request_debounce
+    if has_existing:
+        return existing_watch_mode or "off", existing_debounce
+    return "off", None
 
 
 class IndexingService:
@@ -440,7 +481,7 @@ class IndexingService:
 
             # Step 2: Chunk documents and code files
             if progress_callback:
-                await progress_callback(20, 100, "Chunking documents...")
+                await progress_callback(10, 100, "Chunking documents...")
 
             # Separate documents by type
             doc_documents = [
@@ -494,7 +535,7 @@ class IndexingService:
                 async def doc_chunk_progress(processed: int, total: int) -> None:
                     self._state.processed_documents = processed
                     if progress_callback:
-                        pct = 20 + int((processed / total_to_process) * 15)
+                        pct = 10 + int((processed / total_to_process) * 5)
                         await progress_callback(
                             pct, 100, f"Chunking docs: {processed}/{total}"
                         )
@@ -647,11 +688,11 @@ class IndexingService:
 
             # Step 3: Generate embeddings
             if progress_callback:
-                await progress_callback(50, 100, "Generating embeddings...")
+                await progress_callback(15, 100, "Generating embeddings...")
 
             async def embedding_progress(processed: int, total: int) -> None:
                 if progress_callback:
-                    pct = 50 + int((processed / total) * 40)
+                    pct = 15 + int((processed / total) * 35)
                     await progress_callback(pct, 100, f"Embedding: {processed}/{total}")
 
             # The chunks list contains both TextChunk and CodeChunk,
@@ -664,7 +705,7 @@ class IndexingService:
 
             # Step 4: Store in vector database
             if progress_callback:
-                await progress_callback(90, 100, "Storing in vector database...")
+                await progress_callback(55, 100, "Storing in vector database...")
 
             # ChromaDB has a max batch size of 41666, so we need to batch our upserts
             # Use a safe batch size of 40000 to leave some margin
@@ -711,7 +752,7 @@ class IndexingService:
 
             # Step 5: Build BM25 index
             if progress_callback:
-                await progress_callback(95, 100, "Building BM25 index...")
+                await progress_callback(60, 100, "Building BM25 index...")
 
             nodes = [
                 TextNode(
@@ -783,11 +824,16 @@ class IndexingService:
             # Step 6: Build graph index if enabled (Feature 113)
             if settings.ENABLE_GRAPH_INDEX:
                 if progress_callback:
-                    await progress_callback(97, 100, "Building graph index...")
+                    await progress_callback(65, 100, "Building graph index...")
+
+                # Graph build runs in a worker thread and emits per-doc
+                # progress; mirror it onto the job via a tiny poller on the
+                # loop (avoids cross-thread coroutine scheduling). Band 65..99.
+                graph_state = {"current": 0, "total": 1}
 
                 def graph_progress(current: int, total: int, message: str) -> None:
-                    # Synchronous callback wrapper
-                    logger.debug(f"Graph indexing: {message}")
+                    graph_state["current"] = current
+                    graph_state["total"] = total
 
                 graph_mgr = self.graph_index_manager
 
@@ -796,7 +842,26 @@ class IndexingService:
                         chunks, progress_callback=graph_progress
                     )
 
-                triplet_count = await asyncio.to_thread(_build_graph)
+                async def _poll_graph_progress() -> None:
+                    last: tuple[int, int] | None = None
+                    while True:
+                        c = graph_state["current"]
+                        t = max(graph_state["total"], 1)
+                        if progress_callback and (c, t) != last:
+                            last = (c, t)
+                            pct = 65 + int((c / t) * 34)
+                            await progress_callback(
+                                min(pct, 99), 100, f"Building graph index: {c}/{t}"
+                            )
+                        await asyncio.sleep(0.5)
+
+                poller = asyncio.create_task(_poll_graph_progress())
+                try:
+                    triplet_count = await asyncio.to_thread(_build_graph)
+                finally:
+                    poller.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await poller
                 logger.info(f"Graph index built with {triplet_count} triplets")
 
             # Mark as completed
@@ -853,14 +918,17 @@ class IndexingService:
                 # Incremental/re-index: union with already-tracked ids so the
                 # persisted chunk_count stays cumulative, not the per-run delta.
                 merged_ids = _merge_chunk_ids(existing.chunk_ids, new_chunk_ids)
-                # Preserve the folder's watch settings — re-registering must
-                # not silently reset an auto-watched folder back to 'off'.
-                watch_mode = existing.watch_mode
-                watch_debounce_seconds = existing.watch_debounce_seconds
             else:
                 merged_ids = new_chunk_ids
-                watch_mode = "off"
-                watch_debounce_seconds = None
+            watch_mode, watch_debounce_seconds = _resolve_watch_settings(
+                has_existing=existing is not None,
+                existing_watch_mode=existing.watch_mode if existing else None,
+                existing_debounce=(
+                    existing.watch_debounce_seconds if existing else None
+                ),
+                request_watch_mode=request.watch_mode,
+                request_debounce=request.watch_debounce_seconds,
+            )
             await self.folder_manager.add_folder(
                 folder_path=abs_folder_path,
                 chunk_count=len(merged_ids),
@@ -993,6 +1061,26 @@ class IndexingService:
             return len(paths)
         except Exception:  # noqa: BLE001 — never fail /status on the count
             return self._state.total_documents
+
+    async def get_document_counts_by_type(self) -> dict[str, int]:
+        """Durable code/doc/total document counts from persisted manifests.
+
+        Mirrors get_document_count (manifest-derived, survives restart) but
+        splits the distinct file paths by extension. Falls back to a single
+        total bucket when manifests are unavailable.
+        """
+        if self.folder_manager is None or self.manifest_tracker is None:
+            total = self._state.total_documents
+            return {"code": 0, "doc": 0, "total": total}
+        try:
+            paths: set[str] = set()
+            for folder in await self.folder_manager.list_folders():
+                manifest = await self.manifest_tracker.load(folder.folder_path)
+                if manifest is not None:
+                    paths.update(manifest.files.keys())
+        except Exception:  # noqa: BLE001 — never fail /status on the count
+            return {"code": 0, "doc": 0, "total": self._state.total_documents}
+        return _classify_documents(paths)
 
     async def get_status(self) -> dict[str, Any]:
         """

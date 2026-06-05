@@ -212,11 +212,27 @@ async def indexing_status(request: Request) -> dict[str, Any]:
     if query_cache_svc is not None:
         query_cache_info = query_cache_svc.get_stats()
 
+    # Q2: durable code/doc split. Documents come from the manifests; chunk
+    # counts prefer the store's source_type filter (survives restart) and
+    # fall back to the in-process counters only if the store can't filter.
+    doc_counts = await indexing_service.get_document_counts_by_type()
+    total_doc_chunks = service_status.get("total_doc_chunks", 0)
+    total_code_chunks = service_status.get("total_code_chunks", 0)
+    try:
+        backend = getattr(request.app.state, "storage_backend", None)
+        if backend is not None and backend.is_initialized:
+            total_code_chunks = await backend.get_count(where={"source_type": "code"})
+            total_doc_chunks = await backend.get_count(where={"source_type": "doc"})
+    except Exception:  # noqa: BLE001 — never fail /status on the optional count
+        pass
+
     response = IndexingStatus(
-        total_documents=await indexing_service.get_document_count(),
+        total_documents=doc_counts["total"],
+        code_documents=doc_counts["code"],
+        doc_documents=doc_counts["doc"],
         total_chunks=total_chunks,
-        total_doc_chunks=service_status.get("total_doc_chunks", 0),
-        total_code_chunks=service_status.get("total_code_chunks", 0),
+        total_doc_chunks=total_doc_chunks,
+        total_code_chunks=total_code_chunks,
         indexing_in_progress=queue_running > 0,
         current_job_id=current_job_id,
         progress_percent=progress_percent,

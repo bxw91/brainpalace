@@ -24,6 +24,27 @@ logger = logging.getLogger(__name__)
 LEGACY_DIR: Path = Path.home() / ".brainpalace"
 
 
+def is_initialized_state_dir(state_dir: Path) -> bool:
+    """True if a ``.brainpalace/`` (or legacy) dir is an initialized project.
+
+    A directory counts as a real project root only when it holds one of the
+    initialized markers: ``config.json`` (the canonical marker — ``brainpalace
+    init`` writes it unconditionally), ``config.yaml`` (also written by
+    ``brainpalace init``), or ``runtime.json`` (written by a running server). A
+    bare scaffold (only ``data/`` dirs, created as a side effect) has none of
+    these and returns ``False`` so discovery walks past it to the true project /
+    git root.
+
+    Lives here, the lowest-level module, so both ``config`` and ``discovery``
+    can import it without an import cycle.
+    """
+    return (
+        (state_dir / "config.yaml").is_file()
+        or (state_dir / "config.json").is_file()
+        or (state_dir / "runtime.json").is_file()
+    )
+
+
 def get_xdg_config_dir() -> Path:
     """Return XDG config directory for BrainPalace.
 

@@ -59,6 +59,7 @@ def test_resolve_project_root_prefers_local_state_dir(
     nested = isolated_cwd / "projects" / "app"
     nested.mkdir(parents=True)
     (nested / ".brainpalace").mkdir()
+    (nested / ".brainpalace" / "config.yaml").write_text("api: {}\n")
 
     # Patch git so it pretends ``isolated_cwd`` (the parent) is the repo top.
     def fake_git(args, *_, **__):  # type: ignore[no-untyped-def]
@@ -124,6 +125,7 @@ def test_start_stop_use_canonical_resolver(
     nested = isolated_cwd / "projects" / "claude-clock"
     nested.mkdir(parents=True)
     (nested / ".brainpalace").mkdir()
+    (nested / ".brainpalace" / "config.yaml").write_text("api: {}\n")
 
     def fake_git(args, *_, **__):  # type: ignore[no-untyped-def]
         return subprocess.CompletedProcess(
@@ -221,6 +223,7 @@ def test_resolve_project_root_with_strategy_returns_label(
 ) -> None:
     """#146 check #3 — resolver must report *which* rule matched."""
     (isolated_cwd / ".brainpalace").mkdir()
+    (isolated_cwd / ".brainpalace" / "config.yaml").write_text("api: {}\n")
 
     def fake_git(args, *_, **__):  # type: ignore[no-untyped-def]
         return subprocess.CompletedProcess(

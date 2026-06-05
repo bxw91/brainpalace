@@ -20,6 +20,19 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _should_persist_progress(
+    *, last_current: int, current: int, total: int, min_percent: float
+) -> bool:
+    """Persist when the job completes or progress advanced >= min_percent of
+    total. Percent-based so it works for both the pipeline's 0..100 percent
+    callbacks and any future file-count caller.
+    """
+    if current >= total:
+        return True
+    pct_delta = (current - last_current) / max(total, 1) * 100
+    return pct_delta >= min_percent
+
+
 class CancellationRequestedError(Exception):
     """Raised when a job cancellation is requested."""
 
@@ -47,6 +60,7 @@ class JobWorker:
     # Default configuration
     MAX_RUNTIME_SECONDS: int = 7200  # 2 hours
     PROGRESS_CHECKPOINT_INTERVAL: int = 50  # Update progress every N files
+    PROGRESS_MIN_PERCENT: float = 2.0  # persist every >=2% of total
     POLL_INTERVAL_SECONDS: float = 1.0  # Poll for new jobs every N seconds
 
     def __init__(
@@ -63,7 +77,9 @@ class JobWorker:
             job_store: Job queue store for persistence.
             indexing_service: Indexing service for processing jobs.
             max_runtime_seconds: Maximum job runtime before timeout.
-            progress_checkpoint_interval: Update progress every N files.
+            progress_checkpoint_interval: Deprecated/ignored — progress
+                persistence is now percent-based (see PROGRESS_MIN_PERCENT).
+                Still accepted for backward-compatible construction.
             poll_interval_seconds: Poll interval for checking new jobs.
         """
         self._job_store = job_store
@@ -71,10 +87,12 @@ class JobWorker:
 
         # Configuration (use instance values or defaults)
         self._max_runtime_seconds = max_runtime_seconds or self.MAX_RUNTIME_SECONDS
-        self._progress_interval = (
-            progress_checkpoint_interval or self.PROGRESS_CHECKPOINT_INTERVAL
-        )
         self._poll_interval = poll_interval_seconds or self.POLL_INTERVAL_SECONDS
+        # Progress persistence is now percent-based via PROGRESS_MIN_PERCENT
+        # (see _should_persist_progress). The legacy file-count
+        # progress_checkpoint_interval no longer gates persistence; the param is
+        # still accepted for backward-compatible construction but is unused.
+        self._progress_min_percent = self.PROGRESS_MIN_PERCENT
 
         # Optional references for watch_mode integration (Phase 15)
         self._file_watcher_service: FileWatcherService | None = None
@@ -287,10 +305,11 @@ class JobWorker:
                     )
 
                 # Update progress at intervals
-                if (
-                    job.progress is None
-                    or current - job.progress.files_processed >= self._progress_interval
-                    or current == total
+                if job.progress is None or _should_persist_progress(
+                    last_current=job.progress.files_processed,
+                    current=current,
+                    total=total,
+                    min_percent=self._progress_min_percent,
                 ):
                     job.progress = JobProgress(
                         files_processed=current,

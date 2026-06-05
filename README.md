@@ -1,26 +1,25 @@
 ---
-last_validated: 2026-06-04
+last_validated: 2026-06-05
 ---
 
 <div align="center">
 
 ![Code & Docs RAG](https://img.shields.io/badge/Code_%26_Docs_RAG-1f6feb?style=for-the-badge)
-![Mono-repo](https://img.shields.io/badge/Mono--repo-1f6feb?style=for-the-badge)
 ![Persistent Session Memory](https://img.shields.io/badge/Persistent_Session_Memory-1f6feb?style=for-the-badge)
 ![File Watcher](https://img.shields.io/badge/File_Watcher-1f6feb?style=for-the-badge)
-![.gitignore-aware](https://img.shields.io/badge/.gitignore--aware-1f6feb?style=for-the-badge)
+![Mono-repo + gitignore aware](https://img.shields.io/badge/Mono--Repo+gitignore_aware-1f6feb?style=for-the-badge)
 
 ![Multi-Lang BM25](https://img.shields.io/badge/Multi--Lang_BM25-8957e5?style=for-the-badge)
 ![Vector](https://img.shields.io/badge/Vector-8957e5?style=for-the-badge)
-![GraphRAG](https://img.shields.io/badge/GraphRAG-8957e5?style=for-the-badge)
+![Temporal GraphRAG](https://img.shields.io/badge/Temporal_GraphRAG-8957e5?style=for-the-badge)
 ![Hybrid](https://img.shields.io/badge/Hybrid-8957e5?style=for-the-badge)
 ![Multi-mode](https://img.shields.io/badge/Multi--mode-8957e5?style=for-the-badge)
 ![Summarisation](https://img.shields.io/badge/Summarisation-8957e5?style=for-the-badge)
 
 ![CLI](https://img.shields.io/badge/CLI-d29922?style=for-the-badge)
 ![MCP](https://img.shields.io/badge/MCP-d29922?style=for-the-badge)
-![Claude Code Plugin](https://img.shields.io/badge/Claude_Code_Plugin-d29922?style=for-the-badge)
-![Local-Cloud LLM](https://img.shields.io/badge/Local-Cloud_LLM-da3633?style=for-the-badge)
+![Claude Code Plugin](https://img.shields.io/badge/Claude_Code_Plugin-d25902?style=for-the-badge)
+![Local/Cloud LLM](https://img.shields.io/badge/Local/Cloud_LLM-da3633?style=for-the-badge)
 ![Multi-instance](https://img.shields.io/badge/Multi--instance-6e7681?style=for-the-badge)
 
 </div>
@@ -28,10 +27,11 @@ last_validated: 2026-06-04
 # BrainPalace
 
 **Local-first RAG for code & docs, with persistent session-chat memory for AI agents.**
-BM25 (multi-lang), vector, GraphRAG, and hybrid search over your codebase and
-documentation — plus persistent session-chat memory (Claude Code transcripts only), a temporal
-knowledge graph, and git/LSP-aware indexing. Use it from the CLI, over MCP, or
-as a Claude Code plugin. Runs fully local on Ollama, or with cloud LLMs.
+BM25 (multi-lang), vector, GraphRAG, hybrid search over your codebase and
+documentation — plus persistent session-chat memory (Claude Code transcripts only), chat
+session verbatim copy with summarisation and embedding, a temporal knowledge graph,
+and git/LSP-aware indexing. Use it from the CLI, over MCP or
+as a Claude Code plugin. Runs fully local on Ollama or with cloud LLMs.
 
 ## Install
 
@@ -88,7 +88,7 @@ Full Claude Code reference: [`docs/PLUGIN_GUIDE.md`](docs/PLUGIN_GUIDE.md).
 > everything here plus free session summarisation on your Claude Code
 > subscription. This path is for CLI-only use or non-Claude-Code editors over MCP.
 
-Use this if you want `brainpalace` as a command-line tool, or if you want to
+Use this if you want `brainpalace` as a command-line tool or if you want to
 connect an MCP-capable editor (Cursor, VS Code Copilot, Cline, Continue, Kilo
 Code, Zed). One command does both — it will ask which MCP client to wire (or
 "none" for CLI-only) along the way. Nothing runs until you answer.
@@ -487,7 +487,7 @@ For Croatian text with higher accuracy, install the `lemma-hr` extra (requires
 
 ```bash
 pip install 'brainpalace[lemma-hr]'
-# then set engine: lemma in config, or pass --bm25-engine lemma
+# then set engine: lemma in config or pass --bm25-engine lemma
 ```
 
 ### Reindex note

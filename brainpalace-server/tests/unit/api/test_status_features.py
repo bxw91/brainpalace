@@ -44,6 +44,9 @@ def _client(
         }
     )
     indexing_service.get_document_count = AsyncMock(return_value=3)
+    indexing_service.get_document_counts_by_type = AsyncMock(
+        return_value={"code": 2, "doc": 1, "total": 3}
+    )
 
     app.state.indexing_service = indexing_service
     app.state.storage_backend = backend
@@ -76,7 +79,12 @@ def test_status_reports_feature_block():
     client = _client(
         session_enabled=True, session_running=True, curated=5, session_chunks=7
     )
-    feats = client.get("/status").json()["features"]
+    data = client.get("/status").json()
+    # Code/doc split from get_document_counts_by_type propagates to the response.
+    assert data["total_documents"] == 3
+    assert data["code_documents"] == 2
+    assert data["doc_documents"] == 1
+    feats = data["features"]
 
     assert feats["doc_indexing"]["active"] is True
     assert feats["doc_indexing"]["total_chunks"] == 42

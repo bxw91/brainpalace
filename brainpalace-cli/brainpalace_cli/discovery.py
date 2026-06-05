@@ -14,13 +14,17 @@ from pathlib import Path
 
 import httpx
 
+from brainpalace_cli.xdg_paths import is_initialized_state_dir
+
 
 def discover_project_dir(start: Path | None = None) -> Path | None:
     """Find the project directory by walking up from ``start``.
 
-    Walks up from ``start`` (default: current working directory) looking for a
-    ``.brainpalace/`` subdirectory and returns the first match. Never walks
-    above ``$HOME`` and never escapes it.
+    Walks up from ``start`` (default: current working directory) looking for an
+    *initialized* ``.brainpalace/`` subdirectory (one with ``config.yaml`` or
+    ``runtime.json``) and returns the first match. A bare scaffold is skipped
+    so the walk continues to the real project. Never walks above ``$HOME`` and
+    never escapes it.
 
     Args:
         start: Directory to start from. Defaults to the current directory.
@@ -38,7 +42,8 @@ def discover_project_dir(start: Path | None = None) -> Path | None:
 
     current = start
     while True:
-        if (current / ".brainpalace").is_dir():
+        state_dir = current / ".brainpalace"
+        if state_dir.is_dir() and is_initialized_state_dir(state_dir):
             return current
         if current == home:
             return None
