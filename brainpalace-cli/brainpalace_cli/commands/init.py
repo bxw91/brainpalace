@@ -459,6 +459,27 @@ def read_graphrag_store_type(state_dir: Path) -> str | None:
     return None
 
 
+def read_session_state(state_dir: Path) -> tuple[str, bool]:
+    """Return ``(session_extraction.mode, session_indexing.enabled)`` from config.yaml.
+
+    Session capabilities live in ``config.yaml`` (not ``config.json``), so the
+    re-init result banner must read them here to report the true state. Defaults
+    to ``("off", False)`` when absent/unreadable.
+    """
+    config_path = state_dir / "config.yaml"
+    try:
+        data = yaml.safe_load(config_path.read_text()) or {}
+    except (OSError, yaml.YAMLError):
+        return ("off", False)
+    if not isinstance(data, dict):
+        return ("off", False)
+    extract = data.get("session_extraction")
+    mode = extract.get("mode", "off") if isinstance(extract, dict) else "off"
+    index = data.get("session_indexing")
+    enabled = bool(index.get("enabled", False)) if isinstance(index, dict) else False
+    return (str(mode), enabled)
+
+
 def migrate_graph_store_to_sqlite(state_dir: Path) -> bool:
     """Flip an existing ``graphrag.store_type: simple`` to ``sqlite`` in place.
 
@@ -1068,6 +1089,64 @@ def init_command(
         # session_indexing block at write time.
         sessions_chosen = enable_sessions is not None
 
+        # Defensive: refuse to create .brainpalace/ at a mono-repo workspace
+        # root unless explicitly overridden. Done before any interactive prompt
+        # so we never ask a series of questions and then refuse.
+        if not force_monorepo_root and _looks_like_monorepo_root(project_root):
+            msg = (
+                f"Refusing to init at mono-repo workspace root: {project_root}\n"
+                "Its CLAUDE.md marks it as an organisational container, not a "
+                "project.\n"
+                "Recommended: `cd projects/<name> && brainpalace init`.\n"
+                "Override with --force-monorepo-root if you really want a "
+                "state dir here."
+            )
+            if json_output:
+                click.echo(
+                    json.dumps(
+                        {
+                            "error": "monorepo_root_refused",
+                            "project_root": str(project_root),
+                            "hint": (
+                                "cd into a project subdir, or pass "
+                                "--force-monorepo-root"
+                            ),
+                        }
+                    )
+                )
+            else:
+                console.print(f"[red]Error:[/] {msg}")
+            raise SystemExit(1)
+
+        # Resolve the state dir before the consent block so the graph-store
+        # upgrade can be asked alongside the other questions and shown in the
+        # "init will:" preview.
+        if state_dir:
+            resolved_state_dir = Path(state_dir).resolve()
+        else:
+            # Auto-migrate from legacy .claude/brainpalace if needed
+            resolved_state_dir = migrate_state_dir(project_root)
+        config_path = resolved_state_dir / "config.json"
+
+        # A re-init of a project still on the legacy in-memory 'simple' graph
+        # store is the only case where the one-time sqlite upgrade is offered.
+        # sqlite is now the default (persistent + temporal); the server replays
+        # the existing simple JSON graph into sqlite on next boot (JSON kept for
+        # rollback). Decision: explicit flag wins; an interactive run asks below
+        # (default yes); a non-interactive run upgrades only with the flag, or
+        # with --yes opting into defaults.
+        existing_simple_store = (
+            config_path.exists()
+            and not force
+            and read_graphrag_store_type(resolved_state_dir) == "simple"
+        )
+        if not existing_simple_store:
+            graph_migrate = False
+        elif enable_graph_migrate is not None:
+            graph_migrate = bool(enable_graph_migrate)
+        else:
+            graph_migrate = bool(yes)
+
         if plan.confirm:
             embedding = _preview_embedding(project_root)
             plugin_present = claude_plugin_installed(project=project_root)
@@ -1122,6 +1201,20 @@ def init_command(
                     "Index git commit history?", default=False
                 )
 
+            # Graph-store upgrade — asked here (with the other questions) so it
+            # appears in the "init will:" preview below and is gated by Proceed.
+            if existing_simple_store and enable_graph_migrate is None:
+                console.print(
+                    "\n[bold]Upgrade graph store to sqlite?[/] "
+                    "(this project uses the legacy in-memory 'simple' store)\n"
+                    "  sqlite adds persistence + temporal validity (decision "
+                    "history). Your existing\n  graph is migrated automatically "
+                    "on next start; the JSON is kept for rollback."
+                )
+                graph_migrate = click.confirm(
+                    "Upgrade graph store to sqlite?", default=True
+                )
+
             # Rebuild the plan from the answers (bools ⇒ explicit, so they win).
             plan = resolve_init_plan(
                 start=start,
@@ -1138,97 +1231,76 @@ def init_command(
                 ("subagent",) if plan.extract and plugin_present else None
             )
             console.print(
-                format_init_plan(plan, embedding=embedding, summarize=summarize)
+                "\n"
+                + format_init_plan(
+                    plan,
+                    embedding=embedding,
+                    summarize=summarize,
+                    graph_migrate=graph_migrate,
+                )
             )
             if not click.confirm("Proceed?", default=True):
                 plan = downgrade_to_config_only(plan)
-
-        # Defensive: refuse to create .brainpalace/ at a mono-repo workspace
-        # root unless explicitly overridden.
-        if not force_monorepo_root and _looks_like_monorepo_root(project_root):
-            msg = (
-                f"Refusing to init at mono-repo workspace root: {project_root}\n"
-                "Its CLAUDE.md marks it as an organisational container, not a "
-                "project.\n"
-                "Recommended: `cd projects/<name> && brainpalace init`.\n"
-                "Override with --force-monorepo-root if you really want a "
-                "state dir here."
-            )
-            if json_output:
-                click.echo(
-                    json.dumps(
-                        {
-                            "error": "monorepo_root_refused",
-                            "project_root": str(project_root),
-                            "hint": (
-                                "cd into a project subdir, or pass "
-                                "--force-monorepo-root"
-                            ),
-                        }
-                    )
-                )
-            else:
-                console.print(f"[red]Error:[/] {msg}")
-            raise SystemExit(1)
-
-        # Use custom state_dir if provided, otherwise default
-        if state_dir:
-            resolved_state_dir = Path(state_dir).resolve()
-        else:
-            # Auto-migrate from legacy .claude/brainpalace if needed
-            resolved_state_dir = migrate_state_dir(project_root)
-        config_path = resolved_state_dir / "config.json"
+                graph_migrate = False  # declining the plan cancels the upgrade too
 
         # Idempotent: re-running init on an initialized project is a no-op (B5),
         # EXCEPT when --start is passed — then skip the config write but still
         # run the start/watch pipeline so a first run that aborted at the
-        # provider preflight can be resumed without --force.
+        # provider preflight can be resumed without --force. (The mono-repo
+        # refusal + state_dir resolution + graph-store upgrade decision all ran
+        # above, before the consent block.)
         if config_path.exists() and not force:
-            # One-time graph-store upgrade for already-indexed projects still on
-            # the legacy in-memory 'simple' store. sqlite is now the default
-            # (persistent + temporal); the server replays the existing simple
-            # JSON graph into sqlite on next boot (JSON kept for rollback). Only
-            # offered when the project explicitly has store_type: simple. Runs
-            # before the start/no-start split so a plain re-init upgrades too.
-            if read_graphrag_store_type(resolved_state_dir) == "simple":
-                if enable_graph_migrate is True:
-                    do_migrate = True
-                elif enable_graph_migrate is False:
-                    do_migrate = False
-                elif is_tty:
+            # Apply the resolved one-time graph-store upgrade (decided above, and
+            # asked in the consent block when interactive). The server replays
+            # the existing simple JSON graph into sqlite on next boot (JSON kept
+            # for rollback). Runs before the start/no-start split so a plain
+            # re-init upgrades too.
+            if graph_migrate and migrate_graph_store_to_sqlite(resolved_state_dir):
+                if not json_output:
                     console.print(
-                        "\n[bold]Upgrade graph store to sqlite?[/] "
-                        "(this project uses the legacy in-memory 'simple' store)\n"
-                        "  sqlite adds persistence + temporal validity (decision "
-                        "history). Your existing\n  graph is migrated automatically "
-                        "on next start; the JSON is kept for rollback."
+                        "[dim]Graph store upgraded: simple → sqlite. The existing "
+                        "graph migrates on next server start (JSON kept for "
+                        "rollback).[/]"
                     )
-                    do_migrate = click.confirm(
-                        "Upgrade graph store to sqlite?", default=True
-                    )
-                else:
-                    # Non-interactive without an explicit flag: stay conservative
-                    # (no surprise data change) unless --yes opts into defaults.
-                    do_migrate = bool(yes)
-                if do_migrate and migrate_graph_store_to_sqlite(resolved_state_dir):
-                    if not json_output:
-                        console.print(
-                            "[dim]Graph store upgraded: simple → sqlite. The existing "
-                            "graph migrates on next server start (JSON kept for "
-                            "rollback).[/]"
-                        )
+
+            # Persist the git-history opt-in for an EXISTING project too. The
+            # consent prompt / flag set plan.git_history above, but the fresh
+            # write path below isn't taken on a re-init — without this the
+            # answer was silently dropped. Explicit flag wins (can disable);
+            # otherwise an interactive "yes" opts in. A bare re-init (no flag,
+            # prompt declined/skipped) leaves any existing setting untouched.
+            if enable_git_history is not None:
+                write_git_config(resolved_state_dir, enabled=enable_git_history)
+            elif plan.git_history:
+                write_git_config(resolved_state_dir, enabled=True)
+
             if plan.start:
                 try:
                     existing_config = json.loads(config_path.read_text())
                 except (OSError, json.JSONDecodeError):
                     existing_config = {}
-                # Over an existing config, only act on session capabilities the
-                # user named explicitly; leave the others untouched.
-                write_session_config(
-                    resolved_state_dir,
-                    index=enable_sessions,
-                    archive=enable_archive,
-                )
+                # Honor the user's choices on re-init. Interactive runs reach this
+                # branch only after Proceed (a decline downgrades plan.start to
+                # False), so the prompted answers in `plan` are explicit and must
+                # be applied — summarize/embed included. Non-interactive runs only
+                # touch capabilities named by an explicit flag (idempotent).
+                if plan.confirm:
+                    write_session_config(
+                        resolved_state_dir,
+                        index=plan.sessions,
+                        archive=plan.archive,
+                    )
+                    apply_extract_engine(resolved_state_dir, project_root, plan.extract)
+                else:
+                    write_session_config(
+                        resolved_state_dir,
+                        index=enable_sessions,
+                        archive=enable_archive,
+                    )
+                    if enable_extract is not None:
+                        apply_extract_engine(
+                            resolved_state_dir, project_root, plan.extract
+                        )
                 post_init_steps: list[dict[str, object]] = _start_and_watch(
                     project_root=project_root,
                     resolved_state_dir=resolved_state_dir,
@@ -1239,9 +1311,10 @@ def init_command(
                     json_output=json_output,
                     bm25_engine=bm25_engine,
                 )
-                _ex_block = existing_config.get("session_extraction") or {}
-                _ex_mode = _ex_block.get("mode", "subagent")
-                _si_block = existing_config.get("session_indexing") or {}
+                # Report the TRUE persisted state (session blocks live in
+                # config.yaml, not config.json), so the banner reflects the
+                # answers just applied rather than a stale default.
+                _ex_mode, _si_enabled = read_session_state(resolved_state_dir)
                 _emit_init_result(
                     project_root=project_root,
                     resolved_state_dir=resolved_state_dir,
@@ -1254,7 +1327,7 @@ def init_command(
                     json_output=json_output,
                     extract_on=_ex_mode not in ("off", False),
                     plugin_present=claude_plugin_installed(project=project_root),
-                    sessions_on=bool(_si_block.get("enabled", True)),
+                    sessions_on=_si_enabled,
                     embedding=_preview_embedding(project_root),
                 )
                 return

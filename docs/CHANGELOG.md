@@ -12,7 +12,38 @@ month (the counter resets monthly). It looks like SemVer but is not.
 
 ---
 
-## [Unreleased]
+## [26.6.23] - 2026-06-06
+
+### Added
+- **Nested BrainPalace projects are auto-excluded from the outer index.** Any
+  subfolder that contains its own `.brainpalace/` is treated as a separately
+  indexed project and pruned (whole subtree) from the outer project's file
+  discovery and file watching — avoiding double-indexing. Checked **live** on
+  every walk/event (never written to a permanent exclude), so deleting the
+  nested `.brainpalace/` lets the outer index pick the subtree back up.
+- **`brainpalace init --migrate-graph-store / --no-migrate-graph-store`** + an
+  interactive prompt (default yes) to upgrade an already-initialized project from
+  the legacy `simple` graph store to `sqlite`. The existing graph replays into
+  sqlite on next start (JSON kept for rollback); non-interactive runs migrate
+  only with the flag (or `--yes`).
+
+### Fixed
+- **Graph status reported `0 entities` at cold start.** The lazy-initialized
+  graph store now hydrates `entity_count`/`relationship_count` from the persisted
+  `graph_metadata.json` sidecar, so `brainpalace status` reflects the on-disk
+  graph size immediately after boot (data was never lost).
+- **Re-init dropped interactive answers.** On an already-initialized project,
+  answering the git-history / summarize / embed prompts (or passing the flags)
+  is now persisted — previously the existing-project branch ignored them, so
+  `Git Index` stayed off and the banner wrongly claimed summaries were
+  `configured (subagent)`. The result banner now reads the true session state
+  from `config.yaml`.
+
+### Changed
+- **`brainpalace init` prompt order:** the graph-store upgrade is now asked with
+  the other questions and shown as a row in the `init will:` preview before
+  `Proceed?` (declining now also cancels the upgrade). Mono-repo-root refusal
+  happens before any prompt. Blank line restored before `init will:`.
 
 ## [26.6.22] - 2026-06-06
 

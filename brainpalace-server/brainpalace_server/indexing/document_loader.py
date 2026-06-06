@@ -642,6 +642,11 @@ class DocumentLoader:
           1. ALWAYS_EXCLUDED_DIR_NAMES (e.g. `.brainpalace`)
           2. `exclude_patterns` glob matches
           3. `gitignore_matcher.is_ignored()` (Phase H)
+          4. Nested BrainPalace projects: any subfolder that contains its own
+             `.brainpalace/` is a separately-indexed project, so its whole
+             subtree is pruned here to avoid double-indexing. Checked live on
+             every walk (never written to a permanent exclude), so deleting the
+             nested `.brainpalace/` lets the outer index pick the subtree back up.
         """
         excl = getattr(self, "exclude_patterns", None) or []
         matcher = getattr(self, "gitignore_matcher", None)
@@ -655,6 +660,7 @@ class DocumentLoader:
                     fnmatch.fnmatch(str(dp / d), pat.replace("**", "*")) for pat in excl
                 )
                 and not (matcher is not None and matcher.is_ignored(dp / d))
+                and not (dp / d / ".brainpalace").is_dir()
             ]
             for f in filenames:
                 fp = dp / f

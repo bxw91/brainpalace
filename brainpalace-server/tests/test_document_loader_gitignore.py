@@ -32,6 +32,47 @@ class TestDocumentLoaderGitignore:
         assert "app.py" in names
         assert "out.py" not in names
 
+    def test_walk_pruned_skips_nested_brainpalace_project(
+        self, project_root: Path
+    ) -> None:
+        """A subfolder with its own `.brainpalace/` is pruned (no double-index)."""
+        sub = project_root / "subapp"
+        sub.mkdir()
+        (sub / ".brainpalace").mkdir()  # subapp is a separate BP project
+        (sub / "nested.py").write_text("print('nested')\n")
+
+        loader = DocumentLoader()
+        names = {f.name for f in loader._walk_pruned(project_root)}
+
+        assert "app.py" in names  # outer project still indexed
+        assert "nested.py" not in names  # nested project pruned
+
+    def test_walk_pruned_reincludes_after_nested_brainpalace_removed(
+        self, project_root: Path
+    ) -> None:
+        """Pruning is dynamic: deleting the nested `.brainpalace/` re-includes it."""
+        sub = project_root / "subapp"
+        sub.mkdir()
+        bp = sub / ".brainpalace"
+        bp.mkdir()
+        (sub / "nested.py").write_text("print('nested')\n")
+        loader = DocumentLoader()
+
+        assert "nested.py" not in {f.name for f in loader._walk_pruned(project_root)}
+
+        bp.rmdir()  # user deletes the nested project's state dir
+        assert "nested.py" in {f.name for f in loader._walk_pruned(project_root)}
+
+    def test_walk_pruned_keeps_root_own_brainpalace_project(
+        self, project_root: Path
+    ) -> None:
+        """The outer project's OWN root `.brainpalace/` must not prune the root."""
+        (project_root / ".brainpalace").mkdir()  # this project's own state dir
+        loader = DocumentLoader()
+        names = {f.name for f in loader._walk_pruned(project_root)}
+
+        assert "app.py" in names  # root still indexed despite its own .brainpalace
+
     def test_walk_pruned_skips_gitignored_files(self, project_root: Path) -> None:
         """Individual files matched by `.gitignore` are skipped."""
         (project_root / ".gitignore").write_text("**/*.tmp\n")

@@ -47,6 +47,11 @@ class GraphStoreManager:
         self._entity_count = 0
         self._relationship_count = 0
         self._last_updated: datetime | None = None
+        # One-shot guard: hydrate counts from the persisted metadata sidecar the
+        # first time they're read on a not-yet-initialized (lazy) store, so
+        # `status` reports the on-disk graph size at cold start without forcing a
+        # full graph load. Reset by initialize()/clear() which set live counts.
+        self._counts_hydrated = False
 
     @classmethod
     def get_instance(
@@ -625,14 +630,38 @@ class GraphStoreManager:
         """Check if the graph store is initialized."""
         return self._initialized
 
+    def _hydrate_counts_from_metadata(self) -> None:
+        """Populate counts from the ``graph_metadata.json`` sidecar (best-effort).
+
+        Both backends write this sidecar on persist. When the store is still
+        lazy (not ``initialize()``-d), the in-memory counts are 0 even though a
+        graph is persisted on disk — making ``status`` report ``0 entities`` at
+        cold start. Reading the sidecar once lets the reported counts reflect the
+        on-disk graph without a full load. ``initialize()`` later overwrites
+        these with live counts from the store.
+        """
+        if self._initialized or self._counts_hydrated:
+            return
+        self._counts_hydrated = True
+        metadata_path = self.persist_dir / "graph_metadata.json"
+        try:
+            if metadata_path.is_file():
+                data = json.loads(metadata_path.read_text())
+                self._entity_count = int(data.get("entity_count", 0) or 0)
+                self._relationship_count = int(data.get("relationship_count", 0) or 0)
+        except (OSError, ValueError):
+            pass
+
     @property
     def entity_count(self) -> int:
         """Return number of entities in graph."""
+        self._hydrate_counts_from_metadata()
         return self._entity_count
 
     @property
     def relationship_count(self) -> int:
         """Return number of relationships in graph."""
+        self._hydrate_counts_from_metadata()
         return self._relationship_count
 
     @property

@@ -89,6 +89,46 @@ def test_watch_filter_still_excludes_legacy_dirs() -> None:
     assert not f(Change.modified, "/proj/.git/HEAD")
 
 
+def test_watch_filter_excludes_nested_project_subtree(tmp_path) -> None:
+    """A subfolder with its own .brainpalace/ is a nested project → not watched."""
+    from watchfiles import Change
+
+    sub = tmp_path / "subapp"
+    (sub / ".brainpalace").mkdir(parents=True)
+    (tmp_path / "src").mkdir()
+    f = BrainPalaceWatchFilter(watch_root=tmp_path)
+
+    assert not f(Change.modified, str(sub / "nested.py"))
+    assert not f(Change.added, str(sub / "pkg" / "deep.py"))
+    assert f(Change.modified, str(tmp_path / "src" / "app.py"))  # outer still watched
+
+
+def test_watch_filter_nested_is_dynamic(tmp_path) -> None:
+    """Deleting the nested .brainpalace/ re-enables watching that subtree."""
+    from watchfiles import Change
+
+    sub = tmp_path / "subapp"
+    bp = sub / ".brainpalace"
+    bp.mkdir(parents=True)
+    f = BrainPalaceWatchFilter(watch_root=tmp_path)
+
+    assert not f(Change.modified, str(sub / "nested.py"))
+    bp.rmdir()
+    assert f(Change.modified, str(sub / "nested.py"))
+
+
+def test_watch_filter_root_own_brainpalace_not_nested(tmp_path) -> None:
+    """The watch root's OWN .brainpalace/ must not mark root files as nested."""
+    from watchfiles import Change
+
+    (tmp_path / ".brainpalace").mkdir()
+    (tmp_path / "src").mkdir()
+    f = BrainPalaceWatchFilter(watch_root=tmp_path)
+
+    assert f(Change.modified, str(tmp_path / "src" / "app.py"))
+    assert f(Change.modified, str(tmp_path / "top.py"))
+
+
 # ---------------------------------------------------------------------------
 # Helpers for mocking folder records
 # ---------------------------------------------------------------------------

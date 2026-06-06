@@ -67,9 +67,33 @@ class BrainPalaceWatchFilter(DefaultFilter):
     def __init__(
         self,
         gitignore_matcher: GitignoreMatcher | None = None,
+        watch_root: Path | None = None,
     ) -> None:
         super().__init__()
         self._gitignore_matcher = gitignore_matcher
+        self._watch_root = watch_root
+
+    def _under_nested_project(self, path: Path) -> bool:
+        """True when ``path`` lives inside a subfolder that has its own
+        ``.brainpalace/`` (a separately-indexed nested project).
+
+        Climbs from the path's parent up to — but not including — the watch
+        root, so the outer project's own `.brainpalace/` never counts. Checked
+        live, so deleting the nested `.brainpalace/` re-enables watching.
+        """
+        if self._watch_root is None:
+            return False
+        cur = path.parent
+        try:
+            while cur != self._watch_root:
+                if (cur / ".brainpalace").is_dir():
+                    return True
+                if cur.parent == cur:  # filesystem root — safety stop
+                    return False
+                cur = cur.parent
+        except OSError:
+            return False
+        return False
 
     def __call__(self, change: Change, path: str) -> bool:
         if not super().__call__(change, path):
@@ -77,6 +101,8 @@ class BrainPalaceWatchFilter(DefaultFilter):
         if self._gitignore_matcher is not None:
             if self._gitignore_matcher.is_ignored(Path(path)):
                 return False
+        if self._under_nested_project(Path(path)):
+            return False
         return True
 
 
@@ -292,7 +318,8 @@ class FileWatcherService:
                 stop_event=self._stop_event,
                 enqueue_callback=self._enqueue_for_folder,
                 watch_filter=BrainPalaceWatchFilter(
-                    gitignore_matcher=self._gitignore_matcher
+                    gitignore_matcher=self._gitignore_matcher,
+                    watch_root=Path(folder_path),
                 ),
             ),
             name=f"watcher:{folder_path}",

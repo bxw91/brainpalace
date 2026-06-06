@@ -157,12 +157,15 @@ def format_init_plan(
     *,
     embedding: tuple[str, str] | None = None,
     summarize: tuple[str, ...] | None = None,
+    graph_migrate: bool = False,
 ) -> str:
     """Multi-line, per-action preview. Data-out actions carry a ``→ <provider>`` tag.
 
     ``embedding`` is ``(provider, model)`` for the doc/chat embedding lines.
     ``summarize`` is ``("subagent",)`` | ``("provider", name, model)`` | ``None``
-    (None ⇒ omit the summarize action entirely, e.g. the plugin is absent)."""
+    (None ⇒ omit the summarize action entirely, e.g. the plugin is absent).
+    ``graph_migrate`` adds the one-time simple→sqlite graph-store upgrade row
+    (only set when re-initing an existing project still on ``simple``)."""
     emb = _embed_tag(embedding)
     summ = _summarize_tag(summarize)
 
@@ -179,6 +182,8 @@ def format_init_plan(
         rows.append(("summarize chat sessions", summ))
     if plan.git_history:
         rows.append(("index git history", ""))
+    if graph_migrate:
+        rows.append(("upgrade graph store → sqlite", ""))
     if not rows:
         return "init will: write config only"
 

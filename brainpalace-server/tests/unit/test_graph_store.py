@@ -728,3 +728,34 @@ class TestStoreTypeDetection:
         # Invalid type should result in simple store initialization
         assert manager.is_initialized
         assert manager.graph_store is not None
+
+
+class TestColdStartCountHydration:
+    """Counts reflect the on-disk graph before initialize() (cold-start status)."""
+
+    def test_counts_hydrate_from_metadata_sidecar(self, graph_persist_dir: Path):
+        """A not-yet-initialized store reports counts from graph_metadata.json."""
+        import json
+
+        (graph_persist_dir / "graph_metadata.json").write_text(
+            json.dumps(
+                {
+                    "entity_count": 2965,
+                    "relationship_count": 5344,
+                    "store_type": "sqlite",
+                }
+            )
+        )
+        manager = GraphStoreManager(graph_persist_dir, store_type="sqlite")
+
+        # Lazy store: not initialized, yet counts mirror the persisted sidecar.
+        assert not manager.is_initialized
+        assert manager.entity_count == 2965
+        assert manager.relationship_count == 5344
+
+    def test_counts_zero_without_sidecar(self, graph_persist_dir: Path):
+        """No sidecar → counts stay 0 (no crash)."""
+        manager = GraphStoreManager(graph_persist_dir, store_type="sqlite")
+
+        assert manager.entity_count == 0
+        assert manager.relationship_count == 0

@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-05
+last_validated: 2026-06-06
 ---
 
 <div align="center">
@@ -221,6 +221,10 @@ with optional cloud providers for embeddings and summarisation.
   `brainpalace folders add` defaults to `--watch auto` (live re-index on
   change); `brainpalace index <path>` leaves a folder's watch setting
   unchanged. Disable with `--watch off`.
+- **Nested projects auto-excluded** — a subfolder with its own `.brainpalace/`
+  is a separate project, so its whole subtree is skipped from the outer
+  project's indexing + watching (no double-indexing). Checked live, so removing
+  the nested `.brainpalace/` re-includes it.
 - **Multi-instance** — one server per project, automatic port allocation,
   `.brainpalace/runtime.json` discovery. Helpers: `whoami`, `status --all`,
   `stop --url`.
