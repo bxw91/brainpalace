@@ -143,6 +143,12 @@ tasks:
       - task: server:format
       - task: cli:format
 
+  format:check:
+    desc: Check formatting without modifying files
+    cmds:
+      - task: server:format:check
+      - task: cli:format:check
+
   lint:
     desc: Lint all code with Ruff
     cmds:
@@ -192,8 +198,8 @@ tasks:
   before-push:
     desc: Run all checks before pushing (format, lint, typecheck, yaml, test)
     cmds:
-      - echo "--- Formatting code ---"
-      - task: format
+      - echo "--- Checking formatting ---"
+      - task: format:check
       - echo "--- Linting code ---"
       - task: lint
       - echo "--- Linting YAML frontmatter ---"

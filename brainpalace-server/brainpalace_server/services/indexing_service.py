@@ -49,14 +49,20 @@ logger = logging.getLogger(__name__)
 ProgressCallback = Callable[[int, int, str], Awaitable[None]]
 
 
-def _merge_chunk_ids(existing_ids: list[str], new_ids: list[str]) -> list[str]:
-    """Union existing and new chunk ids into a sorted, de-duplicated list.
+def _folder_chunk_ids(manifest: Any) -> list[str]:
+    """Authoritative folder chunk-id set: sorted union over the *current*
+    per-file manifest records.
 
-    Used so a folder's persisted ``chunk_count`` stays cumulative across
-    incremental re-indexes (which only produce chunks for changed files)
-    instead of being overwritten with the per-run delta.
+    The per-file manifest carries unchanged files (so their chunks are retained)
+    and excludes deleted/changed-old chunks (evicted, never re-recorded). Deriving
+    the folder count from it makes the count self-heal — it shrinks when files are
+    removed instead of growing monotonically the way a blind union of old+new ids
+    did (which diverged far above the real store).
     """
-    return sorted(set(existing_ids) | set(new_ids))
+    ids: set[str] = set()
+    for rec in manifest.files.values():
+        ids.update(rec.chunk_ids)
+    return sorted(ids)
 
 
 def _classify_documents(paths: set[str]) -> dict[str, int]:
@@ -910,40 +916,11 @@ class IndexingService:
 
         Returns the eviction-summary dict for the index result, or None.
         """
-        # Register folder with FolderManager for persistent tracking (Phase 12)
-        if self.folder_manager is not None:
-            new_chunk_ids = [chunk.chunk_id for chunk in chunks]
-            existing = await self.folder_manager.get_folder(abs_folder_path)
-            if existing is not None:
-                # Incremental/re-index: union with already-tracked ids so the
-                # persisted chunk_count stays cumulative, not the per-run delta.
-                merged_ids = _merge_chunk_ids(existing.chunk_ids, new_chunk_ids)
-            else:
-                merged_ids = new_chunk_ids
-            watch_mode, watch_debounce_seconds = _resolve_watch_settings(
-                has_existing=existing is not None,
-                existing_watch_mode=existing.watch_mode if existing else None,
-                existing_debounce=(
-                    existing.watch_debounce_seconds if existing else None
-                ),
-                request_watch_mode=request.watch_mode,
-                request_debounce=request.watch_debounce_seconds,
-            )
-            await self.folder_manager.add_folder(
-                folder_path=abs_folder_path,
-                chunk_count=len(merged_ids),
-                chunk_ids=merged_ids,
-                watch_mode=watch_mode,
-                watch_debounce_seconds=watch_debounce_seconds,
-                include_code=request.include_code,
-            )
-            logger.info(
-                f"Registered folder {abs_folder_path} with FolderManager "
-                f"({len(merged_ids)} chunks)"
-            )
-
-        # Save manifest once chunks are stored (Phase 14)
+        # Save manifest once chunks are stored (Phase 14). This per-file manifest
+        # is the source of truth for what the folder currently owns, so it is
+        # built FIRST and the folder-level chunk_ids are derived from it below.
         eviction_summary_result: dict[str, Any] | None = None
+        new_manifest: Any = None
         if self.manifest_tracker is not None and eviction_summary is not None:
             import os as _os
             from dataclasses import asdict
@@ -980,6 +957,40 @@ class IndexingService:
             await self.manifest_tracker.save(new_manifest)
             logger.info(f"Manifest saved with {len(new_manifest.files)} file entries")
             eviction_summary_result = asdict(eviction_summary)
+
+        # Register folder with FolderManager for persistent tracking (Phase 12).
+        # The folder's chunk_ids are the authoritative set derived from the
+        # current per-file manifest (retains unchanged files, drops deleted ones)
+        # so the persisted chunk_count self-heals instead of growing forever.
+        if self.folder_manager is not None:
+            if new_manifest is not None:
+                folder_chunk_ids = _folder_chunk_ids(new_manifest)
+            else:
+                # No incremental tracking (full index without manifest): this
+                # run's chunks are the complete set.
+                folder_chunk_ids = sorted({chunk.chunk_id for chunk in chunks})
+            existing = await self.folder_manager.get_folder(abs_folder_path)
+            watch_mode, watch_debounce_seconds = _resolve_watch_settings(
+                has_existing=existing is not None,
+                existing_watch_mode=existing.watch_mode if existing else None,
+                existing_debounce=(
+                    existing.watch_debounce_seconds if existing else None
+                ),
+                request_watch_mode=request.watch_mode,
+                request_debounce=request.watch_debounce_seconds,
+            )
+            await self.folder_manager.add_folder(
+                folder_path=abs_folder_path,
+                chunk_count=len(folder_chunk_ids),
+                chunk_ids=folder_chunk_ids,
+                watch_mode=watch_mode,
+                watch_debounce_seconds=watch_debounce_seconds,
+                include_code=request.include_code,
+            )
+            logger.info(
+                f"Registered folder {abs_folder_path} with FolderManager "
+                f"({len(folder_chunk_ids)} chunks)"
+            )
 
         return eviction_summary_result
 

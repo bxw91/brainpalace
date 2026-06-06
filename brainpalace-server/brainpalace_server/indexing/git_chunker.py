@@ -61,7 +61,13 @@ class GitCommitChunker:
             "author": rec.author,
             "author_email": rec.author_email,
             "committed_at": committed_iso,
-            "files_changed": rec.files_changed,
+            # ChromaDB metadata values must be scalars — a list raises
+            # "Expected metadata value to be a str/int/float/bool, got [...]"
+            # and fails the whole git upsert (0 commits indexed). Store the
+            # changed paths as a newline-joined string + a scalar count; the
+            # full list still appears in the chunk *text* via _render().
+            "files_changed": "\n".join(rec.files_changed),
+            "files_changed_count": len(rec.files_changed),
             "lines_added": rec.lines_added,
             "lines_deleted": rec.lines_deleted,
             "branch_seen_on": branch,

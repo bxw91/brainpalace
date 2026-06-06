@@ -464,6 +464,21 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             app.state.vector_store = vector_store
             logger.info(f"Vector store initialized: {chroma_dir}")
 
+            # Self-heal a corrupt on-disk HNSW index BEFORE any write. A store
+            # left inconsistent by a past duplicate-server write or an
+            # interrupted upsert segfaults the process on the next upsert (native
+            # HNSW resize, no traceback), so the server crash-loops on every
+            # start. Rebuild it from ChromaDB's intact SQLite — no re-embedding —
+            # so startup indexing can't trip the corruption.
+            try:
+                recovered = await vector_store.heal_if_corrupt()
+                if recovered:
+                    logger.warning(
+                        "Vector index self-heal rebuilt %d vectors", recovered
+                    )
+            except Exception as exc:  # noqa: BLE001 — heal must never block startup
+                logger.warning("Vector index self-heal check failed: %s", exc)
+
             # Check embedding compatibility (PROV-07)
             embedding_warning = await check_embedding_compatibility(vector_store)
             if embedding_warning:
@@ -603,6 +618,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         )
         app.state.indexing_service = indexing_service
 
+        # Self-heal manifest/store drift on every start (e.g. inflated folder
+        # counts + store orphans left by a past duplicate-server incident).
+        # No reindex, no re-embed: pure bookkeeping + targeted deletes; a no-op
+        # when consistent. Never block startup on it.
+        try:
+            from brainpalace_server.services.startup_reconcile import (
+                reconcile_folders,
+            )
+
+            await reconcile_folders(folder_manager, manifest_tracker, storage_backend)
+        except Exception as exc:  # noqa: BLE001 — heal must never block startup
+            logger.warning("Startup reconcile failed (non-fatal): %s", exc)
+
         # Curated memory namespace (Phase 030). Markdown source-of-truth +
         # a dedicated Chroma collection as a rebuildable shadow index.
         memory_service = None
@@ -625,6 +653,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                     collection_name=settings.MEMORY_COLLECTION,
                 )
                 await mem_vector_store.initialize()
+                # Same HNSW-corruption self-heal as the code collection.
+                try:
+                    healed = await mem_vector_store.heal_if_corrupt()
+                    if healed:
+                        logger.warning(
+                            "Memory vector index self-heal rebuilt %d vectors",
+                            healed,
+                        )
+                except Exception as exc:  # noqa: BLE001 — never block startup
+                    logger.warning("Memory index self-heal check failed: %s", exc)
 
             memory_service = MemoryService(
                 path=mem_path,

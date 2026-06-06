@@ -44,6 +44,16 @@ class TestHealthEndpoints:
         assert "timestamp" in data
         assert data["version"] == __version__
 
+    def test_health_check_exposes_project_root(self, client, mock_vector_store):
+        """/health/ reports project_root so callers can detect a same-project
+        duplicate server before spawning another one."""
+        mock_vector_store.is_initialized = True
+        client.app.state.project_root = "/tmp/some/project"
+
+        response = client.get("/health/")
+        assert response.status_code == 200
+        assert response.json()["project_root"] == "/tmp/some/project"
+
     def test_health_status_endpoint(self, client, mock_vector_store):
         """Test detailed health status endpoint."""
         mock_vector_store.is_initialized = True

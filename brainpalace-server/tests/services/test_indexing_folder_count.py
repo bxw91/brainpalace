@@ -1,52 +1,79 @@
-"""Phase 2 — folder chunk_count stays cumulative across re-index.
+"""Folder chunk_count must reflect the CURRENT set, and self-heal on deletes.
 
-Regression: incremental re-index chunked only the changed files and
-``add_folder`` overwrote the persisted cumulative count with the per-run
-delta. The fix unions the new chunk ids with the already-tracked ids so the
-stored ``chunk_count`` reflects the full set the folder owns.
+History:
+  * First bug: incremental re-index overwrote the cumulative count with the
+    per-run delta (undercount of unchanged files).
+  * The union fix (`_merge_chunk_ids`) over-corrected: it never dropped evicted
+    ids, so the persisted count grew monotonically and never shrank when files
+    changed or were deleted — diverging far above the real store.
+
+Correct contract: the folder's chunk-id set is the authoritative union over the
+*current* per-file manifest records. Unchanged files are retained (carried over
+in the manifest); deleted/changed-old chunks are absent (evicted, not in the
+manifest), so the count self-heals.
 """
 
 import pytest
 
 from brainpalace_server.services.folder_manager import FolderManager
-from brainpalace_server.services.indexing_service import _merge_chunk_ids
+from brainpalace_server.services.indexing_service import _folder_chunk_ids
+from brainpalace_server.services.manifest_tracker import FileRecord, FolderManifest
 
 
-def test_merge_chunk_ids_unions_and_dedupes():
-    existing = ["a", "b", "c", "d", "e"]
-    new = ["e", "f"]  # 'e' overlaps, 'f' is new
-    assert _merge_chunk_ids(existing, new) == ["a", "b", "c", "d", "e", "f"]
+def _manifest(folder: str, files: dict[str, list[str]]) -> FolderManifest:
+    m = FolderManifest(folder_path=folder)
+    for fp, ids in files.items():
+        m.files[fp] = FileRecord(checksum="x", mtime=1.0, chunk_ids=ids)
+    return m
 
 
-def test_merge_chunk_ids_empty_existing():
-    assert _merge_chunk_ids([], ["x", "y"]) == ["x", "y"]
+def test_folder_chunk_ids_unions_current_files():
+    """Authoritative set = sorted union over all current file records."""
+    m = _manifest("/repo", {"/repo/a.py": ["a", "b"], "/repo/b.py": ["c"]})
+    assert _folder_chunk_ids(m) == ["a", "b", "c"]
+
+
+def test_folder_chunk_ids_dedupes():
+    m = _manifest("/repo", {"/repo/a.py": ["a", "b"], "/repo/b.py": ["b", "c"]})
+    assert _folder_chunk_ids(m) == ["a", "b", "c"]
+
+
+def test_folder_chunk_ids_self_heals_on_delete():
+    """A file no longer in the manifest drops its chunks from the set."""
+    before = _manifest("/repo", {"/repo/a.py": ["a", "b"], "/repo/gone.py": ["x", "y"]})
+    assert _folder_chunk_ids(before) == ["a", "b", "x", "y"]
+
+    # gone.py deleted -> next manifest only has a.py
+    after = _manifest("/repo", {"/repo/a.py": ["a", "b"]})
+    assert _folder_chunk_ids(after) == ["a", "b"]
+
+
+def test_folder_chunk_ids_empty_manifest():
+    assert _folder_chunk_ids(_manifest("/repo", {})) == []
 
 
 @pytest.mark.asyncio
-async def test_reindex_accumulates_chunk_count(tmp_path):
+async def test_reindex_count_shrinks_when_file_deleted(tmp_path):
+    """End-to-end on FolderManager: persisting the derived set shrinks the count
+    when a file is removed (the old union code left it inflated forever)."""
     fm = FolderManager(state_dir=tmp_path)
     await fm.initialize()
 
-    # First full index: 5 chunks.
+    # Initial index: two files, 4 chunks total.
+    first = _manifest("/repo", {"/repo/a.py": ["a", "b"], "/repo/b.py": ["c", "d"]})
+    ids = _folder_chunk_ids(first)
     await fm.add_folder(
-        folder_path="/repo",
-        chunk_count=5,
-        chunk_ids=["a", "b", "c", "d", "e"],
-        include_code=True,
+        folder_path="/repo", chunk_count=len(ids), chunk_ids=ids, include_code=True
     )
+    rec = await fm.get_folder("/repo")
+    assert rec is not None and rec.chunk_count == 4
 
-    # Incremental reindex touches 2 chunks (one overlaps). The call site must
-    # pass the UNION count via _merge_chunk_ids, not the per-run delta.
+    # b.py deleted -> reindex persists the derived (smaller) set.
+    second = _manifest("/repo", {"/repo/a.py": ["a", "b"]})
+    ids2 = _folder_chunk_ids(second)
+    await fm.add_folder(
+        folder_path="/repo", chunk_count=len(ids2), chunk_ids=ids2, include_code=True
+    )
     rec = await fm.get_folder("/repo")
     assert rec is not None
-    merged = _merge_chunk_ids(rec.chunk_ids, ["e", "f"])
-    await fm.add_folder(
-        folder_path="/repo",
-        chunk_count=len(merged),
-        chunk_ids=merged,
-        include_code=True,
-    )
-
-    rec = await fm.get_folder("/repo")
-    assert rec is not None
-    assert rec.chunk_count == 6  # a,b,c,d,e,f — not the 2-chunk delta
+    assert rec.chunk_count == 2  # self-healed, not stuck at 4

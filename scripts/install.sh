@@ -81,6 +81,9 @@ say "Using python3 ${PIPX_PYTHON_VERSION}"
 # -----------------------------------------------------------------------------
 
 if [[ -n "$LOCAL_PATH" ]]; then
+    # Resolve to an absolute path so pipx specs work regardless of CWD (we run
+    # pipx from a neutral dir below to dodge name/dir collisions).
+    LOCAL_PATH="$(cd "$LOCAL_PATH" && pwd)"
     CLI_SPEC="${LOCAL_PATH}/brainpalace-cli"
     SERVER_SPEC="${LOCAL_PATH}/brainpalace-server"
     say "Installing from local checkout: ${LOCAL_PATH}"
@@ -101,10 +104,14 @@ say "Installing brainpalace-cli via pipx (force-replacing any existing copy)"
 run "pipx install --force '${CLI_SPEC}'"
 
 if [[ -n "$LOCAL_PATH" ]]; then
-    # From a local checkout the CLI declares brainpalace-rag as a path dependency
-    # which pipx cannot resolve in isolation — inject the local server explicitly.
+    # The CLI depends on brainpalace-rag by version, so `pipx install` already
+    # pulled the PyPI server into the venv. Override it with the local checkout:
+    #   --force          replace the already-present brainpalace-rag (else pipx skips)
+    #   (cd / && ...)    run from a neutral CWD so the literal package name
+    #                    "brainpalace-cli" isn't mistaken for the ./brainpalace-cli
+    #                    dir when the installer runs from inside the repo
     say "Injecting local brainpalace-server into the CLI venv"
-    run "pipx inject brainpalace-cli '${SERVER_SPEC}'"
+    run "(cd / && pipx inject --force brainpalace-cli '${SERVER_SPEC}')"
 fi
 
 # -----------------------------------------------------------------------------

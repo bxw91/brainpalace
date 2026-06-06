@@ -88,6 +88,7 @@ async def health_check(request: Request) -> HealthStatus:
     mode = getattr(request.app.state, "mode", "project")
     instance_id = getattr(request.app.state, "instance_id", None)
     project_id = getattr(request.app.state, "project_id", None)
+    project_root = getattr(request.app.state, "project_root", None) or None
     active_projects = getattr(request.app.state, "active_projects", None)
 
     return HealthStatus(
@@ -98,6 +99,7 @@ async def health_check(request: Request) -> HealthStatus:
         mode=mode,
         instance_id=instance_id,
         project_id=project_id,
+        project_root=project_root,
         active_projects=active_projects,
     )
 

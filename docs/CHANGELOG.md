@@ -12,6 +12,83 @@ month (the counter resets monthly). It looks like SemVer but is not.
 
 ---
 
+## [Unreleased]
+
+## [26.6.24] - 2026-06-06
+
+### Fixed
+- **Git history index never indexed any commits (`status` showed `0 commits`).**
+  The git commit chunker stored the list of changed files as a metadata
+  **list**, which ChromaDB rejects (`Expected metadata value to be a
+  str/int/float/bool, got [...]`), failing the entire git boot-index upsert.
+  The changed paths are now stored as a newline-joined string plus a scalar
+  `files_changed_count`; the full list still appears in the commit chunk text.
+- **Vector (semantic) search returned almost nothing.** Long-lived collections
+  could be stuck on ChromaDB's `l2` distance default while the query layer
+  scores similarity as `1 - distance` (cosine) — l2 distances exceed 1, map to
+  negative similarity, and get filtered out, so vector-only mode silently
+  returned ~0 results (hybrid/bm25 masked it). The vector self-heal now also
+  detects a non-cosine index **behaviorally** (ChromaDB's persisted space
+  metadata is unreliable) and rebuilds it onto cosine from SQLite — no
+  re-embedding. New collections were already cosine; this repairs legacy ones.
+- **Self-heal left the old vector segment dir on disk.** Rebuilding recreates
+  the collection; ChromaDB drops the `segments` row but not the folder, leaking
+  a multi-hundred-MB stale index. The heal now sweeps orphaned segment
+  directories (unreferenced UUID dirs containing an HNSW `header.bin`) after a
+  rebuild.
+- **Server segfaulted on startup against a bloated/corrupt vector index
+  (crash-loop, no traceback).** A long-lived or previously duplicate-written
+  HNSW index accumulates orphaned element slots (soft-deletes never shrink the
+  graph); the next indexing upsert triggers a native HNSW resize that
+  **segfaults the whole process** with no Python traceback, so it could not be
+  caught and the server died on every start — surfacing downstream as
+  `brainpalace status` reporting the server down (discovery falls back to the
+  default port when no live server is found). `VectorStoreManager` now
+  **self-heals before any write**: at startup it reads the segment's element
+  counter from disk (crash-safe — never loads the HNSW graph) and, when the
+  physical slot count dwarfs the live count, rebuilds a compact index from
+  ChromaDB's intact SQLite — **no re-embedding, no manual `reset`/rebuild**.
+  Rebuilding resets the counter, so a healed index does not re-trigger and the
+  server stops crash-looping. Applies to both the code and memory collections.
+- **`install.sh --local` failed or silently ran the PyPI server.** Run from
+  inside the repo, `pipx inject brainpalace-cli …` aborted with "'brainpalace-cli'
+  looks like a path" (the package name collided with the `./brainpalace-cli`
+  dir); run from outside, the inject was skipped without `--force`, so the CLI
+  kept the PyPI `brainpalace-rag` instead of the local checkout. The injector
+  now runs from a neutral CWD with `--force` and resolves `--local` to an
+  absolute path, so the local server is reliably installed either way.
+- **Duplicate server for the same project (double/quadruple-counted index).**
+  `brainpalace start` could spawn a *second* server on the next free port while
+  the first was still alive — both watchers then re-indexed the shared
+  `.brainpalace/data/`, inflating chunk/document counts. Two root causes fixed:
+  (1) a live-but-busy server that missed a single `/health` probe was wrongly
+  treated as stale, its `runtime.json`/lock wiped, and replaced by a duplicate —
+  `start` now retries the health check and **refuses** (non-zero exit, "run
+  `brainpalace restart`") rather than launching a twin over a live process; and
+  (2) the CLI no longer unlinks `brainpalace.lock` during stale cleanup (the
+  running server holds an `flock` on that inode — deleting it defeated the OS
+  single-instance guard). As defense-in-depth, `launch_server` now probes the
+  port range for a healthy server already serving the same `project_root`
+  (new `project_root` field on `/health/`) and reports it instead of spawning a
+  duplicate, even when `runtime.json` is missing or stale.
+- **Folder `chunk_count` grew forever and never self-healed.** The folder-level
+  chunk-id set was a blind union of old + new ids on every re-index, so it never
+  dropped chunks for changed/deleted files — the persisted count (and `folders
+  list`) climbed without bound and diverged far above the real store. It is now
+  derived from the authoritative per-file manifest (retains unchanged files,
+  drops deleted ones), so the count **shrinks on delete** and converges on every
+  incremental re-index.
+- **Server now self-heals manifest/store drift on every start.** A startup
+  reconcile sweep recomputes each folder's `chunk_count` from the authoritative
+  per-file manifest and purges store chunks the manifest no longer references —
+  orphans left by past corruption such as the duplicate-server incident. It runs
+  automatically in the server lifespan (no flag, no reindex, no re-embed: pure
+  bookkeeping + targeted deletes), is a no-op when a folder is already
+  consistent, and never blocks startup on failure. Just start the server and the
+  counts converge to filesystem truth.
+
+---
+
 ## [26.6.23] - 2026-06-06
 
 ### Added

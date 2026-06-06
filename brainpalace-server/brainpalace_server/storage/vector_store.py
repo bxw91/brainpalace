@@ -550,6 +550,264 @@ class VectorStoreManager:
         self._initialized = False
         await self.initialize()
 
+    #: Rebuild the HNSW segment when physical elements added exceed this
+    #: multiple of the live count *and* the absolute slack below — i.e. only on
+    #: heavy soft-delete bloat, never on a lightly-churned healthy index.
+    _HEAL_BLOAT_RATIO = 2.0
+    _HEAL_BLOAT_FLOOR = 1000
+
+    def _hnsw_physical_count(self) -> int | None:
+        """Physical element count of this collection's HNSW segment, or None.
+
+        Reads ChromaDB's own SQLite (to map collection → segment dir) and the
+        segment's ``index_metadata.pickle`` ``total_elements_added`` counter.
+        File + read-only: it never loads the HNSW graph, so it cannot segfault
+        on a corrupt index. Any failure returns None (treated as "unknown").
+
+        Soft-deletes never shrink this counter, so ``physical >> live`` means
+        the graph still holds thousands of orphaned nodes whose labels ChromaDB
+        no longer maps — the desync that makes the next upsert's native resize
+        segfault.
+        """
+        import pickle
+        import sqlite3
+
+        persist = Path(self.persist_dir)
+        db = persist / "chroma.sqlite3"
+        if not db.exists():
+            return None
+        try:
+            con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+            try:
+                row = con.execute(
+                    "SELECT s.id FROM segments s JOIN collections c "
+                    "ON s.collection = c.id "
+                    "WHERE c.name = ? AND s.scope = 'VECTOR'",
+                    (self.collection_name,),
+                ).fetchone()
+            finally:
+                con.close()
+            if not row:
+                return None
+            pickle_path = persist / str(row[0]) / "index_metadata.pickle"
+            if not pickle_path.exists():
+                return None
+            with open(pickle_path, "rb") as fh:
+                meta = pickle.load(fh)
+            tea = getattr(meta, "__dict__", {}).get("total_elements_added")
+            return int(tea) if tea is not None else None
+        except Exception:  # noqa: BLE001 — detection must never crash startup
+            return None
+
+    def _measured_cosine(self) -> bool | None:
+        """True if the index *actually* scores by cosine distance, else False;
+        None when undetermined.
+
+        We score similarity as ``1 - distance`` (cosine), so a collection on the
+        ``l2`` default returns squared-euclidean distances that map to negative
+        similarity and get filtered out — vector search silently returns almost
+        nothing. ChromaDB's persisted ``config_json_str`` and collection metadata
+        both *lie* about the space for metadata-created collections (they report
+        'l2' or a stale 'cosine' regardless of the real segment), so the only
+        reliable signal is behavioral: ask ChromaDB for the distance between a
+        stored vector and its nearest neighbor, then compare it to the cosine and
+        squared-l2 values we compute ourselves.
+
+        This issues a query (loads the HNSW graph), so only call it on a
+        known-healthy index — after the bloat rebuild below, never before a
+        bloated/corrupt index that could segfault.
+        """
+        import numpy as np
+
+        if self._collection is None:
+            return None
+        try:
+            head = self._collection.get(
+                limit=1,
+                include=["embeddings"],  # type: ignore[list-item]
+            )
+            head_embs = head.get("embeddings")
+            if head_embs is None or len(head_embs) == 0:
+                return None
+            av = np.asarray(head_embs[0], dtype=float)
+            res = self._collection.query(
+                query_embeddings=[av.tolist()],
+                n_results=2,
+                include=["embeddings", "distances"],  # type: ignore[list-item]
+            )
+            res_dists = res["distances"]
+            res_embs = res["embeddings"]
+            if not res_dists or not res_embs or len(res_dists[0]) < 2:
+                return None  # need a neighbor besides self
+            dists = res_dists[0]
+            embs = res_embs[0]
+            bv = np.asarray(embs[1], dtype=float)
+            reported = float(dists[1])
+            na, nb = float(np.linalg.norm(av)), float(np.linalg.norm(bv))
+            if na == 0.0 or nb == 0.0:
+                return None
+            cos_dist = 1.0 - float(av @ bv) / (na * nb)
+            l2_sq = float(np.sum((av - bv) ** 2))
+            if abs(cos_dist - l2_sq) < 1e-4:
+                return None  # this pair can't distinguish the two metrics
+            return abs(reported - cos_dist) <= abs(reported - l2_sq)
+        except Exception:  # noqa: BLE001 — detection must never crash startup
+            return None
+
+    def _prune_orphan_segments(self) -> int:
+        """Delete on-disk HNSW segment dirs no longer referenced by ChromaDB.
+
+        Recreating a collection (the rebuild below, or a ``reset``) leaves the
+        old segment's directory behind — ChromaDB drops the ``segments`` row but
+        not the folder, so a stale multi-hundred-MB index lingers. This sweeps
+        ``persist_dir`` for UUID-named segment dirs (identified by their HNSW
+        files) whose id is absent from the live ``segments`` table and removes
+        them. Read-only against SQLite; never raises.
+
+        Returns the number of orphan directories removed.
+        """
+        import shutil
+        import sqlite3
+
+        persist = Path(self.persist_dir)
+        db = persist / "chroma.sqlite3"
+        if not db.exists():
+            return 0
+        try:
+            con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+            try:
+                live = {row[0] for row in con.execute("SELECT id FROM segments")}
+            finally:
+                con.close()
+        except Exception:  # noqa: BLE001 — never fail on cleanup
+            return 0
+
+        removed = 0
+        for child in persist.iterdir():
+            if not child.is_dir() or child.name in live:
+                continue
+            # Only touch real segment dirs (have an HNSW header) — never an
+            # unexpected sibling folder.
+            if not (child / "header.bin").exists():
+                continue
+            try:
+                shutil.rmtree(child)
+                removed += 1
+                logger.info("Removed orphan vector segment dir: %s", child.name)
+            except Exception as exc:  # noqa: BLE001 — never fail on cleanup
+                logger.warning("Failed to remove orphan segment %s: %s", child, exc)
+        return removed
+
+    async def heal_if_corrupt(self, batch_size: int = 500) -> int:
+        """Rebuild a bloated or wrong-space HNSW index, returning vectors rebuilt.
+
+        Repairs two faults, both detected from on-disk metadata only (never
+        loading the HNSW graph, so detection is crash-safe) and fixed by pulling
+        every live vector from SQLite and recreating the collection — WITHOUT
+        re-embedding, zero provider calls:
+
+        1. **Bloat / desync.** A segment that has accumulated thousands of
+           orphaned nodes (a past duplicate-server write, or normal soft-delete
+           churn) is a landmine: the next upsert triggers a native HNSW resize
+           that segfaults the whole process with no traceback, so it can't be
+           caught and the server crash-loops on every start. Detected via
+           ``_hnsw_physical_count`` dwarfing the live count.
+        2. **Wrong distance space.** A collection stuck on the ``l2`` default
+           (``_collection_space``) returns squared-euclidean distances that our
+           ``1 - distance`` cosine scoring maps to negative similarity, so vector
+           search silently returns almost nothing. The rebuild forces cosine.
+
+        Rebuilding resets the element counter and pins cosine, so a healed index
+        does not re-trigger next start — no repeated rebuilds.
+
+        Runs before any indexing upsert so the index self-heals instead of
+        crashing the server. Cheap no-op when the index is healthy.
+
+        Returns:
+            Number of vectors rebuilt (0 when no repair was needed).
+        """
+        if not self.is_initialized or self._collection is None:
+            return 0
+
+        live = await self.get_count()
+        if live == 0:
+            return 0
+
+        physical = await asyncio.to_thread(self._hnsw_physical_count)
+        bloated = (
+            physical is not None
+            and physical >= self._HEAL_BLOAT_RATIO * live + self._HEAL_BLOAT_FLOOR
+        )
+
+        reason: str | None
+        if bloated:
+            reason = (
+                f"bloated (HNSW holds {physical} element slots for {live} live "
+                f"vectors — native resize crash risk)"
+            )
+        else:
+            # Only probe the metric on a non-bloated index — the probe queries
+            # the HNSW graph, which would segfault on a bloated/corrupt one.
+            reason = (
+                "wrong distance space (vector search needs cosine)"
+                if await asyncio.to_thread(self._measured_cosine) is False
+                else None
+            )
+
+        if reason is None:
+            return 0  # healthy
+
+        logger.warning(
+            "Vector index %r needs repair: %s — rebuilding from SQLite "
+            "(no re-embed)",
+            self.collection_name,
+            reason,
+        )
+
+        async with self._lock:
+            assert self._client is not None
+            collection = self._collection
+
+            def _rebuild() -> int:
+                # get() reads SQLite only — safe on a bloated/corrupt HNSW.
+                data = collection.get(include=["embeddings", "documents", "metadatas"])
+                ids = data["ids"]
+                embs = data["embeddings"]
+                docs = data.get("documents") or [""] * len(ids)
+                metas = data.get("metadatas") or [None] * len(ids)
+                # Preserve embedding metadata but force the cosine space — this
+                # is the one chance to fix a collection stuck on the l2 default.
+                keep_meta = dict(collection.metadata or {})
+                keep_meta["hnsw:space"] = "cosine"
+
+                # Recreate the collection → fresh, compact, cosine HNSW segment.
+                self._client.delete_collection(self.collection_name)
+                new_collection = self._client.create_collection(
+                    name=self.collection_name,
+                    metadata=keep_meta,
+                )
+                for start in range(0, len(ids), batch_size):
+                    end = min(start + batch_size, len(ids))
+                    new_collection.add(
+                        ids=ids[start:end],
+                        embeddings=embs[start:end],
+                        documents=[d or "" for d in docs[start:end]],
+                        metadatas=[m or {} for m in metas[start:end]],
+                    )
+                self._collection = new_collection
+                return len(ids)
+
+            recovered = await asyncio.to_thread(_rebuild)
+            # Sweep the now-orphaned old segment dir left by the recreate.
+            await asyncio.to_thread(self._prune_orphan_segments)
+
+        logger.warning(
+            "Healed vector index %r: rebuilt %d live vectors from SQLite",
+            self.collection_name,
+            recovered,
+        )
+        return recovered
+
     async def close(self) -> None:
         """
         Close the vector store connection.

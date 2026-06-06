@@ -26,6 +26,12 @@ LOCK_FILE = "brainpalace.lock"
 PID_FILE = "brainpalace.pid"
 RUNTIME_FILE = "runtime.json"
 
+# A live server busy indexing can miss a health probe; retry before deciding it
+# is unresponsive (and never replace it with a duplicate).
+EXISTING_SERVER_HEALTH_RETRIES = 3
+EXISTING_SERVER_HEALTH_RETRY_DELAY = 1.0
+EXISTING_SERVER_HEALTH_TIMEOUT = 5.0
+
 
 def read_config(state_dir: Path) -> dict[str, Any]:
     """Read configuration from state directory."""
@@ -85,14 +91,47 @@ def is_stale(state_dir: Path) -> bool:
 
 
 def cleanup_stale(state_dir: Path) -> None:
-    """Clean up stale lock and runtime files."""
-    for fname in [LOCK_FILE, PID_FILE, RUNTIME_FILE]:
+    """Clean up stale pid and runtime files.
+
+    Deliberately does NOT remove ``brainpalace.lock``. A running server holds an
+    flock on that file's inode; unlinking it lets a second server create a fresh
+    inode and acquire the lock, defeating the OS single-instance guarantee. A
+    genuinely dead server's flock is released by the OS, so the next server
+    reclaims the lock by opening the same path — no unlink required.
+    """
+    for fname in [PID_FILE, RUNTIME_FILE]:
         fpath = state_dir / fname
         if fpath.exists():
             try:
                 fpath.unlink()
             except OSError:
                 pass
+
+
+def classify_existing_server(
+    runtime: dict[str, Any] | None,
+    *,
+    alive_fn: Any,
+    health_fn: Any,
+) -> str:
+    """Decide what to do about a recorded server, given liveness + health.
+
+    Returns one of:
+        - ``"running"``    pid alive and health check passes -> report and reuse.
+        - ``"unresponsive"`` pid alive but health check fails -> a live server
+          exists (likely busy indexing); the caller MUST NOT wipe its state and
+          spawn a second server on another port. This is the duplicate-server
+          incident guard.
+        - ``"stale"``      no runtime, or pid dead -> safe to clean up and start.
+    """
+    if not runtime:
+        return "stale"
+    pid = runtime.get("pid", 0)
+    if pid and alive_fn(pid):
+        if health_fn(runtime.get("base_url", "")):
+            return "running"
+        return "unresponsive"
+    return "stale"
 
 
 def check_health(base_url: str, timeout: float = 3.0) -> bool:
@@ -103,6 +142,53 @@ def check_health(base_url: str, timeout: float = 3.0) -> bool:
             return bool(resp.status == 200)
     except Exception:
         return False
+
+
+class ServerAlreadyRunningError(RuntimeError):
+    """Raised when a healthy server for the same project is already running.
+
+    Carries the discovered ``base_url`` so the caller can report it instead of
+    spawning a duplicate (which would double-index the shared data dir).
+    """
+
+    def __init__(self, base_url: str) -> None:
+        super().__init__(f"Server already running for this project at {base_url}")
+        self.base_url = base_url
+
+
+def fetch_health(base_url: str, timeout: float = 2.0) -> dict[str, Any] | None:
+    """GET ``/health/`` and return the parsed body, or None if unreachable."""
+    try:
+        req = Request(f"{base_url}/health/", method="GET")
+        with urlopen(req, timeout=timeout) as resp:
+            if resp.status == 200:
+                data: dict[str, Any] = json.loads(resp.read())
+                return data
+    except Exception:
+        return None
+    return None
+
+
+def find_same_project_server(
+    host: str,
+    project_root: str | Path,
+    start_port: int,
+    end_port: int,
+    *,
+    probe: Any = fetch_health,
+) -> str | None:
+    """Scan the port range for a healthy server already serving ``project_root``.
+
+    Returns the matching ``base_url`` or None. A server for a different project
+    is ignored (the caller may legitimately bind a free port alongside it).
+    """
+    target = str(project_root)
+    for port in range(start_port, end_port + 1):
+        base_url = f"http://{host}:{port}"
+        data = probe(base_url)
+        if data and data.get("project_root") == target:
+            return base_url
+    return None
 
 
 def find_available_port(host: str, start_port: int, end_port: int) -> int | None:
@@ -136,6 +222,129 @@ def update_registry(project_root: Path, state_dir: Path) -> None:
         "project_name": project_root.name,
     }
     registry_path.write_text(json.dumps(registry, indent=2))
+
+
+def resolve_bind_port(config: dict[str, Any], bind_host: str, port: int | None) -> int:
+    """Resolve the bind port from an explicit override, auto-port scan, or config.
+
+    Raises:
+        RuntimeError: when auto_port is enabled but no free port exists in range.
+    """
+    if port:
+        return port
+    if config.get("auto_port", True):
+        start_port = config.get("port_range_start", 8000)
+        end_port = config.get("port_range_end", 8100)
+        available_port = find_available_port(bind_host, start_port, end_port)
+        if available_port is None:
+            raise RuntimeError(f"No available port in range {start_port}-{end_port}")
+        return available_port
+    return int(config.get("port", 8000))
+
+
+def launch_server(
+    project_root: Path,
+    state_dir: Path,
+    host: str | None = None,
+    port: int | None = None,
+    timeout: int = 120,
+    strict: bool = False,
+) -> dict[str, Any]:
+    """Resolve bind host/port, spawn the uvicorn server, persist runtime.json,
+    update the global registry, and return the runtime dict.
+
+    Pure callable — no Click, no console printing. This is the single source of
+    truth for the daemonized server-spawn path; ``start_command`` calls it.
+
+    Raises:
+        RuntimeError: on port exhaustion, if the process dies during startup, or
+            if the server fails its health check within ``timeout`` seconds.
+    """
+    from datetime import datetime, timezone
+    from uuid import uuid4
+
+    config = read_config(state_dir)
+    bind_host = host or config.get("bind_host", "127.0.0.1")
+
+    # Defense-in-depth: never spawn a second server for the same project, even
+    # when runtime.json is missing or stale. Probe the port range for a healthy
+    # server already serving this project_root and refuse if one exists.
+    scan_start = config.get("port_range_start", 8000)
+    scan_end = config.get("port_range_end", 8100)
+    existing = find_same_project_server(bind_host, project_root, scan_start, scan_end)
+    if existing:
+        raise ServerAlreadyRunningError(existing)
+
+    bind_port = resolve_bind_port(config, bind_host, port)
+    base_url = f"http://{bind_host}:{bind_port}"
+
+    server_cmd = [
+        sys.executable,
+        "-m",
+        "uvicorn",
+        "brainpalace_server.api.main:app",
+        "--host",
+        bind_host,
+        "--port",
+        str(bind_port),
+    ]
+
+    env = os.environ.copy()
+    env["BRAINPALACE_PROJECT_ROOT"] = str(project_root)
+    env["BRAINPALACE_STATE_DIR"] = str(state_dir)
+    if strict:
+        env["BRAINPALACE_STRICT_MODE"] = "true"
+
+    log_dir = state_dir / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    stdout_log = log_dir / "server.log"
+    stderr_log = log_dir / "server.err"
+
+    with (
+        open(stdout_log, "a") as stdout_f,
+        open(stderr_log, "a") as stderr_f,
+    ):
+        process = subprocess.Popen(
+            server_cmd,
+            env=env,
+            stdout=stdout_f,
+            stderr=stderr_f,
+            start_new_session=True,
+        )
+
+    runtime: dict[str, Any] = {
+        "schema_version": "1.0",
+        "mode": "project",
+        "project_root": str(project_root),
+        "instance_id": uuid4().hex[:12],
+        "base_url": base_url,
+        "bind_host": bind_host,
+        "port": bind_port,
+        "pid": process.pid,
+        "started_at": datetime.now(timezone.utc).isoformat(),
+        "log_file": str(stdout_log),
+    }
+    write_runtime(state_dir, runtime)
+    update_registry(project_root, state_dir)
+
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        if check_health(base_url, timeout=2.0):
+            return runtime
+        if process.poll() is not None:
+            delete_runtime(state_dir)
+            raise RuntimeError(
+                f"Server process exited during startup; check {stderr_log}"
+            )
+        time.sleep(0.5)
+
+    if process.poll() is None:
+        os.kill(process.pid, signal.SIGTERM)
+    delete_runtime(state_dir)
+    raise RuntimeError(
+        f"Server did not become healthy within {timeout}s at {base_url}; "
+        f"check {stderr_log}"
+    )
 
 
 @click.command("start")
@@ -231,100 +440,112 @@ def start_command(
         # Read configuration
         config = read_config(state_dir)
 
-        # Check for existing runtime
+        # Check for existing runtime. A live server must never be replaced by a
+        # second one on another port (that duplicates writes to the shared data
+        # dir). Retry health a few times first — a server busy indexing can miss
+        # a single 3s health probe without being dead.
         runtime = read_runtime(state_dir)
         if runtime:
+            action = classify_existing_server(
+                runtime, alive_fn=is_process_alive, health_fn=check_health
+            )
             pid = runtime.get("pid", 0)
-            if pid and is_process_alive(pid):
-                base_url = runtime.get("base_url", "")
-                if check_health(base_url):
-                    if json_output:
-                        click.echo(
-                            json.dumps(
-                                {
-                                    "status": "already_running",
-                                    "base_url": base_url,
-                                    "pid": pid,
-                                    "project_root": str(project_root),
-                                }
-                            )
-                        )
-                    else:
-                        console.print(
-                            Panel(
-                                f"[yellow]Server already running![/]\n\n"
-                                f"[bold]URL:[/] {base_url}\n"
-                                f"[bold]PID:[/] {pid}\n"
-                                f"[bold]Project:[/] {project_root}",
-                                title="Server Running",
-                                border_style="yellow",
-                            )
-                        )
-                    return
+            base_url = runtime.get("base_url", "")
 
-            # Stale state, clean up
-            if json_output:
-                pass  # Silent cleanup in JSON mode
-            else:
-                console.print("[dim]Cleaning up stale server state...[/]")
-            cleanup_stale(state_dir)
+            if action == "unresponsive":
+                for _ in range(EXISTING_SERVER_HEALTH_RETRIES):
+                    time.sleep(EXISTING_SERVER_HEALTH_RETRY_DELAY)
+                    if not is_process_alive(pid):
+                        action = "stale"
+                        break
+                    if check_health(base_url, timeout=EXISTING_SERVER_HEALTH_TIMEOUT):
+                        action = "running"
+                        break
 
-        # Determine bind host and port
-        bind_host = host or config.get("bind_host", "127.0.0.1")
-        bind_port: int
-        if port:
-            bind_port = port
-        elif config.get("auto_port", True):
-            start_port = config.get("port_range_start", 8000)
-            end_port = config.get("port_range_end", 8100)
-            available_port = find_available_port(bind_host, start_port, end_port)
-            if available_port is None:
+            if action == "running":
                 if json_output:
                     click.echo(
                         json.dumps(
                             {
-                                "error": (
-                                    f"No available port in range "
-                                    f"{start_port}-{end_port}"
-                                )
+                                "status": "already_running",
+                                "base_url": base_url,
+                                "pid": pid,
+                                "project_root": str(project_root),
                             }
                         )
                     )
                 else:
                     console.print(
-                        f"[red]Error:[/] No available port in range "
-                        f"{start_port}-{end_port}"
+                        Panel(
+                            f"[yellow]Server already running![/]\n\n"
+                            f"[bold]URL:[/] {base_url}\n"
+                            f"[bold]PID:[/] {pid}\n"
+                            f"[bold]Project:[/] {project_root}",
+                            title="Server Running",
+                            border_style="yellow",
+                        )
                     )
+                return
+
+            if action == "unresponsive":
+                # Alive but not answering: refuse rather than spawn a duplicate.
+                msg = (
+                    f"Server process {pid} is alive but not responding at "
+                    f"{base_url}. Run 'brainpalace restart' (or 'brainpalace stop') "
+                    f"to recover; refusing to start a second server on the same "
+                    f"project (would duplicate the index)."
+                )
+                if json_output:
+                    click.echo(
+                        json.dumps({"error": "Server unresponsive", "detail": msg})
+                    )
+                else:
+                    console.print(f"[red]Error:[/] {msg}")
                 raise SystemExit(1)
-            bind_port = available_port
-        else:
-            bind_port = config.get("port", 8000)
 
-        base_url = f"http://{bind_host}:{bind_port}"
+            # Genuinely stale (pid dead) — clean up pid/runtime and start fresh.
+            if not json_output:
+                console.print("[dim]Cleaning up stale server state...[/]")
+            cleanup_stale(state_dir)
 
-        if not json_output:
-            console.print(f"[dim]Starting server on {base_url}...[/]")
-
-        # Build server command
-        server_cmd = [
-            sys.executable,
-            "-m",
-            "uvicorn",
-            "brainpalace_server.api.main:app",
-            "--host",
-            bind_host,
-            "--port",
-            str(bind_port),
-        ]
-
-        # Set environment variables for server
-        env = os.environ.copy()
-        env["BRAINPALACE_PROJECT_ROOT"] = str(project_root)
-        env["BRAINPALACE_STATE_DIR"] = str(state_dir)
-        if strict:
-            env["BRAINPALACE_STRICT_MODE"] = "true"
+        # Determine bind host and port (foreground path resolves inline; the
+        # daemonized path is fully delegated to launch_server below).
+        bind_host = host or config.get("bind_host", "127.0.0.1")
 
         if foreground:
+            try:
+                bind_port = resolve_bind_port(config, bind_host, port)
+            except RuntimeError as e:
+                if json_output:
+                    click.echo(json.dumps({"error": str(e)}))
+                else:
+                    console.print(f"[red]Error:[/] {e}")
+                raise SystemExit(1) from e
+
+            base_url = f"http://{bind_host}:{bind_port}"
+
+            if not json_output:
+                console.print(f"[dim]Starting server on {base_url}...[/]")
+
+            # Build server command
+            server_cmd = [
+                sys.executable,
+                "-m",
+                "uvicorn",
+                "brainpalace_server.api.main:app",
+                "--host",
+                bind_host,
+                "--port",
+                str(bind_port),
+            ]
+
+            # Set environment variables for server
+            env = os.environ.copy()
+            env["BRAINPALACE_PROJECT_ROOT"] = str(project_root)
+            env["BRAINPALACE_STATE_DIR"] = str(state_dir)
+            if strict:
+                env["BRAINPALACE_STRICT_MODE"] = "true"
+
             # Write runtime state even in foreground mode so CLI can discover the URL
             from datetime import datetime, timezone
             from uuid import uuid4
@@ -359,107 +580,95 @@ def start_command(
                 )
             os.execvpe(server_cmd[0], server_cmd, env)
         else:
-            # Daemonize the server
-            log_dir = state_dir / "logs"
-            log_dir.mkdir(parents=True, exist_ok=True)
-            stdout_log = log_dir / "server.log"
-            stderr_log = log_dir / "server.err"
-
-            with (
-                open(stdout_log, "a") as stdout_f,
-                open(stderr_log, "a") as stderr_f,
-            ):
-                process = subprocess.Popen(
-                    server_cmd,
-                    env=env,
-                    stdout=stdout_f,
-                    stderr=stderr_f,
-                    start_new_session=True,
+            # Daemonize the server — single source of truth lives in launch_server.
+            if not json_output:
+                console.print("[dim]Starting server...[/]")
+            try:
+                runtime_state = launch_server(
+                    project_root=project_root,
+                    state_dir=state_dir,
+                    host=host,
+                    port=port,
+                    timeout=timeout,
+                    strict=strict,
                 )
-
-            # Write runtime state
-            from datetime import datetime, timezone
-            from uuid import uuid4
-
-            runtime_state = {
-                "schema_version": "1.0",
-                "mode": "project",
-                "project_root": str(project_root),
-                "instance_id": uuid4().hex[:12],
-                "base_url": base_url,
-                "bind_host": bind_host,
-                "port": bind_port,
-                "pid": process.pid,
-                "started_at": datetime.now(timezone.utc).isoformat(),
-            }
-            write_runtime(state_dir, runtime_state)
-
-            # Update global registry
-            update_registry(project_root, state_dir)
-
-            # Wait for server to be ready
-            start_time = time.time()
-            ready = False
-            while time.time() - start_time < timeout:
-                if check_health(base_url, timeout=2.0):
-                    ready = True
-                    break
-                # Check if process died
-                if process.poll() is not None:
-                    break
-                time.sleep(0.5)
-
-            if ready:
+            except ServerAlreadyRunningError as e:
+                # A healthy server for this project was found mid-launch (runtime
+                # state was missing/stale). Report it instead of duplicating.
                 if json_output:
                     click.echo(
                         json.dumps(
                             {
-                                "status": "started",
-                                "base_url": base_url,
-                                "pid": process.pid,
+                                "status": "already_running",
+                                "base_url": e.base_url,
                                 "project_root": str(project_root),
-                                "log_file": str(stdout_log),
-                            },
-                            indent=2,
+                            }
                         )
                     )
                 else:
                     console.print(
                         Panel(
-                            f"[green]Server started successfully![/]\n\n"
-                            f"[bold]URL:[/] {base_url}\n"
-                            f"[bold]PID:[/] {process.pid}\n"
-                            f"[bold]Project:[/] {project_root}\n"
-                            f"[bold]Log:[/] {stdout_log}",
-                            title="BrainPalace Server Running",
-                            border_style="green",
+                            f"[yellow]Server already running![/]\n\n"
+                            f"[bold]URL:[/] {e.base_url}\n"
+                            f"[bold]Project:[/] {project_root}",
+                            title="Server Running",
+                            border_style="yellow",
                         )
                     )
-                    console.print("\n[dim]Next steps:[/]")
-                    console.print(
-                        f"  - Query: [bold]brainpalace query 'search term' "
-                        f"--url {base_url}[/]"
-                    )
-                    console.print("  - Stop: [bold]brainpalace stop[/]")
-            else:
-                # Cleanup on failure
-                if process.poll() is None:
-                    os.kill(process.pid, signal.SIGTERM)
-                delete_runtime(state_dir)
-
+                return
+            except RuntimeError as e:
+                stderr_log = state_dir / "logs" / "server.err"
                 if json_output:
                     click.echo(
                         json.dumps(
                             {
                                 "error": "Server failed to start",
+                                "detail": str(e),
                                 "log_file": str(stderr_log),
                             }
                         )
                     )
                 else:
-                    console.print("[red]Error:[/] Server failed to start")
+                    console.print(f"[red]Error:[/] {e}")
                     console.print(f"[dim]Check logs: {stderr_log}[/]")
-                raise SystemExit(1)
+                raise SystemExit(1) from e
+
+            base_url = runtime_state["base_url"]
+            pid = runtime_state["pid"]
+            stdout_log = runtime_state.get(
+                "log_file", str(state_dir / "logs" / "server.log")
+            )
+            if json_output:
+                click.echo(
+                    json.dumps(
+                        {
+                            "status": "started",
+                            "base_url": base_url,
+                            "pid": pid,
+                            "project_root": str(project_root),
+                            "log_file": stdout_log,
+                        },
+                        indent=2,
+                    )
+                )
+            else:
+                console.print(
+                    Panel(
+                        f"[green]Server started successfully![/]\n\n"
+                        f"[bold]URL:[/] {base_url}\n"
+                        f"[bold]PID:[/] {pid}\n"
+                        f"[bold]Project:[/] {project_root}\n"
+                        f"[bold]Log:[/] {stdout_log}",
+                        title="BrainPalace Server Running",
+                        border_style="green",
+                    )
+                )
+                console.print("\n[dim]Next steps:[/]")
+                console.print(
+                    f"  - Query: [bold]brainpalace query 'search term' "
+                    f"--url {base_url}[/]"
+                )
+                console.print("  - Stop: [bold]brainpalace stop[/]")
 
     except PermissionError as e:
         if json_output:

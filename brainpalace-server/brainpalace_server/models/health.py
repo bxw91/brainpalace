@@ -37,6 +37,10 @@ class HealthStatus(BaseModel):
         default=None,
         description="Project identifier (shared mode)",
     )
+    project_root: str | None = Field(
+        default=None,
+        description="Absolute project root this server indexes (project mode)",
+    )
     active_projects: int | None = Field(
         default=None,
         description="Number of active projects (shared mode)",
