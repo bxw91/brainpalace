@@ -89,11 +89,16 @@ jobs:
           # Restore PyPI dependencies for consistency
           git checkout pyproject.toml
 
+      # Lint/typecheck the two packages this gate installs. The root `task lint`
+      # / `task typecheck` also fan out to the dashboard, whose dev tools live in
+      # its own (Python 3.12) venv that this 3.11 job never installs — so scope
+      # to server+cli here. The dashboard is gated locally by `task before-push`
+      # (release checklist step 8). `task test` is already server+cli only.
       - name: Run linting
-        run: task lint
+        run: task server:lint cli:lint
 
       - name: Run type checking
-        run: task typecheck
+        run: task server:typecheck cli:typecheck
 
       - name: Run tests
         run: task test
