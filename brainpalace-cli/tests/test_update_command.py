@@ -111,14 +111,19 @@ class TestUpdateCommand:
                 "brainpalace_cli.commands.update.detect_install_manager",
                 return_value="pipx",
             ),
+            # Keep the post-upgrade restart hermetic — nothing running.
+            patch("brainpalace_cli.commands.update.running_servers", return_value=[]),
+            patch(
+                "brainpalace_cli.commands.update.dashboard_running",
+                return_value=False,
+            ),
             patch("subprocess.run", side_effect=fake_run),
         ):
             result = runner.invoke(update_command, ["--yes"])
 
         assert result.exit_code == 0
         assert ["pipx", "upgrade", "brainpalace-cli"] in calls
-        # Reminds the user to restart the server for the new version.
-        assert "restart" in result.output.lower()
+        assert "upgrade complete" in result.output.lower()
 
     def test_unknown_manager_exits_nonzero_with_guidance(
         self, runner: CliRunner
@@ -172,8 +177,101 @@ class TestUpdateCommand:
         assert "aborted" in result.output.lower()
 
 
+class TestRestartAfterUpgrade:
+    """Post-upgrade restart of running servers + the dashboard."""
+
+    def _patches(self, manager: str, calls: list[list[str]], **extra: object):
+        def fake_run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess:
+            calls.append(argv)
+            return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+
+        return (
+            patch(
+                "brainpalace_cli.commands.update.detect_install_manager",
+                return_value=manager,
+            ),
+            patch("subprocess.run", side_effect=fake_run),
+        )
+
+    def test_restarts_servers_and_dashboard_when_confirmed(
+        self, runner: CliRunner
+    ) -> None:
+        """--yes auto-confirms; bounces each server (--no-dashboard) + dashboard."""
+        calls: list[list[str]] = []
+        p_mgr, p_run = self._patches("pipx", calls)
+        with (
+            p_mgr,
+            p_run,
+            patch(
+                "brainpalace_cli.commands.update.running_servers",
+                return_value=["/proj/a", "/proj/b"],
+            ),
+            patch(
+                "brainpalace_cli.commands.update.dashboard_running",
+                return_value=True,
+            ),
+        ):
+            result = runner.invoke(update_command, ["--yes"])
+
+        assert result.exit_code == 0
+        subcmds = [c[1:] for c in calls]  # drop the binary/argv[0]
+        # Each project server stopped then started with --no-dashboard.
+        assert ["stop", "--path", "/proj/a", "--json"] in subcmds
+        assert ["start", "--path", "/proj/a", "--no-dashboard", "--json"] in subcmds
+        assert ["start", "--path", "/proj/b", "--no-dashboard", "--json"] in subcmds
+        # Dashboard bounced exactly once.
+        assert ["dashboard", "stop"] in subcmds
+        assert ["dashboard", "start", "--no-open"] in subcmds
+
+    def test_no_restart_flag_skips_and_prints_hint(self, runner: CliRunner) -> None:
+        calls: list[list[str]] = []
+        p_mgr, p_run = self._patches("pipx", calls)
+        with (
+            p_mgr,
+            p_run,
+            patch(
+                "brainpalace_cli.commands.update.running_servers",
+                return_value=["/proj/a"],
+            ),
+            patch(
+                "brainpalace_cli.commands.update.dashboard_running",
+                return_value=True,
+            ),
+        ):
+            result = runner.invoke(update_command, ["--yes", "--no-restart"])
+
+        assert result.exit_code == 0
+        subcmds = [c[1:] for c in calls]
+        assert not any("stop" in s or "start" in s for s in subcmds)
+        assert "restart" in result.output.lower()
+
+    def test_decline_restart_prompt_skips(self, runner: CliRunner) -> None:
+        """Without --yes, answering 'n' to the restart prompt restarts nothing."""
+        calls: list[list[str]] = []
+        p_mgr, p_run = self._patches("pipx", calls)
+        with (
+            p_mgr,
+            p_run,
+            patch(
+                "brainpalace_cli.commands.update.running_servers",
+                return_value=["/proj/a"],
+            ),
+            patch(
+                "brainpalace_cli.commands.update.dashboard_running",
+                return_value=False,
+            ),
+        ):
+            # First 'y' confirms the upgrade, then 'n' declines the restart.
+            result = runner.invoke(update_command, input="y\nn\n")
+
+        assert result.exit_code == 0
+        subcmds = [c[1:] for c in calls]
+        assert ["stop", "--path", "/proj/a", "--json"] not in subcmds
+
+
 class TestUpdateRegistration:
     def test_command_registered(self, runner: CliRunner) -> None:
         result = runner.invoke(cli, ["update", "--help"])
         assert result.exit_code == 0
         assert "--yes" in result.output
+        assert "--no-restart" in result.output

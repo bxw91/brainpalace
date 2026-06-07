@@ -74,13 +74,127 @@ def upgrade_argv(manager: str) -> list[str]:
     raise ValueError(f"unknown install manager: {manager}")
 
 
+def _brainpalace_argv() -> list[str]:
+    """Resolve how to invoke a nested ``brainpalace`` subcommand.
+
+    Prefer the console script on PATH (after the upgrade this is the NEW code);
+    fall back to ``python -m brainpalace_cli`` when no binary is on PATH.
+    """
+    exe = shutil.which("brainpalace")
+    if exe:
+        return [exe]
+    return [sys.executable, "-m", "brainpalace_cli"]
+
+
+def running_servers() -> list[str]:
+    """Project roots from the registry whose server process is currently alive.
+
+    A server counts as alive when its ``runtime.json`` pid is running or its
+    ``base_url`` answers /health — mirrors how ``brainpalace list`` decides.
+    """
+    from brainpalace_cli.commands.list_cmd import (  # noqa: PLC0415
+        check_health,
+        get_registry,
+        is_process_alive,
+        read_runtime,
+    )
+
+    alive: list[str] = []
+    for project_root, entry in get_registry().items():
+        state_dir = Path(entry.get("state_dir", ""))
+        if not state_dir:
+            continue
+        runtime = read_runtime(state_dir)
+        if not runtime:
+            continue
+        pid = runtime.get("pid")
+        base_url = runtime.get("base_url")
+        if (pid and is_process_alive(pid)) or (base_url and check_health(base_url)):
+            alive.append(project_root)
+    return alive
+
+
+def dashboard_running() -> bool:
+    """True when the singleton control-plane dashboard is up (Python 3.12+)."""
+    try:
+        from brainpalace_dashboard.server import (  # noqa: PLC0415
+            dashboard_status,
+        )
+    except ImportError:
+        return False  # dashboard package not installed (Python < 3.12)
+    try:
+        return bool(dashboard_status().get("status") == "running")
+    except Exception:
+        return False
+
+
+def _restart_after_upgrade(*, assume_yes: bool) -> None:
+    """Restart running per-project servers + the dashboard so they load new code.
+
+    Prompts (default yes) when not ``assume_yes``. Each project server is
+    restarted with ``--no-dashboard`` so the dashboard is bounced exactly once,
+    at the end. Best-effort: a single failure is reported but doesn't abort the
+    rest.
+    """
+    servers = running_servers()
+    dash = dashboard_running()
+    if not servers and not dash:
+        return
+
+    parts: list[str] = []
+    if servers:
+        plural = "s" if len(servers) != 1 else ""
+        parts.append(f"{len(servers)} running server{plural}")
+    if dash:
+        parts.append("the dashboard")
+    what = " and ".join(parts)
+
+    if not assume_yes and not click.confirm(
+        f"Restart {what} to load the new version?", default=True
+    ):
+        console.print(
+            "[dim]Skipped. Restart later: "
+            "[bold]brainpalace stop && brainpalace start[/].[/]"
+        )
+        return
+
+    argv = _brainpalace_argv()
+    home = str(Path.home())
+
+    def _run(cmd: list[str], label: str) -> None:
+        res = subprocess.run(cmd, cwd=home, capture_output=True, text=True)
+        if res.returncode != 0:
+            console.print(f"  [yellow]![/] {label} failed: {res.stderr.strip()}")
+
+    for project_root in servers:
+        console.print(f"[dim]Restarting server:[/] {project_root}")
+        _run([*argv, "stop", "--path", project_root, "--json"], "stop")
+        _run(
+            [*argv, "start", "--path", project_root, "--no-dashboard", "--json"],
+            "start",
+        )
+
+    if dash:
+        console.print("[dim]Restarting dashboard…[/]")
+        _run([*argv, "dashboard", "stop"], "dashboard stop")
+        _run([*argv, "dashboard", "start", "--no-open"], "dashboard start")
+
+    console.print("[green]Restart complete.[/]")
+
+
 @click.command("update")
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt")
-def update_command(yes: bool) -> None:
+@click.option(
+    "--no-restart",
+    is_flag=True,
+    help="Don't restart running servers/dashboard after the upgrade",
+)
+def update_command(yes: bool, no_restart: bool) -> None:
     """Upgrade BrainPalace (CLI + server) to the latest published version.
 
     Auto-detects pipx / uv / pip and runs the matching upgrade. After it
-    finishes, restart any running server so it picks up the new code.
+    finishes, offers to restart any running per-project servers and the
+    dashboard so they load the new code (skip with --no-restart).
     """
     manager = detect_install_manager()
     if manager is None:
@@ -107,7 +221,11 @@ def update_command(yes: bool) -> None:
         raise SystemExit(result.returncode)
 
     console.print("\n[green]Upgrade complete.[/]")
-    console.print(
-        "[yellow]Restart[/] any running server to load the new version: "
-        "[bold]brainpalace stop && brainpalace start[/]"
-    )
+
+    if no_restart:
+        console.print(
+            "[dim]Restart running servers to load the new version: "
+            "[bold]brainpalace stop && brainpalace start[/].[/]"
+        )
+        return
+    _restart_after_upgrade(assume_yes=yes)

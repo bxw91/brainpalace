@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-07
+last_validated: 2026-06-08
 ---
 
 # Changelog
@@ -12,7 +12,15 @@ month (the counter resets monthly). It looks like SemVer but is not.
 
 ---
 
-## [Unreleased]
+## [26.6.29] - 2026-06-08
+
+### Added
+- **`brainpalace update` restarts running servers + the dashboard.** After a
+  successful upgrade, update now detects every running per-project server (from
+  the global registry) and the control-plane dashboard, and offers to restart
+  them so they load the new code — prompt defaults to **yes**; `--yes`
+  auto-confirms; `--no-restart` keeps the old manual-hint behavior. Each project
+  server is bounced with `--no-dashboard` so the dashboard restarts exactly once.
 
 ## [26.6.28] - 2026-06-07
 
