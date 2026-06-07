@@ -69,7 +69,7 @@ jobs:
       - name: Install Poetry
         uses: snok/install-poetry@v1
         with:
-          version: 1.7.1
+          version: 2.4.1
           virtualenvs-create: true
           virtualenvs-in-project: true
 
@@ -121,15 +121,22 @@ jobs:
       - name: Install CLI with local server dependency
         run: |
           cd brainpalace-cli
-          # brainpalace-rag isn't on PyPI during CI, temporarily use path dependency
+          # Neither sibling resolves from PyPI in CI for an in-progress version,
+          # so point both at the worktree by path before locking. The dashboard
+          # is a regular (python>=3.12) dependency, not an extra — without the
+          # swap a fresh `poetry lock` fails version-solving on it.
           sed -i 's|brainpalace-rag = "^[0-9]*\.[0-9]*\.[0-9]*"|brainpalace-rag = {path = "../brainpalace-server", develop = false}|' pyproject.toml
+          sed -i 's|brainpalace-dashboard = { version = "^[0-9]*\.[0-9]*\.[0-9]*", python = ">=3.12" }|brainpalace-dashboard = { path = "../brainpalace-dashboard", develop = false, python = ">=3.12" }|' pyproject.toml
           poetry lock
           poetry install
-          # Restore PyPI dependency for consistency
+          # Restore PyPI dependencies for consistency
           git checkout pyproject.toml
 
+      # Scope to the two packages this job installs. Root `task lint` /
+      # `task typecheck` also fan out to the dashboard, whose dev tools live in
+      # its own Python 3.12 venv that this job never installs.
       - name: Run linting
-        run: task lint
+        run: task server:lint cli:lint
 
       - name: Lint YAML frontmatter in plugin files
         run: |
@@ -137,7 +144,7 @@ jobs:
           task lint:yaml
 
       - name: Run type checking
-        run: task typecheck
+        run: task server:typecheck cli:typecheck
 
       - name: Check server/CLI version alignment
         run: |

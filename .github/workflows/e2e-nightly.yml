@@ -48,7 +48,7 @@ jobs:
       - name: Install Poetry
         uses: snok/install-poetry@v1
         with:
-          version: 1.7.1
+          version: 2.4.1
           virtualenvs-create: true
           virtualenvs-in-project: true
 
@@ -72,6 +72,7 @@ jobs:
         run: |
           cd brainpalace-cli
           sed -i 's|brainpalace-rag = "^[0-9]*\.[0-9]*\.[0-9]*"|brainpalace-rag = {path = "../brainpalace-server", develop = false}|' pyproject.toml
+          sed -i 's|brainpalace-dashboard = { version = "^[0-9]*\.[0-9]*\.[0-9]*", python = ">=3.12" }|brainpalace-dashboard = { path = "../brainpalace-dashboard", develop = false, python = ">=3.12" }|' pyproject.toml
           poetry lock
           poetry install
           git checkout pyproject.toml
