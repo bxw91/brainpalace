@@ -494,48 +494,72 @@ selection = ["jax[cpu]"]
 stem = ["PyStemmer"]
 
 [[package]]
-name = "brainpalace-rag"
-version = "26.6.24"
-description = "BrainPalace RAG - Intelligent document indexing and semantic search server that gives AI agents long-term memory"
-optional = false
-python-versions = "<4.0,>=3.10"
+name = "brainpalace-dashboard"
+version = "26.6.26"
+description = "BrainPalace control-plane web dashboard"
+optional = true
+python-versions = "^3.12"
 groups = ["main"]
-files = [
-    {file = "brainpalace_rag-26.6.24-py3-none-any.whl", hash = "sha256:5164d2131aa4516f9c3ed3e758a3ad1ef1333dd21ac6e1fa94fcf27a808ce531"},
-    {file = "brainpalace_rag-26.6.24.tar.gz", hash = "sha256:c3045433b182194fab707ee86389e874ffcdc34fb297675b165326ee8076e31e"},
-]
+markers = "python_version >= \"3.12\" and extra == \"dashboard\""
+files = []
+develop = true
 
 [package.dependencies]
-anthropic = ">=0.40.0,<0.41.0"
-bm25s = ">=0.2.14,<0.3.0"
+brainpalace-cli = {path = "../brainpalace-cli", develop = true}
+fastapi = "^0.115"
+httpx = "^0.28.0"
+sse-starlette = "^2.1"
+uvicorn = "^0.32.0"
+
+[package.source]
+type = "directory"
+url = "../brainpalace-dashboard"
+
+[[package]]
+name = "brainpalace-rag"
+version = "26.6.26"
+description = "BrainPalace RAG - Intelligent document indexing and semantic search server that gives AI agents long-term memory"
+optional = false
+python-versions = "^3.10"
+groups = ["main"]
+files = []
+develop = false
+
+[package.dependencies]
+anthropic = "^0.40.0"
+bm25s = "^0.2.14"
 cachetools = ">=5.3"
-chromadb = ">=0.5.0,<0.6.0"
-click = ">=8.1.0,<9.0.0"
-cohere = ">=5.0.0,<6.0.0"
-fastapi = ">=0.115.0,<0.116.0"
-google-genai = ">=1.0.0,<2.0.0"
-llama-index-core = ">=0.14.0,<0.15.0"
-llama-index-embeddings-openai = ">=0.5.0,<0.6.0"
-llama-index-llms-openai = ">=0.6.12,<0.7.0"
-llama-index-readers-file = ">=0.5.0,<0.6.0"
-openai = ">=1.57.0,<2.0.0"
-pathspec = ">=0.12.0,<0.13.0"
-py3langid = ">=0.3.0,<0.4.0"
-pydantic = ">=2.10.0,<3.0.0"
-pydantic-settings = ">=2.6.0,<3.0.0"
-PyStemmer = ">=2.2.0,<3.0.0"
-python-dotenv = ">=1.0.0,<2.0.0"
-pyyaml = ">=6.0.0,<7.0.0"
-sentence-transformers = ">=3.4.0,<4.0.0"
-stopwordsiso = ">=0.6.1,<0.7.0"
-tiktoken = ">=0.8.0,<0.9.0"
-tree-sitter-language-pack = ">=0.7.3,<0.8.0"
-uvicorn = {version = ">=0.32.0,<0.33.0", extras = ["standard"]}
+chromadb = "^0.5.0"
+click = "^8.1.0"
+cohere = "^5.0.0"
+fastapi = "^0.115.0"
+google-genai = "^1.0.0"
+llama-index-core = "^0.14.0"
+llama-index-embeddings-openai = "^0.5.0"
+llama-index-llms-openai = "^0.6.12"
+llama-index-readers-file = "^0.5.0"
+openai = "^1.57.0"
+pathspec = "^0.12.0"
+py3langid = "^0.3.0"
+pydantic = "^2.10.0"
+pydantic-settings = "^2.6.0"
+PyStemmer = "^2.2.0"
+python-dotenv = "^1.0.0"
+pyyaml = "^6.0.0"
+sentence-transformers = "^3.4.0"
+stopwordsiso = "^0.6.1"
+tiktoken = "^0.8.0"
+tree-sitter-language-pack = "^0.7.3"
+uvicorn = {version = "^0.32.0", extras = ["standard"]}
 
 [package.extras]
 graphrag = ["langextract (>=1.0.0,<2.0.0)"]
 lemma-hr = ["simplemma (>=1.2,<2.0)"]
 postgres = ["asyncpg (>=0.29.0,<0.30.0)", "sqlalchemy[asyncio] (>=2.0.0,<3.0.0)"]
+
+[package.source]
+type = "directory"
+url = "../brainpalace-server"
 
 [[package]]
 name = "build"
@@ -6179,11 +6203,34 @@ sqlcipher = ["sqlcipher3_binary"]
 
 [[package]]
 name = "sse-starlette"
+version = "2.4.1"
+description = "SSE plugin for Starlette"
+optional = false
+python-versions = ">=3.9"
+groups = ["main"]
+markers = "python_version >= \"3.12\""
+files = [
+    {file = "sse_starlette-2.4.1-py3-none-any.whl", hash = "sha256:08b77ea898ab1a13a428b2b6f73cfe6d0e607a7b4e15b9bb23e4a37b087fd39a"},
+    {file = "sse_starlette-2.4.1.tar.gz", hash = "sha256:7c8a800a1ca343e9165fc06bbda45c78e4c6166320707ae30b416c42da070926"},
+]
+
+[package.dependencies]
+anyio = ">=4.7.0"
+
+[package.extras]
+daphne = ["daphne (>=4.2.0)"]
+examples = ["aiosqlite (>=0.21.0)", "fastapi (>=0.115.12)", "sqlalchemy[asyncio,examples] (>=2.0.41)", "starlette (>=0.41.3)", "uvicorn (>=0.34.0)"]
+granian = ["granian (>=2.3.1)"]
+uvicorn = ["uvicorn (>=0.34.0)"]
+
+[[package]]
+name = "sse-starlette"
 version = "3.0.3"
 description = "SSE plugin for Starlette"
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
+markers = "python_version < \"3.12\""
 files = [
     {file = "sse_starlette-3.0.3-py3-none-any.whl", hash = "sha256:af5bf5a6f3933df1d9c7f8539633dc8444ca6a97ab2e2a7cd3b6e431ac03a431"},
     {file = "sse_starlette-3.0.3.tar.gz", hash = "sha256:88cfb08747e16200ea990c8ca876b03910a23b547ab3bd764c0d8eb81019b971"},
@@ -7633,7 +7680,10 @@ enabler = ["pytest-enabler (>=2.2)"]
 test = ["big-O", "jaraco.functools", "jaraco.itertools", "jaraco.test", "more_itertools", "pytest (>=6,!=8.1.*)", "pytest-ignore-flaky"]
 type = ["pytest-mypy"]
 
+[extras]
+dashboard = ["brainpalace-dashboard"]
+
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.10"
-content-hash = "2a33e2952acb80646b976b92e097852aca1da01a8ff24212f34b8f30c746ca68"
+content-hash = "059c79fee890c9d7d77e26102c077afb39e7fc6810ca0b334449bf5045ea3249"

@@ -26,14 +26,21 @@ VALID_TOP_LEVEL_KEYS = {
     "api",
     "server",
     "project",
+    "query_log",
+    "bm25",
+    "git_indexing",
+    "session_indexing",
+    "session_extraction",
 }
 
 VALID_EMBEDDING_PROVIDERS = {"openai", "ollama", "cohere"}
 VALID_SUMMARIZATION_PROVIDERS = {"anthropic", "openai", "ollama", "gemini", "grok"}
 VALID_RERANKER_PROVIDERS = {"sentence-transformers", "ollama"}
 VALID_STORAGE_BACKENDS = {"chroma", "postgres"}
-VALID_GRAPHRAG_STORE_TYPES = {"simple"}
+VALID_GRAPHRAG_STORE_TYPES = {"simple", "sqlite"}
 VALID_DOC_EXTRACTORS = {"langextract", "none"}
+VALID_BM25_ENGINES = {"stem", "lemma"}
+VALID_EXTRACT_MODES = {"auto", "subagent", "provider", "off"}
 
 # Known sub-keys for each section — unknown keys trigger a warning
 EMBEDDING_KNOWN_FIELDS = {
@@ -53,6 +60,7 @@ SUMMARIZATION_KNOWN_FIELDS = {
     "params",
 }
 RERANKER_KNOWN_FIELDS = {
+    "enabled",
     "provider",
     "model",
     "base_url",
@@ -94,6 +102,26 @@ GRAPHRAG_KNOWN_FIELDS = {
 API_KNOWN_FIELDS = {"host", "port"}
 SERVER_KNOWN_FIELDS = {"url", "host", "port", "auto_port"}
 PROJECT_KNOWN_FIELDS = {"state_dir", "project_root"}
+QUERY_LOG_KNOWN_FIELDS = {"enabled", "retention_days"}
+BM25_KNOWN_FIELDS = {"language", "engine", "detect", "detect_min_confidence"}
+GIT_INDEXING_KNOWN_FIELDS = {
+    "enabled",
+    "depth",
+    "max_files",
+    "repo_path",
+    "path_filter",
+}
+SESSION_INDEXING_KNOWN_FIELDS = {
+    "enabled",
+    "include_user_turns",
+    "retain_days",
+    "window",
+    "stride",
+    "watch_debounce_ms",
+    "sessions_dir",
+    "archive",
+}
+SESSION_EXTRACTION_KNOWN_FIELDS = {"mode", "quiescence_seconds"}
 
 # ---------------------------------------------------------------------------
 # Deprecated key mapping: dot-path -> migration suggestion
@@ -142,7 +170,9 @@ _SECTION_SCHEMA: dict[str, dict[str, Any]] = {
                 f"Use one of: {', '.join(sorted(VALID_RERANKER_PROVIDERS))}",
             ),
         },
-        "type_fields": {},
+        "type_fields": {
+            "enabled": (bool, "reranker.enabled must be a boolean (true/false)"),
+        },
     },
     "storage": {
         "known_fields": STORAGE_KNOWN_FIELDS,
@@ -196,6 +226,73 @@ _SECTION_SCHEMA: dict[str, dict[str, Any]] = {
         "known_fields": PROJECT_KNOWN_FIELDS,
         "enum_fields": {},
         "type_fields": {},
+    },
+    "query_log": {
+        "known_fields": QUERY_LOG_KNOWN_FIELDS,
+        "enum_fields": {},
+        "type_fields": {
+            "enabled": (bool, "query_log.enabled must be a boolean (true/false)"),
+            "retention_days": (int, "query_log.retention_days must be an integer"),
+        },
+    },
+    "bm25": {
+        "known_fields": BM25_KNOWN_FIELDS,
+        "enum_fields": {
+            "engine": (
+                VALID_BM25_ENGINES,
+                "Invalid bm25 engine",
+                f"Use one of: {', '.join(sorted(VALID_BM25_ENGINES))}",
+            ),
+        },
+        "type_fields": {
+            "detect": (bool, "bm25.detect must be a boolean (true/false)"),
+        },
+    },
+    "git_indexing": {
+        "known_fields": GIT_INDEXING_KNOWN_FIELDS,
+        "enum_fields": {},
+        "type_fields": {
+            "enabled": (bool, "git_indexing.enabled must be a boolean (true/false)"),
+            "depth": (int, "git_indexing.depth must be an integer"),
+            "max_files": (int, "git_indexing.max_files must be an integer"),
+        },
+    },
+    "session_indexing": {
+        "known_fields": SESSION_INDEXING_KNOWN_FIELDS,
+        "enum_fields": {},
+        "type_fields": {
+            "enabled": (
+                bool,
+                "session_indexing.enabled must be a boolean (true/false)",
+            ),
+            "include_user_turns": (
+                bool,
+                "session_indexing.include_user_turns must be a boolean (true/false)",
+            ),
+            "retain_days": (int, "session_indexing.retain_days must be an integer"),
+            "window": (int, "session_indexing.window must be an integer"),
+            "stride": (int, "session_indexing.stride must be an integer"),
+            "watch_debounce_ms": (
+                int,
+                "session_indexing.watch_debounce_ms must be an integer",
+            ),
+        },
+    },
+    "session_extraction": {
+        "known_fields": SESSION_EXTRACTION_KNOWN_FIELDS,
+        "enum_fields": {
+            "mode": (
+                VALID_EXTRACT_MODES,
+                "Invalid session_extraction mode",
+                f"Use one of: {', '.join(sorted(VALID_EXTRACT_MODES))}",
+            ),
+        },
+        "type_fields": {
+            "quiescence_seconds": (
+                int,
+                "session_extraction.quiescence_seconds must be an integer",
+            ),
+        },
     },
 }
 

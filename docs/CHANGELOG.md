@@ -12,7 +12,147 @@ month (the counter resets monthly). It looks like SemVer but is not.
 
 ---
 
-## [Unreleased]
+## [26.6.26] - 2026-06-07
+
+The **web dashboard** lands — a standalone browser control plane for every
+BrainPalace project server — and now ships on PyPI as the `dashboard` extra.
+
+### Packaging
+- **`brainpalace-dashboard` is now published to PyPI.** The control-plane
+  dashboard is a third lockstep package (with `brainpalace-rag` and
+  `brainpalace-cli`, same CalVer). `pipx install brainpalace[dashboard]` now
+  resolves it from PyPI. The release workflow gained a `publish-dashboard` job
+  (published after the cli via its own OIDC Trusted Publisher) and the
+  tag/version guard now covers all three `pyproject.toml` versions. The
+  dashboard's source-only `brainpalace-cli` path dependency is swapped to the
+  released version at build time.
+
+### Changed
+- **Reranking is now ON by default and config-controllable.** Two-stage
+  reranking (a local cross-encoder that re-scores the top candidates for finer
+  relevance) is enabled by default. It's **local — no API/token cost**; it adds
+  a little query latency and a one-time model download. New config key
+  `reranker.enabled` (default `true`) is the per-project switch — `brainpalace
+  init` writes it and accepts `--reranking/--no-reranking`; the dashboard Config
+  tab shows a toggle. The `ENABLE_RERANKING` env var still overrides config.
+  Previously reranking was OFF and enableable only via that env var. Disable
+  with `reranker.enabled: false`, `brainpalace init --no-reranking`, or
+  `ENABLE_RERANKING=false`.
+
+### Added
+- **Dashboard: config defaults are surfaced.** Every config control shows its
+  effective default next to the label (e.g. `default: 30000`), so a setting
+  omitted from a project's `config.yaml` no longer looks broken/empty. Unset int
+  steppers show the default value (not `0`); the default enum option is marked
+  when nothing is selected (e.g. storage backend → `chroma default`); free-text
+  fields use the default as a placeholder. Applies to instance config and the
+  control-plane Settings tab. The all-hidden, runtime-managed sections
+  (API/Server/Project) are no longer rendered as empty section headers.
+- **Dashboard: Server and Instance are now separate pages.** The left rail has a
+  **Server** (control-plane) entry above the instance list; selecting it shows
+  only the server tabs (Overview/Instances/Settings), while selecting an instance
+  shows only that instance's tabs (Status/Config/Folders/…). The two tab sets no
+  longer mix.
+- **Dashboard: Status tab now mirrors `brainpalace status` in full** — server
+  version, documents/chunks (code+doc), indexing state, indexed folder paths,
+  last indexed, file watcher, session archive/memory/summarization, embedding
+  cache (entries + hit rate + hits/misses), graph index (store + entities/rels),
+  LSP, git index, and BM25 language/engine. (Adds a `GET
+  /dashboard/api/instances/{id}/health` proxy for the server version.)
+- **Dashboard: control-plane "Settings" tab.** A fleet-scoped Settings tab edits
+  the dashboard's **own** config (`host`/`port`/`poll_s`/`token` in the
+  `dashboard:` block of the XDG `config.yaml`) — separate from the per-instance
+  Config tab. The token is write-only (never echoed); `host`/`port`/`token` apply
+  on the next `brainpalace dashboard` restart, `poll_s` on reload. New
+  control-plane endpoints `GET`/`PATCH /dashboard/api/settings`.
+- **Dashboard: per-instance "Status" tab + grouped tabs.** A new instance-scoped
+  Status tab shows the full `brainpalace status` view for the selected instance
+  (documents/chunks/folders/languages/graph/git/cache/watcher). The tab bar now
+  visually separates **Fleet** tabs (Overview, Instances) from the
+  **per-instance** group (labeled with the selected instance).
+- **Dashboard: confirmation on every mutating action.** Config Save / Save +
+  Restart, instance Start, and "mark memory obsolete" now prompt for confirmation
+  (joining the already-confirmed Stop/Restart/Remove/Clear/Reset/Delete/Cancel/
+  Re-index actions).
+
+### Fixed
+- **`brainpalace dashboard start` now backgrounds properly.** It detached the
+  uvicorn child but left it attached to the terminal's stdin/stdout/stderr and
+  process group, so the shell looked "locked" and logs spammed it. The child now
+  starts in its own session with output redirected to `<XDG_STATE>/dashboard.log`
+  — the prompt returns immediately. Use `--foreground` to run attached.
+- **Dashboard: Graph/Sessions/Overview no longer error on real instances.** The
+  status schema typed `indexed_folders` as a number, but the server returns the
+  folder **list** — the Zod parse threw (`Expected number, received array`),
+  breaking every status-backed tab. It now accepts the list (and derives the
+  count from it).
+- **Dashboard: Logs tab degrades gracefully.** When a project server predates
+  the `/health/logs` endpoint (or has no log file yet) the tab shows a clear
+  "log tailing unavailable" note instead of a hard "Not Found" error.
+
+- **`brainpalace dashboard` command + web control plane.** A standalone
+  FastAPI/React dashboard manages every project server from one browser tab
+  (instances, config, stats, jobs, cache, graph, sessions, logs, query
+  history). `brainpalace dashboard start|stop|status` launches/stops/inspects
+  it via its own port scan (8787→8887) and runtime pidfile (`dashboard.json`
+  under XDG state), opening a browser by default (`--no-open`/`--foreground`).
+  Config lives under the `dashboard:` section of `config.yaml`
+  (host/port/poll_s/token); an optional bearer token
+  (`BRAINPALACE_DASHBOARD_TOKEN` or `dashboard.token`) guards
+  `/dashboard/api/**` for shared machines (localhost is unguarded by default).
+  Shipped as the optional `dashboard` extra of the CLI
+  (`pipx install brainpalace[dashboard]`); imported lazily with a friendly
+  install hint when absent. The dashboard is CLI-launched, not an MCP surface.
+  See [DASHBOARD](DASHBOARD.md).
+- **Server query history (SQLite) + dashboard Queries tab.** Every successful
+  query is recorded (with truncated results) to a per-project SQLite log at
+  `.brainpalace/query_log.db`, with a new `query_log.{enabled,retention_days}`
+  config section (ON by default, 7-day retention; `QUERY_LOG_ENABLED=false`
+  kill switch). New server endpoints `GET /query/history`,
+  `GET /query/history/{qid}` and `GET /health/logs` (tails
+  `.brainpalace/server.log`); the control-plane dashboard proxies history,
+  detail and live replay.
+
+- **Dashboard parity gate.** New `task lint:dashboard-parity` (wired into
+  `task before-push`) fails when a config option, CLI command, or project-server
+  endpoint is added without being surfaced in the control-plane dashboard or
+  explicitly allowlisted with a reason. The gate imports the live
+  `config_schema`, the live Click command group, and the live FastAPI app and
+  diffs them against checked-in coverage maps
+  (`brainpalace-dashboard/brainpalace_dashboard/coverage_maps.py`:
+  `CLI_DASHBOARD_COVERAGE`, `ENDPOINT_SURFACES`; `ui_schema.DASHBOARD_HIDDEN_FIELDS`
+  for config). Governance rule added to `CLAUDE.md`,
+  `docs/DEVELOPERS_GUIDE.md`, and the release checklist in `docs/RELEASING.md`.
+
+- **Dashboard E2E + polish.** Playwright end-to-end suite for the dashboard
+  (`e2e/dashboard/`, `task test:e2e-dashboard`) drives the full lifecycle
+  (start → add folder + index job → run a query → edit config + Save+Restart →
+  stop) and an `@axe-core/playwright` accessibility check against a real control
+  plane + throwaway project server. Every tab gained loading / empty / error
+  (with Retry) states; a new Queries "New query" composer runs a live query
+  inline and logs it to history. Accessibility fixes: WCAG-AA contrast for
+  faint text, `role="img"` on status dots, and a focus-trap in `ConfirmDialog`.
+  Performance: fleet liveness rides a single SSE stream (no per-tab `/instances`
+  polling), per-tab `staleTime` is 3–5 s, and no refresh interval is faster than
+  1.5 s — documented in `docs/DASHBOARD.md` → Performance.
+
+### Fixed
+- **Config validation + dashboard Config save on real projects.** `config_schema`
+  now recognizes the `bm25`, `git_indexing`, `session_indexing`, and
+  `session_extraction` sections that real `config.yaml` files already carry (the
+  validator only modeled a subset). Previously the dashboard's `ConfigService`,
+  which validates the merged whole config all-or-nothing, failed on every project
+  with these sections — breaking the Config tab in production. Completing the
+  validator for these already-existing sections fixes it (no plugin/MCP behavior
+  change). The dashboard editor is now also tolerant of unknown top-level
+  sections / unknown subfields: it never blocks a save on them (genuine enum/type
+  errors still block) and preserves them verbatim, so legacy fields and
+  other-tool config sections survive a save. The dashboard editor now blocks a
+  save only on validation errors in fields the save actually **changes**, so a
+  pre-existing value the user never touched (e.g. a newly-valid enum the
+  validator hasn't caught up to) can no longer make the Config tab unusable.
+  `config_schema` also recognizes `graphrag.store_type: sqlite` (the current
+  default backend), which it previously rejected.
 
 ## [26.6.25] - 2026-06-07
 

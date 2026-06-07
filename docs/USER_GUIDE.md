@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-05
+last_validated: 2026-06-07
 ---
 
 # BrainPalace User Guide
@@ -22,6 +22,7 @@ This guide covers how to use BrainPalace for document indexing and semantic sear
 - [File Watcher](#file-watcher)
 - [Embedding Cache](#embedding-cache)
 - [Job Queue](#job-queue)
+- [Query History](#query-history)
 - [Provider Configuration](#provider-configuration)
 - [Multi-Project Support](#multi-project-support)
 - [Runtime Autodiscovery](#runtime-autodiscovery)
@@ -853,6 +854,48 @@ brainpalace status --json | jq '.indexing.indexing_in_progress'
 # Or poll specific job
 brainpalace jobs job_abc123 | grep status
 ```
+
+---
+
+## Query History
+
+Every successful query is recorded (with truncated results) in a per-project
+SQLite log at `.brainpalace/query_log.db`. This powers the dashboard
+**Queries** tab — browse recent queries, inspect their results, and replay any
+query against the live server.
+
+### Configuration
+
+Add a `query_log:` section to your project `config.yaml` (defaults shown):
+
+```yaml
+query_log:
+  enabled: true        # ON by default; set false to stop recording
+  retention_days: 7    # purge rows older than N days on startup; 0 = keep forever
+```
+
+`retention_days` is enforced by a purge on server startup. A value of `0`
+(or any non-positive number) keeps history forever.
+
+### Kill switch
+
+Set `QUERY_LOG_ENABLED=false` in the environment to hard-disable query logging
+regardless of the project `config.yaml` setting.
+
+> ⚠️ The log stores the query text plus truncated result snippets/paths. It
+> does not store full document contents, but treat it like any other index
+> artifact under `.brainpalace/` (gitignored, per-project).
+
+### Endpoints
+
+The project server exposes:
+
+- `GET /query/history` — recent queries (newest first), filterable by
+  `since`, `mode`, `contains`, `limit`, `offset`. Omits the result payload.
+- `GET /query/history/{qid}` — a single logged query including its truncated
+  results.
+- `GET /health/logs` — a bounded tail of the server log file
+  (`.brainpalace/server.log`), filterable by `lines` and `level`.
 
 ---
 

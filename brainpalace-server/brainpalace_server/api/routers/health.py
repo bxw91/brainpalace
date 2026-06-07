@@ -426,6 +426,40 @@ def summarization_coverage(
 
 
 @router.get(
+    "/logs",
+    summary="Recent server logs",
+    description=(
+        "Tail the server log file (set during startup). Returns the last "
+        "`lines` lines, optionally filtered by log level substring."
+    ),
+)
+async def recent_logs(
+    request: Request, lines: int = 200, level: str | None = None
+) -> dict[str, list[str]]:
+    """Return a bounded tail of the server log file.
+
+    Returns ``{"lines": []}`` when no log file path is configured on
+    ``app.state.log_file_path`` (e.g. logging not yet wired). The tail is
+    capped at 2000 lines to keep the response bounded.
+    """
+    from collections import deque
+
+    path = getattr(request.app.state, "log_file_path", None)
+    if not path:
+        return {"lines": []}
+    capped = max(1, min(lines, 2000))
+    try:
+        with open(path, errors="replace") as f:
+            tail = [ln.rstrip("\n") for ln in deque(f, maxlen=capped)]
+    except OSError:
+        return {"lines": []}
+    if level:
+        needle = level.upper()
+        tail = [ln for ln in tail if needle in ln.upper()]
+    return {"lines": tail}
+
+
+@router.get(
     "/providers",
     response_model=ProvidersStatus,
     summary="Provider Status",

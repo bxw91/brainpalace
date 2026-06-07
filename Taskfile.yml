@@ -29,6 +29,9 @@ includes:
   cli:
     taskfile: ./brainpalace-cli/Taskfile.yml
     dir: ./brainpalace-cli
+  dashboard:
+    taskfile: ./brainpalace-dashboard/Taskfile.yml
+    dir: ./brainpalace-dashboard
 
 tasks:
   default:
@@ -45,6 +48,7 @@ tasks:
     cmds:
       - task: server:install
       - task: cli:install
+      - task: dashboard:install
 
   install:server:
     desc: Install server dependencies only
@@ -55,6 +59,11 @@ tasks:
     desc: Install CLI dependencies only
     cmds:
       - task: cli:install
+
+  install:dashboard:
+    desc: Install dashboard dependencies only
+    cmds:
+      - task: dashboard:install
 
   install:global:
     desc: Install all packages globally as CLI tools (using pip editable)
@@ -86,6 +95,13 @@ tasks:
       - task: server:build
       - task: cli:build
 
+  build:dashboard-ui:
+    desc: Build the dashboard SPA into brainpalace_dashboard/static/
+    dir: ./brainpalace-dashboard/frontend
+    cmds:
+      - npm ci
+      - npm run build
+
   package:
     desc: Create distributable packages
     cmds:
@@ -108,6 +124,7 @@ tasks:
     cmds:
       - task: server:test
       - task: cli:test
+      - task: dashboard:test
 
   eval:
     desc: >-
@@ -126,6 +143,11 @@ tasks:
     cmds:
       - task: cli:test
 
+  test:dashboard:
+    desc: Run dashboard tests only (excludes integration tests)
+    cmds:
+      - task: dashboard:test
+
   test:cov:
     desc: Run tests with coverage report
     aliases: [coverage]
@@ -142,24 +164,28 @@ tasks:
     cmds:
       - task: server:format
       - task: cli:format
+      - task: dashboard:format
 
   format:check:
     desc: Check formatting without modifying files
     cmds:
       - task: server:format:check
       - task: cli:format:check
+      - task: dashboard:format:check
 
   lint:
     desc: Lint all code with Ruff
     cmds:
       - task: server:lint
       - task: cli:lint
+      - task: dashboard:lint
 
   lint:fix:
     desc: Lint and auto-fix issues
     cmds:
       - task: server:lint:fix
       - task: cli:lint:fix
+      - task: dashboard:lint:fix
 
   lint:yaml:
     desc: Validate YAML frontmatter in plugin command files
@@ -172,12 +198,18 @@ tasks:
     cmds:
       - python3 scripts/check_doc_freshness.py
 
+  lint:dashboard-parity:
+    desc: "Fail if a config/CLI/endpoint is not surfaced in the dashboard"
+    cmds:
+      - task: dashboard:parity
+
   typecheck:
     desc: Type check all code with mypy
     aliases: [mypy]
     cmds:
       - task: server:typecheck
       - task: cli:typecheck
+      - task: dashboard:typecheck
 
   vet:
     desc: Perform all static analysis
@@ -206,6 +238,8 @@ tasks:
       - task: lint:yaml
       - echo "--- Checking doc freshness ---"
       - task: lint:doc-freshness
+      - echo "--- Checking dashboard parity ---"
+      - task: lint:dashboard-parity
       - echo "--- Type checking ---"
       - task: typecheck
       - echo "--- Running tests with coverage ---"
@@ -291,3 +325,17 @@ tasks:
     desc: Run CLI E2E tests (requires claude CLI and API keys)
     cmds:
       - ./e2e-cli/run.sh {{.CLI_ARGS}}
+
+  test:e2e-dashboard:
+    desc: >-
+      Run the Playwright E2E suite for the control-plane dashboard. Builds the
+      SPA, then drives a real dashboard + throwaway project server with headless
+      Chromium. Requires OPENAI_API_KEY (the seeded project indexes/queries for
+      real) and a one-time `npx playwright install chromium`.
+    dir: ./e2e/dashboard
+    env:
+      PYTHON_KEYRING_BACKEND: keyring.backends.null.Keyring
+    cmds:
+      - task: build:dashboard-ui
+      - npm install
+      - npx playwright test {{.CLI_ARGS}}

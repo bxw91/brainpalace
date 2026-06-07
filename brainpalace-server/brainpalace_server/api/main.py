@@ -267,6 +267,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     try:
         provider_settings = load_provider_settings()
+        # Reranking gate: the ENABLE_RERANKING env var (when set) wins; otherwise
+        # the per-project ``reranker.enabled`` config drives it (default ON). The
+        # query path reads ``settings.ENABLE_RERANKING``, so reconcile it here so
+        # config.yaml / `brainpalace init` can turn reranking on/off.
+        if os.getenv("ENABLE_RERANKING") is None:
+            try:
+                settings.ENABLE_RERANKING = bool(
+                    getattr(provider_settings.reranker, "enabled", True)
+                )
+            except Exception:  # noqa: BLE001 — never block startup on this
+                pass
         enable_reranking = getattr(settings, "ENABLE_RERANKING", False)
         validation_errors = validate_provider_config(
             provider_settings,
@@ -359,6 +370,33 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # At this point state_dir is guaranteed non-None
     assert state_dir is not None, "state_dir must be resolved by lifespan"
     logger.info(f"Resolved storage paths: state_dir={state_dir}")
+
+    # File logging to <state_dir>/server.log so the dashboard /health/logs tail
+    # has something to read (the base config only logs to the console). Small
+    # rotating handler (1MB x 3); attach once and remember the path on state.
+    app.state.log_file_path = None
+    try:
+        from logging.handlers import RotatingFileHandler
+
+        log_path = state_dir / "server.log"
+        root_logger = logging.getLogger()
+        already = any(
+            isinstance(h, RotatingFileHandler) and getattr(h, "_brainpalace_log", False)
+            for h in root_logger.handlers
+        )
+        if not already:
+            file_handler = RotatingFileHandler(
+                log_path, maxBytes=1_000_000, backupCount=3, encoding="utf-8"
+            )
+            file_handler.setFormatter(
+                logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+            )
+            file_handler._brainpalace_log = True  # type: ignore[attr-defined]
+            root_logger.addHandler(file_handler)
+        app.state.log_file_path = str(log_path)
+        logger.info("Server log file: %s", log_path)
+    except Exception as exc:  # noqa: BLE001 — never block startup on log file
+        logger.warning("Could not set up server log file: %s", exc)
 
     # Phase M: pin GRAPH_INDEX_PATH to the project-resolved path before any
     # code triggers GraphStoreManager.get_instance(). Phase I covered the
@@ -924,6 +962,35 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             memory_service=memory_service,
         )
         app.state.query_service = query_service
+
+        # Query history log (dashboard "Queries" tab). ON by default with a
+        # 7-day retention; QUERY_LOG_ENABLED=false hard-disables. Writes are
+        # fire-and-forget from the /query/ endpoint. Never blocks startup.
+        app.state.query_log_service = None
+        try:
+            from brainpalace_server.config.query_log_config import (
+                load_query_log_config,
+            )
+            from brainpalace_server.services.query_log import QueryLogService
+
+            ql_cfg = load_query_log_config()
+            if ql_cfg.enabled and state_dir is not None:
+                query_log_service = QueryLogService(
+                    state_dir / "query_log.db",
+                    enabled=True,
+                    retention_days=ql_cfg.retention_days,
+                )
+                purged = query_log_service.purge(ql_cfg.retention_days)
+                app.state.query_log_service = query_log_service
+                logger.info(
+                    "Query log enabled (retention_days=%d, purged=%d)",
+                    ql_cfg.retention_days,
+                    purged,
+                )
+            else:
+                logger.info("Query log disabled")
+        except Exception as exc:  # noqa: BLE001 — never block startup on query log
+            logger.warning("Query log setup failed: %s", exc)
 
         # Initialize job queue system (Feature 115)
         if state_dir is not None:

@@ -1,0 +1,17 @@
+{
+  "name": "brainpalace-dashboard-e2e",
+  "version": "1.0.0",
+  "description": "Playwright end-to-end tests for the BrainPalace control-plane dashboard.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "report": "playwright show-report"
+  },
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "@axe-core/playwright": "^4.11.3",
+    "@playwright/test": "^1.60.0"
+  }
+}

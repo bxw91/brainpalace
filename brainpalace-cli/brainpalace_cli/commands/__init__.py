@@ -4,6 +4,7 @@ from .backfill import backfill_command
 from .cache import cache_group
 from .config import config_group
 from .context import context_command
+from .dashboard import dashboard_command
 from .doctor import doctor_command
 from .folders import folders_group
 from .index import index_command
@@ -36,6 +37,7 @@ __all__ = [
     "cache_group",
     "config_group",
     "context_command",
+    "dashboard_command",
     "doctor_command",
     "drain_queue_command",
     "drain_tick_command",

@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "brainpalace-cli"
-version = "26.6.25"
+version = "26.6.26"
 description = "BrainPalace CLI - Command-line interface for managing AI agent memory and knowledge retrieval"
 authors = ["bxw91"]
 readme = "README.md"
@@ -30,6 +30,15 @@ pyyaml = "^6.0.0"
 pydantic = "^2.10.0"
 brainpalace-rag = "^26.5.1"
 mcp = ">=1.0,<2.0"
+# Optional: the web control-plane dashboard. Installed via the `dashboard`
+# extra (`pipx install brainpalace[dashboard]`) so the base CLI stays lean and
+# we avoid a circular runtime path-dependency (the dashboard depends on the
+# CLI). The `brainpalace dashboard` command imports it lazily with a friendly
+# install hint when it's absent. Requires Python >= 3.12.
+brainpalace-dashboard = { version = "^26.5.1", optional = true, python = ">=3.12" }
+
+[tool.poetry.extras]
+dashboard = ["brainpalace-dashboard"]
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.0"

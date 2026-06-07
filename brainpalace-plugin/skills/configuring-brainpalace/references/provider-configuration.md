@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-05
+last_validated: 2026-06-07
 ---
 
 # Provider Configuration Guide
@@ -309,10 +309,10 @@ XAI_API_KEY=...
 
 ### SentenceTransformers Reranker Configuration (v8.0+)
 
-BrainPalace supports two-stage retrieval with reranking for higher-precision results.
+BrainPalace supports two-stage retrieval with reranking for higher-precision results. **Reranking is ON by default** (local cross-encoder; no API/token cost, adds a little query latency + a one-time model download). It is gated by `reranker.enabled` in `config.yaml` (default `true`, written by `brainpalace init`); the `ENABLE_RERANKING` env var overrides the config when set. Disable with `reranker.enabled: false`, `brainpalace init --no-reranking`, or `ENABLE_RERANKING=false`.
 
 ```bash
-ENABLE_RERANKING=true
+ENABLE_RERANKING=true   # env override (config reranker.enabled is the per-project switch, default true)
 RERANKER_PROVIDER=sentence-transformers  # or "ollama"
 RERANKER_MODEL=cross-encoder/ms-marco-MiniLM-L-6-v2
 RERANKER_TOP_K_MULTIPLIER=10

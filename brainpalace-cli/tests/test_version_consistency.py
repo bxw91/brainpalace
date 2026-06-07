@@ -37,3 +37,29 @@ def test_cli_and_server_pyproject_versions_match() -> None:
         f"Version drift: cli={cli_version} server={server_version}. "
         "Bump BOTH pyproject.toml files in lockstep (see docs/RELEASING.md)."
     )
+
+
+def _dashboard_module_version() -> str:
+    """Read brainpalace_dashboard.__version__ from source (no install needed)."""
+    init_path = REPO_ROOT / "brainpalace-dashboard/brainpalace_dashboard/__init__.py"
+    for line in init_path.read_text(encoding="utf-8").splitlines():
+        if line.strip().startswith("__version__"):
+            return line.split("=", 1)[1].split("#", 1)[0].strip().strip("\"'")
+    raise AssertionError("brainpalace_dashboard.__version__ not found")
+
+
+def test_dashboard_version_matches_cli_and_server() -> None:
+    """The dashboard ships in lockstep with cli/server — its pyproject and its
+    ``__version__`` constant must equal the server version."""
+    server_version = _pyproject_version("brainpalace-server/pyproject.toml")
+    dashboard_pyproject = _pyproject_version("brainpalace-dashboard/pyproject.toml")
+    dashboard_module = _dashboard_module_version()
+    assert dashboard_pyproject == server_version, (
+        f"Version drift: dashboard pyproject={dashboard_pyproject} "
+        f"server={server_version}. Bump all package versions in lockstep "
+        "(see docs/RELEASING.md)."
+    )
+    assert dashboard_module == server_version, (
+        f"Version drift: brainpalace_dashboard.__version__={dashboard_module} "
+        f"server={server_version}. Keep __init__.py __version__ in lockstep."
+    )

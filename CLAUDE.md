@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-02
+last_validated: 2026-06-07
 ---
 
 # BrainPalace — repo guide for Claude
@@ -32,6 +32,22 @@ two in the same change + note it in `docs/CHANGELOG.md`.** Canonical config path
 is XDG `~/.config/brainpalace/config.yaml` (legacy `~/.brainpalace/` is
 deprecated). Full rule + parity checklist:
 [docs/DEVELOPERS_GUIDE.md → Setup-surface parity](docs/DEVELOPERS_GUIDE.md#setup-surface-parity-cli--plugin--mcp).
+
+## Dashboard parity — surface every feature (MANDATORY)
+
+When you add a **config option**, **CLI command**, **server endpoint**, or any
+**user-facing datum**, you MUST surface it in the control-plane dashboard in the
+same change — or add it to the relevant allowlist with a one-line reason. Config
+fields auto-render from `config_schema` (hide one only via
+`ui_schema.DASHBOARD_HIDDEN_FIELDS` with a reason); CLI commands and server
+endpoints are checked against the checked-in maps in
+`brainpalace-dashboard/brainpalace_dashboard/coverage_maps.py`
+(`CLI_DASHBOARD_COVERAGE` / `ENDPOINT_SURFACES` — every non-surfaced entry needs
+a `cli_only:`/`unsurfaced:` reason). The gate `lint:dashboard-parity` (in
+`task before-push`) imports the LIVE config schema, the LIVE Click group, and the
+LIVE FastAPI app and fails on any unclassified addition or stale map entry. Note
+the change in `docs/CHANGELOG.md`. Full rule + how to satisfy each check:
+[docs/DEVELOPERS_GUIDE.md → Dashboard parity](docs/DEVELOPERS_GUIDE.md#dashboard-parity-surface-every-feature).
 
 ## Build / test
 

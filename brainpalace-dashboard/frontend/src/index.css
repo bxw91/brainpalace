@@ -1,0 +1,109 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-ink-900 text-fg font-sans antialiased;
+    /* Atmospheric backdrop: two faint radial pools + a fine grid, so the
+       canvas never reads as a flat single color. */
+    background-image:
+      radial-gradient(
+        70rem 40rem at 18% -8%,
+        rgba(45, 212, 191, 0.08),
+        transparent 60%
+      ),
+      radial-gradient(
+        60rem 36rem at 110% 0%,
+        rgba(56, 189, 248, 0.06),
+        transparent 55%
+      ),
+      linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
+    background-size:
+      auto,
+      auto,
+      32px 32px,
+      32px 32px;
+    background-attachment: fixed;
+  }
+
+  ::selection {
+    @apply bg-accent/30 text-fg;
+  }
+
+  /* Custom scrollbars — tie into the theme rather than OS chrome. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #27384b transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-thumb {
+    @apply rounded-full;
+    background: #27384b;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: #2c4054;
+  }
+}
+
+@layer components {
+  /* Frosted panel — the workhorse surface. */
+  .panel {
+    @apply rounded-2xl border border-line bg-ink-800/70 shadow-panel backdrop-blur-sm;
+  }
+
+  .panel-hover {
+    @apply transition-colors duration-200 hover:border-line-strong hover:bg-ink-700/70;
+  }
+
+  /* Section eyebrow label. */
+  .eyebrow {
+    @apply font-mono text-[0.68rem] uppercase tracking-[0.22em] text-fg-faint;
+  }
+
+  /* Primary button. */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 disabled:cursor-not-allowed disabled:opacity-40;
+  }
+  .btn-primary {
+    @apply btn bg-accent text-ink-900 hover:bg-accent-soft active:translate-y-px;
+  }
+  .btn-ghost {
+    @apply btn border border-line bg-ink-700/40 text-fg hover:border-line-strong hover:bg-ink-600/60;
+  }
+  .btn-danger {
+    @apply btn border border-bad/40 bg-bad/10 text-bad hover:bg-bad/20;
+  }
+  .btn-sm {
+    @apply px-2.5 py-1.5 text-xs;
+  }
+
+  /* Skeleton shimmer block. */
+  .skeleton {
+    @apply relative overflow-hidden rounded-md bg-ink-600/60;
+  }
+  .skeleton::after {
+    content: "";
+    @apply absolute inset-0 -translate-x-full animate-shimmer;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.06),
+      transparent
+    );
+  }
+}

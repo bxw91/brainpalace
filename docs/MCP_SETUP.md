@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-06
+last_validated: 2026-06-07
 ---
 
 # MCP setup — connecting AI clients to BrainPalace
@@ -316,3 +316,7 @@ one project.
   (`brainpalace drain-tick` / `/brainpalace-drain`, see
   [SESSION_INDEXING.md](SESSION_INDEXING.md#opt-in-time-driven-drain-babysitter))
   is a CLI/plugin feature — it is **not** exposed as an MCP tool.
+- **No web dashboard over MCP.** The control-plane dashboard
+  (`brainpalace dashboard start`, see [DASHBOARD.md](DASHBOARD.md)) is a
+  CLI-launched web surface, not an MCP server — MCP clients connect to
+  per-project servers via `brainpalace mcp`, not to the dashboard.

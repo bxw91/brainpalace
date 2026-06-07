@@ -1,0 +1,96 @@
+# BrainPalace Dashboard Task Runner
+# https://taskfile.dev
+
+version: '3'
+
+vars:
+  PROJECT_NAME: brainpalace-dashboard
+  SRC_DIR: brainpalace_dashboard
+  TEST_DIR: tests
+  # `poetry` wrapped to strip an IDE-injected VIRTUAL_ENV so Poetry always
+  # resolves the in-project .venv/. Use {{.POETRY}} for every Poetry call.
+  POETRY: env -u VIRTUAL_ENV poetry
+
+tasks:
+  default:
+    desc: List all available tasks
+    cmds:
+      - task --list
+
+  install:
+    desc: Install project dependencies (forces the worktree brainpalace-server, not PyPI)
+    cmds:
+      - "{{.POETRY}} install"
+      # brainpalace-rag (the server) is only a *transitive* dependency here, via
+      # brainpalace-cli, so Poetry resolves it from PyPI — which would make the
+      # dashboard unit tests, integration tests, and the parity gate validate a
+      # STALE published server instead of the current monorepo source. Force the
+      # editable worktree server (dist name: brainpalace-rag) so the dashboard
+      # always tests/serves the server it ships alongside.
+      - "{{.POETRY}} run pip install -q -e ../brainpalace-server --no-deps"
+
+  # ===================
+  # Testing
+  # ===================
+
+  test:
+    desc: Run unit tests (excludes integration tests that spawn a real server)
+    deps: [install]
+    cmds:
+      - '{{.POETRY}} run pytest {{.TEST_DIR}} -q -m "not integration"'
+
+  test:integration:
+    desc: Run integration tests (spawns a real server, slow)
+    deps: [install]
+    cmds:
+      - '{{.POETRY}} run pytest {{.TEST_DIR}} -v -m integration'
+
+  test:cov:
+    desc: Run tests with coverage report
+    aliases: [coverage]
+    deps: [install]
+    cmds:
+      - '{{.POETRY}} run pytest {{.TEST_DIR}} -m "not integration" --cov={{.SRC_DIR}} --cov-report=term-missing'
+
+  parity:
+    desc: "Dashboard auto-inclusion parity gate (config/CLI/endpoint)"
+    deps: [install]
+    cmds:
+      - '{{.POETRY}} run pytest {{.TEST_DIR}}/test_dashboard_parity.py -q'
+
+  # ===================
+  # Code Quality
+  # ===================
+
+  format:
+    desc: Auto-format code with Black
+    cmds:
+      - "{{.POETRY}} run black {{.SRC_DIR}} {{.TEST_DIR}}"
+
+  format:check:
+    desc: Check code formatting without changes
+    cmds:
+      - "{{.POETRY}} run black --check {{.SRC_DIR}} {{.TEST_DIR}}"
+
+  lint:
+    desc: Check code for style violations with Ruff
+    cmds:
+      - "{{.POETRY}} run ruff check {{.SRC_DIR}} {{.TEST_DIR}}"
+
+  lint:fix:
+    desc: Lint and auto-fix issues
+    cmds:
+      - "{{.POETRY}} run ruff check --fix {{.SRC_DIR}} {{.TEST_DIR}}"
+
+  typecheck:
+    desc: Type check with mypy
+    aliases: [mypy]
+    cmds:
+      - "{{.POETRY}} run mypy {{.SRC_DIR}}"
+
+  check:
+    desc: Run all quality checks without tests
+    cmds:
+      - task: format:check
+      - task: lint
+      - task: typecheck

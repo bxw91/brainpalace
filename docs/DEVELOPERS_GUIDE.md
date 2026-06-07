@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-02
+last_validated: 2026-06-07
 ---
 
 # BrainPalace Developer Guide
@@ -355,6 +355,50 @@ templates, and the documented config search order.
 > **Why this section exists:** the CLI went global-first (XDG) while the plugin
 > kept writing the deprecated `~/.brainpalace/` path, so the plugin's config was
 > silently ignored whenever both were installed. This rule prevents a repeat.
+
+---
+
+## Dashboard parity — surface every feature
+
+The control-plane dashboard (`brainpalace-dashboard/`) is meant to surface
+**every** config option, CLI command, and project-server endpoint. Without
+enforcement these drift: a new endpoint or command ships and the dashboard
+never grows a control for it. The parity gate prevents that.
+
+**The gate:** `tests/test_dashboard_parity.py`, run via
+`task lint:dashboard-parity` (included in `task before-push`). It imports the
+**live** sources of truth — not snapshots — and diffs them against the
+checked-in coverage maps:
+
+| Check | Live source | Allowlist (with reasons) | What "satisfied" means |
+|-------|-------------|--------------------------|------------------------|
+| **Config** | `brainpalace_cli.config_schema.*_KNOWN_FIELDS` | `ui_schema.DASHBOARD_HIDDEN_FIELDS` | Every schema leaf dotpath is rendered by `ui_schema.build_ui_schema()` **or** hidden with a reason. Config fields auto-render, so usually nothing to do. |
+| **CLI** | `brainpalace_cli.cli.cli.commands` (Click group) | `coverage_maps.CLI_DASHBOARD_COVERAGE` | Every registered command maps to a dashboard tab/action **or** a `cli_only: <reason>` entry; no map entry for a removed command. |
+| **Endpoint** | `brainpalace_server.api.main.app.routes` (dashboard route prefixes) | `coverage_maps.ENDPOINT_SURFACES` | Every live `route.path` maps to a tab **or** an `unsurfaced: <reason>` entry; no map entry for a removed route. Keys match the exact FastAPI `route.path` (`{param}` form; data ops are nested under `/index/`). |
+
+**The coverage maps** live in
+`brainpalace-dashboard/brainpalace_dashboard/coverage_maps.py`
+(`CLI_DASHBOARD_COVERAGE`, `ENDPOINT_SURFACES`, plus a re-export of
+`DASHBOARD_HIDDEN_FIELDS`). They are the only checked-in snapshots; every entry
+that is not surfaced in the UI carries a one-line reason.
+
+**To satisfy the gate when you add something:**
+
+- [ ] **New config field** → it auto-renders. Only touch `ui_schema.py` to add a
+      presentation `OVERRIDE`, or `DASHBOARD_HIDDEN_FIELDS` (with a reason) if it
+      must not be shown.
+- [ ] **New CLI command** → add a `CLI_DASHBOARD_COVERAGE` entry: the tab/action
+      it maps to, or `cli_only: <reason>`.
+- [ ] **New / changed server endpoint** → add the exact live `route.path` to
+      `ENDPOINT_SURFACES`: the tab it maps to, or `unsurfaced: <reason>`. Remove
+      any map key for a route you deleted/renamed.
+- [ ] Build the dashboard control for anything user-facing, in the same change.
+- [ ] `docs/CHANGELOG.md` `[Unreleased]` notes it.
+- [ ] `task lint:dashboard-parity` green.
+
+> **Why this section exists:** the dashboard's whole point is to be the single
+> management surface; an un-enforced "remember to add it to the UI" rule rots
+> immediately. The gate makes drift a failing test, not a silent gap.
 
 ---
 

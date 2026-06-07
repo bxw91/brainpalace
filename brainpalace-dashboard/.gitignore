@@ -1,0 +1,18 @@
+# Frontend build tooling
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/coverage/
+frontend/*.local
+frontend/*.tsbuildinfo
+
+# Python
+.venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+__pycache__/
+*.pyc
+
+# NOTE: brainpalace_dashboard/static/ is intentionally COMMITTED so that
+# `pip install brainpalace-dashboard` ships the prebuilt SPA. Do not ignore it.

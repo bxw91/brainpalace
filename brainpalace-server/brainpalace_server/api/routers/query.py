@@ -1,14 +1,30 @@
 """Query endpoints for semantic search."""
 
 import logging
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request, status
 
 from brainpalace_server.models import QueryRequest, QueryResponse
+from brainpalace_server.services.query_log import QueryLogService
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _log_query(log_service: object, **fields: object) -> None:
+    """Best-effort write to the query log. Never raises.
+
+    Logging a query must never break the query itself, so all failures are
+    swallowed (debug-logged). A ``None`` service or a service with
+    ``enabled == False`` is a no-op.
+    """
+    try:
+        if log_service is not None and getattr(log_service, "enabled", True):
+            log_service.record(**fields)  # type: ignore[attr-defined]
+    except Exception:  # noqa: BLE001 — logging must never break a query
+        logger.debug("query log write failed", exc_info=True)
 
 
 @router.post(
@@ -83,6 +99,32 @@ async def query_documents(
             detail=f"Query failed: {str(e)}",
         ) from e
 
+    # Record to the query history log (fire-and-forget; never breaks a query).
+    # QueryResult exposes `source` (file path), `text` (chunk snippet) and
+    # `score`; there is no line-range field, so `lines` stays None.
+    log_service = getattr(request.app.state, "query_log_service", None)
+    _log_query(
+        log_service,
+        query=query,
+        mode=request_body.mode.value,
+        top_k=request_body.top_k,
+        latency_ms=getattr(response, "query_time_ms", 0.0),
+        results=[
+            {
+                "score": getattr(r, "score", None),
+                "path": getattr(r, "source", None),
+                "lines": None,
+                "snippet": getattr(r, "text", "") or "",
+            }
+            for r in getattr(response, "results", [])
+        ],
+        alpha=request_body.alpha,
+        filters={
+            "source_types": request_body.source_types,
+            "languages": request_body.languages,
+        },
+    )
+
     return response
 
 
@@ -108,3 +150,42 @@ async def get_document_count(request: Request) -> dict[str, int | bool]:
         "total_chunks": count,
         "ready": query_service.is_ready(),
     }
+
+
+@router.get(
+    "/history",
+    summary="Query History",
+    description="List recent queries (newest first) without result payloads.",
+)
+async def query_history(
+    request: Request,
+    since: float | None = None,
+    mode: str | None = None,
+    contains: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> list[dict[str, Any]]:
+    """List recent queries from the per-project history log.
+
+    Returns an empty list when the query log is disabled or unavailable.
+    """
+    log: QueryLogService | None = getattr(request.app.state, "query_log_service", None)
+    if log is None:
+        return []
+    return log.list_recent(
+        since=since, mode=mode, contains=contains, limit=limit, offset=offset
+    )
+
+
+@router.get(
+    "/history/{qid}",
+    summary="Query History Detail",
+    description="Return a single logged query including its truncated results.",
+)
+async def query_history_detail(request: Request, qid: str) -> dict[str, Any]:
+    """Return one logged query (with results) or 404 if unknown."""
+    log: QueryLogService | None = getattr(request.app.state, "query_log_service", None)
+    detail = log.get(qid) if log is not None else None
+    if detail is None:
+        raise HTTPException(status_code=404, detail="query not found")
+    return detail

@@ -1,8 +1,12 @@
 ---
-last_validated: 2026-06-06
+last_validated: 2026-06-07
 ---
 
 <div align="center">
+
+[![Web Dashboard — NEW](https://img.shields.io/badge/%F0%9F%96%A5%EF%B8%8F%20%20WEB%20DASHBOARD-NEW-2ea043?style=for-the-badge&labelColor=1a7f37)](docs/DASHBOARD.md)
+
+<sub>One browser tab to manage every project server — instances · config · stats · jobs · cache · graph · sessions · logs · query history.</sub>
 
 ![Code & Docs RAG](https://img.shields.io/badge/Code_%26_Docs_RAG-1f6feb?style=for-the-badge)
 ![Persistent Session Memory](https://img.shields.io/badge/Persistent_Session_Memory-1f6feb?style=for-the-badge)
@@ -145,6 +149,18 @@ CI / no-TTY, step-by-step manual install, low-level `install.sh` flags,
 install for other AI runtimes (Codex, OpenCode, Gemini CLI), Windows / WSL2
 notes — all in [`docs/INSTALL.md`](docs/INSTALL.md).
 
+### Web dashboard (optional)
+
+Manage every BrainPalace project server from one browser tab. It ships as the
+optional `dashboard` extra (kept out of the base CLI to stay lean):
+
+```bash
+pipx install 'brainpalace[dashboard]'
+brainpalace dashboard start          # localhost:8787, opens a browser
+```
+
+Full reference: [`docs/DASHBOARD.md`](docs/DASHBOARD.md).
+
 ## What is BrainPalace
 
 BrainPalace indexes your codebase and documentation, then exposes the
@@ -161,9 +177,15 @@ with optional cloud providers for embeddings and summarisation.
 | **CLI** (`brainpalace-cli`) | Click-based command-line client; primary interface for automation, mono-repos, and standalone use |
 | **MCP server** (`brainpalace mcp`) | Opt-in stdio shim for non-Claude-Code AI clients (VS Code / Copilot, Cursor, Kilo Code, Cline, Continue, Zed) |
 | **Claude Code plugin** | 30 slash commands, 3 agents, 2 skills for Claude Code users |
+| **Web dashboard** (`brainpalace dashboard`) | Standalone browser control plane — manage every project server from one tab (instances, config, stats, jobs, cache, graph, sessions, logs, query history). Optional `dashboard` extra. See [DASHBOARD](docs/DASHBOARD.md) |
 
 ## Features
 
+- **Web dashboard** — a standalone control plane that manages every BrainPalace
+  project server from one browser tab: list/start/stop/restart instances, edit
+  all config via forms, view stats, jobs, cache, graph, sessions, logs, and
+  query history. Launch it with `brainpalace dashboard start` (port 8787;
+  localhost-only, optional bearer token). See [DASHBOARD](docs/DASHBOARD.md).
 - **Hybrid search** — BM25 + vector + GraphRAG, fused per query (`hybrid`,
   `multi`) or selectable per call (`bm25`, `vector`, `graph`).
 - **Multi-language search** — BM25 tokenizes each document in its own natural
@@ -429,6 +451,7 @@ brainpalace/
 - [MCP Setup](docs/MCP_SETUP.md) — per-client config for non-Claude-Code AI clients
 - [Plugin Guide](docs/PLUGIN_GUIDE.md) — full Claude Code plugin reference
 - [User Guide](docs/USER_GUIDE.md) — CLI usage and feature reference
+- [Web Dashboard](docs/DASHBOARD.md) — the `brainpalace dashboard` control plane
 
 ### Reference
 - [API Reference](docs/API_REFERENCE.md) — REST API documentation

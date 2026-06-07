@@ -100,6 +100,7 @@ def _pick_provider(
 def build_default_provider_config(
     bm25_language: str = "en",
     bm25_engine: str = "stem",
+    reranking: bool = True,
 ) -> dict[str, object]:
     """Build the default config.yaml provider block from detected env keys.
 
@@ -114,6 +115,11 @@ def build_default_provider_config(
         "summarization": _pick_provider(
             _SUMMARIZATION_PREFERENCE, _SUMMARIZATION_FALLBACK
         ),
+        "reranker": {
+            # Two-stage reranking is ON by default (local cross-encoder; adds
+            # query latency, no API/token cost). Disable with --no-reranking.
+            "enabled": reranking,
+        },
         "graphrag": {
             "enabled": True,
             "store_type": "sqlite",
@@ -151,11 +157,34 @@ def _preview_embedding(project_root: Path) -> tuple[str, str]:
     return str(emb_default["provider"]), str(emb_default["model"])  # type: ignore[index]
 
 
+def _write_reranker_config(state_dir: Path, enabled: bool) -> None:
+    """Idempotently set ``reranker.enabled`` in the project config.yaml.
+
+    Preserves all other keys; the server's ``load_provider_settings()`` reads
+    ``reranker.enabled`` at startup (env ``ENABLE_RERANKING`` still overrides).
+    """
+    config_path = state_dir / "config.yaml"
+    data: dict[str, object] = {}
+    if config_path.exists():
+        try:
+            data = yaml.safe_load(config_path.read_text()) or {}
+        except (OSError, ValueError):
+            data = {}
+    block = data.get("reranker")
+    if not isinstance(block, dict):
+        block = {}
+    block["enabled"] = enabled
+    data["reranker"] = block
+    with open(config_path, "w", encoding="utf-8") as f:
+        yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
+
+
 def write_default_provider_config(
     state_dir: Path,
     force: bool = False,
     bm25_language: str = "en",
     bm25_engine: str = "stem",
+    reranking: bool = True,
 ) -> bool:
     """Write a sane default config.yaml in the project state dir.
 
@@ -181,8 +210,9 @@ def write_default_provider_config(
     xdg_global = get_xdg_config_dir() / "config.yaml"
     if xdg_global.is_file():
         shutil.copy2(xdg_global, config_path)
-        # Merge bm25 block on top of the XDG copy.
+        # Merge bm25 + reranker blocks on top of the XDG copy.
         _write_bm25_config(state_dir, bm25_language, bm25_engine)
+        _write_reranker_config(state_dir, reranking)
         return True
 
     with open(config_path, "w", encoding="utf-8") as f:
@@ -190,6 +220,7 @@ def write_default_provider_config(
             build_default_provider_config(
                 bm25_language=bm25_language,
                 bm25_engine=bm25_engine,
+                reranking=reranking,
             ),
             f,
             default_flow_style=False,
@@ -1005,6 +1036,17 @@ def _start_and_watch(
     ),
 )
 @click.option(
+    "--reranking/--no-reranking",
+    "enable_reranking",
+    default=None,
+    help=(
+        "Two-stage reranking: a local cross-encoder re-scores the top "
+        "candidates for finer relevance ordering. ON by default (local; adds "
+        "query latency, no API/token cost). Interactive runs confirm (default "
+        "yes); writes reranker.enabled to config.yaml."
+    ),
+)
+@click.option(
     "--bm25-engine",
     "bm25_engine",
     default="stem",
@@ -1034,6 +1076,7 @@ def init_command(
     enable_extract: bool | None,
     enable_git_history: bool | None,
     enable_graph_migrate: bool | None,
+    enable_reranking: bool | None,
     bm25_language: str,
     bm25_engine: str,
 ) -> None:
@@ -1156,6 +1199,9 @@ def init_command(
         # Commit cap for git-history indexing. None ⇒ leave at the server
         # default (0 = entire history); an interactive opt-in may set a cap.
         git_depth: int | None = None
+
+        # Reranking is ON by default; an explicit flag or interactive answer wins.
+        reranking_final: bool = True if enable_reranking is None else enable_reranking
 
         if plan.confirm:
             embedding = _preview_embedding(project_root)
@@ -1407,7 +1453,12 @@ def init_command(
             force=False,
             bm25_language=bm25_language,
             bm25_engine=bm25_engine,
+            reranking=reranking_final,
         )
+        # On re-init of an existing project (provider block preserved), still
+        # honor an explicit --reranking/--no-reranking by merging just that flag.
+        if not provider_config_written and enable_reranking is not None:
+            _write_reranker_config(resolved_state_dir, reranking_final)
         if force and not provider_config_written and not json_output:
             console.print(
                 "[dim]Preserved existing .brainpalace/config.yaml provider "

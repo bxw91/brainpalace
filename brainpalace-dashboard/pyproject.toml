@@ -1,0 +1,47 @@
+[tool.poetry]
+name = "brainpalace-dashboard"
+version = "26.6.26"
+description = "BrainPalace control-plane web dashboard"
+authors = ["BrainPalace"]
+readme = "README.md"
+packages = [{ include = "brainpalace_dashboard" }]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+fastapi = "^0.115"
+uvicorn = "^0.32.0"
+httpx = "^0.28.0"
+sse-starlette = "^2.1"
+brainpalace-cli = { path = "../brainpalace-cli", develop = true }
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0"
+pytest-asyncio = "^0.23"
+black = "^24.10.0"
+ruff = "^0.8.0"
+mypy = "^1.13.0"
+types-PyYAML = "^6.0.0"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = ["integration: spins up a real server (slow)"]
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 88
+target-version = ['py312']
+
+[tool.ruff]
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "C4"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+ignore_missing_imports = true

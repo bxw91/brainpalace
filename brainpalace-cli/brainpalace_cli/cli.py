@@ -12,6 +12,7 @@ from .commands import (
     cache_group,
     config_group,
     context_command,
+    dashboard_command,
     doctor_command,
     drain_queue_command,
     drain_tick_command,
@@ -56,6 +57,7 @@ def cli() -> None:
       start    Start the server for this project
       stop     Stop the server for this project
       list     List all running brainpalace instances
+      dashboard  Launch the web control-plane dashboard
 
     \b
     Server Commands:
@@ -108,6 +110,7 @@ cli.add_command(init_command, name="init")
 cli.add_command(start_command, name="start")
 cli.add_command(stop_command, name="stop")
 cli.add_command(list_command, name="list")
+cli.add_command(dashboard_command, name="dashboard")
 cli.add_command(whoami_command, name="whoami")
 
 # Register server interaction commands

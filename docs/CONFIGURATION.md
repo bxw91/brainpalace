@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-05
+last_validated: 2026-06-07
 ---
 
 # Configuration Reference
@@ -421,11 +421,19 @@ export EMBEDDING_CACHE_PERSIST_STATS="true"
 
 ## Reranking Configuration
 
-Controls the optional two-stage reranking pipeline that improves search relevance by using a cross-encoder model to rescore initial retrieval results.
+Controls the two-stage reranking pipeline that improves search relevance by using a cross-encoder model to rescore initial retrieval results. **Reranking is ON by default** — the cross-encoder is a *local* model (no API/token cost; adds a little query latency and a one-time model download). It is gated by the `reranker.enabled` key in `config.yaml` (default `true`), which `brainpalace init` writes; the `ENABLE_RERANKING` env var **overrides** the config when set. Disable per-project with `reranker.enabled: false`, at init with `--no-reranking`, or globally with `ENABLE_RERANKING=false`.
+
+```yaml
+# config.yaml — per-project switch (default true)
+reranker:
+  enabled: true
+  provider: sentence-transformers   # or "ollama"
+```
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `ENABLE_RERANKING` | `false` | Master switch for reranking |
+| `reranker.enabled` (config) | `true` | Per-project master switch (written by `brainpalace init`) |
+| `ENABLE_RERANKING` (env) | (overrides config) | Force reranking on/off regardless of config |
 | `RERANKER_PROVIDER` | `sentence-transformers` | Reranker backend (`sentence-transformers` or `ollama`) |
 | `RERANKER_MODEL` | `cross-encoder/ms-marco-MiniLM-L-6-v2` | Cross-encoder model name |
 | `RERANKER_TOP_K_MULTIPLIER` | `10` | Stage 1 retrieves `top_k * multiplier` candidates |
