@@ -27,7 +27,8 @@ _ENDMSG = "\x1eABGIT_ENDMSG\x1e"
 #: Field order inside the header block (one field per line, body last).
 _PRETTY = f"{_COMMIT}%n%H%n%an%n%ae%n%cI%n%s%n%b%n{_ENDMSG}"
 
-DEFAULT_DEPTH = 1000
+# 0 = no cap (walk the entire history). See GitIndexingConfig.depth.
+DEFAULT_DEPTH = 0
 
 
 @dataclass
@@ -48,9 +49,11 @@ class CommitRecord:
 def _build_args(
     depth: int, since_sha: str | None, paths: list[str] | None = None
 ) -> list[str]:
-    args = [
-        "log",
-        f"--max-count={depth}",
+    args = ["log"]
+    # depth <= 0 means "no cap" — walk the entire history.
+    if depth and depth > 0:
+        args.append(f"--max-count={depth}")
+    args += [
         "--numstat",
         "--no-color",
         f"--pretty=format:{_PRETTY}",

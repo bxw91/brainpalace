@@ -15,6 +15,14 @@ os.environ["OPENAI_API_KEY"] = "test-key"
 os.environ["ANTHROPIC_API_KEY"] = "test-key"
 os.environ["DEBUG"] = "true"
 
+# Process-wide state dir, set BEFORE any app import, so nothing ever falls back
+# to ``CWD/.brainpalace`` — not at import/collection time, not from a lingering
+# lifespan worker thread, not from the repo's real index. The per-test
+# ``_isolate_state_dir`` fixture layers per-test isolation on top of this.
+os.environ.setdefault(
+    "BRAINPALACE_STATE_DIR", tempfile.mkdtemp(prefix="bp_test_state_")
+)
+
 
 @pytest.fixture
 def temp_docs_dir() -> Generator[Path, None, None]:
@@ -73,6 +81,22 @@ def mock_vector_store():
     mock.get_count = AsyncMock(return_value=10)
     mock.reset = AsyncMock()
     return mock
+
+
+@pytest.fixture(autouse=True)
+def _isolate_state_dir(tmp_path_factory, monkeypatch):
+    """Point all state at a throwaway dir so tests never pollute CWD.
+
+    The app lifespan and storage services (JobQueue, EmbeddingCache,
+    SessionArchive, vector/bm25 stores) resolve their paths from
+    ``BRAINPALACE_STATE_DIR``. Without this, integration tests that boot the
+    real lifespan via ``TestClient`` fall back to ``CWD/.brainpalace`` and
+    create a stray ``brainpalace-server/.brainpalace`` (or worse, write the
+    repo's real index). Isolate it per test.
+    """
+    state = tmp_path_factory.mktemp("bp_state")
+    monkeypatch.setenv("BRAINPALACE_STATE_DIR", str(state))
+    yield
 
 
 @pytest.fixture(autouse=True)

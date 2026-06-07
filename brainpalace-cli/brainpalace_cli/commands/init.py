@@ -414,11 +414,15 @@ def write_session_config(
         yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
 
 
-def write_git_config(state_dir: Path, enabled: bool | None = None) -> None:
-    """Deep-merge the ``git_indexing.enabled`` opt-in into config.yaml.
+def write_git_config(
+    state_dir: Path, enabled: bool | None = None, depth: int | None = None
+) -> None:
+    """Deep-merge the ``git_indexing`` opt-in into config.yaml.
 
-    ``None`` leaves the existing block untouched (no-op), so a re-init that
-    doesn't ask the question never clobbers a prior choice. Preserves the
+    ``enabled=None`` leaves the existing block untouched (no-op), so a re-init
+    that doesn't ask the question never clobbers a prior choice. ``depth=None``
+    leaves the depth at the server default (``0`` = index the entire history);
+    pass a value to cap the first full pass. Preserves the
     provider/graphrag/session blocks already written. Git-history indexing is
     privacy-first (commits can carry secrets), hence written only when chosen.
     """
@@ -434,6 +438,8 @@ def write_git_config(state_dir: Path, enabled: bool | None = None) -> None:
     if not isinstance(block, dict):
         block = {}
     block["enabled"] = bool(enabled)
+    if depth is not None:
+        block["depth"] = int(depth)
     data["git_indexing"] = block
     with open(config_path, "w", encoding="utf-8") as f:
         yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
@@ -1147,6 +1153,10 @@ def init_command(
         else:
             graph_migrate = bool(yes)
 
+        # Commit cap for git-history indexing. None ⇒ leave at the server
+        # default (0 = entire history); an interactive opt-in may set a cap.
+        git_depth: int | None = None
+
         if plan.confirm:
             embedding = _preview_embedding(project_root)
             plugin_present = claude_plugin_installed(project=project_root)
@@ -1200,6 +1210,17 @@ def init_command(
                 git_history_ans = click.confirm(
                     "Index git commit history?", default=False
                 )
+                if git_history_ans:
+                    console.print(
+                        "  How far back? Each commit is embedded, so a very large "
+                        "history\n  costs more on the first pass. [dim]0 = "
+                        "unlimited (entire history).[/]"
+                    )
+                    git_depth = click.prompt(
+                        "How many commits back to index? (0 = unlimited)",
+                        default=0,
+                        type=int,
+                    )
 
             # Graph-store upgrade — asked here (with the other questions) so it
             # appears in the "init will:" preview below and is gated by Proceed.
@@ -1270,9 +1291,11 @@ def init_command(
             # otherwise an interactive "yes" opts in. A bare re-init (no flag,
             # prompt declined/skipped) leaves any existing setting untouched.
             if enable_git_history is not None:
-                write_git_config(resolved_state_dir, enabled=enable_git_history)
+                write_git_config(
+                    resolved_state_dir, enabled=enable_git_history, depth=git_depth
+                )
             elif plan.git_history:
-                write_git_config(resolved_state_dir, enabled=True)
+                write_git_config(resolved_state_dir, enabled=True, depth=git_depth)
 
             if plan.start:
                 try:
@@ -1420,7 +1443,11 @@ def init_command(
             if (provider_config_written or enable_git_history is not None)
             else None
         )
-        write_git_config(resolved_state_dir, enabled=git_choice if git_choice else None)
+        write_git_config(
+            resolved_state_dir,
+            enabled=git_choice if git_choice else None,
+            depth=git_depth,
+        )
 
         # Resolve + persist the session-summarization mode (subagent), and
         # reconcile the Claude Code hooks by plugin presence. Apply on a fresh

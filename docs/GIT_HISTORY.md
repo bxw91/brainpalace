@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-05
+last_validated: 2026-06-06
 ---
 
 # Git History Indexing
@@ -40,7 +40,7 @@ Add a `git_indexing:` block to your project `config.yaml`
 ```yaml
 git_indexing:
   enabled: true        # default: false (opt-in)
-  depth: 1000          # max commits walked on the first (full) pass
+  depth: 0             # max commits on the first (full) pass; default 0 = no cap
   max_files: 50        # max changed file paths rendered into a commit chunk
   # repo_path: /custom/path   # optional; defaults to the project root
 ```

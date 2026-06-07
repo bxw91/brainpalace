@@ -26,8 +26,11 @@ class GitIndexingConfig(BaseModel):
 
     enabled: bool = Field(default=False, description="Opt in to indexing git history.")
     depth: int = Field(
-        default=1000,
-        description="Max commits walked on a full (first) index pass.",
+        default=0,
+        description=(
+            "Max commits walked on a full (first) index pass. 0 = no cap "
+            "(index the entire history)."
+        ),
     )
     max_files: int = Field(
         default=50,

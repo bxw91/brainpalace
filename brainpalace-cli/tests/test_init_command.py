@@ -35,16 +35,36 @@ def test_init_git_history_prompt_shown_interactively(tmp_path, monkeypatch):
         "brainpalace_cli.commands.init.claude_plugin_installed", lambda **k: True
     )
     monkeypatch.setattr("brainpalace_cli.commands.init._stdin_is_tty", lambda: True)
-    # summarize=Y, embed=N, git-history=Y, proceed=Y
+    # summarize=Y, embed=N, git-history=Y, depth=0 (unlimited), proceed=Y
     r = CliRunner().invoke(
         init_command,
         ["--path", str(tmp_path), "--no-start"],
-        input="y\nn\ny\ny\n",
+        input="y\nn\ny\n0\ny\n",
     )
     assert r.exit_code == 0, r.output
     assert "Index git commit history?" in r.output
+    assert "How many commits back to index?" in r.output
     data = yaml.safe_load((tmp_path / ".brainpalace" / "config.yaml").read_text())
     assert data["git_indexing"]["enabled"] is True
+    assert data["git_indexing"]["depth"] == 0
+
+
+def test_init_git_history_depth_cap_persisted(tmp_path, monkeypatch):
+    """A positive commit-cap answer is written to git_indexing.depth."""
+    monkeypatch.setenv("OPENAI_API_KEY", "x")
+    monkeypatch.setattr(
+        "brainpalace_cli.commands.init.claude_plugin_installed", lambda **k: True
+    )
+    monkeypatch.setattr("brainpalace_cli.commands.init._stdin_is_tty", lambda: True)
+    # summarize=Y, embed=N, git-history=Y, depth=500, proceed=Y
+    r = CliRunner().invoke(
+        init_command,
+        ["--path", str(tmp_path), "--no-start"],
+        input="y\nn\ny\n500\ny\n",
+    )
+    assert r.exit_code == 0, r.output
+    data = yaml.safe_load((tmp_path / ".brainpalace" / "config.yaml").read_text())
+    assert data["git_indexing"]["depth"] == 500
 
 
 def _existing_simple_project(tmp_path):
@@ -189,12 +209,12 @@ def test_init_existing_project_git_history_prompt_persists(tmp_path, monkeypatch
     )
     monkeypatch.setattr("brainpalace_cli.commands.init._stdin_is_tty", lambda: True)
     sd = _existing_simple_project(tmp_path)
-    # Prompt order: summarize, embed, git-history, upgrade-store, Proceed.
-    # summarize=Y, embed=N, git-history=Y, upgrade-store=N, proceed=Y
+    # Prompt order: summarize, embed, git-history, depth, upgrade-store, Proceed.
+    # summarize=Y, embed=N, git-history=Y, depth=0, upgrade-store=N, proceed=Y
     r = CliRunner().invoke(
         init_command,
         ["--path", str(tmp_path), "--no-start"],
-        input="y\nn\ny\nn\ny\n",
+        input="y\nn\ny\n0\nn\ny\n",
     )
     assert r.exit_code == 0, r.output
     data = yaml.safe_load((sd / "config.yaml").read_text())

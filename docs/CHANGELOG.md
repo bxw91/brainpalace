@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-06
+last_validated: 2026-06-07
 ---
 
 # Changelog
@@ -13,6 +13,18 @@ month (the counter resets monthly). It looks like SemVer but is not.
 ---
 
 ## [Unreleased]
+
+## [26.6.25] - 2026-06-07
+
+### Changed
+- **Git history indexing now indexes the full history by default.** The
+  `git_indexing.depth` default changed from `1000` to `0` (no cap) — a silent
+  1000-commit cap surprised users (status stuck at "1,000 commits" on larger
+  repos and dropped the oldest history). Set a positive `depth` to bound the
+  first full pass on very large repos (each commit is an embedded chunk, so an
+  unbounded first index of a huge repo costs more time/embeddings).
+- **`brainpalace init` now asks how many commits back to index** when you opt
+  into git history (default `0` = unlimited), writing `git_indexing.depth`.
 
 ## [26.6.24] - 2026-06-06
 

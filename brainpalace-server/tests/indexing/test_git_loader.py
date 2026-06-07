@@ -107,3 +107,11 @@ def test_build_args_path_filter_after_revision_range() -> None:
 
 def test_build_args_no_paths_no_separator() -> None:
     assert "--" not in _build_args(depth=10, since_sha=None, paths=[])
+
+
+def test_build_args_depth_zero_is_unlimited() -> None:
+    # depth <= 0 => no --max-count cap; walk the entire history.
+    args = _build_args(depth=0, since_sha=None, paths=None)
+    assert not any(a.startswith("--max-count") for a in args)
+    args_pos = _build_args(depth=10, since_sha=None, paths=None)
+    assert "--max-count=10" in args_pos
