@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ServerOff, RotateCcw } from "lucide-react";
-import { getSchema, getConfig, patchConfig } from "../api/client";
+import { getSchema, getConfig, getConfigEffective, patchConfig } from "../api/client";
 import { SchemaForm } from "../components/SchemaForm/SchemaForm";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { useToast } from "../components/Toast";
@@ -38,6 +38,13 @@ export function Config({ instanceId }: { instanceId?: string }) {
     queryFn: () => getConfig(id!),
     enabled: !!id,
   });
+  // Effective values (project > global > default) power the provenance hints.
+  // Best-effort: if it fails, the form still renders from schema + project values.
+  const effectiveQ = useQuery({
+    queryKey: ["config-effective", id],
+    queryFn: () => getConfigEffective(id!),
+    enabled: !!id,
+  });
 
   const mutation = useMutation({
     mutationFn: ({
@@ -56,6 +63,7 @@ export function Config({ instanceId }: { instanceId?: string }) {
         "success",
       );
       qc.invalidateQueries({ queryKey: ["config", id] });
+      qc.invalidateQueries({ queryKey: ["config-effective", id] });
       qc.invalidateQueries({ queryKey: ["instances"] });
     },
     onError: (err: unknown) => {
@@ -147,6 +155,7 @@ export function Config({ instanceId }: { instanceId?: string }) {
       <SchemaForm
         schema={schemaQ.data}
         values={configQ.data}
+        effective={effectiveQ.data}
         errors={fieldErrors}
         saving={mutation.isPending}
         onSave={(values, restart) => setPendingSave({ values, restart })}

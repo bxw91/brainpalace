@@ -13,17 +13,22 @@ export function IntField({
   min,
   max,
   step = 1,
+  start,
 }: {
   dotpath: string;
-  value: number;
+  value?: number;
   onChange: (v: number) => void;
   min?: number;
   max?: number;
   step?: number;
+  /** Where +/- begin when the field is unset (the effective default). */
+  start?: number;
 }) {
+  const has = typeof value === "number";
+  const base = has ? (value as number) : (start ?? min ?? 0);
   const set = (n: number) => onChange(clamp(n, min, max));
-  const atMin = min !== undefined && value <= min;
-  const atMax = max !== undefined && value >= max;
+  const atMin = min !== undefined && base <= min;
+  const atMax = max !== undefined && base >= max;
 
   return (
     <div
@@ -35,7 +40,7 @@ export function IntField({
         aria-label="Decrease"
         data-testid={`int-dec-${dotpath}`}
         disabled={atMin}
-        onClick={() => set(value - step)}
+        onClick={() => set(base - step)}
         className="grid h-9 w-9 place-items-center text-fg-muted transition-colors hover:bg-ink-700/60 hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60 disabled:cursor-not-allowed disabled:opacity-30"
       >
         <Minus className="h-4 w-4" aria-hidden="true" />
@@ -44,14 +49,14 @@ export function IntField({
         data-testid={`int-value-${dotpath}`}
         className="min-w-[3rem] border-x border-line px-3 text-center font-mono text-sm tabular-nums text-fg"
       >
-        {value}
+        {has ? value : <span className="text-fg-faint">—</span>}
       </output>
       <button
         type="button"
         aria-label="Increase"
         data-testid={`int-inc-${dotpath}`}
         disabled={atMax}
-        onClick={() => set(value + step)}
+        onClick={() => set(base + step)}
         className="grid h-9 w-9 place-items-center text-fg-muted transition-colors hover:bg-ink-700/60 hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60 disabled:cursor-not-allowed disabled:opacity-30"
       >
         <Plus className="h-4 w-4" aria-hidden="true" />

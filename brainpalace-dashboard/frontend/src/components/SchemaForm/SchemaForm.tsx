@@ -1,6 +1,11 @@
 import { useMemo } from "react";
 import { RotateCcw, Save, RefreshCw } from "lucide-react";
-import type { SchemaField, UiSchema, ConfigValues } from "../../api/types";
+import type {
+  SchemaField,
+  UiSchema,
+  ConfigValues,
+  EffectiveConfig,
+} from "../../api/types";
 import { Field } from "./Field";
 import { useFormState } from "./useFormState";
 
@@ -17,15 +22,20 @@ function leafPaths(fields: SchemaField[]): string[] {
 export function SchemaForm({
   schema,
   values,
+  effective,
   onSave,
   errors,
   saving = false,
+  showRestart = true,
 }: {
   schema: UiSchema;
   values: ConfigValues;
+  effective?: EffectiveConfig;
   onSave: (draft: ConfigValues, restart: boolean) => void;
   errors?: Record<string, string>;
   saving?: boolean;
+  /** Hide the "Save + Restart" button (e.g. global config has no instance). */
+  showRestart?: boolean;
 }) {
   const allPaths = useMemo(
     () => schema.sections.flatMap((s) => leafPaths(s.fields)),
@@ -52,6 +62,8 @@ export function SchemaForm({
                   getValue={form.getValue}
                   setValue={form.setValue}
                   errors={errors}
+                  effective={effective}
+                  providers={schema.providers}
                 />
               </div>
             ))}
@@ -98,16 +110,18 @@ export function SchemaForm({
             <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
             Discard
           </button>
-          <button
-            type="button"
-            data-testid="btn-save-restart"
-            onClick={() => onSave(form.draft, true)}
-            disabled={saving || !form.dirty}
-            className="btn-ghost btn-sm"
-          >
-            <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
-            Save + Restart
-          </button>
+          {showRestart && (
+            <button
+              type="button"
+              data-testid="btn-save-restart"
+              onClick={() => onSave(form.draft, true)}
+              disabled={saving || !form.dirty}
+              className="btn-ghost btn-sm"
+            >
+              <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+              Save + Restart
+            </button>
+          )}
           <button
             type="button"
             data-testid="btn-save"

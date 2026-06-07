@@ -3,6 +3,7 @@ import {
   UiSchema,
   InstanceStatusPayload,
   type ConfigValues,
+  type EffectiveConfig,
   type FoldersPayload,
   type JobsPayload,
   type CachePayload,
@@ -48,6 +49,9 @@ export const getSchema = () => get("/schema", (j) => UiSchema.parse(j));
 
 export const getConfig = (id: string) =>
   get(`/instances/${id}/config`, (j) => j as ConfigValues);
+
+export const getConfigEffective = (id: string) =>
+  get(`/instances/${id}/config/effective`, (j) => j as EffectiveConfig);
 
 /** Per-instance status. Throws InstanceUnreachableError on a 502 (server down). */
 export async function getInstanceStatus(
@@ -97,6 +101,55 @@ export async function patchConfig(
 }
 
 // ---------------------------------------------------------------------------
+// Global config — the machine-wide XDG config.yaml (every project inherits).
+// This IS the global layer, so there is no effective/provenance resolution.
+// ---------------------------------------------------------------------------
+
+export const getGlobalConfig = () =>
+  get("/global-config", (j) => j as ConfigValues);
+
+export async function patchGlobalConfig(
+  values: ConfigValues,
+): Promise<{ ok: boolean }> {
+  const r = await fetch(`${BASE}/global-config`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ values, restart: false }),
+  });
+  if (!r.ok) throw await readError(r); // 422 -> { errors: [...] }
+  return r.json();
+}
+
+// ---------------------------------------------------------------------------
+// Per-project runtime bind — config.json (bind_host / port range / auto_port).
+// Read by the CLI at server start; changes need a RESTART to take effect.
+// ---------------------------------------------------------------------------
+
+export type RuntimeConfig = {
+  bind_host: string;
+  port_range_start: number;
+  port_range_end: number;
+  auto_port: boolean;
+};
+
+export const getRuntimeConfig = (id: string) =>
+  get(`/instances/${id}/runtime-config`, (j) => j as RuntimeConfig);
+
+export async function patchRuntimeConfig(
+  id: string,
+  values: Partial<RuntimeConfig>,
+  restart: boolean,
+): Promise<{ ok: boolean; restarted: boolean; restart_required: boolean }> {
+  const r = await fetch(`${BASE}/instances/${id}/runtime-config`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ values, restart }),
+  });
+  if (!r.ok) throw await readError(r); // 422 -> { errors: [...] }
+  return r.json();
+}
+
+// ---------------------------------------------------------------------------
 // Control-plane ("server") settings — the dashboard's own config, distinct from
 // per-instance config. (`dashboard:` block in the XDG config.yaml.)
 // ---------------------------------------------------------------------------
@@ -105,6 +158,7 @@ export type DashboardSettings = {
   host: string;
   port: number;
   poll_s: number;
+  autostart: boolean;
   token_set: boolean;
   token: string;
   version: string;
@@ -119,6 +173,7 @@ export async function patchSettings(values: {
   port?: number;
   poll_s?: number;
   token?: string;
+  autostart?: boolean;
 }): Promise<{ ok: boolean; restart_required: string[] }> {
   const r = await fetch(`${BASE}/settings`, {
     method: "PATCH",

@@ -19,6 +19,19 @@ def test_get_config_route(monkeypatch, tmp_path):
     assert resp.json()["embedding"]["provider"] == "openai"
 
 
+def test_get_config_effective_route(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))  # empty global
+    monkeypatch.setattr(rc, "_state_dir_for", lambda id_: tmp_path)
+    (tmp_path / "config.yaml").write_text("embedding:\n  provider: openai\n")
+    client = TestClient(create_app())
+    resp = client.get("/dashboard/api/instances/abc/config/effective")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["embedding.provider"] == {"value": "openai", "source": "project"}
+    # An unset key falls back to its code default with source "default".
+    assert body["reranker.enabled"]["source"] == "default"
+
+
 def test_patch_config_validation_error(monkeypatch, tmp_path):
     monkeypatch.setattr(rc, "_state_dir_for", lambda id_: tmp_path)
     (tmp_path / "config.yaml").write_text("embedding:\n  provider: openai\n")

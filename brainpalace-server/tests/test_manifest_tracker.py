@@ -310,3 +310,62 @@ async def test_delete_all_noop_when_dir_missing(tmp_path: Path) -> None:
     """delete_all() returns 0 and does not raise when the dir does not exist."""
     tracker = ManifestTracker(manifests_dir=tmp_path / "does_not_exist")
     assert await tracker.delete_all() == 0
+
+
+# ---------------------------------------------------------------------------
+# Phase L: last_embedded_at + size_bytes round-trip + backward compat
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_file_record_new_fields_roundtrip(tmp_path: Path) -> None:
+    """last_embedded_at + size_bytes survive a save/load cycle."""
+    tracker = ManifestTracker(manifests_dir=tmp_path / "manifests")
+    folder = "/proj"
+    rec = FileRecord(
+        checksum="x",
+        mtime=1.0,
+        chunk_ids=["c1"],
+        last_embedded_at=1700000000.5,
+        size_bytes=4096,
+    )
+    await tracker.save(FolderManifest(folder_path=folder, files={"/proj/a.py": rec}))
+
+    loaded = await tracker.load(folder)
+    assert loaded is not None
+    got = loaded.files["/proj/a.py"]
+    assert got.last_embedded_at == 1700000000.5
+    assert got.size_bytes == 4096
+
+
+@pytest.mark.asyncio
+async def test_legacy_manifest_without_new_fields_defaults_zero(tmp_path: Path) -> None:
+    """A manifest written before Phase L (no new keys) loads with 0 defaults."""
+    import json
+
+    manifests = tmp_path / "manifests"
+    manifests.mkdir()
+    folder = "/legacy"
+    tracker = ManifestTracker(manifests_dir=manifests)
+    path = tracker._manifest_path(folder)
+    path.write_text(
+        json.dumps(
+            {
+                "folder_path": folder,
+                "files": {
+                    "/legacy/a.py": {
+                        "checksum": "old",
+                        "mtime": 5.0,
+                        "chunk_ids": ["c1"],
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    loaded = await tracker.load(folder)
+    assert loaded is not None
+    got = loaded.files["/legacy/a.py"]
+    assert got.last_embedded_at == 0.0
+    assert got.size_bytes == 0

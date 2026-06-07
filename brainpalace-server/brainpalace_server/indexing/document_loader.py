@@ -334,11 +334,17 @@ class DocumentLoader:
     # indexing it would create an index-of-the-index feedback loop.
     ALWAYS_EXCLUDED_DIR_NAMES: frozenset[str] = frozenset({".brainpalace"})
 
+    # Phase L (b) — minified-blob heuristic thresholds.
+    MINIFIED_MAX_LINE_CHARS: int = 50_000  # a single line longer than this
+    MINIFIED_LARGE_FILE_BYTES: int = 50_000  # only large files are density-tested
+    MINIFIED_MIN_NEWLINE_RATIO: float = 0.001  # newlines/char below this = minified
+
     def __init__(
         self,
         supported_extensions: set[str] | None = None,
         exclude_patterns: list[str] | None = None,
         gitignore_matcher: "GitignoreMatcher | None" = None,
+        skip_minified: bool = True,
     ):
         """
         Initialize the document loader.
@@ -353,6 +359,11 @@ class DocumentLoader:
                               directories that the matcher reports as
                               ignored are pruned in addition to
                               exclude_patterns.
+            skip_minified: Phase L (b). When True (default), minified/generated
+                              blobs (``*.min.js`` / ``*.min.css``, single huge
+                              lines, very low newline density) are dropped — they
+                              are rarely useful for retrieval and re-embed
+                              expensively on every build.
         """
         self.extensions = supported_extensions or self.SUPPORTED_EXTENSIONS
         self.exclude_patterns = (
@@ -361,6 +372,31 @@ class DocumentLoader:
             else self.DEFAULT_EXCLUDE_PATTERNS
         )
         self.gitignore_matcher = gitignore_matcher
+        self.skip_minified = skip_minified
+
+    @classmethod
+    def is_minified(cls, file_name: str, text: str) -> bool:
+        """Heuristic: is this file a minified / generated blob (Phase L b)?
+
+        True when any of:
+          * filename ends in ``.min.js`` or ``.min.css``;
+          * the longest single line exceeds ``MINIFIED_MAX_LINE_CHARS``;
+          * the file is large (>= ``MINIFIED_LARGE_FILE_BYTES``) yet has a
+            newline density below ``MINIFIED_MIN_NEWLINE_RATIO``.
+        """
+        name = file_name.lower()
+        if name.endswith(".min.js") or name.endswith(".min.css"):
+            return True
+        if not text:
+            return False
+        longest_line = max((len(line) for line in text.splitlines()), default=len(text))
+        if longest_line > cls.MINIFIED_MAX_LINE_CHARS:
+            return True
+        if len(text) >= cls.MINIFIED_LARGE_FILE_BYTES:
+            newline_ratio = text.count("\n") / len(text)
+            if newline_ratio < cls.MINIFIED_MIN_NEWLINE_RATIO:
+                return True
+        return False
 
     async def load_from_folder(
         self,
@@ -435,13 +471,21 @@ class DocumentLoader:
         # large folder loads (hundreds of files).
         code_exts = self.CODE_EXTENSIONS
 
+        skip_minified = self.skip_minified
+
         def _convert_documents() -> list[LoadedDocument]:
             docs: list[LoadedDocument] = []
+            skipped_minified = 0
             for doc in llama_documents:
                 file_path = doc.metadata.get("file_path", "")
                 file_name = doc.metadata.get(
                     "file_name", Path(file_path).name if file_path else "unknown"
                 )
+
+                # Phase L (b): drop minified/generated blobs entirely.
+                if skip_minified and self.is_minified(file_name, doc.text):
+                    skipped_minified += 1
+                    continue
 
                 # Get file size
                 try:
@@ -488,6 +532,11 @@ class DocumentLoader:
                     metadata=merged_metadata,
                 )
                 docs.append(loaded_doc)
+            if skipped_minified:
+                logger.info(
+                    f"Skipped {skipped_minified} minified/generated file(s) "
+                    "(skip_minified=on)"
+                )
             return docs
 
         loaded_docs = await asyncio.to_thread(_convert_documents)
@@ -614,6 +663,7 @@ class DocumentLoader:
             supported_extensions=effective_extensions,
             exclude_patterns=self.exclude_patterns,
             gitignore_matcher=self.gitignore_matcher,
+            skip_minified=self.skip_minified,
         )
 
         # Load files using the configured extensions

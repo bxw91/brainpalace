@@ -199,6 +199,16 @@ environment automatically. The `brainpalace dashboard` command imports the
 dashboard package lazily and prints a friendly install hint on the older
 interpreters where it isn't present.
 
+### Auto-start with `brainpalace start`
+
+On Python 3.12+, `brainpalace start` also ensures the dashboard is running and
+prints its URL — opening a browser only when it actually launches one (never on
+repeat starts, and never under `--json` or in a non-TTY/CI). It's best-effort: a
+dashboard problem never fails `brainpalace start`. Opt out per-run with
+`brainpalace start --no-dashboard`, or persistently by setting
+`dashboard.autostart: false` (a toggle in the dashboard **Settings** tab, or the
+`dashboard:` block of the XDG `config.yaml`).
+
 ---
 
 ## Related

@@ -1,3 +1,4 @@
+import { memo } from "react";
 import {
   ResponsiveContainer,
   RadialBarChart,
@@ -7,8 +8,13 @@ import {
 
 /**
  * Radial gauge of a 0–1 hit-rate. Colour shifts warn→run as the rate climbs.
+ * memo'd: the cache tab polls, so re-render only when `rate` actually changes.
  */
-export function HitRateGauge({ rate }: { rate: number }) {
+export const HitRateGauge = memo(function HitRateGauge({
+  rate,
+}: {
+  rate: number;
+}) {
   const pct = Math.max(0, Math.min(100, Math.round(rate * 100)));
   const color = pct >= 75 ? "#34d399" : pct >= 40 ? "#fbbf24" : "#fb7185";
   const data = [{ name: "hit", value: pct, fill: color }];
@@ -43,4 +49,4 @@ export function HitRateGauge({ rate }: { rate: number }) {
       </div>
     </div>
   );
-}
+});

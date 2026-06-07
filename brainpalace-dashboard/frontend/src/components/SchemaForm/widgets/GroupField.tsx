@@ -1,4 +1,4 @@
-import type { SchemaField } from "../../../api/types";
+import type { SchemaField, EffectiveConfig } from "../../../api/types";
 import { Field } from "../Field";
 
 /**
@@ -10,11 +10,13 @@ export function GroupField({
   getValue,
   setValue,
   errors,
+  effective,
 }: {
   field: SchemaField;
   getValue: (dotpath: string) => unknown;
   setValue: (dotpath: string, value: unknown) => void;
   errors?: Record<string, string>;
+  effective?: EffectiveConfig;
 }) {
   if (field.visible_when) {
     const current = getValue(field.visible_when.field);
@@ -36,6 +38,7 @@ export function GroupField({
           getValue={getValue}
           setValue={setValue}
           errors={errors}
+          effective={effective}
         />
       ))}
     </fieldset>

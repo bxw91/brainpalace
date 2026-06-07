@@ -7,6 +7,19 @@
     color-scheme: dark;
   }
 
+  /* Honor the OS "reduce motion" preference: stop the forever-running pulse +
+     spin animations (StatusDot, JobProgress, Jobs) from repainting on every
+     frame. They convey "running"; a static dot is acceptable for these users. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+    }
+  }
+
   html,
   body,
   #root {
@@ -61,9 +74,11 @@
 }
 
 @layer components {
-  /* Frosted panel — the workhorse surface. */
+  /* The workhorse surface. Solid translucent bg — no backdrop-filter: it was
+     applied to every panel + the sidebar simultaneously, causing repaint storms
+     and high CPU on scroll (esp. Firefox). Bumped opacity compensates visually. */
   .panel {
-    @apply rounded-2xl border border-line bg-ink-800/70 shadow-panel backdrop-blur-sm;
+    @apply rounded-2xl border border-line bg-ink-800/80 shadow-panel;
   }
 
   .panel-hover {

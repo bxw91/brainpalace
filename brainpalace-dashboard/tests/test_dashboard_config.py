@@ -35,3 +35,24 @@ def test_missing_config_file_uses_defaults(
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     cfg = cfgmod.load_dashboard_config()
     assert cfg.port == 8787
+
+
+def test_autostart_defaults_true(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: object
+) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    assert cfgmod.load_dashboard_config().autostart is True
+
+
+def test_autostart_reads_and_roundtrips_false(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: object
+) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    d = tmp_path / "brainpalace"  # type: ignore[operator]
+    d.mkdir(parents=True)
+    (d / "config.yaml").write_text("dashboard:\n  autostart: false\n")
+    assert cfgmod.load_dashboard_config().autostart is False
+
+    # Saving autostart back True persists and reloads.
+    cfgmod.save_dashboard_config({"autostart": True})
+    assert cfgmod.load_dashboard_config().autostart is True

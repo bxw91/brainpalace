@@ -36,12 +36,15 @@ class DashboardConfig:
         port: Preferred port (scanned upward if busy).
         poll_s: SPA polling interval hint (seconds).
         token: Optional bearer token guarding ``/dashboard/api/**``.
+        autostart: Whether ``brainpalace start`` should also bring up the
+            dashboard (and open a browser when it launches one). Default True.
     """
 
     host: str = "127.0.0.1"
     port: int = 8787
     poll_s: int = 5
     token: str | None = None
+    autostart: bool = True
 
 
 def load_dashboard_config() -> DashboardConfig:
@@ -60,6 +63,7 @@ def load_dashboard_config() -> DashboardConfig:
         cfg.poll_s = int(data.get("poll_s", cfg.poll_s))
         token = data.get("token", cfg.token)
         cfg.token = None if token is None else str(token)
+        cfg.autostart = bool(data.get("autostart", cfg.autostart))
     return cfg
 
 
@@ -116,6 +120,8 @@ def save_dashboard_config(values: dict[str, Any]) -> None:
             block.pop("token", None)
         else:
             block["token"] = str(token)
+    if "autostart" in values and values["autostart"] is not None:
+        block["autostart"] = bool(values["autostart"])
 
     full["dashboard"] = block
     tmp = path.with_suffix(".yaml.tmp")

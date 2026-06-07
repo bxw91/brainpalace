@@ -12,6 +12,125 @@ month (the counter resets monthly). It looks like SemVer but is not.
 
 ---
 
+## [Unreleased]
+
+## [26.6.27] - 2026-06-07
+
+### Changed
+- **Config validation hardening (Phase 5).** The shared `validate_config_dict`
+  (CLI `config validate` + dashboard save) now enforces numeric **ranges**, not
+  just types — so bad values are rejected inline at save instead of failing later
+  at server startup/first API call. New `_RANGE_RULES`: ports (`api.port`,
+  `server.port`, `storage.postgres.port`) must be 1–65535;
+  `bm25.detect_min_confidence` 0.0–1.0; and the count/duration fields
+  (`*.retain_days`, `session_indexing.window/stride/watch_debounce_ms`,
+  `git_indexing.depth/max_files`, `session_extraction.quiescence_seconds`, and
+  the new `indexing.*`) must be ≥ 0. The range pass skips non-numeric values so a
+  type error isn't double-reported. (The config.json runtime bind already
+  validated port ordering `start ≤ end` + non-empty host since Phase 2.
+  Deliberately omitted as false-positive-prone: hard provider/model-list
+  compatibility — recommended lists are non-exhaustive and "Custom…" is allowed —
+  and required-`base_url`, since `grok`/`ollama` carry `needs_base_url` yet have
+  working defaults.)
+- **Dashboard perf + clearer labels (Phase 4).**
+  - Dropped `backdrop-blur` from the base `.panel` surface and the sidebar — it
+    was active on every panel + the rail simultaneously, causing repaint storms
+    and high CPU on scroll (especially Firefox). Solid translucent backgrounds
+    (bumped opacity) replace it; transient overlay blurs (dialogs/drawers) stay.
+  - Honor `prefers-reduced-motion`: the forever-running pulse/spin animations
+    (StatusDot, JobProgress, Jobs) are neutralized for users who opt out.
+  - `memo`'d the recharts components (`VolumeChart`/`LatencyChart`/`ChunkBarChart`
+    /`HitRateGauge`) so the dashboard's interval polling no longer re-runs their
+    expensive measure/animation passes when the data is referentially unchanged.
+    (Charts already lazy-mount — each lives behind its own route.)
+  - Bumped the vitest `testTimeout` to 15s — the 5s default was flaky under load.
+  - Relabels: reranker (and all) toggles now show a high-contrast
+    **Enabled/Disabled** state text beside the switch (#9); `bm25.detect` →
+    **"Auto-detect language (per document)"** with `bm25.language` reframed as
+    **"Default / fallback language"** and `detect_min_confidence` shown only when
+    auto-detect is on (#12, kept both valid — relabel only);
+    `session_indexing.sessions_dir` → **"Transcript source dir (override)"** to
+    distinguish it from the archive directory (#13).
+
+### Added
+- **Large-file re-embed guard (anti-churn).** A large, frequently-changing file
+  (minified bundles, build artifacts, logs, data dumps) used to be fully
+  re-embedded on every change → runaway embedding cost (a 871 KB SPA bundle =
+  1,425 chunks re-embedded 12× in one day). Path-agnostic systemic fix:
+  - **Per-file re-embed cooldown for LARGE files** in
+    `ChunkEvictionService._compute_incremental_diff`. A changed file that is
+    *large* (prior chunk-count ≥ `big_file_chunks` **or** byte size ≥
+    `max_file_bytes_throttle`) and was embedded within `reembed_cooldown_seconds`
+    is **deferred**: its existing chunks are kept, it is not re-embedded, and its
+    prior `FileRecord` is preserved verbatim so it re-checks the cooldown next
+    run — bounding cost to ≤ 1 re-embed per cooldown window (coalesces churn,
+    serves the latest content when the window elapses). First index and
+    `--force` always embed; small files are never throttled. New
+    `EvictionSummary.files_deferred`; `FileRecord` gains `last_embedded_at` +
+    `size_bytes` (legacy manifests default both to 0 = "embed once").
+  - **Skip-minified heuristic** in `DocumentLoader` (`skip_minified`, default
+    on): `*.min.js`/`*.min.css`, a single line > 50 000 chars, or very low
+    newline density on a large file are dropped at load time (zero embed cost).
+  - **New `indexing:` config block** (auto-renders in the dashboard form via
+    `config_schema`): `reembed_cooldown_seconds` (3600, 0 = off),
+    `big_file_chunks` (200), `max_file_bytes_throttle` (262144),
+    `skip_minified` (true). Env overrides: `REEMBED_COOLDOWN_SECONDS`,
+    `INDEX_BIG_FILE_CHUNKS`, `INDEX_MAX_FILE_BYTES`, `INDEX_SKIP_MINIFIED`.
+  - Observability: deferred count surfaced in the index-job result
+    (`files_deferred`) and in the manifest-diff / job-worker log lines; the
+    per-file deferral logs a WARNING naming the file. (Rejected by design: a
+    per-run circuit breaker — it can starve a legitimately-large file.)
+- **Provider-driven config forms + one canonical model map.** New
+  `brainpalace-cli/brainpalace_cli/providers.py` is the single source of truth
+  per kind (embedding/summarization/reranker) and provider:
+  `{models (first = recommended), needs_base_url, default_api_key_env}`. Model
+  IDs are sourced from the repo's current authoritative lists (README provider
+  tables + server provider modules + the CLI wizard); the env-var conventions
+  mirror `brainpalace_server.config.provider_config`.
+  - The dashboard `GET /schema` now includes the `providers` descriptor. In the
+    embedding/summarization/reranker sections the frontend reshapes the form
+    when the selected provider changes: `model` presets follow the provider,
+    `base_url` shows only when `needs_base_url`, and `api_key_env`'s placeholder
+    is the provider's conventional env var (data-driven, no per-provider JSX).
+  - Reused everywhere: the stale dashboard model presets (`claude-3-5-haiku-latest`,
+    `claude-sonnet-4-6`, `gpt-4o-mini`) are replaced with descriptor-sourced
+    presets; the CLI `config wizard` model suggestions derive from `providers.py`;
+    the README provider tables mirror it (and a new Reranker table was added).
+  - Added per-field help on provider/model/base_url/api_key/api_key_env and the
+    reranker enabled/provider/model/base_url fields.
+- **Dashboard: all three config scopes are now editable, clearly separated.**
+  - **Global config** (machine-wide `~/.config/brainpalace/config.yaml`) gets a
+    dedicated tab on the **Server** (control-plane) page, alongside the existing
+    **Dashboard settings** tab. New dashboard API `GET/PATCH
+    /dashboard/api/global-config` (masked read, 422 `{errors}`, secret-merge +
+    atomic write — same machinery as the per-project config path, via new
+    `ConfigService.read_global()` / `write_global()`).
+  - **Per-project runtime bind** (`<project>/.brainpalace/config.json`:
+    `bind_host` / `port_range_start` / `port_range_end` / `auto_port`) gets a
+    per-instance **Runtime** tab. New dashboard API `GET/PATCH
+    /dashboard/api/instances/{id}/runtime-config` (validates port 1–65535,
+    start ≤ end, non-empty host; bind changes need a restart — response carries
+    `restart_required`, and the UI offers Save + Restart).
+  - **Previously-hidden per-project fields surfaced:** `embedding/summarization/
+    reranker.params` (new key/value **dict** editor), `git_indexing.path_filter`
+    (new **string-list** editor), and `session_indexing.archive`
+    (`enabled`/`dir`/`retain_days`/`reconcile_seconds`) expanded as a nested
+    group. `server.*`/`api.*` stay hidden in the YAML form (no-op there) — they
+    are edited via the new Runtime panel instead.
+- **`brainpalace start` now brings up the web dashboard and prints its URL.** On
+  Python 3.12+ (where the dashboard ships with the CLI), starting a project
+  server also ensures the singleton control-plane dashboard is running and prints
+  a clickable `Dashboard:` URL — opening a browser **only** when it actually
+  launches the dashboard (never on repeat starts, never under `--json` or in a
+  non-TTY/CI). `--json` adds a `"dashboard": {base_url, started}` object. Opt out
+  per-run with `brainpalace start --no-dashboard`, or persistently with
+  `dashboard.autostart: false` (new key in the `dashboard:` block of the XDG
+  config, surfaced as a toggle in the dashboard **Settings** tab). On Python
+  3.10/3.11 (dashboard not installed) `start` is unchanged — it silently skips.
+  The dashboard launch is best-effort: a failure never fails `brainpalace start`.
+  New dashboard API `brainpalace_dashboard.server.ensure_running()` (idempotent:
+  returns the running dashboard untouched, else launches it).
+
 ## [26.6.26] - 2026-06-07
 
 The **web dashboard** lands — a standalone browser control plane for every

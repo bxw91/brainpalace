@@ -31,6 +31,7 @@ VALID_TOP_LEVEL_KEYS = {
     "git_indexing",
     "session_indexing",
     "session_extraction",
+    "indexing",
 }
 
 VALID_EMBEDDING_PROVIDERS = {"openai", "ollama", "cohere"}
@@ -122,10 +123,85 @@ SESSION_INDEXING_KNOWN_FIELDS = {
     "archive",
 }
 SESSION_EXTRACTION_KNOWN_FIELDS = {"mode", "quiescence_seconds"}
+INDEXING_KNOWN_FIELDS = {
+    "reembed_cooldown_seconds",
+    "big_file_chunks",
+    "max_file_bytes_throttle",
+    "skip_minified",
+}
 
 # ---------------------------------------------------------------------------
 # Deprecated key mapping: dot-path -> migration suggestion
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Numeric range rules (Phase 5 — validation hardening). dot-path ->
+# (min | None, max | None, message). Mirrors the server pydantic constraints so
+# the shared validator rejects bad values inline at save instead of at runtime.
+# Type errors are reported separately (type_fields); the range pass skips
+# non-numeric values to avoid duplicate errors.
+# ---------------------------------------------------------------------------
+
+_PORT_RANGE = (1, 65535)
+
+_RANGE_RULES: dict[str, tuple[float | None, float | None, str]] = {
+    # Ports
+    "api.port": (*_PORT_RANGE, "api.port must be between 1 and 65535"),
+    "server.port": (*_PORT_RANGE, "server.port must be between 1 and 65535"),
+    "storage.postgres.port": (
+        *_PORT_RANGE,
+        "storage.postgres.port must be between 1 and 65535",
+    ),
+    # Confidence
+    "bm25.detect_min_confidence": (
+        0.0,
+        1.0,
+        "bm25.detect_min_confidence must be between 0.0 and 1.0",
+    ),
+    # Non-negative counts / durations
+    "query_log.retention_days": (0, None, "query_log.retention_days must be >= 0"),
+    "git_indexing.depth": (0, None, "git_indexing.depth must be >= 0"),
+    "git_indexing.max_files": (0, None, "git_indexing.max_files must be >= 0"),
+    "session_indexing.retain_days": (
+        0,
+        None,
+        "session_indexing.retain_days must be >= 0",
+    ),
+    "session_indexing.window": (0, None, "session_indexing.window must be >= 0"),
+    "session_indexing.stride": (0, None, "session_indexing.stride must be >= 0"),
+    "session_indexing.watch_debounce_ms": (
+        0,
+        None,
+        "session_indexing.watch_debounce_ms must be >= 0",
+    ),
+    "session_extraction.quiescence_seconds": (
+        0,
+        None,
+        "session_extraction.quiescence_seconds must be >= 0",
+    ),
+    "indexing.reembed_cooldown_seconds": (
+        0,
+        None,
+        "indexing.reembed_cooldown_seconds must be >= 0",
+    ),
+    "indexing.big_file_chunks": (0, None, "indexing.big_file_chunks must be >= 0"),
+    "indexing.max_file_bytes_throttle": (
+        0,
+        None,
+        "indexing.max_file_bytes_throttle must be >= 0",
+    ),
+}
+
+
+def _get_dotpath(config: dict[str, Any], dotpath: str) -> Any:
+    """Walk a dot-path through nested dicts; return None if any segment misses."""
+    node: Any = config
+    for segment in dotpath.split("."):
+        if not isinstance(node, dict) or segment not in node:
+            return None
+        node = node[segment]
+    return node
+
 
 DEPRECATED_KEYS: dict[str, str] = {
     "graphrag.use_llm_extraction": (
@@ -291,6 +367,25 @@ _SECTION_SCHEMA: dict[str, dict[str, Any]] = {
             "quiescence_seconds": (
                 int,
                 "session_extraction.quiescence_seconds must be an integer",
+            ),
+        },
+    },
+    "indexing": {
+        "known_fields": INDEXING_KNOWN_FIELDS,
+        "enum_fields": {},
+        "type_fields": {
+            "reembed_cooldown_seconds": (
+                int,
+                "indexing.reembed_cooldown_seconds must be an integer",
+            ),
+            "big_file_chunks": (int, "indexing.big_file_chunks must be an integer"),
+            "max_file_bytes_throttle": (
+                int,
+                "indexing.max_file_bytes_throttle must be an integer",
+            ),
+            "skip_minified": (
+                bool,
+                "indexing.skip_minified must be a boolean (true/false)",
             ),
         },
     },
@@ -501,6 +596,24 @@ def validate_config_dict(
                             ),
                         )
                     )
+
+    # 2e. Numeric range validation (Phase 5). Skips non-numeric values so a type
+    # error (reported above) does not also produce a range error.
+    for dotpath, (lo, hi, range_msg) in _RANGE_RULES.items():
+        value = _get_dotpath(config, dotpath)
+        if value is None or isinstance(value, bool):
+            continue
+        if not isinstance(value, (int, float)):
+            continue  # type mismatch already reported by type_fields
+        if (lo is not None and value < lo) or (hi is not None and value > hi):
+            errors.append(
+                ConfigValidationError(
+                    field=dotpath,
+                    message=range_msg,
+                    line_number=None,
+                    suggestion=f"Set {dotpath} within the allowed range.",
+                )
+            )
 
     # 3. Check deprecated keys
     for deprecated_path, migration_hint in DEPRECATED_KEYS.items():

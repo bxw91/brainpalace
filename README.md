@@ -375,6 +375,11 @@ Found 2 results in 540ms
 
 ## Pluggable Providers
 
+> These tables mirror the canonical provider descriptor
+> [`brainpalace-cli/brainpalace_cli/providers.py`](brainpalace-cli/brainpalace_cli/providers.py)
+> (the single source of truth shared by the CLI wizard and the dashboard). The
+> first model in each row is the recommended default.
+
 ### Embedding Providers
 | Provider | Models | Local |
 |----------|--------|-------|
@@ -386,10 +391,16 @@ Found 2 results in 540ms
 | Provider | Models | Local |
 |----------|--------|-------|
 | Anthropic | claude-haiku-4-5-20251001, claude-sonnet-4-5-20250514 | No |
-| OpenAI | gpt-5, gpt-5-mini | No |
+| OpenAI | gpt-5-mini, gpt-5 | No |
 | Gemini | gemini-3.1-flash-lite, gemini-3.5-flash | No |
 | Grok | grok-4, grok-4-fast | No |
 | Ollama | llama4:scout, mistral-small3.2, qwen3-coder | Yes |
+
+### Reranker Providers
+| Provider | Models | Local |
+|----------|--------|-------|
+| sentence-transformers | cross-encoder/ms-marco-MiniLM-L-6-v2, cross-encoder/ms-marco-MiniLM-L-12-v2 | Yes |
+| Ollama | llama3.2:1b | Yes |
 
 ### Fully Local Mode
 

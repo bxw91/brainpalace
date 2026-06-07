@@ -20,7 +20,7 @@ export type SchemaField = {
   key: string;
   dotpath: string;
   label: string;
-  widget: "enum" | "toggle" | "int" | "text" | "group";
+  widget: "enum" | "toggle" | "int" | "text" | "group" | "dict" | "stringlist";
   secret?: boolean;
   options?: string[];
   presets?: string[];
@@ -40,7 +40,15 @@ export const SchemaField: z.ZodType<SchemaField> = z.lazy(() =>
     key: z.string(),
     dotpath: z.string(),
     label: z.string(),
-    widget: z.enum(["enum", "toggle", "int", "text", "group"]),
+    widget: z.enum([
+      "enum",
+      "toggle",
+      "int",
+      "text",
+      "group",
+      "dict",
+      "stringlist",
+    ]),
     secret: z.boolean().optional(),
     options: z.array(z.string()).optional(),
     presets: z.array(z.string()).optional(),
@@ -62,13 +70,37 @@ export const UiSchemaSection = z.object({
 });
 export type UiSchemaSection = z.infer<typeof UiSchemaSection>;
 
+/** Canonical provider descriptor (kind -> provider -> info). Drives the
+ *  conditional rendering of the embedding/summarization/reranker sections. */
+export const ProviderInfo = z.object({
+  models: z.array(z.string()),
+  needs_base_url: z.boolean(),
+  default_api_key_env: z.string().nullable(),
+});
+export type ProviderInfo = z.infer<typeof ProviderInfo>;
+
+/** kind ("embedding"|"summarization"|"reranker") -> provider name -> info. */
+export const ProvidersDescriptor = z.record(
+  z.string(),
+  z.record(z.string(), ProviderInfo),
+);
+export type ProvidersDescriptor = z.infer<typeof ProvidersDescriptor>;
+
 export const UiSchema = z.object({
   sections: z.array(UiSchemaSection),
+  providers: ProvidersDescriptor.optional(),
 });
 export type UiSchema = z.infer<typeof UiSchema>;
 
 /** Arbitrary nested config dict; secrets come back as "********". */
 export type ConfigValues = Record<string, unknown>;
+
+/** Per-key effective value + provenance across project > global > code default. */
+export type EffectiveEntry = {
+  value: unknown;
+  source: "project" | "global" | "default";
+};
+export type EffectiveConfig = Record<string, EffectiveEntry>;
 
 /** Validation error returned by a 422 PATCH. */
 export type ConfigError = { field: string; message: string; suggestion?: string };

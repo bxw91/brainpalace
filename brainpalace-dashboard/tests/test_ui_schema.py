@@ -3,6 +3,15 @@ from brainpalace_cli import config_schema as cs
 from brainpalace_dashboard.ui_schema import DASHBOARD_HIDDEN_FIELDS, build_ui_schema
 
 
+def test_provider_is_first_in_provider_sections():
+    """`provider` leads embedding/summarization; `enabled` leads reranker."""
+    ui = build_ui_schema()
+    first = {s["key"]: s["fields"][0]["key"] for s in ui["sections"]}
+    assert first["embedding"] == "provider"
+    assert first["summarization"] == "provider"
+    assert first["reranker"] == "enabled"
+
+
 def test_every_known_field_is_present_or_hidden():
     """Every config_schema field appears in the UISchema or is explicitly hidden."""
     ui = build_ui_schema()
@@ -59,6 +68,105 @@ def test_api_key_is_secret():
     emb = next(s for s in ui["sections"] if s["key"] == "embedding")
     key = next(f for f in emb["fields"] if f["key"] == "api_key")
     assert key["secret"] is True
+
+
+def test_params_fields_use_dict_widget():
+    """embedding/summarization/reranker `params` render as the dict widget."""
+    ui = build_ui_schema()
+    for sec_key in ("embedding", "summarization", "reranker"):
+        sec = next(s for s in ui["sections"] if s["key"] == sec_key)
+        params = next(f for f in sec["fields"] if f["key"] == "params")
+        assert params["widget"] == "dict"
+
+
+def test_path_filter_uses_stringlist_widget():
+    ui = build_ui_schema()
+    gi = next(s for s in ui["sections"] if s["key"] == "git_indexing")
+    pf = next(f for f in gi["fields"] if f["key"] == "path_filter")
+    assert pf["widget"] == "stringlist"
+
+
+def test_session_archive_is_nested_group():
+    """session_indexing.archive expands into a group with its sub-fields."""
+    ui = build_ui_schema()
+    si = next(s for s in ui["sections"] if s["key"] == "session_indexing")
+    archive = next(f for f in si["fields"] if f["key"] == "archive")
+    assert archive["widget"] == "group"
+    child_keys = {c["key"] for c in archive["fields"]}
+    assert child_keys == {"enabled", "dir", "retain_days", "reconcile_seconds"}
+    enabled = next(c for c in archive["fields"] if c["key"] == "enabled")
+    assert enabled["widget"] == "toggle"
+    retain = next(c for c in archive["fields"] if c["key"] == "retain_days")
+    assert retain["widget"] == "int"
+
+
+def test_unhidden_fields_not_in_hidden_map():
+    """The B fields are no longer hidden (so they render)."""
+    from brainpalace_dashboard.ui_schema import DASHBOARD_HIDDEN_FIELDS
+
+    for dp in (
+        "embedding.params",
+        "summarization.params",
+        "reranker.params",
+        "git_indexing.path_filter",
+        "session_indexing.archive",
+    ):
+        assert dp not in DASHBOARD_HIDDEN_FIELDS
+
+
+def test_schema_includes_provider_descriptor():
+    """build_ui_schema() exposes the canonical provider descriptor for the
+    frontend's conditional model/base_url/api_key_env rendering."""
+    from brainpalace_cli.providers import PROVIDERS
+
+    ui = build_ui_schema()
+    assert "providers" in ui
+    providers = ui["providers"]
+    assert set(providers) == set(PROVIDERS)
+    # Spot-check a kind/provider's shape + recommended-first model.
+    openai = providers["embedding"]["openai"]
+    assert openai["models"][0] == "text-embedding-3-large"
+    assert openai["needs_base_url"] is False
+    assert openai["default_api_key_env"] == "OPENAI_API_KEY"
+    # Ollama needs a base URL and has no key env.
+    ollama = providers["summarization"]["ollama"]
+    assert ollama["needs_base_url"] is True
+    assert ollama["default_api_key_env"] is None
+
+
+def test_model_presets_sourced_from_descriptor():
+    """embedding/summarization/reranker model presets come from PROVIDERS,
+    and the stale ids (#7) are gone."""
+    ui = build_ui_schema()
+
+    def _presets(section_key: str) -> set[str]:
+        sec = next(s for s in ui["sections"] if s["key"] == section_key)
+        model = next(f for f in sec["fields"] if f["key"] == "model")
+        return set(model.get("presets", []))
+
+    emb = _presets("embedding")
+    assert "text-embedding-3-large" in emb
+    summ = _presets("summarization")
+    assert "claude-haiku-4-5-20251001" in summ
+    assert summ.isdisjoint(
+        {"claude-3-5-haiku-latest", "claude-sonnet-4-6", "gpt-4o-mini"}
+    )
+    rer = _presets("reranker")
+    assert "cross-encoder/ms-marco-MiniLM-L-6-v2" in rer
+
+
+def test_provider_and_key_fields_have_help():
+    """provider/model/base_url/api_key/api_key_env carry help text (#3/#4/#8)."""
+    ui = build_ui_schema()
+    for section_key, fields in (
+        ("embedding", ("provider", "model", "base_url", "api_key", "api_key_env")),
+        ("summarization", ("provider", "model", "base_url", "api_key", "api_key_env")),
+        ("reranker", ("enabled", "provider", "model", "base_url")),
+    ):
+        sec = next(s for s in ui["sections"] if s["key"] == section_key)
+        for fld_key in fields:
+            fld = next(f for f in sec["fields"] if f["key"] == fld_key)
+            assert fld.get("help"), f"{section_key}.{fld_key} missing help"
 
 
 def test_query_log_section_renders():

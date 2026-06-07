@@ -29,11 +29,18 @@ class FileRecord:
         checksum: SHA-256 hex digest of the file's content
         mtime: File modification time as float seconds (os.stat().st_mtime)
         chunk_ids: List of chunk IDs produced from this file during indexing
+        last_embedded_at: Epoch seconds of the last time this file was embedded
+            (Phase L). 0.0 = never recorded (legacy manifest / first index) —
+            the re-embed cooldown treats that as "embed once".
+        size_bytes: File size in bytes at last embed (Phase L). 0 = unknown
+            (legacy manifest).
     """
 
     checksum: str
     mtime: float
     chunk_ids: list[str]
+    last_embedded_at: float = 0.0
+    size_bytes: int = 0
 
 
 @dataclass
@@ -60,6 +67,9 @@ class EvictionSummary:
         files_unchanged: Files with matching mtime/checksum (skipped)
         chunks_evicted: Total chunk IDs deleted from storage backend
         chunks_to_create: Number of files requiring (re-)indexing
+        files_deferred: Large changed files skipped this run by the re-embed
+            cooldown (Phase L). Their existing chunks are kept and their prior
+            FileRecord is preserved so they re-check the cooldown next run.
     """
 
     files_added: list[str]
@@ -68,6 +78,7 @@ class EvictionSummary:
     files_unchanged: list[str]
     chunks_evicted: int
     chunks_to_create: int
+    files_deferred: list[str] = field(default_factory=list)
 
 
 class ManifestTracker:
@@ -208,6 +219,9 @@ class ManifestTracker:
                 checksum=rec["checksum"],
                 mtime=rec["mtime"],
                 chunk_ids=rec["chunk_ids"],
+                # Phase L fields — absent in legacy manifests, default to 0.
+                last_embedded_at=rec.get("last_embedded_at", 0.0),
+                size_bytes=rec.get("size_bytes", 0),
             )
             for fp, rec in data.get("files", {}).items()
         }
@@ -237,6 +251,8 @@ class ManifestTracker:
                     "checksum": rec.checksum,
                     "mtime": rec.mtime,
                     "chunk_ids": rec.chunk_ids,
+                    "last_embedded_at": rec.last_embedded_at,
+                    "size_bytes": rec.size_bytes,
                 }
                 for fp, rec in manifest.files.items()
             },

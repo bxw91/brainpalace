@@ -495,7 +495,7 @@ stem = ["PyStemmer"]
 
 [[package]]
 name = "brainpalace-dashboard"
-version = "26.6.26"
+version = "26.6.27"
 description = "BrainPalace control-plane web dashboard"
 optional = false
 python-versions = "^3.12"
@@ -517,7 +517,7 @@ url = "../brainpalace-dashboard"
 
 [[package]]
 name = "brainpalace-rag"
-version = "26.6.26"
+version = "26.6.27"
 description = "BrainPalace RAG - Intelligent document indexing and semantic search server that gives AI agents long-term memory"
 optional = false
 python-versions = "^3.10"

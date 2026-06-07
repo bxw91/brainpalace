@@ -22,22 +22,22 @@ from brainpalace_cli.config_schema import (
     format_validation_errors,
     validate_config_file,
 )
+from brainpalace_cli.providers import PROVIDERS, recommended_model
 from brainpalace_cli.xdg_paths import get_xdg_config_dir
 
 console = Console()
 
 
+# Recommended model per provider — sourced from the canonical provider
+# descriptor (brainpalace_cli.providers) so the wizard, the dashboard, and the
+# README never drift. First model in each provider's list is the recommendation.
 EMBEDDING_DEFAULT_MODELS = {
-    "openai": "text-embedding-3-large",
-    "ollama": "nomic-embed-text",
-    "cohere": "embed-english-v3.0",
+    prov: PROVIDERS["embedding"][prov]["models"][0] for prov in PROVIDERS["embedding"]
 }
 
 SUMMARIZATION_DEFAULT_MODELS = {
-    "anthropic": "claude-haiku-4-5-20251001",
-    "openai": "gpt-5-mini",
-    "ollama": "llama3.2:latest",
-    "gemini": "gemini-3.1-flash-lite",
+    prov: PROVIDERS["summarization"][prov]["models"][0]
+    for prov in PROVIDERS["summarization"]
 }
 
 
@@ -404,11 +404,11 @@ def show_config(json_output: bool) -> None:
         else:
             output["embedding"] = {
                 "provider": "openai",
-                "model": "text-embedding-3-large",
+                "model": recommended_model("embedding", "openai"),
             }
             output["summarization"] = {
                 "provider": "anthropic",
-                "model": "claude-haiku-4-5-20251001",
+                "model": recommended_model("summarization", "anthropic"),
             }
 
         click.echo(json.dumps(output, indent=2))
@@ -428,7 +428,9 @@ def show_config(json_output: bool) -> None:
     embed_table.add_column("Setting", style="cyan")
     embed_table.add_column("Value")
     embed_table.add_row("Provider", embedding.get("provider", "openai"))
-    embed_table.add_row("Model", embedding.get("model", "text-embedding-3-large"))
+    embed_table.add_row(
+        "Model", embedding.get("model", recommended_model("embedding", "openai"))
+    )
     embed_table.add_row("API Key Env", embedding.get("api_key_env", "OPENAI_API_KEY"))
     if embedding.get("base_url"):
         embed_table.add_row("Base URL", embedding["base_url"])
@@ -440,7 +442,10 @@ def show_config(json_output: bool) -> None:
     summ_table.add_column("Setting", style="cyan")
     summ_table.add_column("Value")
     summ_table.add_row("Provider", summarization.get("provider", "anthropic"))
-    summ_table.add_row("Model", summarization.get("model", "claude-haiku-4-5-20251001"))
+    summ_table.add_row(
+        "Model",
+        summarization.get("model", recommended_model("summarization", "anthropic")),
+    )
     summ_table.add_row(
         "API Key Env", summarization.get("api_key_env", "ANTHROPIC_API_KEY")
     )

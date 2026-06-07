@@ -37,6 +37,7 @@ def get_settings() -> dict[str, Any]:
         "host": cfg.host,
         "port": cfg.port,
         "poll_s": cfg.poll_s,
+        "autostart": cfg.autostart,
         # Never expose the real token; the SPA only learns whether one is set and
         # echoes back the mask to keep it unchanged.
         "token_set": cfg.token is not None,
@@ -55,6 +56,7 @@ class SettingsPatch(BaseModel):
     port: int | None = None
     poll_s: int | None = None
     token: str | None = None
+    autostart: bool | None = None
 
 
 @router.patch("", response_model=None)

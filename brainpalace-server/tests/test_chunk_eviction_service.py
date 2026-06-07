@@ -478,3 +478,164 @@ async def test_no_eviction_needed_delete_not_called(tmp_path: Path) -> None:
 
     assert summary.chunks_evicted == 0
     storage.delete_by_ids.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Phase L: large-file re-embed cooldown throttle
+# ---------------------------------------------------------------------------
+
+from brainpalace_server.config.indexing_config import IndexingConfig  # noqa: E402
+
+NOW = 1_700_000_000.0
+
+
+def _throttle_cfg(**kw: object) -> IndexingConfig:
+    base = {
+        "reembed_cooldown_seconds": 3600,
+        "big_file_chunks": 200,
+        "max_file_bytes_throttle": 262144,
+        "skip_minified": True,
+    }
+    base.update(kw)
+    return IndexingConfig(**base)  # type: ignore[arg-type]
+
+
+def _changed_stat(size: int):
+    def fake_stat(fp: str, **kwargs: object) -> object:
+        return type("FakeStat", (), {"st_mtime": 999.0, "st_size": size})()
+
+    return fake_stat
+
+
+async def _run_changed(
+    tmp_path: Path,
+    *,
+    prior_chunks: list[str],
+    last_embedded_at: float,
+    size: int,
+    cfg: IndexingConfig,
+):
+    folder_path = "/proj"
+    fp = "/proj/bundle.js"
+    prior = FolderManifest(
+        folder_path=folder_path,
+        files={
+            fp: FileRecord(
+                checksum="old",
+                mtime=100.0,
+                chunk_ids=prior_chunks,
+                last_embedded_at=last_embedded_at,
+                size_bytes=size,
+            )
+        },
+    )
+    tracker = await make_tracker_with_manifest(tmp_path, folder_path, prior)
+    storage = make_mock_storage(deleted_count=len(prior_chunks))
+    service = ChunkEvictionService(manifest_tracker=tracker, storage_backend=storage)
+    with (
+        patch(
+            "brainpalace_server.services.chunk_eviction_service.os.stat",
+            side_effect=_changed_stat(size),
+        ),
+        patch(
+            "brainpalace_server.services.chunk_eviction_service.compute_file_checksum",
+            return_value="new-checksum",
+        ),
+        patch(
+            "brainpalace_server.services.chunk_eviction_service.time.time",
+            return_value=NOW,
+        ),
+    ):
+        summary, files_to_index = await service.compute_diff_and_evict(
+            folder_path=folder_path,
+            current_files=[fp],
+            force=False,
+            indexing_config=cfg,
+        )
+    return summary, files_to_index, storage, fp
+
+
+@pytest.mark.asyncio
+async def test_large_changed_file_within_cooldown_is_deferred(tmp_path: Path) -> None:
+    big_chunks = [f"c{i}" for i in range(250)]  # >= 200 → large
+    summary, files_to_index, storage, fp = await _run_changed(
+        tmp_path,
+        prior_chunks=big_chunks,
+        last_embedded_at=NOW - 10,  # within 3600s cooldown
+        size=1000,
+        cfg=_throttle_cfg(),
+    )
+    assert summary.files_deferred == [fp]
+    assert summary.files_changed == []
+    assert files_to_index == []
+    assert summary.chunks_evicted == 0
+    storage.delete_by_ids.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_large_changed_file_after_cooldown_reembeds(tmp_path: Path) -> None:
+    big_chunks = [f"c{i}" for i in range(250)]
+    summary, files_to_index, storage, fp = await _run_changed(
+        tmp_path,
+        prior_chunks=big_chunks,
+        last_embedded_at=NOW - 7200,  # older than cooldown
+        size=1000,
+        cfg=_throttle_cfg(),
+    )
+    assert summary.files_deferred == []
+    assert summary.files_changed == [fp]
+    assert files_to_index == [fp]
+
+
+@pytest.mark.asyncio
+async def test_small_changed_file_never_throttled(tmp_path: Path) -> None:
+    summary, files_to_index, storage, fp = await _run_changed(
+        tmp_path,
+        prior_chunks=["c1", "c2"],  # tiny, < 200
+        last_embedded_at=NOW - 10,  # within cooldown but small
+        size=1000,  # < 256 KB
+        cfg=_throttle_cfg(),
+    )
+    assert summary.files_deferred == []
+    assert summary.files_changed == [fp]
+
+
+@pytest.mark.asyncio
+async def test_large_by_bytes_within_cooldown_is_deferred(tmp_path: Path) -> None:
+    summary, files_to_index, storage, fp = await _run_changed(
+        tmp_path,
+        prior_chunks=["c1"],  # small chunk count
+        last_embedded_at=NOW - 10,
+        size=300_000,  # >= 256 KB → large by bytes
+        cfg=_throttle_cfg(),
+    )
+    assert summary.files_deferred == [fp]
+    assert files_to_index == []
+
+
+@pytest.mark.asyncio
+async def test_first_index_of_large_file_embeds(tmp_path: Path) -> None:
+    big_chunks = [f"c{i}" for i in range(250)]
+    summary, files_to_index, storage, fp = await _run_changed(
+        tmp_path,
+        prior_chunks=big_chunks,
+        last_embedded_at=0.0,  # never recorded (legacy/first)
+        size=1000,
+        cfg=_throttle_cfg(),
+    )
+    assert summary.files_deferred == []
+    assert summary.files_changed == [fp]
+
+
+@pytest.mark.asyncio
+async def test_cooldown_zero_disables_throttle(tmp_path: Path) -> None:
+    big_chunks = [f"c{i}" for i in range(250)]
+    summary, files_to_index, storage, fp = await _run_changed(
+        tmp_path,
+        prior_chunks=big_chunks,
+        last_embedded_at=NOW - 10,
+        size=1000,
+        cfg=_throttle_cfg(reembed_cooldown_seconds=0),
+    )
+    assert summary.files_deferred == []
+    assert summary.files_changed == [fp]

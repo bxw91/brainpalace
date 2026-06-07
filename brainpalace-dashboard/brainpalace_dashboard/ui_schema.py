@@ -18,6 +18,7 @@ from __future__ import annotations
 from typing import Any
 
 from brainpalace_cli import config_schema as cs
+from brainpalace_cli.providers import PROVIDERS
 
 # Section render order + human labels.
 SECTION_ORDER: list[tuple[str, str]] = [
@@ -52,6 +53,15 @@ SECTION_KNOWN: dict[str, set[str]] = {
     "session_extraction": cs.SESSION_EXTRACTION_KNOWN_FIELDS,
 }
 
+# Explicit field order within a section (fields not listed are appended
+# alphabetically). `provider` leads the provider-backed sections so the choice
+# that drives the rest of the form is on top (issues #2/#5/#6/#11).
+SECTION_FIELD_ORDER: dict[str, list[str]] = {
+    "embedding": ["provider", "model", "base_url", "api_key_env", "api_key"],
+    "summarization": ["provider", "model", "base_url", "api_key_env", "api_key"],
+    "reranker": ["enabled", "provider", "model", "base_url"],
+}
+
 # field dotpath -> enum options (from config_schema enum sets).
 ENUM_OPTIONS: dict[str, list[str]] = {
     "embedding.provider": sorted(cs.VALID_EMBEDDING_PROVIDERS),
@@ -64,32 +74,92 @@ ENUM_OPTIONS: dict[str, list[str]] = {
     "session_extraction.mode": sorted(cs.VALID_EXTRACT_MODES),
 }
 
+# Provider/api_key/base_url help text — purpose + expected values + default.
+# (Issues #3/#4/#8/#10/#11.) Reranker fields too.
+_API_KEY_HELP = (
+    "Optional. A literal API key stored in config.yaml (discouraged — secrets in "
+    "a file). Prefer the 'API key env var' which names an environment variable. "
+    "Empty = use the env var."
+)
+_API_KEY_ENV_HELP = (
+    "Name of the environment variable holding the API key (e.g. OPENAI_API_KEY). "
+    "Empty = the provider's conventional default env var."
+)
+_BASE_URL_HELP = (
+    "Custom API endpoint (e.g. Ollama http://localhost:11434, or an "
+    "OpenAI-compatible proxy). Empty = provider default."
+)
+
+
+def _model_presets(kind: str) -> list[str]:
+    """Union of all models across a kind's providers (recommended-first per
+    provider), de-duplicated. The frontend narrows this to the selected
+    provider's models; this static union is the no-JS fallback."""
+    seen: dict[str, None] = {}
+    for prov in PROVIDERS[kind].values():
+        for m in prov["models"]:
+            seen.setdefault(m, None)
+    return list(seen)
+
+
 # Presentation overrides ONLY. Keys are dotpaths.
 OVERRIDES: dict[str, dict[str, Any]] = {
-    "embedding.api_key": {"secret": True, "label": "API key (inline — prefer env var)"},
+    "embedding.provider": {
+        "help": "Embedding provider. Drives the model choices, base URL, and "
+        "expected API-key env var below.",
+    },
+    "summarization.provider": {
+        "help": "Summarization provider for code/doc summaries. Drives the model "
+        "choices, base URL, and expected API-key env var below.",
+    },
+    "embedding.api_key": {
+        "secret": True,
+        "label": "API key (inline — prefer env var)",
+        "help": _API_KEY_HELP,
+    },
     "summarization.api_key": {
         "secret": True,
         "label": "API key (inline — prefer env var)",
+        "help": _API_KEY_HELP,
     },
     "storage.postgres.password": {"secret": True},
     "embedding.api_key_env": {
         "label": "API key env var",
         "placeholder": "OPENAI_API_KEY",
+        "help": _API_KEY_ENV_HELP,
     },
     "summarization.api_key_env": {
         "label": "API key env var",
         "placeholder": "ANTHROPIC_API_KEY",
+        "help": _API_KEY_ENV_HELP,
     },
+    "embedding.base_url": {"help": _BASE_URL_HELP},
+    "summarization.base_url": {"help": _BASE_URL_HELP},
     "embedding.model": {
-        "presets": [
-            "text-embedding-3-small",
-            "text-embedding-3-large",
-            "nomic-embed-text",
-        ]
+        "presets": _model_presets("embedding"),
+        "help": "Embedding model. Presets follow the selected provider; pick "
+        "Custom… for any other model.",
     },
     "summarization.model": {
-        "presets": ["claude-3-5-haiku-latest", "claude-sonnet-4-6", "gpt-4o-mini"]
+        "presets": _model_presets("summarization"),
+        "help": "Summarization model. Presets follow the selected provider; pick "
+        "Custom… for any other model.",
     },
+    "reranker.enabled": {
+        "label": "Enabled",
+        "help": "Two-stage reranking with a local cross-encoder (no API cost; "
+        "adds a little query latency). Default: on.",
+    },
+    "reranker.provider": {
+        "help": "sentence-transformers = local cross-encoder (no base URL); "
+        "ollama = reranker served by Ollama (needs a base URL).",
+    },
+    "reranker.model": {
+        "presets": _model_presets("reranker"),
+        "help": "Cross-encoder / rerank model. Empty = the server's built-in "
+        "default (cross-encoder/ms-marco-MiniLM-L-6-v2).",
+    },
+    "reranker.base_url": {"help": _BASE_URL_HELP},
     "graphrag.use_code_metadata": {"label": "Use code metadata"},
     "query_log.enabled": {"label": "Enable query history"},
     "query_log.retention_days": {
@@ -102,18 +172,66 @@ OVERRIDES: dict[str, dict[str, Any]] = {
     "storage.postgres": {
         "visible_when": {"field": "storage.backend", "equals": "postgres"}
     },
+    "embedding.params": {
+        "help": "Extra provider params (key/value). Passed through to the client.",
+    },
+    "summarization.params": {
+        "help": "Extra provider params (key/value). Passed through to the client.",
+    },
+    "reranker.params": {
+        "help": "Extra reranker params (key/value). Passed through to the client.",
+    },
+    "git_indexing.path_filter": {
+        "help": "Path globs to include when indexing git history (one per row).",
+    },
+    "session_indexing.archive.dir": {
+        "label": "Archive directory",
+        "help": "Where raw transcripts are copied (relative to project or absolute).",
+    },
+    "session_indexing.archive.retain_days": {
+        "label": "Retain (days)",
+        "min": 0,
+        "help": "0 = keep forever.",
+    },
+    "session_indexing.archive.reconcile_seconds": {
+        "label": "Reconcile interval (s)",
+        "min": 1,
+        "help": "How often the archive copy/index sweep runs.",
+    },
+    # bm25: detect is per-document language auto-detection, NOT a BM25 on/off.
+    # language is the default/fallback used when detection is off or low-confidence
+    # — the two are complementary, not mutually exclusive (issue #12, option a).
+    "bm25.detect": {
+        "label": "Auto-detect language (per document)",
+        "help": "Detect each document's language individually (py3langid). When "
+        "off, every document uses the default language below. Default: off.",
+    },
+    "bm25.language": {
+        "label": "Default / fallback language",
+        "help": "Tokenizer language used as the default, and the fallback when "
+        "auto-detect is off or below the confidence threshold. Default: en.",
+    },
+    "bm25.detect_min_confidence": {
+        "label": "Auto-detect min confidence",
+        "help": "Below this confidence, a document falls back to the default "
+        "language. Only used when auto-detect is on. Default: 0.6.",
+        "visible_when": {"field": "bm25.detect", "equals": True},
+    },
+    "session_indexing.sessions_dir": {
+        "label": "Transcript source dir (override)",
+        "help": "Where to read AI chat transcripts from. Empty = auto "
+        "(~/.claude/projects/...). This is the SOURCE, not the archive "
+        "directory (see Session archive below).",
+    },
 }
 
 # Fields deliberately not shown in the form (parity gate requires a reason).
 DASHBOARD_HIDDEN_FIELDS: dict[str, str] = {
     "project.state_dir": "internal path, set by init; editing breaks discovery",
     "project.project_root": "internal path, set by init; editing breaks discovery",
-    # Free-form provider params dicts are not simple click-only controls.
-    "embedding.params": "free-form provider params dict; not a simple control",
-    "summarization.params": "free-form provider params dict; not a simple control",
-    "reranker.params": "free-form provider params dict; not a simple control",
     # server.* / api.* live in config.yaml's schema but the runtime bind reads
-    # config.json (bind_host/port_range/auto_port). Editing them here is a no-op.
+    # config.json (bind_host/port_range/auto_port). Editing them here is a no-op;
+    # they are editable via the per-instance Runtime panel (config.json) instead.
     "server.url": "runtime bind comes from config.json, not config.yaml; no-op here",
     "server.host": "runtime bind comes from config.json, not config.yaml; no-op here",
     "server.port": "runtime bind comes from config.json, not config.yaml; no-op here",
@@ -122,8 +240,29 @@ DASHBOARD_HIDDEN_FIELDS: dict[str, str] = {
     ),
     "api.host": "runtime bind comes from config.json, not config.yaml; no-op here",
     "api.port": "runtime bind comes from config.json, not config.yaml; no-op here",
-    "git_indexing.path_filter": "list of path globs; not a simple control",
-    "session_indexing.archive": "nested session-archive object; not a simple control",
+}
+
+# Sub-fields of session_indexing.archive (modeled by server SessionArchiveConfig:
+# enabled / dir / retain_days / reconcile_seconds). Rendered as a nested group.
+SESSION_ARCHIVE_FIELDS: list[str] = [
+    "enabled",
+    "dir",
+    "retain_days",
+    "reconcile_seconds",
+]
+
+# Free-form provider-params dicts (dict[str, scalar]) — rendered with a
+# key/value editor (the "dict" widget) rather than left unreachable.
+_DICT_FIELDS = {
+    "embedding.params",
+    "summarization.params",
+    "reranker.params",
+}
+
+# String-list fields — rendered with a string-list editor (the "stringlist"
+# widget).
+_STRINGLIST_FIELDS = {
+    "git_indexing.path_filter",
 }
 
 # Type hints from config_schema (int/bool). Defaults to text otherwise.
@@ -137,6 +276,8 @@ _INT_FIELDS = {
     "session_indexing.window",
     "session_indexing.stride",
     "session_indexing.watch_debounce_ms",
+    "session_indexing.archive.retain_days",
+    "session_indexing.archive.reconcile_seconds",
     "session_extraction.quiescence_seconds",
 }
 _BOOL_FIELDS = {
@@ -148,6 +289,7 @@ _BOOL_FIELDS = {
     "git_indexing.enabled",
     "session_indexing.enabled",
     "session_indexing.include_user_turns",
+    "session_indexing.archive.enabled",
 } | {
     f"storage.postgres.{k}"
     for k, (t, _) in cs.POSTGRES_TYPE_FIELDS.items()
@@ -182,6 +324,10 @@ DEFAULTS: dict[str, Any] = {
     "session_indexing.stride": 2,
     "session_indexing.watch_debounce_ms": 30000,
     "session_indexing.sessions_dir": None,
+    "session_indexing.archive.enabled": True,
+    "session_indexing.archive.dir": ".brainpalace/session_archive",
+    "session_indexing.archive.retain_days": 0,
+    "session_indexing.archive.reconcile_seconds": 600,
     "session_extraction.mode": "subagent",
     "session_extraction.quiescence_seconds": 1800,
     "query_log.enabled": True,
@@ -192,6 +338,10 @@ DEFAULTS: dict[str, Any] = {
 def _widget_for(dotpath: str) -> str:
     if dotpath in ENUM_OPTIONS:
         return "enum"
+    if dotpath in _DICT_FIELDS:
+        return "dict"
+    if dotpath in _STRINGLIST_FIELDS:
+        return "stringlist"
     if dotpath in _BOOL_FIELDS:
         return "toggle"
     if dotpath in _INT_FIELDS:
@@ -227,17 +377,24 @@ def _field(section: str, key: str) -> dict[str, Any]:
     return field
 
 
+def _ordered_fields(section: str, known: set[str]) -> list[str]:
+    """Section field order: explicit leaders first, then the rest alphabetical."""
+    preferred = [f for f in SECTION_FIELD_ORDER.get(section, []) if f in known]
+    rest = sorted(f for f in known if f not in preferred)
+    return preferred + rest
+
+
 def build_ui_schema() -> dict[str, Any]:
     sections: list[dict[str, Any]] = []
     for key, label in SECTION_ORDER:
-        known = sorted(SECTION_KNOWN[key])
+        known = _ordered_fields(key, SECTION_KNOWN[key])
         fields: list[dict[str, Any]] = []
         for fld in known:
             dotpath = f"{key}.{fld}"
             if dotpath in DASHBOARD_HIDDEN_FIELDS:
                 continue
-            # "postgres" is a nested object inside storage — expand it below.
-            if dotpath == "storage.postgres":
+            # Nested objects are expanded as groups below, not flat controls.
+            if dotpath in ("storage.postgres", "session_indexing.archive"):
                 continue
             fields.append(_field(key, fld))
         if key == "storage":
@@ -254,9 +411,34 @@ def build_ui_schema() -> dict[str, Any]:
                     ],
                 }
             )
+        if key == "session_indexing":
+            fields.append(
+                {
+                    "key": "archive",
+                    "dotpath": "session_indexing.archive",
+                    "label": "Session archive",
+                    "widget": "group",
+                    "fields": [
+                        _field("session_indexing.archive", k)
+                        for k in SESSION_ARCHIVE_FIELDS
+                    ],
+                }
+            )
         # Skip sections whose every field is hidden (e.g. api/server/project are
         # runtime-managed and fully hidden) — don't render an empty header.
         if not fields:
             continue
         sections.append({"key": key, "label": label, "fields": fields})
-    return {"sections": sections}
+    # `providers` is the canonical provider descriptor (kind -> provider ->
+    # {models, needs_base_url, default_api_key_env}). The frontend uses it to
+    # reshape the embedding/summarization/reranker sections when the selected
+    # provider changes (model presets, base_url visibility, api_key_env hint).
+    return {"sections": sections, "providers": _providers_payload()}
+
+
+def _providers_payload() -> dict[str, Any]:
+    """JSON-safe copy of the provider descriptor for GET /schema."""
+    return {
+        kind: {prov: dict(info) for prov, info in provs.items()}
+        for kind, provs in PROVIDERS.items()
+    }

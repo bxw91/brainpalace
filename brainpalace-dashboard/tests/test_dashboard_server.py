@@ -98,3 +98,53 @@ def test_status_when_not_running(
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
     out = srv.dashboard_status()
     assert out["status"] == "not_running"
+
+
+def test_ensure_running_returns_existing_without_launch(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: object
+) -> None:
+    """A healthy dashboard is reported as-is — no relaunch, started=False."""
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+    monkeypatch.setattr(
+        srv,
+        "dashboard_status",
+        lambda: {
+            "status": "running",
+            "pid": 7,
+            "port": 8787,
+            "base_url": "http://127.0.0.1:8787/dashboard/",
+            "healthy": True,
+        },
+    )
+
+    def _no_launch(*a, **k):
+        raise AssertionError("launch_dashboard must not run when already up")
+
+    monkeypatch.setattr(srv, "launch_dashboard", _no_launch)
+
+    out = srv.ensure_running(open_browser_if_new=True)
+    assert out["started"] is False
+    assert out["base_url"] == "http://127.0.0.1:8787/dashboard/"
+
+
+def test_ensure_running_launches_when_down(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: object
+) -> None:
+    """When down, ensure_running launches and forwards the browser flag."""
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+    monkeypatch.setattr(srv, "dashboard_status", lambda: {"status": "not_running"})
+    seen: dict[str, object] = {}
+
+    def _fake_launch(*, open_browser, foreground, timeout):
+        seen["open_browser"] = open_browser
+        srv.write_dashboard_runtime(
+            {"pid": 1, "port": 8787, "base_url": "http://127.0.0.1:8787/dashboard/"}
+        )
+        return "http://127.0.0.1:8787/dashboard/"
+
+    monkeypatch.setattr(srv, "launch_dashboard", _fake_launch)
+
+    out = srv.ensure_running(open_browser_if_new=True)
+    assert out["started"] is True
+    assert out["base_url"] == "http://127.0.0.1:8787/dashboard/"
+    assert seen["open_browser"] is True

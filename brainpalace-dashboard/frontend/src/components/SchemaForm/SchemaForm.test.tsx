@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, within } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 import { SchemaForm } from "./SchemaForm";
-import type { UiSchema, ConfigValues } from "../../api/types";
+import type { UiSchema, ConfigValues, EffectiveConfig } from "../../api/types";
 
 const schema: UiSchema = {
   sections: [
@@ -33,18 +33,166 @@ function renderForm(props: {
   onSave?: (v: ConfigValues, restart: boolean) => void;
   errors?: Record<string, string>;
   schema?: UiSchema;
+  effective?: EffectiveConfig;
 }) {
   const onSave = props.onSave ?? vi.fn();
   render(
     <SchemaForm
       schema={props.schema ?? schema}
       values={props.values}
+      effective={props.effective}
       onSave={onSave}
       errors={props.errors}
     />,
   );
   return onSave;
 }
+
+describe("SchemaForm provenance", () => {
+  const provSchema: UiSchema = {
+    sections: [
+      {
+        key: "embedding",
+        label: "Embedding",
+        fields: [
+          { key: "provider", dotpath: "embedding.provider", label: "Provider",
+            widget: "enum", options: ["openai", "ollama"] },
+          { key: "base_url", dotpath: "embedding.base_url", label: "Base URL",
+            widget: "text" },
+        ],
+      },
+    ],
+  };
+
+  it("shows provenance only for unset fields; nothing for locally-set ones", () => {
+    renderForm({
+      schema: provSchema,
+      values: { embedding: { provider: "openai" } }, // provider set locally
+      effective: {
+        "embedding.provider": { value: "openai", source: "project" },
+        "embedding.base_url": { value: "http://host:11434", source: "global" },
+      },
+    });
+    // Locally-set field: no default/inherited hint.
+    expect(
+      screen.queryByTestId("field-default-embedding.provider"),
+    ).toBeNull();
+    // Unset field inheriting from global: hint shows the global value, input empty.
+    expect(
+      screen.getByTestId("field-default-embedding.base_url"),
+    ).toHaveTextContent("inherited from global: http://host:11434");
+    expect(
+      (screen.getByTestId("text-embedding.base_url") as HTMLInputElement).value,
+    ).toBe("");
+  });
+});
+
+describe("SchemaForm provider-driven rendering", () => {
+  const providers = {
+    embedding: {
+      openai: {
+        models: ["text-embedding-3-large", "text-embedding-3-small"],
+        needs_base_url: false,
+        default_api_key_env: "OPENAI_API_KEY",
+      },
+      ollama: {
+        models: ["nomic-embed-text", "mxbai-embed-large"],
+        needs_base_url: true,
+        default_api_key_env: null,
+      },
+    },
+  };
+  const provDriveSchema: UiSchema = {
+    providers,
+    sections: [
+      {
+        key: "embedding",
+        label: "Embedding",
+        fields: [
+          { key: "provider", dotpath: "embedding.provider", label: "Provider",
+            widget: "enum", options: ["openai", "ollama"] },
+          { key: "model", dotpath: "embedding.model", label: "Model",
+            widget: "text", presets: [] },
+          { key: "base_url", dotpath: "embedding.base_url", label: "Base URL",
+            widget: "text" },
+          { key: "api_key_env", dotpath: "embedding.api_key_env",
+            label: "API key env var", widget: "text" },
+        ],
+      },
+    ],
+  };
+
+  it("model presets follow the selected provider", () => {
+    renderForm({
+      schema: provDriveSchema,
+      values: { embedding: { provider: "openai" } },
+    });
+    // openai's models are the presets
+    expect(
+      screen.getByTestId("preset-embedding.model-text-embedding-3-large"),
+    ).toBeTruthy();
+    expect(
+      screen.queryByTestId("preset-embedding.model-nomic-embed-text"),
+    ).toBeNull();
+    // switch to ollama -> presets change
+    fireEvent.click(screen.getByRole("button", { name: "ollama" }));
+    expect(
+      screen.getByTestId("preset-embedding.model-nomic-embed-text"),
+    ).toBeTruthy();
+    expect(
+      screen.queryByTestId("preset-embedding.model-text-embedding-3-large"),
+    ).toBeNull();
+  });
+
+  it("base_url is hidden for openai and shown for ollama", () => {
+    renderForm({
+      schema: provDriveSchema,
+      values: { embedding: { provider: "openai" } },
+    });
+    expect(screen.queryByTestId("field-embedding.base_url")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "ollama" }));
+    expect(screen.getByTestId("field-embedding.base_url")).toBeTruthy();
+  });
+
+  it("api_key_env placeholder follows the provider's default env var", () => {
+    renderForm({
+      schema: provDriveSchema,
+      values: { embedding: { provider: "openai" } },
+    });
+    expect(
+      screen.getByTestId("text-embedding.api_key_env"),
+    ).toHaveAttribute("placeholder", "OPENAI_API_KEY");
+  });
+});
+
+describe("SchemaForm secret fields", () => {
+  const secretSchema: UiSchema = {
+    sections: [
+      {
+        key: "embedding",
+        label: "Embedding",
+        fields: [
+          { key: "api_key", dotpath: "embedding.api_key", label: "API key",
+            widget: "text", secret: true },
+        ],
+      },
+    ],
+  };
+
+  it("shows masking dots only when a secret is set", () => {
+    renderForm({ schema: secretSchema, values: { embedding: { api_key: "********" } } });
+    expect(screen.getByTestId("text-embedding.api_key")).toHaveAttribute(
+      "placeholder",
+      "••••••••",
+    );
+  });
+
+  it("shows NO masking dots when the secret is unset (empty)", () => {
+    renderForm({ schema: secretSchema, values: { embedding: {} } });
+    const input = screen.getByTestId("text-embedding.api_key") as HTMLInputElement;
+    expect(input.placeholder).toBe("");
+  });
+});
 
 describe("SchemaForm", () => {
   it("renders enum as buttons and batches a single save payload", () => {
@@ -252,9 +400,13 @@ describe("SchemaForm", () => {
     const chroma = screen.getByTestId("enum-storage.backend-chroma");
     expect(chroma).toHaveAttribute("data-selected", "false");
     expect(chroma).toHaveTextContent(/default/i);
-    // Unset int shows the default value (30000), not 0.
+    // Unset int is EMPTY (— placeholder); the default is shown beside the label,
+    // never baked into the input.
     expect(
       screen.getByTestId("int-value-session_indexing.watch_debounce_ms"),
-    ).toHaveTextContent("30000");
+    ).toHaveTextContent("—");
+    expect(
+      screen.getByTestId("field-default-session_indexing.watch_debounce_ms"),
+    ).toHaveTextContent("default: 30000");
   });
 });

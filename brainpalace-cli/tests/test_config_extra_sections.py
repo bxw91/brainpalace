@@ -56,3 +56,44 @@ def test_bad_bm25_engine_caught() -> None:
 def test_bad_extract_mode_caught() -> None:
     errs = cs.validate_config_dict({"session_extraction": {"mode": "BOGUS"}})
     assert any(e.field == "session_extraction.mode" for e in errs)
+
+
+# ---------------------------------------------------------------------------
+# Phase L: indexing: block (large-file re-embed guard)
+# ---------------------------------------------------------------------------
+
+
+def test_indexing_block_validates_clean() -> None:
+    cfg = {
+        "indexing": {
+            "reembed_cooldown_seconds": 3600,
+            "big_file_chunks": 200,
+            "max_file_bytes_throttle": 262144,
+            "skip_minified": True,
+        }
+    }
+    assert cs.validate_config_dict(cfg) == []
+
+
+def test_indexing_is_known_top_level_key() -> None:
+    assert "indexing" in cs.VALID_TOP_LEVEL_KEYS
+    assert {
+        "reembed_cooldown_seconds",
+        "big_file_chunks",
+        "max_file_bytes_throttle",
+        "skip_minified",
+    } <= cs.INDEXING_KNOWN_FIELDS
+
+
+def test_indexing_unknown_field_caught() -> None:
+    errs = cs.validate_config_dict({"indexing": {"bogus": 1}})
+    assert any(e.field == "indexing.bogus" for e in errs)
+
+
+def test_indexing_type_errors_caught() -> None:
+    errs = cs.validate_config_dict(
+        {"indexing": {"reembed_cooldown_seconds": "soon", "skip_minified": "yes"}}
+    )
+    fields = {e.field for e in errs}
+    assert "indexing.reembed_cooldown_seconds" in fields
+    assert "indexing.skip_minified" in fields

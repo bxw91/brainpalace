@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import time
 from typing import TYPE_CHECKING
 
 from .manifest_tracker import (
@@ -22,6 +23,7 @@ from .manifest_tracker import (
 )
 
 if TYPE_CHECKING:
+    from brainpalace_server.config.indexing_config import IndexingConfig
     from brainpalace_server.storage.protocol import StorageBackendProtocol
 
 logger = logging.getLogger(__name__)
@@ -61,6 +63,7 @@ class ChunkEvictionService:
         folder_path: str,
         current_files: list[str],
         force: bool = False,
+        indexing_config: IndexingConfig | None = None,
     ) -> tuple[EvictionSummary, list[str]]:
         """Compute manifest diff, evict stale chunks, return files to index.
 
@@ -68,7 +71,10 @@ class ChunkEvictionService:
             folder_path: Absolute path to the indexed folder
             current_files: Absolute paths of files currently on disk
             force: If True, evict all prior chunks and return all current
-                   files for full reindexing (bypasses diff)
+                   files for full reindexing (bypasses diff + the re-embed
+                   cooldown — the user asked for a fresh index)
+            indexing_config: Phase L re-embed-guard knobs. When None, loaded
+                   from the project config. Bypassed entirely under ``force``.
 
         Returns:
             Tuple of (EvictionSummary, files_to_index) where files_to_index
@@ -76,6 +82,13 @@ class ChunkEvictionService:
         """
         if force:
             return await self._handle_force(folder_path, current_files)
+
+        if indexing_config is None:
+            # Pure defaults — no filesystem IO here (the caller passes the
+            # project-loaded config). Keeps the diff path side-effect-free.
+            from brainpalace_server.config.indexing_config import IndexingConfig
+
+            indexing_config = IndexingConfig()
 
         prior = await self._manifest.load(folder_path)
         if prior is None:
@@ -96,7 +109,9 @@ class ChunkEvictionService:
                 list(current_files),
             )
 
-        return await self._compute_incremental_diff(folder_path, current_files, prior)
+        return await self._compute_incremental_diff(
+            folder_path, current_files, prior, indexing_config
+        )
 
     async def _handle_force(
         self,
@@ -142,6 +157,7 @@ class ChunkEvictionService:
         folder_path: str,
         current_files: list[str],
         prior: object,
+        indexing_config: IndexingConfig,
     ) -> tuple[EvictionSummary, list[str]]:
         """Compute incremental diff against prior manifest.
 
@@ -149,6 +165,7 @@ class ChunkEvictionService:
             folder_path: Absolute path to the indexed folder
             current_files: Absolute paths of files currently on disk
             prior: Prior FolderManifest loaded from disk
+            indexing_config: Phase L re-embed-guard knobs (cooldown + thresholds)
 
         Returns:
             Tuple of (EvictionSummary, files_to_index)
@@ -160,11 +177,15 @@ class ChunkEvictionService:
         current_set = set(current_files)
         prior_set = set(prior.files.keys())
 
+        cooldown = indexing_config.reembed_cooldown_seconds
+        now = time.time()
+
         files_deleted = list(prior_set - current_set)
         files_to_evict: list[str] = list(files_deleted)
         files_unchanged: list[str] = []
         files_added: list[str] = []
         files_changed: list[str] = []
+        files_deferred: list[str] = []
         files_to_index: list[str] = []
 
         for fp in current_files:
@@ -174,7 +195,8 @@ class ChunkEvictionService:
             else:
                 prior_rec = prior.files[fp]
                 try:
-                    current_mtime = os.stat(fp).st_mtime
+                    stat_result = os.stat(fp)
+                    current_mtime = stat_result.st_mtime
                 except OSError:
                     # File disappeared between scan and stat — treat as deleted
                     files_deleted.append(fp)
@@ -192,6 +214,13 @@ class ChunkEvictionService:
                     if current_checksum == prior_rec.checksum:
                         # Content same despite mtime change (touch, git checkout etc.)
                         files_unchanged.append(fp)
+                    elif self._defer_large_reembed(
+                        fp, prior_rec, stat_result, indexing_config, now, cooldown
+                    ):
+                        # Phase L: a LARGE file changing inside the cooldown is
+                        # deferred — existing chunks kept, prior record preserved
+                        # (by the caller) so it re-checks the cooldown next run.
+                        files_deferred.append(fp)
                     else:
                         files_changed.append(fp)
                         files_to_evict.append(fp)
@@ -207,13 +236,18 @@ class ChunkEvictionService:
         if ids_to_evict:
             chunks_evicted = await self._storage.delete_by_ids(ids_to_evict)
 
+        deferred_note = (
+            f" !{len(files_deferred)} deferred (re-embed cooldown)"
+            if files_deferred
+            else ""
+        )
         logger.info(
             f"Manifest diff for {folder_path}: "
             f"+{len(files_added)} added "
             f"~{len(files_changed)} changed "
             f"-{len(files_deleted)} deleted "
             f"={len(files_unchanged)} unchanged, "
-            f"{chunks_evicted} chunks evicted"
+            f"{chunks_evicted} chunks evicted{deferred_note}"
         )
 
         return (
@@ -224,6 +258,50 @@ class ChunkEvictionService:
                 files_unchanged=files_unchanged,
                 chunks_evicted=chunks_evicted,
                 chunks_to_create=len(files_to_index),
+                files_deferred=files_deferred,
             ),
             files_to_index,
         )
+
+    @staticmethod
+    def _defer_large_reembed(
+        fp: str,
+        prior_rec: object,
+        stat_result: object,
+        indexing_config: IndexingConfig,
+        now: float,
+        cooldown: int,
+    ) -> bool:
+        """Return True if a changed file is LARGE and still within its cooldown.
+
+        Large = current byte size >= ``max_file_bytes_throttle`` OR the prior
+        chunk-count >= ``big_file_chunks``. A file with no recorded
+        ``last_embedded_at`` (legacy manifest / first index) is never deferred —
+        it must embed once to be indexed at all.
+        """
+        if cooldown <= 0:
+            return False
+        last_embedded_at = getattr(prior_rec, "last_embedded_at", 0.0)
+        if not last_embedded_at:
+            return False
+        size_bytes = getattr(stat_result, "st_size", 0)
+        prior_chunk_count = len(getattr(prior_rec, "chunk_ids", []))
+        is_large = (
+            size_bytes >= indexing_config.max_file_bytes_throttle
+            or prior_chunk_count >= indexing_config.big_file_chunks
+        )
+        if not is_large:
+            return False
+        if now - last_embedded_at >= cooldown:
+            return False
+        logger.warning(
+            "Deferring re-embed of large file %s (%d chunks, %d bytes): changed "
+            "%.0fs ago but within the %ds re-embed cooldown — keeping existing "
+            "chunks. Exclude it if it is generated/low-value.",
+            fp,
+            prior_chunk_count,
+            size_bytes,
+            now - last_embedded_at,
+            cooldown,
+        )
+        return True

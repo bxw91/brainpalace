@@ -1,3 +1,4 @@
+import { memo } from "react";
 import {
   ResponsiveContainer,
   BarChart,
@@ -20,8 +21,15 @@ const TOOLTIP_STYLE = {
 
 export type TimeSeriesDatum = { label: string; value: number };
 
-/** Vertical bars of query volume per time bucket. */
-export function VolumeChart({ data }: { data: TimeSeriesDatum[] }) {
+/** Vertical bars of query volume per time bucket.
+ *  memo'd: the dashboard polls on an interval, so the parent re-renders often;
+ *  recharts measure/animation passes are expensive, so skip them when data is
+ *  referentially unchanged. */
+export const VolumeChart = memo(function VolumeChart({
+  data,
+}: {
+  data: TimeSeriesDatum[];
+}) {
   if (data.length === 0) {
     return (
       <p className="px-1 py-8 text-center text-sm text-fg-faint">
@@ -53,10 +61,14 @@ export function VolumeChart({ data }: { data: TimeSeriesDatum[] }) {
       </ResponsiveContainer>
     </div>
   );
-}
+});
 
 /** Latency over time (ms) as a line. */
-export function LatencyChart({ data }: { data: TimeSeriesDatum[] }) {
+export const LatencyChart = memo(function LatencyChart({
+  data,
+}: {
+  data: TimeSeriesDatum[];
+}) {
   if (data.length === 0) {
     return (
       <p className="px-1 py-8 text-center text-sm text-fg-faint">
@@ -95,12 +107,16 @@ export function LatencyChart({ data }: { data: TimeSeriesDatum[] }) {
       </ResponsiveContainer>
     </div>
   );
-}
+});
 
 export type ChunkDatum = { name: string; chunks: number; reachable: boolean };
 
 /** Horizontal bar of per-instance chunk counts. */
-export function ChunkBarChart({ data }: { data: ChunkDatum[] }) {
+export const ChunkBarChart = memo(function ChunkBarChart({
+  data,
+}: {
+  data: ChunkDatum[];
+}) {
   if (data.length === 0) {
     return (
       <p className="px-1 py-8 text-center text-sm text-fg-faint">
@@ -149,4 +165,4 @@ export function ChunkBarChart({ data }: { data: ChunkDatum[] }) {
       </ResponsiveContainer>
     </div>
   );
-}
+});

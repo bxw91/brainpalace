@@ -25,6 +25,7 @@ beforeEach(() => {
     host: "127.0.0.1",
     port: 8787,
     poll_s: 5,
+    autostart: true,
     token_set: false,
     token: "",
     version: "26.6.25",
@@ -55,6 +56,28 @@ describe("Settings tab (control-plane)", () => {
       ),
     );
     expect(await screen.findByTestId("toast-success")).toBeInTheDocument();
+  });
+
+  it("toggles autostart and includes it in the save", async () => {
+    vi.mocked(client.patchSettings).mockResolvedValue({
+      ok: true,
+      restart_required: [],
+    });
+    wrap(<Settings />);
+
+    const toggle = await screen.findByTestId("toggle-autostart");
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(toggle); // turn autostart off
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+
+    fireEvent.click(screen.getByTestId("btn-save-settings"));
+    fireEvent.click(await screen.findByTestId("btn-confirm"));
+
+    await waitFor(() =>
+      expect(client.patchSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ autostart: false }),
+      ),
+    );
   });
 
   it("shows a field error from a 422", async () => {

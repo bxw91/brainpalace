@@ -45,7 +45,7 @@ export function Sidebar({
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-medium text-fg">Server</span>
           <span className="block truncate font-mono text-[0.68rem] text-fg-faint">
-            overview · instances · settings
+            overview · instances · global config · settings
           </span>
         </span>
         {view === "server" && (

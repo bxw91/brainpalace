@@ -24,6 +24,16 @@ def test_get_settings_defaults(tmp_path, monkeypatch):
     assert body["poll_s"] == 5
     assert body["token_set"] is False
     assert body["token"] == ""  # no real token ever leaks
+    assert body["autostart"] is True  # default on
+
+
+def test_patch_autostart_persists(tmp_path, monkeypatch):
+    c = _client(tmp_path, monkeypatch)
+    r = c.patch("/dashboard/api/settings", json={"autostart": False})
+    assert r.status_code == 200
+    # autostart is not restart-sensitive (applies on the next `brainpalace start`)
+    assert "autostart" not in r.json()["restart_required"]
+    assert c.get("/dashboard/api/settings").json()["autostart"] is False
 
 
 def test_patch_writes_dashboard_block_and_preserves_others(tmp_path, monkeypatch):

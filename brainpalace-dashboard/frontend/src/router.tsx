@@ -9,8 +9,10 @@ import { AppShell } from "./app";
 import { Overview } from "./tabs/Overview";
 import { Instances } from "./tabs/Instances";
 import { Settings } from "./tabs/Settings";
+import { GlobalConfig } from "./tabs/GlobalConfig";
 import { Status } from "./tabs/Status";
 import { Config } from "./tabs/Config";
+import { Runtime } from "./tabs/Runtime";
 import { Folders } from "./tabs/Folders";
 import { Queries } from "./tabs/Queries";
 import { Jobs } from "./tabs/Jobs";
@@ -32,9 +34,11 @@ export type TabDef = {
 export const TABS: TabDef[] = [
   { path: "/", label: "Overview", scope: "fleet" },
   { path: "/instances", label: "Instances", scope: "fleet" },
+  { path: "/global-config", label: "Global config", scope: "fleet" },
   { path: "/settings", label: "Settings", scope: "fleet" },
   { path: "/status", label: "Status", scope: "instance" },
   { path: "/config", label: "Config", scope: "instance" },
+  { path: "/runtime", label: "Runtime", scope: "instance" },
   { path: "/folders", label: "Folders", scope: "instance" },
   { path: "/queries", label: "Queries", scope: "instance" },
   { path: "/jobs", label: "Jobs", scope: "instance" },
@@ -59,9 +63,11 @@ const make = (path: string, component: () => JSX.Element) =>
 
 const overviewRoute = make("/", () => <Overview />);
 const instancesRoute = make("/instances", () => <Instances />);
+const globalConfigRoute = make("/global-config", () => <GlobalConfig />);
 const settingsRoute = make("/settings", () => <Settings />);
 const statusRoute = make("/status", () => <Status />);
 const configRoute = make("/config", () => <Config />);
+const runtimeRoute = make("/runtime", () => <Runtime />);
 const foldersRoute = make("/folders", () => <Folders />);
 const queriesRoute = make("/queries", () => <Queries />);
 const jobsRoute = make("/jobs", () => <Jobs />);
@@ -73,9 +79,11 @@ const logsRoute = make("/logs", () => <Logs />);
 const routeTree = rootRoute.addChildren([
   overviewRoute,
   instancesRoute,
+  globalConfigRoute,
   settingsRoute,
   statusRoute,
   configRoute,
+  runtimeRoute,
   foldersRoute,
   queriesRoute,
   jobsRoute,

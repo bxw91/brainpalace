@@ -627,11 +627,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         logger.info("Folder manager initialized")
 
         # Create document loader with exclude patterns
+        from brainpalace_server.config.indexing_config import load_indexing_config
         from brainpalace_server.indexing import DocumentLoader
 
+        _indexing_cfg = load_indexing_config()
         document_loader = DocumentLoader(
             exclude_patterns=exclude_patterns,
             gitignore_matcher=gitignore_matcher,
+            skip_minified=_indexing_cfg.skip_minified,
         )
 
         # Initialize ManifestTracker for incremental indexing (Phase 14)

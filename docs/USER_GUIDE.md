@@ -1171,8 +1171,11 @@ brainpalace config wizard --global           # configure providers once, globall
                                              #   (~/.config/brainpalace/config.yaml — every project inherits it)
 
 # Start/stop server
-brainpalace start          # Backgrounds by default
+brainpalace start          # Backgrounds by default; also brings up the web
+                           #   dashboard on Python 3.12+ and prints its URL
+                           #   (opens a browser only when it launches one)
 brainpalace start --foreground  # Run in foreground
+brainpalace start --no-dashboard  # Don't auto-start the dashboard this run
 brainpalace stop
 brainpalace stop --url http://127.0.0.1:49321  # stop a specific server by URL
 

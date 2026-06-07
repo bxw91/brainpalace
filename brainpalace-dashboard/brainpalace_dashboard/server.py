@@ -237,6 +237,46 @@ def launch_dashboard(
     return url
 
 
+def ensure_running(
+    *, open_browser_if_new: bool = False, timeout: int = 20
+) -> dict[str, Any]:
+    """Idempotently ensure the singleton dashboard is up; return its state.
+
+    If a healthy dashboard is already running, return it untouched (no relaunch,
+    no browser). Otherwise launch it (port-scan, health-wait) and — only on this
+    fresh-launch path — open a browser when ``open_browser_if_new`` is set.
+
+    Args:
+        open_browser_if_new: Open a browser only when the dashboard is launched
+            here (never when one was already running).
+        timeout: Seconds to wait for a freshly launched dashboard to go healthy.
+
+    Returns:
+        ``{"status": "running", "base_url", "port", "started": bool,
+        "healthy": bool}``. ``started`` is True only when launched by this call.
+
+    Raises:
+        RuntimeError: If a launch was attempted and failed (no free port / never
+            healthy / lost a start race). Callers that must not fail should wrap
+            this in a try/except.
+    """
+    status = dashboard_status()
+    if status.get("status") == "running":
+        return {**status, "started": False}
+
+    url = launch_dashboard(
+        open_browser=open_browser_if_new, foreground=False, timeout=timeout
+    )
+    runtime = read_dashboard_runtime() or {}
+    return {
+        "status": "running",
+        "base_url": url,
+        "port": runtime.get("port"),
+        "started": True,
+        "healthy": True,
+    }
+
+
 def stop_dashboard(timeout: float = 10.0) -> dict[str, Any]:
     """Stop the running dashboard process via SIGTERM and clear the runtime.
 

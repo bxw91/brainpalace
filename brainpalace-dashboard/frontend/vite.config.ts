@@ -16,5 +16,8 @@ export default defineConfig({
     setupFiles: ["./src/test-setup.ts"],
     globals: true,
     css: false,
+    // The default 5s timeout is flaky under load (full-suite CI runs time out
+    // on otherwise-passing tests). Bump it so a slow machine doesn't false-fail.
+    testTimeout: 15000,
   },
 });

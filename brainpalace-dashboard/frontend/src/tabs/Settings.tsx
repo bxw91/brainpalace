@@ -3,9 +3,16 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ServerCog, RotateCcw } from "lucide-react";
 import { getSettings, patchSettings } from "../api/client";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { ToggleField } from "../components/SchemaForm/widgets/ToggleField";
 import { useToast } from "../components/Toast";
 
-type Draft = { host: string; port: number; poll_s: number; token: string };
+type Draft = {
+  host: string;
+  port: number;
+  poll_s: number;
+  token: string;
+  autostart: boolean;
+};
 
 /**
  * Control-plane ("server") settings — the dashboard's OWN config, separate from
@@ -30,6 +37,7 @@ export function Settings() {
         port: settingsQ.data.port,
         poll_s: settingsQ.data.poll_s,
         token: settingsQ.data.token, // "********" when set, "" when unset
+        autostart: settingsQ.data.autostart,
       });
     }
   }, [settingsQ.data, draft]);
@@ -41,6 +49,7 @@ export function Settings() {
         port: d.port,
         poll_s: d.poll_s,
         token: d.token,
+        autostart: d.autostart,
       }),
     onSuccess: (res) => {
       setErrors({});
@@ -104,10 +113,11 @@ export function Settings() {
     port: "8787",
     poll_s: "5",
     token: "none",
+    autostart: "on",
   };
 
   const field = (
-    key: keyof Draft,
+    key: "host" | "port" | "poll_s" | "token",
     label: string,
     hint: string,
     type: "text" | "number" | "password",
@@ -173,6 +183,29 @@ export function Settings() {
           "Guards /dashboard/api/** when set. Leave blank to disable. Restart to apply.",
           "password",
         )}
+        <div
+          className="flex items-start justify-between gap-4"
+          data-testid="field-autostart"
+        >
+          <span className="flex flex-col gap-1">
+            <span className="text-sm font-medium text-fg">
+              Auto-start on <code>brainpalace start</code>
+              <span className="ml-2 font-normal text-xs text-fg-faint">
+                default: {DEFAULTS.autostart}
+              </span>
+            </span>
+            <span className="text-xs text-fg-faint">
+              Bring up the dashboard (and open a browser when it launches one)
+              whenever a project server starts. Applies on the next start.
+            </span>
+          </span>
+          <ToggleField
+            dotpath="autostart"
+            value={draft.autostart}
+            onChange={(v) => setDraft({ ...draft, autostart: v })}
+            label="Auto-start dashboard on brainpalace start"
+          />
+        </div>
       </div>
 
       <div className="flex justify-end">

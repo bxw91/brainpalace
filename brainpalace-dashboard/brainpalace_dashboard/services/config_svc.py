@@ -14,8 +14,9 @@ from typing import Any
 
 import yaml
 from brainpalace_cli.config_schema import validate_config_dict
+from brainpalace_cli.xdg_paths import get_xdg_config_dir
 
-from brainpalace_dashboard.ui_schema import build_ui_schema
+from brainpalace_dashboard.ui_schema import DEFAULTS, build_ui_schema
 
 MASK = "********"
 
@@ -109,14 +110,57 @@ def _merge_secrets(new: dict[str, Any], existing: dict[str, Any]) -> dict[str, A
     return out
 
 
+def _mask_value(dotpath: str, value: Any) -> Any:
+    """Mask a leaf value when its dotpath is a secret and it's set."""
+    if dotpath in SECRET_DOTPATHS and value:
+        return MASK
+    return value
+
+
 class ConfigService:
     def _config_path(self, state_dir: Path) -> Path:
         return Path(state_dir) / "config.yaml"
 
+    def _global_config_path(self) -> Path:
+        return Path(get_xdg_config_dir()) / "config.yaml"
+
+    @staticmethod
+    def _raw(path: Path) -> dict[str, Any]:
+        """Parse a config.yaml to a dict (unmasked); {} when absent/empty."""
+        loaded = yaml.safe_load(path.read_text()) if path.exists() else {}
+        return loaded if isinstance(loaded, dict) else {}
+
     def read(self, state_dir: Path) -> dict[str, Any]:
-        path = self._config_path(state_dir)
-        raw = yaml.safe_load(path.read_text()) if path.exists() else {}
-        return _walk_secret(raw or {})
+        return _walk_secret(self._raw(self._config_path(state_dir)))
+
+    def read_global(self) -> dict[str, Any]:
+        """Read the GLOBAL XDG ``config.yaml`` (secrets masked).
+
+        Same masking semantics as :meth:`read` — the global file IS the
+        editable layer here (no provenance/effective resolution needed)."""
+        return _walk_secret(self._raw(self._global_config_path()))
+
+    def effective(self, state_dir: Path) -> dict[str, dict[str, Any]]:
+        """Resolve each config key across project > global > code default.
+
+        Returns ``{dotpath: {"value": <effective, secrets masked>,
+        "source": "project"|"global"|"default"}}``. A key absent from all three
+        layers is omitted. The dashboard uses this to show the editable value
+        (project layer) and a provenance hint (global/default) only when a key
+        is not set locally.
+        """
+        project = _flatten(self._raw(self._config_path(state_dir)))
+        global_ = _flatten(self._raw(self._global_config_path()))
+        out: dict[str, dict[str, Any]] = {}
+        for dotpath in set(project) | set(global_) | set(DEFAULTS):
+            if dotpath in project:
+                value, source = project[dotpath], "project"
+            elif dotpath in global_:
+                value, source = global_[dotpath], "global"
+            else:
+                value, source = DEFAULTS[dotpath], "default"
+            out[dotpath] = {"value": _mask_value(dotpath, value), "source": source}
+        return out
 
     def schema(self) -> dict[str, Any]:
         return build_ui_schema()
@@ -136,8 +180,19 @@ class ConfigService:
         ]
 
     def write(self, state_dir: Path, values: dict[str, Any]) -> None:
-        state_dir = Path(state_dir)
-        path = self._config_path(state_dir)
+        self._write_to(self._config_path(Path(state_dir)), values)
+
+    def write_global(self, values: dict[str, Any]) -> None:
+        """Validate + atomically write the GLOBAL XDG ``config.yaml``.
+
+        Reuses the same secret-merge, changed-fields-only validation, and
+        atomic-write (.bak) machinery as the per-project path. Creates the XDG
+        config directory if it does not yet exist."""
+        path = self._global_config_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self._write_to(path, values)
+
+    def _write_to(self, path: Path, values: dict[str, Any]) -> None:
         existing = yaml.safe_load(path.read_text()) if path.exists() else {}
         merged = _merge_secrets(values, existing or {})
         # Editor semantics: only block the save on validation errors in fields

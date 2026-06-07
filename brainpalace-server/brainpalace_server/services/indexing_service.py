@@ -407,6 +407,10 @@ class IndexingService:
                     )
 
                 prior_manifest = await self.manifest_tracker.load(abs_folder_path)
+                from brainpalace_server.config.indexing_config import (
+                    load_indexing_config,
+                )
+
                 (
                     eviction_summary,
                     files_to_index_list,
@@ -414,6 +418,7 @@ class IndexingService:
                     folder_path=abs_folder_path,
                     current_files=current_file_paths,
                     force=request.force,
+                    indexing_config=load_indexing_config(),
                 )
                 files_to_index_set = set(files_to_index_list)
 
@@ -430,12 +435,18 @@ class IndexingService:
                     for doc in documents
                     if _resolve_doc_path(doc) in files_to_index_set
                 ]
+                _deferred = getattr(eviction_summary, "files_deferred", []) or []
                 logger.info(
                     f"Manifest diff: +{len(eviction_summary.files_added)} added "
                     f"~{len(eviction_summary.files_changed)} changed "
                     f"-{len(eviction_summary.files_deleted)} deleted "
                     f"={len(eviction_summary.files_unchanged)} unchanged, "
                     f"{eviction_summary.chunks_evicted} chunks evicted"
+                    + (
+                        f", !{len(_deferred)} deferred (re-embed cooldown)"
+                        if _deferred
+                        else ""
+                    )
                 )
                 if not documents:
                     evicted_only = bool(
@@ -466,7 +477,13 @@ class IndexingService:
                     new_manifest = FolderManifest(folder_path=abs_folder_path)
                     if prior_manifest is not None:
                         assert isinstance(prior_manifest, FolderManifest)
-                        for fp in eviction_summary.files_unchanged:
+                        # Carry over unchanged AND deferred (Phase L) files: the
+                        # deferred record is preserved verbatim (old checksum +
+                        # last_embedded_at) so it re-checks the cooldown next run
+                        # and its existing chunks stay mapped.
+                        for fp in list(eviction_summary.files_unchanged) + list(
+                            getattr(eviction_summary, "files_deferred", [])
+                        ):
                             if fp in prior_manifest.files:
                                 new_manifest.files[fp] = prior_manifest.files[fp]
                     await self.manifest_tracker.save(new_manifest)
@@ -776,19 +793,26 @@ class IndexingService:
             bm25_mgr = self.bm25_manager
             await asyncio.to_thread(bm25_mgr.build_index, nodes)
 
-            # For incremental runs, BM25 must include unchanged file chunks too
+            # For incremental runs, BM25 must include unchanged file chunks too —
+            # and deferred (Phase L) files, whose chunks also survived eviction.
+            _survivors = (
+                list(eviction_summary.files_unchanged)
+                + list(getattr(eviction_summary, "files_deferred", []))
+                if eviction_summary is not None
+                else []
+            )
             if (
                 eviction_summary is not None
-                and eviction_summary.files_unchanged
+                and _survivors
                 and self.manifest_tracker is not None
                 and prior_manifest is not None
             ):
                 from brainpalace_server.services.manifest_tracker import FolderManifest
 
                 assert isinstance(prior_manifest, FolderManifest)
-                # Collect unchanged chunk IDs from prior manifest
+                # Collect surviving chunk IDs (unchanged + deferred) from prior
                 unchanged_ids = []
-                for fp in eviction_summary.files_unchanged:
+                for fp in _survivors:
                     if fp in prior_manifest.files:
                         unchanged_ids.extend(prior_manifest.files[fp].chunk_ids)
                 if unchanged_ids:
@@ -923,6 +947,7 @@ class IndexingService:
         new_manifest: Any = None
         if self.manifest_tracker is not None and eviction_summary is not None:
             import os as _os
+            import time as _time
             from dataclasses import asdict
             from pathlib import Path as _Path
 
@@ -933,13 +958,18 @@ class IndexingService:
             )
 
             new_manifest = FolderManifest(folder_path=abs_folder_path)
-            # Carry over unchanged files
+            # Carry over unchanged AND deferred (Phase L) files. Deferred records
+            # are preserved verbatim (old checksum + last_embedded_at) so the file
+            # re-checks the re-embed cooldown next run and keeps its mapped chunks.
             if prior_manifest is not None:
                 assert isinstance(prior_manifest, FolderManifest)
-                for fp in eviction_summary.files_unchanged:
+                for fp in list(eviction_summary.files_unchanged) + list(
+                    getattr(eviction_summary, "files_deferred", [])
+                ):
                     if fp in prior_manifest.files:
                         new_manifest.files[fp] = prior_manifest.files[fp]
-            # Record newly indexed files
+            # Record newly indexed files (stamp Phase L embed metadata)
+            embedded_at = _time.time()
             file_to_chunks: dict[str, list[str]] = {}
             for chunk in chunks:
                 src = chunk.metadata.to_dict().get("source", "")
@@ -953,6 +983,8 @@ class IndexingService:
                     checksum=checksum,
                     mtime=stat_result.st_mtime,
                     chunk_ids=chunk_ids,
+                    last_embedded_at=embedded_at,
+                    size_bytes=getattr(stat_result, "st_size", 0),
                 )
             await self.manifest_tracker.save(new_manifest)
             logger.info(f"Manifest saved with {len(new_manifest.files)} file entries")

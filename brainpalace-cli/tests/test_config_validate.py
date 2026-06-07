@@ -465,3 +465,72 @@ class TestNestedPostgresValidation:
             typo_error is not None
         ), f"Expected error for pool_timeot typo, got: {errors}"
         assert typo_error.field == "storage.postgres.pool_timeot"
+
+
+# ---------------------------------------------------------------------------
+# Phase 5 (validation hardening): numeric range rules
+# ---------------------------------------------------------------------------
+
+
+def _fields(errs):
+    return {e.field for e in errs}
+
+
+def test_port_out_of_range_caught():
+    errs = validate_config_dict({"api": {"port": 999999}})
+    assert "api.port" in _fields(errs)
+    errs = validate_config_dict({"server": {"port": 0}})
+    assert "server.port" in _fields(errs)
+    errs = validate_config_dict({"storage": {"postgres": {"port": -1}}})
+    assert "storage.postgres.port" in _fields(errs)
+
+
+def test_port_in_range_ok():
+    assert validate_config_dict({"api": {"port": 8000}}) == []
+    assert validate_config_dict({"server": {"port": 65535}}) == []
+    assert validate_config_dict({"storage": {"postgres": {"port": 1}}}) == []
+
+
+def test_detect_min_confidence_bounds_caught():
+    assert "bm25.detect_min_confidence" in _fields(
+        validate_config_dict({"bm25": {"detect_min_confidence": 1.5}})
+    )
+    assert "bm25.detect_min_confidence" in _fields(
+        validate_config_dict({"bm25": {"detect_min_confidence": -0.1}})
+    )
+
+
+def test_detect_min_confidence_in_range_ok():
+    assert validate_config_dict({"bm25": {"detect_min_confidence": 0.0}}) == []
+    assert validate_config_dict({"bm25": {"detect_min_confidence": 1.0}}) == []
+    assert validate_config_dict({"bm25": {"detect_min_confidence": 0.6}}) == []
+
+
+def test_negative_ints_caught():
+    errs = validate_config_dict(
+        {
+            "session_indexing": {"retain_days": -5, "window": -1},
+            "git_indexing": {"depth": -2, "max_files": -1},
+            "indexing": {"reembed_cooldown_seconds": -1, "big_file_chunks": -10},
+        }
+    )
+    f = _fields(errs)
+    assert "session_indexing.retain_days" in f
+    assert "session_indexing.window" in f
+    assert "git_indexing.depth" in f
+    assert "git_indexing.max_files" in f
+    assert "indexing.reembed_cooldown_seconds" in f
+    assert "indexing.big_file_chunks" in f
+
+
+def test_non_negative_zero_ok():
+    assert validate_config_dict({"session_indexing": {"retain_days": 0}}) == []
+    assert validate_config_dict({"indexing": {"reembed_cooldown_seconds": 0}}) == []
+
+
+def test_range_skips_wrong_type_no_double_error():
+    # A string port is a type error, not a range error — range pass must not also
+    # fire (avoid duplicate/confusing messages).
+    errs = validate_config_dict({"api": {"port": "nope"}})
+    assert "api.port" in _fields(errs)
+    assert sum(1 for e in errs if e.field == "api.port") == 1

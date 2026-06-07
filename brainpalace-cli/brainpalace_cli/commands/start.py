@@ -33,6 +33,60 @@ EXISTING_SERVER_HEALTH_RETRY_DELAY = 1.0
 EXISTING_SERVER_HEALTH_TIMEOUT = 5.0
 
 
+def _ensure_dashboard(
+    *, no_dashboard: bool, json_output: bool
+) -> dict[str, Any] | None:
+    """Best-effort: ensure the singleton web dashboard is up; return its state.
+
+    Returns the dashboard info dict (``base_url`` / ``started`` / ``healthy``) or
+    ``None`` when skipped or unavailable. NEVER raises — ``brainpalace start``
+    must not fail because of the dashboard.
+
+    Skips silently when ``--no-dashboard`` is passed, ``dashboard.autostart`` is
+    false, or the dashboard package isn't installed (Python < 3.12). A browser is
+    opened only when the dashboard is launched by this call AND stdout is an
+    interactive terminal (never under ``--json`` or in CI).
+    """
+    if no_dashboard:
+        return None
+    try:
+        from brainpalace_dashboard import server as _dash  # noqa: PLC0415
+        from brainpalace_dashboard.config import (  # noqa: PLC0415
+            load_dashboard_config,
+        )
+    except ImportError:
+        return None  # dashboard not installed (e.g. Python 3.10/3.11)
+    try:
+        if not load_dashboard_config().autostart:
+            return None
+        open_browser = (not json_output) and sys.stdout.isatty()
+        info: dict[str, Any] = _dash.ensure_running(open_browser_if_new=open_browser)
+        return info
+    except Exception:
+        return None  # best-effort; never break `brainpalace start`
+
+
+def _print_dashboard(dash: dict[str, Any] | None) -> None:
+    """Print a clickable dashboard URL line when one is available."""
+    if not dash or not dash.get("base_url"):
+        return
+    url = dash["base_url"]
+    verb = "started" if dash.get("started") else "running"
+    console.print(f"  - Dashboard ({verb}): [bold][link={url}]{url}[/link][/]")
+
+
+def _dashboard_json(dash: dict[str, Any] | None) -> dict[str, Any]:
+    """Compact dashboard fields for ``--json`` output (empty when unavailable)."""
+    if not dash or not dash.get("base_url"):
+        return {}
+    return {
+        "dashboard": {
+            "base_url": dash["base_url"],
+            "started": bool(dash.get("started")),
+        }
+    }
+
+
 def read_config(state_dir: Path) -> dict[str, Any]:
     """Read configuration from state directory."""
     config_path = state_dir / "config.json"
@@ -383,6 +437,11 @@ def launch_server(
     is_flag=True,
     help="Enable strict mode: fail on critical provider configuration errors",
 )
+@click.option(
+    "--no-dashboard",
+    is_flag=True,
+    help="Do not auto-start the web dashboard (overrides dashboard.autostart)",
+)
 def start_command(
     path: str | None,
     host: str | None,
@@ -391,18 +450,25 @@ def start_command(
     timeout: int,
     json_output: bool,
     strict: bool,
+    no_dashboard: bool,
 ) -> None:
     """Start an BrainPalace server for this project.
 
     Spawns a new server instance bound to the project. If a server is
     already running for this project, reports its URL instead.
 
+    On Python 3.12+ this also ensures the web dashboard (a single control plane
+    for all projects) is running and prints its URL — opening a browser only
+    when it launches one. Disable per-run with --no-dashboard, or persistently
+    with dashboard.autostart: false in the XDG config.
+
     \b
     Examples:
-      brainpalace start                    # Start server for current project
+      brainpalace start                    # Start server (+ dashboard on 3.12+)
       brainpalace start --port 8080        # Start on specific port
       brainpalace start --strict           # Fail on missing API keys
       brainpalace start --foreground       # Run in foreground
+      brainpalace start --no-dashboard     # Don't auto-start the dashboard
       brainpalace start --path /my/project # Start for specific project
     """
     try:
@@ -463,6 +529,9 @@ def start_command(
                         break
 
             if action == "running":
+                dash = _ensure_dashboard(
+                    no_dashboard=no_dashboard, json_output=json_output
+                )
                 if json_output:
                     click.echo(
                         json.dumps(
@@ -471,6 +540,7 @@ def start_command(
                                 "base_url": base_url,
                                 "pid": pid,
                                 "project_root": str(project_root),
+                                **_dashboard_json(dash),
                             }
                         )
                     )
@@ -485,6 +555,7 @@ def start_command(
                             border_style="yellow",
                         )
                     )
+                    _print_dashboard(dash)
                 return
 
             if action == "unresponsive":
@@ -567,6 +638,7 @@ def start_command(
             # Update global registry
             update_registry(project_root, state_dir)
 
+            dash = _ensure_dashboard(no_dashboard=no_dashboard, json_output=json_output)
             if not json_output:
                 console.print(
                     Panel(
@@ -578,6 +650,7 @@ def start_command(
                         border_style="green",
                     )
                 )
+                _print_dashboard(dash)
             os.execvpe(server_cmd[0], server_cmd, env)
         else:
             # Daemonize the server — single source of truth lives in launch_server.
@@ -595,6 +668,9 @@ def start_command(
             except ServerAlreadyRunningError as e:
                 # A healthy server for this project was found mid-launch (runtime
                 # state was missing/stale). Report it instead of duplicating.
+                dash = _ensure_dashboard(
+                    no_dashboard=no_dashboard, json_output=json_output
+                )
                 if json_output:
                     click.echo(
                         json.dumps(
@@ -602,6 +678,7 @@ def start_command(
                                 "status": "already_running",
                                 "base_url": e.base_url,
                                 "project_root": str(project_root),
+                                **_dashboard_json(dash),
                             }
                         )
                     )
@@ -615,6 +692,7 @@ def start_command(
                             border_style="yellow",
                         )
                     )
+                    _print_dashboard(dash)
                 return
             except RuntimeError as e:
                 stderr_log = state_dir / "logs" / "server.err"
@@ -638,6 +716,7 @@ def start_command(
             stdout_log = runtime_state.get(
                 "log_file", str(state_dir / "logs" / "server.log")
             )
+            dash = _ensure_dashboard(no_dashboard=no_dashboard, json_output=json_output)
             if json_output:
                 click.echo(
                     json.dumps(
@@ -647,6 +726,7 @@ def start_command(
                             "pid": pid,
                             "project_root": str(project_root),
                             "log_file": stdout_log,
+                            **_dashboard_json(dash),
                         },
                         indent=2,
                     )
@@ -668,6 +748,7 @@ def start_command(
                     f"  - Query: [bold]brainpalace query 'search term' "
                     f"--url {base_url}[/]"
                 )
+                _print_dashboard(dash)
                 console.print("  - Stop: [bold]brainpalace stop[/]")
 
     except PermissionError as e:

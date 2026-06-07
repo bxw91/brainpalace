@@ -15,6 +15,7 @@ from brainpalace_cli import config_schema as cs
 from brainpalace_dashboard.ui_schema import (
     DASHBOARD_HIDDEN_FIELDS,
     OVERRIDES,
+    SESSION_ARCHIVE_FIELDS,
     build_ui_schema,
 )
 
@@ -44,6 +45,10 @@ def _all_schema_dotpaths() -> set[str]:
                 # nested group; expand to leaves
                 for pg in cs.POSTGRES_KNOWN_FIELDS:
                     paths.add(f"storage.postgres.{pg}")
+            elif sec == "session_indexing" and f == "archive":
+                # nested group (SessionArchiveConfig); expand to leaves
+                for a in SESSION_ARCHIVE_FIELDS:
+                    paths.add(f"session_indexing.archive.{a}")
             else:
                 paths.add(f"{sec}.{f}")
     return paths
@@ -78,9 +83,13 @@ def test_every_config_field_surfaced_or_hidden() -> None:
 
 
 def test_no_stale_overrides() -> None:
-    valid = _all_schema_dotpaths() | {"storage.postgres"}
+    valid = _all_schema_dotpaths() | {"storage.postgres", "session_indexing.archive"}
     stale = {
-        k for k in OVERRIDES if k not in valid and not k.startswith("storage.postgres.")
+        k
+        for k in OVERRIDES
+        if k not in valid
+        and not k.startswith("storage.postgres.")
+        and not k.startswith("session_indexing.archive.")
     }
     assert not stale, f"OVERRIDES reference unknown config fields: {sorted(stale)}"
 

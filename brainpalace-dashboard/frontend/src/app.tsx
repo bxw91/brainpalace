@@ -103,7 +103,7 @@ function ShellInner({ children }: { children: ReactNode }) {
       className="grid min-h-screen grid-cols-[16rem_1fr]"
     >
       {/* Left rail */}
-      <aside className="flex flex-col border-r border-line bg-ink-800/50 backdrop-blur-sm">
+      <aside className="flex flex-col border-r border-line bg-ink-800/80">
         <div className="flex items-center gap-2.5 px-4 py-5">
           <span className="grid h-9 w-9 place-items-center rounded-xl bg-accent/15 text-accent ring-1 ring-inset ring-accent/30">
             <BrainCircuit className="h-5 w-5" aria-hidden="true" />

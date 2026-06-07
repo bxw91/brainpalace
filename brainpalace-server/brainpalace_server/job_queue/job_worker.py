@@ -566,13 +566,24 @@ class JobWorker:
                 evicted_chunks = eviction.get("chunks_evicted", 0)
                 files_deleted = eviction.get("files_deleted", []) or []
                 files_changed = eviction.get("files_changed", []) or []
-                if evicted_chunks > 0 or files_deleted or files_changed:
+                files_deferred = eviction.get("files_deferred", []) or []
+                if (
+                    evicted_chunks > 0
+                    or files_deleted
+                    or files_changed
+                    or files_deferred
+                ):
                     logger.info(
                         f"Eviction-only/incremental run for job {job.id}: "
                         f"{evicted_chunks} chunks evicted, "
                         f"-{len(files_deleted)} deleted "
                         f"~{len(files_changed)} changed "
-                        f"(before={count_before}, after={count_after})"
+                        + (
+                            f"!{len(files_deferred)} deferred (re-embed cooldown) "
+                            if files_deferred
+                            else ""
+                        )
+                        + f"(before={count_before}, after={count_after})"
                     )
                     return True
                 if eviction.get("chunks_to_create", -1) == 0:

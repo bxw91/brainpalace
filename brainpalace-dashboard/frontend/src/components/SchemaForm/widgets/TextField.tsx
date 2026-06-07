@@ -5,6 +5,7 @@ export function TextField({
   value,
   onChange,
   secret = false,
+  hasValue = false,
   placeholder,
   presets,
 }: {
@@ -12,6 +13,8 @@ export function TextField({
   value: string;
   onChange: (v: string) => void;
   secret?: boolean;
+  /** Whether a (secret) value is actually set — controls the masking dots. */
+  hasValue?: boolean;
   placeholder?: string;
   presets?: string[];
 }) {
@@ -97,7 +100,10 @@ export function TextField({
       data-testid={`text-${dotpath}`}
       type={secret ? "password" : "text"}
       value={value}
-      placeholder={secret ? placeholder ?? "••••••••" : placeholder}
+      placeholder={
+        // Masking dots ONLY when a secret is actually set; empty otherwise (#3).
+        secret && hasValue ? placeholder ?? "••••••••" : placeholder
+      }
       autoComplete={secret ? "off" : undefined}
       onChange={(e) => onChange(e.target.value)}
       className="w-full max-w-md rounded-lg border border-line bg-ink-900/50 px-3 py-2 text-sm text-fg outline-none transition-colors placeholder:text-fg-faint focus:border-accent/50 focus:ring-2 focus:ring-accent/30"
