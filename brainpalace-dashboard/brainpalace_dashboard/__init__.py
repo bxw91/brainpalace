@@ -1,3 +1,3 @@
 """BrainPalace control-plane dashboard."""
 
-__version__ = "26.6.27"
+__version__ = "26.6.28"

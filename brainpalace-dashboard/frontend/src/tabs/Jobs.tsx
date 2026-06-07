@@ -4,6 +4,7 @@ import { Ban } from "lucide-react";
 import { getJobs, cancelJob } from "../api/client";
 import type { JobRow } from "../api/types";
 import { DataTable, type Column } from "../components/DataTable";
+import { JobDrawer } from "../components/JobDrawer";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { isJobActive } from "../components/JobProgress";
 import { useToast } from "../components/Toast";
@@ -37,6 +38,7 @@ export function Jobs({ instanceId }: { instanceId?: string }) {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [cancelTarget, setCancelTarget] = useState<string | null>(null);
+  const [openJobId, setOpenJobId] = useState<string | null>(null);
 
   const jobsQ = useQuery({
     queryKey: ["jobs", id],
@@ -137,12 +139,6 @@ export function Jobs({ instanceId }: { instanceId?: string }) {
       sortValue: (j) => j.started_at ?? "",
     },
     {
-      key: "finished",
-      header: "Finished",
-      cell: (j) => <span className="text-xs text-fg-muted">{fmtTime(j.finished_at)}</span>,
-      sortValue: (j) => j.finished_at ?? "",
-    },
-    {
       key: "error",
       header: "Error",
       cell: (j) =>
@@ -178,15 +174,19 @@ export function Jobs({ instanceId }: { instanceId?: string }) {
         columns={columns}
         rowKey={(j) => j.id}
         rowTestId={(j) => `job-row-${j.id}`}
+        onRowClick={(j) => setOpenJobId(j.id)}
         empty="No indexing jobs yet."
         trailing={{
-          header: "",
+          header: "Actions",
           cell: (j) =>
             isJobActive(j) ? (
               <button
                 type="button"
                 data-testid={`btn-cancel-${j.id}`}
-                onClick={() => setCancelTarget(j.id)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setCancelTarget(j.id);
+                }}
                 className="btn-danger btn-sm"
               >
                 <Ban className="h-3.5 w-3.5" aria-hidden="true" /> Cancel
@@ -212,6 +212,8 @@ export function Jobs({ instanceId }: { instanceId?: string }) {
         onConfirm={() => cancelTarget && cancelM.mutate(cancelTarget)}
         onCancel={() => setCancelTarget(null)}
       />
+
+      <JobDrawer instanceId={id} jobId={openJobId} onClose={() => setOpenJobId(null)} />
     </div>
   );
 }

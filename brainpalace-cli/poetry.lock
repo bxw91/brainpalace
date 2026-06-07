@@ -520,46 +520,44 @@ name = "brainpalace-rag"
 version = "26.6.27"
 description = "BrainPalace RAG - Intelligent document indexing and semantic search server that gives AI agents long-term memory"
 optional = false
-python-versions = "^3.10"
+python-versions = "<4.0,>=3.10"
 groups = ["main"]
-files = []
-develop = false
+files = [
+    {file = "brainpalace_rag-26.6.27-py3-none-any.whl", hash = "sha256:68aa2b79bd6964d8abb400a275b18a9763b45ca68394e76dfa9025ad406479b7"},
+    {file = "brainpalace_rag-26.6.27.tar.gz", hash = "sha256:f2934baa37220bc21e6809d71c7562876c0a1cfc2677c3b42ac683f0b39d85ac"},
+]
 
 [package.dependencies]
-anthropic = "^0.40.0"
-bm25s = "^0.2.14"
+anthropic = ">=0.40.0,<0.41.0"
+bm25s = ">=0.2.14,<0.3.0"
 cachetools = ">=5.3"
-chromadb = "^0.5.0"
-click = "^8.1.0"
-cohere = "^5.0.0"
-fastapi = "^0.115.0"
-google-genai = "^1.0.0"
-llama-index-core = "^0.14.0"
-llama-index-embeddings-openai = "^0.5.0"
-llama-index-llms-openai = "^0.6.12"
-llama-index-readers-file = "^0.5.0"
-openai = "^1.57.0"
-pathspec = "^0.12.0"
-py3langid = "^0.3.0"
-pydantic = "^2.10.0"
-pydantic-settings = "^2.6.0"
-PyStemmer = "^2.2.0"
-python-dotenv = "^1.0.0"
-pyyaml = "^6.0.0"
-sentence-transformers = "^3.4.0"
-stopwordsiso = "^0.6.1"
-tiktoken = "^0.8.0"
-tree-sitter-language-pack = "^0.7.3"
-uvicorn = {version = "^0.32.0", extras = ["standard"]}
+chromadb = ">=0.5.0,<0.6.0"
+click = ">=8.1.0,<9.0.0"
+cohere = ">=5.0.0,<6.0.0"
+fastapi = ">=0.115.0,<0.116.0"
+google-genai = ">=1.0.0,<2.0.0"
+llama-index-core = ">=0.14.0,<0.15.0"
+llama-index-embeddings-openai = ">=0.5.0,<0.6.0"
+llama-index-llms-openai = ">=0.6.12,<0.7.0"
+llama-index-readers-file = ">=0.5.0,<0.6.0"
+openai = ">=1.57.0,<2.0.0"
+pathspec = ">=0.12.0,<0.13.0"
+py3langid = ">=0.3.0,<0.4.0"
+pydantic = ">=2.10.0,<3.0.0"
+pydantic-settings = ">=2.6.0,<3.0.0"
+PyStemmer = ">=2.2.0,<3.0.0"
+python-dotenv = ">=1.0.0,<2.0.0"
+pyyaml = ">=6.0.0,<7.0.0"
+sentence-transformers = ">=3.4.0,<4.0.0"
+stopwordsiso = ">=0.6.1,<0.7.0"
+tiktoken = ">=0.8.0,<0.9.0"
+tree-sitter-language-pack = ">=0.7.3,<0.8.0"
+uvicorn = {version = ">=0.32.0,<0.33.0", extras = ["standard"]}
 
 [package.extras]
 graphrag = ["langextract (>=1.0.0,<2.0.0)"]
 lemma-hr = ["simplemma (>=1.2,<2.0)"]
 postgres = ["asyncpg (>=0.29.0,<0.30.0)", "sqlalchemy[asyncio] (>=2.0.0,<3.0.0)"]
-
-[package.source]
-type = "directory"
-url = "../brainpalace-server"
 
 [[package]]
 name = "build"
@@ -7683,4 +7681,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.10"
-content-hash = "38ddf78b1fac06868ad877bda4839b6244daa1ef2a39fab8e362e25ac77b8513"
+content-hash = "9edef7110586d49f7e5290f2f20ecf1fa25311376b9df90cc2217c962cb64379"

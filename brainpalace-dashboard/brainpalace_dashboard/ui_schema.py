@@ -215,7 +215,7 @@ OVERRIDES: dict[str, dict[str, Any]] = {
         "label": "Auto-detect min confidence",
         "help": "Below this confidence, a document falls back to the default "
         "language. Only used when auto-detect is on. Default: 0.6.",
-        "visible_when": {"field": "bm25.detect", "equals": True},
+        "visible_when": {"field": "bm25.detect", "equals": "true"},
     },
     "session_indexing.sessions_dir": {
         "label": "Transcript source dir (override)",

@@ -6,6 +6,7 @@ import {
   type EffectiveConfig,
   type FoldersPayload,
   type JobsPayload,
+  type JobDetail,
   type CachePayload,
   type MemoriesPayload,
   type QueryRow,
@@ -168,6 +169,18 @@ export type DashboardSettings = {
 export const getSettings = (): Promise<DashboardSettings> =>
   getData<DashboardSettings>("/settings");
 
+/** PyPI update status driving the "new version" banner. */
+export type UpdateStatus = {
+  current: string;
+  latest: string | null;
+  update_available: boolean;
+  package: string;
+  checked_at: number;
+};
+
+export const getUpdateCheck = (): Promise<UpdateStatus> =>
+  getData<UpdateStatus>("/settings/update-check");
+
 export async function patchSettings(values: {
   host?: string;
   port?: number;
@@ -257,6 +270,8 @@ export const getFolders = (id: string) =>
   getData<FoldersPayload>(`/instances/${id}/folders`);
 export const getJobs = (id: string) =>
   getData<JobsPayload>(`/instances/${id}/jobs`);
+export const getJobDetail = (id: string, jobId: string) =>
+  getData<JobDetail>(`/instances/${id}/jobs/${jobId}`);
 export const getCache = (id: string) =>
   getData<CachePayload>(`/instances/${id}/cache`);
 export const getMemories = (id: string) =>

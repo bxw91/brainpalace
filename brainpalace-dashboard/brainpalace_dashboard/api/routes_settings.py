@@ -22,6 +22,7 @@ from brainpalace_dashboard.config import (
     save_dashboard_config,
 )
 from brainpalace_dashboard.server import read_dashboard_runtime
+from brainpalace_dashboard.services.update_check import get_update_status
 
 router = APIRouter(prefix="/dashboard/api/settings", tags=["settings"])
 
@@ -49,6 +50,16 @@ def get_settings() -> dict[str, Any]:
             "base_url": runtime.get("base_url"),
         },
     }
+
+
+@router.get("/update-check")
+async def update_check(force: bool = False) -> dict[str, Any]:
+    """Latest published version vs installed — drives the SPA "update" banner.
+
+    Best-effort and cached (6h TTL); a network failure returns
+    ``update_available: False`` rather than erroring.
+    """
+    return await get_update_status(force=force)
 
 
 class SettingsPatch(BaseModel):

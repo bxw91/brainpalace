@@ -4,6 +4,7 @@ import { Link, useRouterState, useNavigate } from "@tanstack/react-router";
 import { BrainCircuit, AlertCircle } from "lucide-react";
 import { listInstances } from "./api/client";
 import { Sidebar } from "./components/Sidebar";
+import { UpdateBanner } from "./components/UpdateBanner";
 import { ToastProvider } from "./components/Toast";
 import {
   SelectedInstanceProvider,
@@ -166,6 +167,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <ToastProvider>
       <SelectedInstanceProvider instances={instances}>
+        <UpdateBanner />
         {isError && (
           <div
             data-testid="fleet-error"

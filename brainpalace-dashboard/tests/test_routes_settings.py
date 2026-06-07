@@ -85,3 +85,41 @@ def test_patch_rejects_bad_port(tmp_path, monkeypatch):
     r = c.patch("/dashboard/api/settings", json={"port": 70000})
     assert r.status_code == 422
     assert any(e["field"] == "port" for e in r.json()["errors"])
+
+
+def test_update_check_reports_newer(tmp_path, monkeypatch):
+    from brainpalace_dashboard.services import update_check
+
+    # Force a fresh check and stub out PyPI + the installed version.
+    update_check._cache = None
+    monkeypatch.setattr(update_check, "_installed_version", lambda: "26.6.27")
+
+    async def _fake_latest() -> str:
+        return "26.7.0"
+
+    monkeypatch.setattr(update_check, "_fetch_latest", _fake_latest)
+
+    c = _client(tmp_path, monkeypatch)
+    body = c.get("/dashboard/api/settings/update-check?force=true").json()
+    assert body["current"] == "26.6.27"
+    assert body["latest"] == "26.7.0"
+    assert body["update_available"] is True
+
+
+def test_update_check_silent_on_fetch_failure(tmp_path, monkeypatch):
+    from brainpalace_dashboard.services import update_check
+
+    update_check._cache = None
+    monkeypatch.setattr(update_check, "_installed_version", lambda: "26.6.27")
+
+    async def _fail() -> None:
+        return None  # network/parse failure path
+
+    monkeypatch.setattr(update_check, "_fetch_latest", _fail)
+
+    c = _client(tmp_path, monkeypatch)
+    r = c.get("/dashboard/api/settings/update-check?force=true")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["latest"] is None
+    assert body["update_available"] is False

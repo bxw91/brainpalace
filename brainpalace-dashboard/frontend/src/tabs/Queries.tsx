@@ -89,7 +89,7 @@ export function Queries({ instanceId }: { instanceId?: string }) {
   const { toast } = useToast();
 
   const [mode, setMode] = useState<string>("all");
-  const [range, setRange] = useState<RangeKey>("7d");
+  const [range, setRange] = useState<RangeKey>("24h");
   const [contains, setContains] = useState("");
   const [openQid, setOpenQid] = useState<string | null>(null);
 

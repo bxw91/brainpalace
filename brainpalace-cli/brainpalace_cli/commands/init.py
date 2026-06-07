@@ -694,6 +694,60 @@ def _run_subcommand(
     }
 
 
+def _dashboard_from_steps(
+    post_init_steps: list[dict[str, object]],
+) -> dict[str, object] | None:
+    """Extract the dashboard info the start step reported (base_url/started).
+
+    `init --start` runs `start --json` as a subprocess, so the dashboard URL is
+    buried in that step's captured stdout. Pull it back out so init can surface a
+    clickable URL and open a browser — `start --json` does neither itself.
+    """
+    for step in post_init_steps:
+        if step.get("step") != "start" or step.get("status") != "ok":
+            continue
+        raw = step.get("stdout")
+        if not isinstance(raw, str) or not raw:
+            return None
+        try:
+            payload = json.loads(raw)
+        except (ValueError, TypeError):
+            return None
+        dash = payload.get("dashboard")
+        if isinstance(dash, dict) and dash.get("base_url"):
+            return dash
+    return None
+
+
+def _print_and_open_dashboard(
+    post_init_steps: list[dict[str, object]],
+) -> None:
+    """Print a prominent, clickable dashboard URL and open it in a browser.
+
+    The browser is opened only on an interactive terminal (never under CI or a
+    piped stdout). Best-effort — a browser failure must not break init output.
+    """
+    dash = _dashboard_from_steps(post_init_steps)
+    if not dash:
+        return
+    url = dash["base_url"]
+    verb = "started" if dash.get("started") else "running"
+    console.print(
+        Panel(
+            f"[bold][link={url}]{url}[/link][/]",
+            title=f"Web Dashboard ({verb})",
+            border_style="hot_pink",
+        )
+    )
+    if sys.stdout.isatty():
+        import webbrowser  # noqa: PLC0415
+
+        try:
+            webbrowser.open(str(url))
+        except Exception:
+            pass  # best-effort; URL is already printed above
+
+
 def _emit_init_result(
     *,
     project_root: Path,
@@ -722,6 +776,7 @@ def _emit_init_result(
                     "gitignore_updated": gitignore_added,
                     "config": config,
                     "post_init_steps": post_init_steps,
+                    "dashboard": _dashboard_from_steps(post_init_steps),
                 },
                 indent=2,
             )
@@ -738,6 +793,10 @@ def _emit_init_result(
             border_style="green",
         )
     )
+
+    # Surface the web dashboard URL prominently and open it — `start --json`
+    # (run as a subprocess by init) suppresses both, so init must do it here.
+    _print_and_open_dashboard(post_init_steps)
 
     started_ok = any(
         s.get("step") == "start" and s.get("status") == "ok" for s in post_init_steps
@@ -1220,7 +1279,7 @@ def init_command(
                     "  Makes past chats searchable by topic. Reads full transcripts; "
                     "writes\n  BRAINPALACE_DECISIONS.md. Disable later: --no-extract."
                 )
-                extract_ans = click.confirm("Summarize chat sessions?", default=True)
+                extract_ans = click.confirm("Summarize chat sessions?", default=False)
 
             sessions_ans: bool = bool(plan.sessions)
             if enable_sessions is None:
@@ -1248,13 +1307,12 @@ def init_command(
                 console.print(
                     "\n[bold]Index git commit history?[/] "
                     "(make past commits searchable: message + changed-file list)\n"
-                    "  [yellow]Off by default[/] — commit diffs/messages can "
-                    "contain secrets, so this is opt-in.\n"
-                    "  Nothing is copied; chunks reference the commit sha. "
-                    "Enable later: --git-history."
+                    "  [yellow]Note:[/] commit diffs/messages can contain secrets. "
+                    "Nothing is copied;\n  chunks reference the commit sha. "
+                    "Disable later: --no-git-history."
                 )
                 git_history_ans = click.confirm(
-                    "Index git commit history?", default=False
+                    "Index git commit history?", default=True
                 )
                 if git_history_ans:
                     console.print(
@@ -1264,7 +1322,7 @@ def init_command(
                     )
                     git_depth = click.prompt(
                         "How many commits back to index? (0 = unlimited)",
-                        default=0,
+                        default=5000,
                         type=int,
                     )
 

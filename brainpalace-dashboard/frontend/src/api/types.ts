@@ -169,6 +169,37 @@ export type JobRow = {
 };
 export type JobsPayload = { jobs: JobRow[] };
 
+/** Per-job progress counters (server `JobProgress`). */
+export type JobProgress = {
+  files_processed: number;
+  files_total: number;
+  chunks_created: number;
+  current_file: string;
+  percent_complete: number;
+};
+
+/** Full job detail (server `/index/jobs/{job_id}`) — "what the job did". */
+export type JobDetail = {
+  id: string;
+  status: string;
+  folder_path: string;
+  operation: string;
+  include_code: boolean;
+  source: string;
+  enqueued_at: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  execution_time_ms: number | null;
+  progress: JobProgress | null;
+  progress_percent: number;
+  total_documents: number;
+  total_chunks: number;
+  error: string | null;
+  retry_count: number;
+  cancel_requested: boolean;
+  eviction_summary: Record<string, number> | null;
+};
+
 /** Embedding-cache stats (server `/index/cache/`). */
 export type CachePayload = {
   hits: number;

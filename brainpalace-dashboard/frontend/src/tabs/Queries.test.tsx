@@ -81,13 +81,14 @@ describe("Queries tab", () => {
     expect(screen.getByText("embedding cache eviction")).toBeInTheDocument();
   });
 
-  it("default range spans at least 2 days", async () => {
+  it("default range is 24h", async () => {
     wrap(<Queries instanceId="a" />);
     await screen.findByText("how does the proxy work");
     const sinceArg = vi.mocked(client.getQueries).mock.calls[0][1]?.since;
     expect(sinceArg).toBeDefined();
     const ageDays = (now - (sinceArg as number)) / 86400;
-    expect(ageDays).toBeGreaterThanOrEqual(2);
+    expect(ageDays).toBeGreaterThanOrEqual(0.9);
+    expect(ageDays).toBeLessThanOrEqual(1.1);
   });
 
   it("mode filter re-queries with {mode}", async () => {

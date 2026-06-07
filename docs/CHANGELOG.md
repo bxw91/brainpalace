@@ -14,6 +14,34 @@ month (the counter resets monthly). It looks like SemVer but is not.
 
 ## [Unreleased]
 
+## [26.6.28] - 2026-06-07
+
+### Added
+- **Dashboard update notification.** The control plane now shows a top-of-app
+  banner when a newer `brainpalace-cli` is published on PyPI — *"BrainPalace X is
+  available … run `brainpalace update`"*. New best-effort endpoint
+  `GET /dashboard/api/settings/update-check` (6h in-process TTL; degrades silently
+  to `update_available: false` on any network/parse failure) backed by
+  `services/update_check.py`. No new config; the banner is informational only and
+  performs no automatic upgrade.
+- **Dashboard job detail.** Jobs-tab rows are now clickable and open a drawer
+  showing what each job did — documents/chunks indexed, duration, files
+  processed, and the manifest eviction (added/changed/deleted) breakdown — via
+  the existing `/index/jobs/{job_id}` endpoint (previously unused by the SPA).
+
+### Changed
+- **`brainpalace init` surfaces the dashboard URL.** `init --start` ran the
+  server start as a `start --json` subprocess, which suppressed both the browser
+  open and the URL print. Init now extracts the dashboard URL from that step and
+  shows it in a pink-bordered panel (opening a browser when interactive).
+- **`brainpalace init` prompt defaults.** Enter-defaults are now: summarize chat
+  sessions = **N**, index git commit history = **Y**, commits-back-to-index =
+  **5000**.
+- **Dashboard config pages load again.** `ui_schema` had `visible_when.equals`
+  as a boolean for `bm25.detect`; the SPA schema requires a string, which broke
+  `/dashboard/config` and `/dashboard/global-config` with a zod `invalid_type`.
+- **Dashboard queries default window** is now **24h** (was 7d).
+
 ## [26.6.27] - 2026-06-07
 
 ### Changed
