@@ -149,13 +149,13 @@ CI / no-TTY, step-by-step manual install, low-level `install.sh` flags,
 install for other AI runtimes (Codex, OpenCode, Gemini CLI), Windows / WSL2
 notes — all in [`docs/INSTALL.md`](docs/INSTALL.md).
 
-### Web dashboard (optional)
+### Web dashboard
 
-Manage every BrainPalace project server from one browser tab. It ships as the
-optional `dashboard` extra (kept out of the base CLI to stay lean):
+Manage every BrainPalace project server from one browser tab. It's **included
+automatically** with the CLI on **Python 3.12+** — no extra to enable (on
+Python 3.10/3.11 it's skipped and the CLI still installs):
 
 ```bash
-pipx install 'brainpalace[dashboard]'
 brainpalace dashboard start          # localhost:8787, opens a browser
 ```
 
@@ -177,7 +177,7 @@ with optional cloud providers for embeddings and summarisation.
 | **CLI** (`brainpalace-cli`) | Click-based command-line client; primary interface for automation, mono-repos, and standalone use |
 | **MCP server** (`brainpalace mcp`) | Opt-in stdio shim for non-Claude-Code AI clients (VS Code / Copilot, Cursor, Kilo Code, Cline, Continue, Zed) |
 | **Claude Code plugin** | 30 slash commands, 3 agents, 2 skills for Claude Code users |
-| **Web dashboard** (`brainpalace dashboard`) | Standalone browser control plane — manage every project server from one tab (instances, config, stats, jobs, cache, graph, sessions, logs, query history). Optional `dashboard` extra. See [DASHBOARD](docs/DASHBOARD.md) |
+| **Web dashboard** (`brainpalace dashboard`) | Standalone browser control plane — manage every project server from one tab (instances, config, stats, jobs, cache, graph, sessions, logs, query history). Included with the CLI on Python 3.12+. See [DASHBOARD](docs/DASHBOARD.md) |
 
 ## Features
 

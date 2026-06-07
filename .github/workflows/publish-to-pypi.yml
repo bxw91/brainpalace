@@ -83,7 +83,7 @@ jobs:
           # optional dashboard extra would otherwise fail version solving on the
           # not-yet-published brainpalace-dashboard.
           sed -i 's|brainpalace-rag = "^[0-9]*\.[0-9]*\.[0-9]*"|brainpalace-rag = {path = "../brainpalace-server", develop = false}|' pyproject.toml
-          sed -i 's|brainpalace-dashboard = { version = "^[0-9]*\.[0-9]*\.[0-9]*", optional = true, python = ">=3.12" }|brainpalace-dashboard = { path = "../brainpalace-dashboard", develop = false, optional = true, python = ">=3.12" }|' pyproject.toml
+          sed -i 's|brainpalace-dashboard = { version = "^[0-9]*\.[0-9]*\.[0-9]*", python = ">=3.12" }|brainpalace-dashboard = { path = "../brainpalace-dashboard", develop = false, python = ">=3.12" }|' pyproject.toml
           poetry lock
           poetry install
           # Restore PyPI dependencies for consistency

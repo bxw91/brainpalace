@@ -497,10 +497,10 @@ stem = ["PyStemmer"]
 name = "brainpalace-dashboard"
 version = "26.6.26"
 description = "BrainPalace control-plane web dashboard"
-optional = true
+optional = false
 python-versions = "^3.12"
 groups = ["main"]
-markers = "python_version >= \"3.12\" and extra == \"dashboard\""
+markers = "python_version >= \"3.12\""
 files = []
 develop = true
 
@@ -7680,10 +7680,7 @@ enabler = ["pytest-enabler (>=2.2)"]
 test = ["big-O", "jaraco.functools", "jaraco.itertools", "jaraco.test", "more_itertools", "pytest (>=6,!=8.1.*)", "pytest-ignore-flaky"]
 type = ["pytest-mypy"]
 
-[extras]
-dashboard = ["brainpalace-dashboard"]
-
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.10"
-content-hash = "059c79fee890c9d7d77e26102c077afb39e7fc6810ca0b334449bf5045ea3249"
+content-hash = "38ddf78b1fac06868ad877bda4839b6244daa1ef2a39fab8e362e25ac77b8513"

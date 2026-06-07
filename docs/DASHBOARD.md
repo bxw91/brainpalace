@@ -186,16 +186,18 @@ detail — not N independent polling loops.
 
 ## Installation
 
-The dashboard ships as the **optional `dashboard` extra** of the CLI, so the base
-CLI stays lean:
+The dashboard is **included with the CLI automatically on Python 3.12+** — there
+is no extra to enable. The dependency carries a `python >= 3.12` marker, so on
+Python 3.10/3.11 it's simply skipped and the CLI still installs:
 
 ```bash
-pipx install "brainpalace[dashboard]"
+pipx install brainpalace          # dashboard comes along on Python 3.12+
 ```
 
 In a monorepo source checkout, `task install` installs the dashboard into the CLI
 environment automatically. The `brainpalace dashboard` command imports the
-dashboard package lazily and prints a friendly install hint if it isn't present.
+dashboard package lazily and prints a friendly install hint on the older
+interpreters where it isn't present.
 
 ---
 

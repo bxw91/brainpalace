@@ -15,17 +15,20 @@ month (the counter resets monthly). It looks like SemVer but is not.
 ## [26.6.26] - 2026-06-07
 
 The **web dashboard** lands — a standalone browser control plane for every
-BrainPalace project server — and now ships on PyPI as the `dashboard` extra.
+BrainPalace project server — published to PyPI and **included with the CLI
+automatically on Python 3.12+**.
 
 ### Packaging
-- **`brainpalace-dashboard` is now published to PyPI.** The control-plane
-  dashboard is a third lockstep package (with `brainpalace-rag` and
-  `brainpalace-cli`, same CalVer). `pipx install brainpalace[dashboard]` now
-  resolves it from PyPI. The release workflow gained a `publish-dashboard` job
-  (published after the cli via its own OIDC Trusted Publisher) and the
-  tag/version guard now covers all three `pyproject.toml` versions. The
-  dashboard's source-only `brainpalace-cli` path dependency is swapped to the
-  released version at build time.
+- **`brainpalace-dashboard` is now published to PyPI and bundled with the CLI.**
+  The control-plane dashboard is a third lockstep package (with `brainpalace-rag`
+  and `brainpalace-cli`, same CalVer). It is a **regular CLI dependency carrying a
+  `python >= 3.12` marker** — so `pipx install brainpalace` pulls it in
+  automatically on Python 3.12+, and on Python 3.10/3.11 it's simply skipped (the
+  CLI still installs). It is **not** an opt-in extra. The release workflow gained
+  a `publish-dashboard` job (published after the cli via its own OIDC Trusted
+  Publisher) and the tag/version guard now covers all three `pyproject.toml`
+  versions. The dashboard's source-only `brainpalace-cli` path dependency is
+  swapped to the released version at build time.
 
 ### Changed
 - **Reranking is now ON by default and config-controllable.** Two-stage
@@ -100,8 +103,8 @@ BrainPalace project server — and now ships on PyPI as the `dashboard` extra.
   (host/port/poll_s/token); an optional bearer token
   (`BRAINPALACE_DASHBOARD_TOKEN` or `dashboard.token`) guards
   `/dashboard/api/**` for shared machines (localhost is unguarded by default).
-  Shipped as the optional `dashboard` extra of the CLI
-  (`pipx install brainpalace[dashboard]`); imported lazily with a friendly
+  Included with the CLI automatically on Python 3.12+ (regular dependency with a
+  `python >= 3.12` marker, skipped on 3.10/3.11); imported lazily with a friendly
   install hint when absent. The dashboard is CLI-launched, not an MCP surface.
   See [DASHBOARD](DASHBOARD.md).
 - **Server query history (SQLite) + dashboard Queries tab.** Every successful

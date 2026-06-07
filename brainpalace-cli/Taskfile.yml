@@ -27,22 +27,23 @@ tasks:
   # ===================
 
   install:
-    desc: Install project dependencies (incl. the optional dashboard extra)
+    desc: Install project dependencies (incl. the dashboard on Python 3.12+)
     cmds:
     - |
       # Monorepo: brainpalace-rag and brainpalace-dashboard may not be on PyPI
-      # yet during development. Temporarily switch to path dependencies for
-      # resolution, install with the `dashboard` extra so the control-plane
-      # dashboard is available to `brainpalace dashboard`, then restore the
-      # committed (PyPI-version) pyproject.toml. The dashboard path dep is
-      # marked develop=true; the resulting cycle (dashboard -> cli) is handled
-      # fine by Poetry for path dependencies.
-      if ! {{.POETRY}} install --extras dashboard 2>/dev/null; then
+      # yet during development. The dashboard is a regular dependency (python
+      # >= 3.12 marker), so a plain install pulls it in on 3.12+. If resolution
+      # fails because the siblings aren't published, temporarily switch them to
+      # path dependencies, re-lock, install, then restore the committed
+      # (PyPI-version) pyproject.toml. The dashboard path dep is marked
+      # develop=true; the resulting cycle (dashboard -> cli) is handled fine by
+      # Poetry for path dependencies.
+      if ! {{.POETRY}} install 2>/dev/null; then
         cp pyproject.toml pyproject.toml.bak
         perl -pi -e 's|brainpalace-rag = "\^[0-9]+\.[0-9]+\.[0-9]+"|brainpalace-rag = {path = "../brainpalace-server", develop = false}|' pyproject.toml
-        perl -pi -e 's|brainpalace-dashboard = \{ version = "\^[0-9]+\.[0-9]+\.[0-9]+", optional = true, python = ">=3.12" \}|brainpalace-dashboard = {path = "../brainpalace-dashboard", develop = true, optional = true, python = ">=3.12"}|' pyproject.toml
+        perl -pi -e 's|brainpalace-dashboard = \{ version = "\^[0-9]+\.[0-9]+\.[0-9]+", python = ">=3.12" \}|brainpalace-dashboard = {path = "../brainpalace-dashboard", develop = true, python = ">=3.12"}|' pyproject.toml
         {{.POETRY}} lock
-        {{.POETRY}} install --extras dashboard
+        {{.POETRY}} install
         mv pyproject.toml.bak pyproject.toml
       fi
 

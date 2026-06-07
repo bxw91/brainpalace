@@ -21,7 +21,9 @@ console = Console()
 
 _INSTALL_HINT = (
     "The dashboard package is not installed.\n"
-    "Install it with:\n"
+    "It ships with the CLI automatically on Python 3.12+, so this usually means "
+    "you're on Python 3.10/3.11.\n"
+    "On Python 3.12+ install it with:\n"
     "  pip install brainpalace-dashboard\n"
     "(or, in a source checkout: cd brainpalace-dashboard && poetry install)"
 )

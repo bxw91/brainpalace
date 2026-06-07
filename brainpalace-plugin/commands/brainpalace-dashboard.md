@@ -148,10 +148,10 @@ CLI-launched and is **not** an MCP surface.
 
 ## Installation note
 
-The dashboard ships as the optional `dashboard` extra of the CLI
-(`pipx install brainpalace[dashboard]`). If it isn't installed, the command
-prints a friendly install hint. In a source checkout, `task install` installs it
-automatically.
+The dashboard is included with the CLI automatically on **Python 3.12+** (it
+carries a `python >= 3.12` marker, so it's skipped on 3.10/3.11 — the CLI still
+installs). If it isn't present, the command prints a friendly install hint. In a
+source checkout, `task install` installs it automatically.
 
 ## Related Commands
 
