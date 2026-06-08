@@ -148,7 +148,7 @@ class TestConfigWizard:
             config_file = Path(".brainpalace") / "config.yaml"
             config = yaml.safe_load(config_file.read_text(encoding="utf-8"))
             assert config["graphrag"]["enabled"] is True
-            assert config["graphrag"]["store_type"] == "simple"
+            assert config["graphrag"]["store_type"] == "sqlite"
             assert config["graphrag"]["use_code_metadata"] is True
             assert config["graphrag"]["doc_extractor"] == "langextract"
 

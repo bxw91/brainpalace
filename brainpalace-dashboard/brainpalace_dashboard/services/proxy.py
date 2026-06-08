@@ -74,3 +74,32 @@ class ProxyService:
         if resp.headers.get("content-type", "").startswith("application/json"):
             return resp.json()
         return {"raw": resp.text}
+
+    async def fetch_fingerprint(self, id_: str) -> dict[str, Any] | None:
+        """GET the project server's index fingerprint; None if unreachable."""
+        try:
+            result: dict[str, Any] = await self.request(
+                id_, "GET", "/index/fingerprint"
+            )
+            return result
+        except UpstreamError:
+            return None
+
+    async def trigger_full_reindex(self, id_: str) -> int:
+        """Force a reindex of every known folder. Returns folders triggered."""
+        listing = await self.request(id_, "GET", "/index/folders/")
+        folders = listing.get("folders", []) if isinstance(listing, dict) else []
+        count = 0
+        for folder in folders:
+            path = folder.get("folder_path") if isinstance(folder, dict) else None
+            if not path:
+                continue
+            await self.request(
+                id_,
+                "POST",
+                "/index/",
+                json={"folder_path": path},
+                params={"force": True},
+            )
+            count += 1
+        return count

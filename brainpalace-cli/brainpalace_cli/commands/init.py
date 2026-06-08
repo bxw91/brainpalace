@@ -731,14 +731,9 @@ def _print_and_open_dashboard(
     if not dash:
         return
     url = dash["base_url"]
-    verb = "started" if dash.get("started") else "running"
-    console.print(
-        Panel(
-            f"[bold][link={url}]{url}[/link][/]",
-            title=f"Web Dashboard ({verb})",
-            border_style="hot_pink",
-        )
-    )
+    from brainpalace_cli.commands._dashboard_url import render_dashboard_url
+
+    render_dashboard_url(dash, console=console)
     if sys.stdout.isatty():
         import webbrowser  # noqa: PLC0415
 

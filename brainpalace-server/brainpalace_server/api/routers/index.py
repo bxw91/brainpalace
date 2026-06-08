@@ -20,6 +20,52 @@ router = APIRouter()
 MAX_QUEUE_LENGTH = settings.BRAINPALACE_MAX_QUEUE
 
 
+@router.get(
+    "/fingerprint",
+    summary="Index data fingerprint",
+    description="Read-only identity of the current index (embedding "
+    "provider/model/dimensions, data presence, storage backend, graph store "
+    "type). Used by the dashboard to guard config changes against existing data.",
+)
+async def index_fingerprint(request: Request) -> dict[str, Any]:
+    """Report what the index currently holds. Best-effort and never raises."""
+    state = request.app.state
+    embedding = None
+    has_data = False
+    chunk_count: int | None = None
+    vector_store = getattr(state, "vector_store", None)
+    if vector_store is not None:
+        try:
+            meta = await vector_store.get_embedding_metadata()
+            if meta:
+                embedding = {
+                    "provider": meta.get("provider"),
+                    "model": meta.get("model"),
+                    "dimensions": meta.get("dimensions"),
+                }
+                has_data = True
+        except Exception as exc:  # noqa: BLE001 — diagnostic endpoint, never 500
+            logger.warning("fingerprint: embedding metadata read failed: %s", exc)
+        try:
+            chunk_count = await vector_store.get_count()
+            if chunk_count and not has_data:
+                has_data = True
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("fingerprint: chunk count read failed: %s", exc)
+
+    storage_backend = getattr(state, "storage_backend_name", None) or getattr(
+        state, "backend_type", None
+    )
+    return {
+        "has_data": has_data,
+        "embedding": embedding,
+        "doc_count": getattr(state, "total_documents", None),
+        "chunk_count": chunk_count,
+        "storage_backend": storage_backend,
+        "graph_store_type": getattr(state, "graph_store_type", None),
+    }
+
+
 async def _handle_dry_run(
     request: Request,
     request_body: IndexRequest,

@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-07
+last_validated: 2026-06-08
 ---
 
 # Web Dashboard
@@ -65,6 +65,23 @@ foreground for debugging.
   dashboard discovers running servers from `registry.json` and keeps a durable
   list of every project it has seen, so **stopped instances stay listed and
   Start-able** even when no server is running.
+
+---
+
+## Server self-registration & heal
+
+Discovery does not depend on *how* a server was launched. Every running project
+server **registers itself**: a request-path middleware learns the real bound
+address from the ASGI socket and writes its own `runtime.json` plus its
+`registry.json` entry off the response path, and a 180-second heartbeat
+re-asserts that registration. So a server started by raw `uvicorn`, an IDE, or
+left orphaned still shows up in the dashboard — no CLI bookkeeping required.
+
+The same heartbeat self-heals the server's in-process dependents: it restarts a
+dead **file watcher** or **job worker** (worker restarts are capped), rebuilds a
+**corrupt vector index** (crash-safe, file-only check), and relaunches the
+**web dashboard** if it is down (locked so multiple project servers launch it
+exactly once). On clean shutdown the server deregisters itself.
 
 ---
 

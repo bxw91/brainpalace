@@ -59,9 +59,10 @@ describe("GlobalConfig tab (Server page)", () => {
     fireEvent.click(await screen.findByTestId("btn-confirm"));
 
     await waitFor(() =>
-      expect(client.patchGlobalConfig).toHaveBeenCalledWith({
-        embedding: { provider: "ollama" },
-      }),
+      expect(client.patchGlobalConfig).toHaveBeenCalledWith(
+        { embedding: { provider: "ollama" } },
+        false,
+      ),
     );
     expect(await screen.findByTestId("toast-success")).toBeInTheDocument();
   });

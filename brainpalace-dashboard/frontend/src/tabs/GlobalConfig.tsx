@@ -4,8 +4,13 @@ import { Globe, RotateCcw } from "lucide-react";
 import { getSchema, getGlobalConfig, patchGlobalConfig } from "../api/client";
 import { SchemaForm } from "../components/SchemaForm/SchemaForm";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { DataConflictDialog } from "../components/DataConflictDialog";
 import { useToast } from "../components/Toast";
-import type { ConfigValues, ConfigErrorEnvelope } from "../api/types";
+import type {
+  ConfigValues,
+  ConfigErrorEnvelope,
+  DataConflictEnvelope,
+} from "../api/types";
 
 function isErrorEnvelope(e: unknown): e is ConfigErrorEnvelope {
   return (
@@ -13,6 +18,14 @@ function isErrorEnvelope(e: unknown): e is ConfigErrorEnvelope {
     typeof e === "object" &&
     "errors" in e &&
     Array.isArray((e as ConfigErrorEnvelope).errors)
+  );
+}
+
+function isConflict(e: unknown): e is DataConflictEnvelope {
+  return (
+    !!e &&
+    typeof e === "object" &&
+    (e as DataConflictEnvelope).conflict === "data_incompatible"
   );
 }
 
@@ -28,6 +41,8 @@ export function GlobalConfig() {
   const qc = useQueryClient();
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [pendingSave, setPendingSave] = useState<ConfigValues | null>(null);
+  const [conflict, setConflict] = useState<DataConflictEnvelope | null>(null);
+  const [lastValues, setLastValues] = useState<ConfigValues | null>(null);
 
   const schemaQ = useQuery({
     queryKey: ["schema"],
@@ -40,13 +55,24 @@ export function GlobalConfig() {
   });
 
   const mutation = useMutation({
-    mutationFn: (values: ConfigValues) => patchGlobalConfig(values),
+    mutationFn: ({
+      values,
+      forceReindex,
+    }: {
+      values: ConfigValues;
+      forceReindex?: boolean;
+    }) => patchGlobalConfig(values, forceReindex ?? false),
     onSuccess: () => {
       setFieldErrors({});
+      setConflict(null);
       toast("Global config saved. Applies to servers on their next start.", "success");
       qc.invalidateQueries({ queryKey: ["global-config"] });
     },
     onError: (err: unknown) => {
+      if (isConflict(err)) {
+        setConflict(err);
+        return;
+      }
       if (isErrorEnvelope(err)) {
         const map: Record<string, string> = {};
         for (const e of err.errors) {
@@ -146,8 +172,21 @@ export function GlobalConfig() {
         busy={mutation.isPending}
         onCancel={() => setPendingSave(null)}
         onConfirm={() => {
-          if (pendingSave) mutation.mutate(pendingSave);
+          if (pendingSave) {
+            setLastValues(pendingSave);
+            mutation.mutate({ values: pendingSave });
+          }
           setPendingSave(null);
+        }}
+      />
+      <DataConflictDialog
+        conflict={conflict}
+        busy={mutation.isPending}
+        onCancel={() => setConflict(null)}
+        onReindex={() => {
+          if (lastValues) {
+            mutation.mutate({ values: lastValues, forceReindex: true });
+          }
         }}
       />
     </div>

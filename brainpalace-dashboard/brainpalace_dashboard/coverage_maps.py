@@ -52,6 +52,10 @@ ENDPOINT_SURFACES: dict[str, str] = {
     "/index/cache/": "Cache (clear)",
     "/index/jobs/": "Jobs (list)",
     "/index/jobs/{job_id}": "Jobs (detail / cancel)",
+    "/index/fingerprint": (
+        "unsurfaced: read-only index identity consumed by the Config save "
+        "data-compatibility guard, not a standalone control"
+    ),
     # --- graph ---
     "/git/reindex": "Graph (rebuild)",
     # --- sessions ---

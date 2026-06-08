@@ -12,6 +12,37 @@ month (the counter resets monthly). It looks like SemVer but is not.
 
 ---
 
+## [26.6.30] - 2026-06-08
+
+### Added
+- Server self-registration: a running server now writes its own `runtime.json` and
+  global `registry.json` entry (learned from the bound socket) regardless of how it
+  was launched, and re-asserts every 180s — fixing servers (orphaned, raw-uvicorn,
+  IDE-launched) being invisible to the dashboard.
+- Server-side self-heal heartbeat: restarts a dead file watcher or job worker,
+  rebuilds a corrupt vector index (crash-safe file-only check), and relaunches the
+  web dashboard if it is down (locked, single-launch).
+- Dashboard config save now guards against data-incompatible changes: editing the
+  embedding provider/model, storage backend, or graph store type while data is
+  indexed is blocked with an explanation and a "Save & reindex now" action
+  (server exposes a read-only `GET /index/fingerprint`).
+- Per-field help across Storage, GraphRAG, Git Indexing, Reranker, and Session
+  Extraction, plus per-section descriptions distinguishing Session Extraction
+  (curated summary) from Session Indexing (raw transcript archive/embedding).
+
+### Changed
+- Single locked writer for `registry.json` (server `registry.py`); CLI
+  `update_registry` now delegates to it (no more lockless writes).
+- One `build_server_command` builds the uvicorn argv for all CLI/MCP launch paths;
+  foreground + MCP no longer hand-copy the spawn block.
+- One `render_dashboard_url` renders the hot_pink dashboard box for
+  `init`/`start`/`dashboard`.
+
+### Fixed
+- `brainpalace config` wizard now defaults graphrag `store_type` to `sqlite`
+  (persistent, temporal) instead of the ephemeral `simple`, matching the server
+  default and the dashboard.
+
 ## [26.6.29] - 2026-06-08
 
 ### Added

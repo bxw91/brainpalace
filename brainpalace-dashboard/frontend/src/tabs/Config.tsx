@@ -4,9 +4,14 @@ import { ServerOff, RotateCcw } from "lucide-react";
 import { getSchema, getConfig, getConfigEffective, patchConfig } from "../api/client";
 import { SchemaForm } from "../components/SchemaForm/SchemaForm";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { DataConflictDialog } from "../components/DataConflictDialog";
 import { useToast } from "../components/Toast";
 import { useOptionalSelectedInstance } from "../state/selectedInstance";
-import type { ConfigValues, ConfigErrorEnvelope } from "../api/types";
+import type {
+  ConfigValues,
+  ConfigErrorEnvelope,
+  DataConflictEnvelope,
+} from "../api/types";
 
 function isErrorEnvelope(e: unknown): e is ConfigErrorEnvelope {
   return (
@@ -14,6 +19,14 @@ function isErrorEnvelope(e: unknown): e is ConfigErrorEnvelope {
     typeof e === "object" &&
     "errors" in e &&
     Array.isArray((e as ConfigErrorEnvelope).errors)
+  );
+}
+
+function isConflict(e: unknown): e is DataConflictEnvelope {
+  return (
+    !!e &&
+    typeof e === "object" &&
+    (e as DataConflictEnvelope).conflict === "data_incompatible"
   );
 }
 
@@ -27,6 +40,8 @@ export function Config({ instanceId }: { instanceId?: string }) {
     values: ConfigValues;
     restart: boolean;
   } | null>(null);
+  const [conflict, setConflict] = useState<DataConflictEnvelope | null>(null);
+  const [lastValues, setLastValues] = useState<ConfigValues | null>(null);
 
   const schemaQ = useQuery({
     queryKey: ["schema"],
@@ -50,16 +65,22 @@ export function Config({ instanceId }: { instanceId?: string }) {
     mutationFn: ({
       values,
       restart,
+      forceReindex,
     }: {
       values: ConfigValues;
       restart: boolean;
-    }) => patchConfig(id!, values, restart),
+      forceReindex?: boolean;
+    }) => patchConfig(id!, values, restart, forceReindex ?? false),
     onSuccess: (res, vars) => {
       setFieldErrors({});
+      setConflict(null);
+      const reindexed = res.reindex_triggered;
       toast(
-        vars.restart && res.restarted
-          ? "Config saved — instance restarted."
-          : "Config saved.",
+        reindexed != null
+          ? `Config saved — reindexing ${reindexed} folder(s).`
+          : vars.restart && res.restarted
+            ? "Config saved — instance restarted."
+            : "Config saved.",
         "success",
       );
       qc.invalidateQueries({ queryKey: ["config", id] });
@@ -67,6 +88,10 @@ export function Config({ instanceId }: { instanceId?: string }) {
       qc.invalidateQueries({ queryKey: ["instances"] });
     },
     onError: (err: unknown) => {
+      if (isConflict(err)) {
+        setConflict(err);
+        return;
+      }
       if (isErrorEnvelope(err)) {
         const map: Record<string, string> = {};
         for (const e of err.errors) {
@@ -173,8 +198,25 @@ export function Config({ instanceId }: { instanceId?: string }) {
         busy={mutation.isPending}
         onCancel={() => setPendingSave(null)}
         onConfirm={() => {
-          if (pendingSave) mutation.mutate(pendingSave);
+          if (pendingSave) {
+            setLastValues(pendingSave.values);
+            mutation.mutate(pendingSave);
+          }
           setPendingSave(null);
+        }}
+      />
+      <DataConflictDialog
+        conflict={conflict}
+        busy={mutation.isPending}
+        onCancel={() => setConflict(null)}
+        onReindex={() => {
+          if (lastValues) {
+            mutation.mutate({
+              values: lastValues,
+              restart: false,
+              forceReindex: true,
+            });
+          }
         }}
       />
     </div>

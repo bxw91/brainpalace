@@ -1,0 +1,72 @@
+import pytest
+from fastapi.testclient import TestClient
+
+from brainpalace_dashboard.api import routes_config as rc
+from brainpalace_dashboard.app import create_app
+
+
+@pytest.fixture
+def client(monkeypatch, tmp_path):
+    sd = tmp_path / ".brainpalace"
+    sd.mkdir()
+    (sd / "config.yaml").write_text(
+        "embedding:\n  provider: openai\n  model: text-embedding-3-large\n"
+    )
+    monkeypatch.setattr(rc, "_state_dir_for", lambda id_: sd)
+    return TestClient(create_app())
+
+
+_BREAKING = {
+    "values": {"embedding": {"provider": "openai", "model": "text-embedding-3-small"}}
+}
+
+
+def test_blocks_breaking_change_when_data_present(client, monkeypatch):
+    async def fp(id_):
+        return {"has_data": True, "doc_count": 10, "chunk_count": 99}
+
+    monkeypatch.setattr(rc.proxy_service, "fetch_fingerprint", fp)
+    resp = client.patch("/dashboard/api/instances/x/config", json=_BREAKING)
+    assert resp.status_code == 409
+    body = resp.json()
+    assert body["conflict"] == "data_incompatible"
+    assert body["counts"] == {"documents": 10, "chunks": 99}
+
+
+def test_allows_when_no_data(client, monkeypatch):
+    async def fp(id_):
+        return {"has_data": False}
+
+    monkeypatch.setattr(rc.proxy_service, "fetch_fingerprint", fp)
+    resp = client.patch("/dashboard/api/instances/x/config", json=_BREAKING)
+    assert resp.status_code == 200
+
+
+def test_allows_when_server_unreachable(client, monkeypatch):
+    async def fp(id_):
+        return None
+
+    monkeypatch.setattr(rc.proxy_service, "fetch_fingerprint", fp)
+    resp = client.patch("/dashboard/api/instances/x/config", json=_BREAKING)
+    assert resp.status_code == 200
+
+
+def test_force_reindex_skips_guard_and_triggers(client, monkeypatch):
+    triggered = {}
+
+    async def fp(id_):
+        return {"has_data": True, "doc_count": 10, "chunk_count": 99}
+
+    async def reindex(id_):
+        triggered["id"] = id_
+        return 2
+
+    monkeypatch.setattr(rc.proxy_service, "fetch_fingerprint", fp)
+    monkeypatch.setattr(rc.proxy_service, "trigger_full_reindex", reindex)
+    resp = client.patch(
+        "/dashboard/api/instances/x/config",
+        json={**_BREAKING, "force_reindex": True},
+    )
+    assert resp.status_code == 200
+    assert resp.json().get("reindex_triggered") == 2
+    assert triggered["id"] == "x"

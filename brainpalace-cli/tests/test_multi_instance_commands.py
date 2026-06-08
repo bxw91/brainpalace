@@ -305,15 +305,17 @@ class TestXdgRegistryPaths:
         state_dir.mkdir(parents=True)
 
         xdg_state = tmp_path / "xdg_state" / "brainpalace"
+        registry_file = xdg_state / "registry.json"
 
+        # update_registry now delegates to the server's single locked writer,
+        # which resolves its own path — patch that, not the CLI's helper.
         with patch(
-            "brainpalace_cli.commands.start.get_xdg_state_dir",
-            return_value=xdg_state,
+            "brainpalace_server.registry.registry_path",
+            return_value=registry_file,
         ):
             update_registry(project_root, state_dir)
 
         # Should write to XDG dir, NOT legacy
-        registry_file = xdg_state / "registry.json"
         assert registry_file.exists()
         registry = json.loads(registry_file.read_text())
         assert str(project_root) in registry

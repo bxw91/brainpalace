@@ -54,6 +54,14 @@ export function SchemaForm({
           <h2 className="mb-4 font-display text-base font-semibold tracking-tight">
             {section.label}
           </h2>
+          {section.description && (
+            <p
+              data-testid={`section-desc-${section.key}`}
+              className="-mt-2 mb-4 max-w-prose text-xs leading-relaxed text-fg-faint"
+            >
+              {section.description}
+            </p>
+          )}
           <div className="flex flex-col divide-y divide-line/60">
             {section.fields.map((field) => (
               <div key={field.dotpath} className="py-3 first:pt-0 last:pb-0">

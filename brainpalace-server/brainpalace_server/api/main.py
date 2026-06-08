@@ -50,7 +50,7 @@ from brainpalace_server.locking import (
     release_lock,
 )
 from brainpalace_server.project_root import resolve_project_root
-from brainpalace_server.runtime import RuntimeState, delete_runtime, write_runtime
+from brainpalace_server.runtime import RuntimeState, delete_runtime
 from brainpalace_server.services import FolderManager, IndexingService, QueryService
 from brainpalace_server.storage import (
     VectorStoreManager,
@@ -444,6 +444,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Expose project root for the /runtime/ endpoint (B8).
     app.state.project_root = str(project_root) if project_root else ""
 
+    # Expose state for in-process self-registration / heal (self_heal.py).
+    app.state.state_dir = str(state_dir) if state_dir else None
+    app.state.registered_base_url = None
+
     # Phase H: Build the .gitignore matcher once per project_root.
     gitignore_matcher = None
     if (
@@ -549,6 +553,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await storage_backend.initialize()
         app.state.storage_backend = storage_backend
         app.state.backend_type = backend_type
+        # Surfaced by GET /index/fingerprint for the dashboard config save guard.
+        app.state.storage_backend_name = backend_type
+        app.state.graph_store_type = settings.GRAPH_STORE_TYPE
         logger.info("Storage backend initialized")
 
         # Initialize embedding cache service (Phase 16)
@@ -1142,6 +1149,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             release_lock(state_dir)
         raise
 
+    # Start the self-heal heartbeat (re-asserts registration + heals dependents).
+    from brainpalace_server import self_heal
+
+    app.state._heartbeat_task = asyncio.create_task(self_heal.heartbeat_loop(app))
+
     yield
 
     logger.info("Shutting down BrainPalace RAG server...")
@@ -1189,6 +1201,25 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await shutdown_backend.close()
         logger.info("Storage backend connection pool closed")
 
+    # Stop the self-heal heartbeat.
+    hb = getattr(app.state, "_heartbeat_task", None)
+    if hb is not None:
+        hb.cancel()
+        try:
+            await hb
+        except asyncio.CancelledError:
+            pass
+
+    # Deregister from the global registry on clean shutdown.
+    if state_dir is not None:
+        from brainpalace_server import registry as _registry
+
+        project_root_for_dereg = (
+            Path(app.state.project_root) if app.state.project_root else None
+        )
+        if project_root_for_dereg:
+            _registry.remove_entry(project_root_for_dereg)
+
     # Cleanup for per-project mode
     if state_dir is not None:
         delete_runtime(state_dir)
@@ -1218,6 +1249,25 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# In-process self-registration: learn the bound address from incoming requests
+# and write runtime.json + registry.json off the response path (self_heal.py).
+from collections.abc import Awaitable, Callable  # noqa: E402
+
+from starlette.requests import Request  # noqa: E402
+from starlette.responses import Response  # noqa: E402
+
+from brainpalace_server import self_heal  # noqa: E402
+
+
+@app.middleware("http")
+async def _self_heal_registration(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    return await self_heal.registration_middleware(app)(request, call_next)
+
+
+_self_heal_wired = True
 
 # Include routers
 app.include_router(health_router, prefix="/health", tags=["Health"])
@@ -1319,11 +1369,11 @@ def run(
             base_url=f"http://{resolved_host}:{resolved_port}",
         )
 
-        # Write runtime.json before starting server
-        # Note: Lock is acquired in lifespan, but we write runtime early
-        # for port discovery by CLI tools
+        # runtime.json is no longer written here: the running server registers
+        # itself in-process (self_heal middleware/heartbeat) from the bound
+        # socket on the first request, so every launch path is covered. We keep
+        # _runtime_state (its instance_id/project_id feed the health endpoint).
         _state_dir.mkdir(parents=True, exist_ok=True)
-        write_runtime(_state_dir, _runtime_state)
         logger.info(f"Per-project mode enabled: {_state_dir}")
 
     uvicorn.run(

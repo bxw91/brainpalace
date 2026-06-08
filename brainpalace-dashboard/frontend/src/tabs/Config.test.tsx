@@ -63,6 +63,7 @@ describe("Config tab", () => {
         "inst-1",
         { embedding: { provider: "ollama" } },
         false,
+        false,
       ),
     );
   });
@@ -101,9 +102,40 @@ describe("Config tab", () => {
         "inst-1",
         { embedding: { provider: "ollama" } },
         true,
+        false,
       ),
     );
     expect(await screen.findByTestId("toast-success")).toBeInTheDocument();
+  });
+
+  it("shows the conflict dialog on 409 and re-PATCHes with force on reindex", async () => {
+    const conflict = {
+      conflict: "data_incompatible" as const,
+      message: "incompatible",
+      fields: [{ dotpath: "embedding.provider", current: "openai", new: "ollama" }],
+      counts: { documents: 10, chunks: 99 },
+    };
+    vi.mocked(client.patchConfig)
+      .mockRejectedValueOnce(conflict)
+      .mockResolvedValueOnce({ ok: true, reindex_triggered: 2 });
+    wrap(<Config instanceId="inst-1" />);
+
+    await screen.findByRole("button", { name: "ollama" });
+    fireEvent.click(screen.getByRole("button", { name: "ollama" }));
+    fireEvent.click(screen.getByTestId("btn-save"));
+    fireEvent.click(await screen.findByTestId("btn-confirm"));
+
+    const dialog = await screen.findByTestId("data-conflict-dialog");
+    expect(dialog).toHaveTextContent("incompatible");
+    fireEvent.click(screen.getByTestId("conflict-reindex"));
+
+    await waitFor(() => expect(client.patchConfig).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(client.patchConfig).mock.calls[1]).toEqual([
+      "inst-1",
+      { embedding: { provider: "ollama" } },
+      false,
+      true,
+    ]);
   });
 
   it("shows an error state with retry when the config load fails", async () => {

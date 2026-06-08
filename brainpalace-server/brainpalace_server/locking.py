@@ -3,7 +3,8 @@
 import logging
 import os
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -224,3 +225,25 @@ def cleanup_stale(state_dir: Path) -> None:
                     logger.info(f"Cleaned stale file: {fpath}")
                 except OSError:
                     pass
+
+
+@contextmanager
+def file_lock(lock_path: Path) -> Iterator[None]:
+    """Exclusive cross-process lock held for the duration of the ``with`` block.
+
+    Uses the same platform primitive as ``acquire_lock`` (``fcntl`` on POSIX,
+    ``msvcrt`` on Windows, no-op elsewhere). Unlike ``acquire_lock``/``release_lock``
+    (which manage the per-project ``brainpalace.lock`` by state dir), this locks an
+    arbitrary path — for serializing read-modify-write on shared global files such
+    as ``registry.json``. Best-effort: a no-op lock platform still runs the body.
+    """
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR, 0o644)
+    try:
+        _lock_exclusive(fd)
+        yield
+    finally:
+        try:
+            _unlock(fd)
+        finally:
+            os.close(fd)

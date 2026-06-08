@@ -362,6 +362,31 @@ describe("SchemaForm", () => {
     );
   });
 
+  it("renders the section description when present", () => {
+    const descSchema: UiSchema = {
+      sections: [
+        {
+          key: "session_extraction",
+          label: "Session Extraction",
+          description: "Distills a finished chat into a summary.",
+          fields: [
+            {
+              key: "mode",
+              dotpath: "session_extraction.mode",
+              label: "Mode",
+              widget: "enum",
+              options: ["subagent", "off"],
+            },
+          ],
+        },
+      ],
+    };
+    renderForm({ schema: descSchema, values: {} });
+    expect(
+      screen.getByTestId("section-desc-session_extraction"),
+    ).toHaveTextContent("Distills a finished chat");
+  });
+
   it("surfaces defaults: label hint + the default enum option marked when unset", () => {
     const defSchema: UiSchema = {
       sections: [

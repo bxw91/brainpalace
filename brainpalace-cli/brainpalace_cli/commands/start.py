@@ -17,7 +17,7 @@ from rich.panel import Panel
 
 from brainpalace_cli.config import resolve_project_root
 from brainpalace_cli.migration import resolve_state_dir_with_fallback
-from brainpalace_cli.xdg_paths import get_xdg_state_dir, migrate_legacy_paths
+from brainpalace_cli.xdg_paths import migrate_legacy_paths
 
 console = Console()
 
@@ -67,12 +67,10 @@ def _ensure_dashboard(
 
 
 def _print_dashboard(dash: dict[str, Any] | None) -> None:
-    """Print a clickable dashboard URL line when one is available."""
-    if not dash or not dash.get("base_url"):
-        return
-    url = dash["base_url"]
-    verb = "started" if dash.get("started") else "running"
-    console.print(f"  - Dashboard ({verb}): [bold][link={url}]{url}[/link][/]")
+    """Print a clickable dashboard URL when one is available."""
+    from brainpalace_cli.commands._dashboard_url import render_dashboard_url
+
+    render_dashboard_url(dash, console=console)
 
 
 def _dashboard_json(dash: dict[str, Any] | None) -> dict[str, Any]:
@@ -258,24 +256,10 @@ def find_available_port(host: str, start_port: int, end_port: int) -> int | None
 
 
 def update_registry(project_root: Path, state_dir: Path) -> None:
-    """Add project to global registry."""
-    registry_dir = get_xdg_state_dir()
-    registry_dir.mkdir(parents=True, exist_ok=True)
-    registry_path = registry_dir / "registry.json"
+    """Add project to the global registry via the single locked server writer."""
+    from brainpalace_server import registry  # CLI -> server import (allowed)
 
-    registry: dict[str, Any] = {}
-    if registry_path.exists():
-        try:
-            registry = json.loads(registry_path.read_text())
-        except Exception:
-            pass
-
-    # Use project root as key
-    registry[str(project_root)] = {
-        "state_dir": str(state_dir),
-        "project_name": project_root.name,
-    }
-    registry_path.write_text(json.dumps(registry, indent=2))
+    registry.upsert_entry(project_root, state_dir)
 
 
 def resolve_bind_port(config: dict[str, Any], bind_host: str, port: int | None) -> int:
@@ -294,6 +278,20 @@ def resolve_bind_port(config: dict[str, Any], bind_host: str, port: int | None) 
             raise RuntimeError(f"No available port in range {start_port}-{end_port}")
         return available_port
     return int(config.get("port", 8000))
+
+
+def build_server_command(bind_host: str, bind_port: int) -> list[str]:
+    """The single place the uvicorn server argv is constructed."""
+    return [
+        sys.executable,
+        "-m",
+        "uvicorn",
+        "brainpalace_server.api.main:app",
+        "--host",
+        bind_host,
+        "--port",
+        str(bind_port),
+    ]
 
 
 def launch_server(
@@ -332,16 +330,7 @@ def launch_server(
     bind_port = resolve_bind_port(config, bind_host, port)
     base_url = f"http://{bind_host}:{bind_port}"
 
-    server_cmd = [
-        sys.executable,
-        "-m",
-        "uvicorn",
-        "brainpalace_server.api.main:app",
-        "--host",
-        bind_host,
-        "--port",
-        str(bind_port),
-    ]
+    server_cmd = build_server_command(bind_host, bind_port)
 
     env = os.environ.copy()
     env["BRAINPALACE_PROJECT_ROOT"] = str(project_root)
@@ -599,16 +588,7 @@ def start_command(
                 console.print(f"[dim]Starting server on {base_url}...[/]")
 
             # Build server command
-            server_cmd = [
-                sys.executable,
-                "-m",
-                "uvicorn",
-                "brainpalace_server.api.main:app",
-                "--host",
-                bind_host,
-                "--port",
-                str(bind_port),
-            ]
+            server_cmd = build_server_command(bind_host, bind_port)
 
             # Set environment variables for server
             env = os.environ.copy()

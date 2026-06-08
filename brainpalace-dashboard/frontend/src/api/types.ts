@@ -66,6 +66,7 @@ export const SchemaField: z.ZodType<SchemaField> = z.lazy(() =>
 export const UiSchemaSection = z.object({
   key: z.string(),
   label: z.string(),
+  description: z.string().optional(),
   fields: z.array(SchemaField),
 });
 export type UiSchemaSection = z.infer<typeof UiSchemaSection>;
@@ -105,6 +106,14 @@ export type EffectiveConfig = Record<string, EffectiveEntry>;
 /** Validation error returned by a 422 PATCH. */
 export type ConfigError = { field: string; message: string; suggestion?: string };
 export type ConfigErrorEnvelope = { errors: ConfigError[] };
+
+/** Data-incompatibility conflict returned by a 409 PATCH (save guard). */
+export type DataConflictEnvelope = {
+  conflict: "data_incompatible";
+  message: string;
+  fields: { dotpath: string; current: unknown; new: unknown }[];
+  counts: { documents: number | null; chunks: number | null };
+};
 
 /** Per-instance status payload (best-effort; tolerant of partial servers). */
 export const InstanceStatusPayload = z

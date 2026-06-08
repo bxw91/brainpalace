@@ -340,14 +340,14 @@ def wizard(global_: bool, chat_summarizer: str) -> None:
     if graphrag_mode == "2":
         config["graphrag"] = {
             "enabled": True,
-            "store_type": "simple",
+            "store_type": "sqlite",
             "use_code_metadata": True,
             "doc_extractor": "langextract",
         }
     elif graphrag_mode == "3":
         config["graphrag"] = {
             "enabled": True,
-            "store_type": "simple",
+            "store_type": "sqlite",
             "use_code_metadata": True,
         }
 

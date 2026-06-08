@@ -123,16 +123,9 @@ def _start_for(project_root: Path, timeout: int) -> None:
         port = int(config.get("port", 8000))
 
     base_url = f"http://{bind_host}:{port}"
-    server_cmd = [
-        sys.executable,
-        "-m",
-        "uvicorn",
-        "brainpalace_server.api.main:app",
-        "--host",
-        bind_host,
-        "--port",
-        str(port),
-    ]
+    from brainpalace_cli.commands.start import build_server_command
+
+    server_cmd = build_server_command(bind_host, port)
     env = os.environ.copy()
     env["BRAINPALACE_PROJECT_ROOT"] = str(project_root)
     env["BRAINPALACE_STATE_DIR"] = str(state_dir)

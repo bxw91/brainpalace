@@ -199,6 +199,15 @@ class FileWatcherService:
         """Number of folders currently being watched."""
         return len(self._tasks)
 
+    def dead_task_count(self) -> int:
+        """Number of watch tasks that have exited/raised (should be 0 when healthy)."""
+        return sum(1 for t in self._tasks.values() if t.done())
+
+    async def expected_auto_folder_count(self) -> int:
+        """How many folders SHOULD be watched (watch_mode == 'auto')."""
+        folders = await self._folder_manager.list_folders()
+        return sum(1 for f in folders if f.watch_mode == "auto")
+
     @property
     def is_running(self) -> bool:
         """True if the watcher service has been started and not yet stopped."""

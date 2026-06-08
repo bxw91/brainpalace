@@ -99,11 +99,10 @@ def start(
         click.echo(_json.dumps({"status": "started", "base_url": url}))
         return
 
-    console.print("[bold green]BrainPalace Dashboard running[/]")
-    console.print(f"URL: {url}")
-    console.print("\nNext steps:")
-    console.print("  - Open the URL above in a browser")
-    console.print("  - Stop: brainpalace dashboard stop")
+    from brainpalace_cli.commands._dashboard_url import render_dashboard_url
+
+    render_dashboard_url({"base_url": url, "started": True}, console=console)
+    console.print("[dim]Stop: brainpalace dashboard stop[/]")
 
 
 @dashboard_command.command(name="stop")

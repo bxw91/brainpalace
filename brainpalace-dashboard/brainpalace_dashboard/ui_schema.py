@@ -37,6 +37,22 @@ SECTION_ORDER: list[tuple[str, str]] = [
     ("session_extraction", "Session Extraction"),
 ]
 
+# Optional one-line "what this section does" intros, rendered under the header.
+SECTION_DESCRIPTIONS: dict[str, str] = {
+    "storage": "Where indexed vectors live. chroma is the zero-setup local "
+    "default; postgres is for shared/larger deployments.",
+    "graphrag": "The knowledge graph (entities + relationships) that powers "
+    "graph and multi query modes.",
+    "git_indexing": "Index git history so past commits and decisions are "
+    "searchable alongside code.",
+    "session_extraction": "DISTILLS a finished chat transcript into a structured "
+    "summary, decisions, and graph triples. This is the curated 'memory', "
+    "separate from raw transcript indexing below.",
+    "session_indexing": "ARCHIVES raw chat transcripts and (optionally) EMBEDS "
+    "them for semantic recall. Distinct from Session Extraction: this is the "
+    "raw store, not the curated summary.",
+}
+
 SECTION_KNOWN: dict[str, set[str]] = {
     "embedding": cs.EMBEDDING_KNOWN_FIELDS,
     "summarization": cs.SUMMARIZATION_KNOWN_FIELDS,
@@ -151,16 +167,67 @@ OVERRIDES: dict[str, dict[str, Any]] = {
         "adds a little query latency). Default: on.",
     },
     "reranker.provider": {
-        "help": "sentence-transformers = local cross-encoder (no base URL); "
-        "ollama = reranker served by Ollama (needs a base URL).",
+        "help": "sentence-transformers = local cross-encoder, no API cost, no base "
+        "URL (recommended). ollama = prompt-based scoring served by Ollama; "
+        "works with any chat model but is slower and needs a base URL.",
     },
     "reranker.model": {
         "presets": _model_presets("reranker"),
-        "help": "Cross-encoder / rerank model. Empty = the server's built-in "
-        "default (cross-encoder/ms-marco-MiniLM-L-6-v2).",
+        "help": "sentence-transformers: a cross-encoder model (empty = built-in "
+        "default cross-encoder/ms-marco-MiniLM-L-6-v2). ollama: any chat model "
+        "(e.g. llama3.2:1b) used for prompt-based relevance scoring.",
     },
     "reranker.base_url": {"help": _BASE_URL_HELP},
-    "graphrag.use_code_metadata": {"label": "Use code metadata"},
+    "storage.backend": {
+        "help": "chroma = local on-disk vector DB, single process, zero setup "
+        "(default). postgres = shared/multi-client store for larger or "
+        "multi-user deployments; requires a running PostgreSQL and the "
+        "PostgreSQL fields below.",
+    },
+    "graphrag.enabled": {
+        "label": "Enabled",
+        "help": "Master switch for the knowledge graph (entities + relationships "
+        "mined from code and docs). Powers graph/multi query modes.",
+    },
+    "graphrag.store_type": {
+        "help": "simple = in-memory graph, rebuilt on every server start, with NO "
+        "temporal (versioned-over-time) edges — lightest, ephemeral. "
+        "sqlite = persistent on-disk graph that supports the temporal "
+        "knowledge graph (edges versioned over time). Default and recommended: "
+        "sqlite.",
+    },
+    "graphrag.doc_extractor": {
+        "help": "langextract = also mine graph entities/relationships from docs. "
+        "none = code graph only (skip doc extraction).",
+    },
+    "graphrag.use_code_metadata": {
+        "label": "Use code metadata",
+        "help": "Enrich graph nodes with code-structure metadata (symbols, "
+        "signatures) for richer graph queries. Default: on.",
+    },
+    "git_indexing.enabled": {
+        "label": "Enabled",
+        "help": "Index git history (commit messages + changed paths) so past "
+        "decisions are searchable. Default: off.",
+    },
+    "git_indexing.depth": {
+        "label": "History depth (commits)",
+        "min": 0,
+        "help": "How many commits back to index. 0 = full history. Default: 0.",
+    },
+    "git_indexing.max_files": {
+        "label": "Max files per commit",
+        "min": 0,
+        "help": "Skip commits touching more than this many files (cuts noise from "
+        "bulk/vendor commits). Default: 50.",
+    },
+    "session_extraction.mode": {
+        "help": "Which engine distills a finished chat into a summary + decisions. "
+        "subagent = a Claude Code plugin subagent does it locally (free; "
+        "default). provider = the configured summarization provider (a cloud "
+        "LLM — may be METERED/paid). auto = pick automatically, with a 24h "
+        "safety net that can fire the paid provider path. off = disabled.",
+    },
     "query_log.enabled": {"label": "Enable query history"},
     "query_log.retention_days": {
         "label": "Retention (days)",
@@ -428,7 +495,10 @@ def build_ui_schema() -> dict[str, Any]:
         # runtime-managed and fully hidden) — don't render an empty header.
         if not fields:
             continue
-        sections.append({"key": key, "label": label, "fields": fields})
+        section_obj: dict[str, Any] = {"key": key, "label": label, "fields": fields}
+        if key in SECTION_DESCRIPTIONS:
+            section_obj["description"] = SECTION_DESCRIPTIONS[key]
+        sections.append(section_obj)
     # `providers` is the canonical provider descriptor (kind -> provider ->
     # {models, needs_base_url, default_api_key_env}). The frontend uses it to
     # reshape the embedding/summarization/reranker sections when the selected

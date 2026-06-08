@@ -88,14 +88,15 @@ export async function patchConfig(
   id: string,
   values: ConfigValues,
   restart: boolean,
-): Promise<{ ok: boolean; restarted: boolean }> {
+  forceReindex = false,
+): Promise<{ ok: boolean; restarted?: boolean; reindex_triggered?: number }> {
   const r = await fetch(`${BASE}/instances/${id}/config`, {
     method: "PATCH",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ values, restart }),
+    body: JSON.stringify({ values, restart, force_reindex: forceReindex }),
   });
   if (!r.ok) {
-    // 422 -> { errors: [...] }
+    // 422 -> { errors: [...] }; 409 -> DataConflictEnvelope { conflict, ... }
     throw await readError(r);
   }
   return r.json();
@@ -111,13 +112,14 @@ export const getGlobalConfig = () =>
 
 export async function patchGlobalConfig(
   values: ConfigValues,
+  forceReindex = false,
 ): Promise<{ ok: boolean }> {
   const r = await fetch(`${BASE}/global-config`, {
     method: "PATCH",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ values, restart: false }),
+    body: JSON.stringify({ values, restart: false, force_reindex: forceReindex }),
   });
-  if (!r.ok) throw await readError(r); // 422 -> { errors: [...] }
+  if (!r.ok) throw await readError(r); // 422 -> { errors }; 409 -> conflict
   return r.json();
 }
 
