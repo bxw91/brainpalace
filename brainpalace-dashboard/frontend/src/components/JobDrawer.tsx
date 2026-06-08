@@ -163,17 +163,17 @@ export function JobDrawer({
               <p className="eyebrow mb-2">What this job did</p>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                 <Stat label="Documents" value={d.total_documents} />
-                <Stat label="Chunks" value={d.total_chunks} />
+                <Stat label="Chunks added" value={d.chunks_added} />
+                <Stat label="Chunks removed" value={d.chunks_removed} />
                 <Stat label="Duration" value={fmtDuration(d.execution_time_ms)} />
+                {/* Index-wide chunk total AFTER this job — distinct from the
+                    per-job add/remove deltas above. */}
+                <Stat label="Index total" value={d.total_chunks} />
                 {d.progress && (
                   <>
                     <Stat
                       label="Files"
                       value={`${d.progress.files_processed} / ${d.progress.files_total}`}
-                    />
-                    <Stat
-                      label="Chunks created"
-                      value={d.progress.chunks_created}
                     />
                     <Stat
                       label="Progress"

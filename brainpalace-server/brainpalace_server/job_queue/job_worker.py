@@ -293,8 +293,18 @@ class JobWorker:
                     metadata_path=job.folder_metadata_file,
                 )
 
-            # Create progress callback that checks for cancellation
-            async def progress_callback(current: int, total: int, message: str) -> None:
+            # Create progress callback that checks for cancellation.
+            # ``current``/``total`` are the pipeline's phase-weighted PERCENT pair
+            # (total is 100), kept separate from the optional real document counts
+            # (``files_processed``/``files_total``) so the "Files" display shows
+            # actual counts instead of the percent in disguise.
+            async def progress_callback(
+                current: int,
+                total: int,
+                message: str,
+                files_processed: int | None = None,
+                files_total: int | None = None,
+            ) -> None:
                 """Progress callback that updates job and checks for cancellation."""
                 # Re-fetch job to check for cancellation request
                 refreshed_job = await self._job_store.get_job(job.id)
@@ -304,18 +314,30 @@ class JobWorker:
                         f"Job {job.id} cancellation requested"
                     )
 
+                percent = round((current / total) * 100, 1) if total else 0.0
+                last_percent = int(job.progress.percent) if job.progress else 0
                 # Update progress at intervals
                 if job.progress is None or _should_persist_progress(
-                    last_current=job.progress.files_processed,
+                    last_current=last_percent,
                     current=current,
                     total=total,
                     min_percent=self._progress_min_percent,
                 ):
+                    prev = job.progress
                     job.progress = JobProgress(
-                        files_processed=current,
-                        files_total=total,
-                        chunks_created=0,  # Will be updated at end
+                        files_processed=(
+                            files_processed
+                            if files_processed is not None
+                            else (prev.files_processed if prev else 0)
+                        ),
+                        files_total=(
+                            files_total
+                            if files_total is not None
+                            else (prev.files_total if prev else 0)
+                        ),
+                        chunks_created=prev.chunks_created if prev else 0,
                         current_file=message,
+                        percent=percent,
                         updated_at=datetime.now(timezone.utc),
                     )
                     await self._job_store.update_job(job)
@@ -378,13 +400,31 @@ class JobWorker:
                 if eviction_result is not None:
                     job.eviction_summary = eviction_result
 
+                # Per-job chunk delta (distinct from the index-wide total_chunks):
+                # removed = chunks evicted by this job; added derived from the net
+                # store growth plus the eviction, since
+                #   count_after = count_before - removed + added.
+                chunks_removed = 0
+                if isinstance(eviction_result, dict):
+                    chunks_removed = int(eviction_result.get("chunks_evicted", 0) or 0)
+                count_after = count_before
+                try:
+                    storage = self._indexing_service.storage_backend
+                    if storage.is_initialized:
+                        count_after = await storage.get_count()
+                except Exception as e:
+                    logger.warning(f"Could not get count after indexing: {e}")
+                job.chunks_removed = chunks_removed
+                job.chunks_added = max(0, count_after - count_before + chunks_removed)
+
                 # Update final progress
                 if job.progress:
                     job.progress = JobProgress(
                         files_processed=job.progress.files_total,
                         files_total=job.progress.files_total,
-                        chunks_created=job.total_chunks,
+                        chunks_created=job.chunks_added,
                         current_file="Complete",
+                        percent=100.0,
                         updated_at=datetime.now(timezone.utc),
                     )
 

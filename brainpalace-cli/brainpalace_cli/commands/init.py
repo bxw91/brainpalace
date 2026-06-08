@@ -864,6 +864,62 @@ def _emit_init_result(
         console.print("  • Check health: [bold]brainpalace status[/]")
 
 
+def _estimate_loop(project_root: Path, include_code: bool) -> bool | None:
+    """Interactive pre-index token-estimate loop.
+
+    Shows the embedding-token estimate for the current code/docs scope, then
+    lets the user proceed, toggle the scope and re-estimate, or skip indexing.
+    Returns the final ``include_code`` to index with, or ``None`` to skip the
+    initial index entirely.
+
+    Only the code/docs scope is adjustable here — it's the one init answer that
+    actually moves the *embedding* estimate. Provider/session/graph answers are
+    written to config and applied before the server starts (changing them would
+    need a config rewrite + restart) and affect separate token budgets, so they
+    are not re-asked at this point.
+    """
+    import json as _json
+
+    from .estimate_util import print_token_estimate
+
+    while True:
+        code_flag = "--include-code" if include_code else "--no-code"
+        est_result = _run_subcommand(
+            [
+                *_brainpalace_argv(),
+                "index",
+                str(project_root),
+                "--estimate",
+                code_flag,
+                "--json",
+            ],
+            step="estimate",
+            json_output=False,
+        )
+        if est_result.get("status") == "ok":
+            try:
+                print_token_estimate(console, _json.loads(str(est_result["stdout"])))
+            except (ValueError, KeyError):
+                console.print("[yellow]Could not parse the estimate.[/]")
+        else:
+            console.print("[yellow]Estimate unavailable; continuing.[/]")
+        console.print(
+            f"[dim]Scope: {'code + docs' if include_code else 'docs only'}.[/]"
+        )
+        action = click.prompt(
+            "Proceed with indexing, toggle code/docs scope and re-estimate, "
+            "or skip indexing?",
+            type=click.Choice(["proceed", "toggle", "skip"]),
+            default="proceed",
+        )
+        if action == "toggle":
+            include_code = not include_code
+            continue
+        if action == "skip":
+            return None
+        return include_code
+
+
 def _start_and_watch(
     *,
     project_root: Path,
@@ -874,6 +930,7 @@ def _start_and_watch(
     watch: str,
     json_output: bool,
     bm25_engine: str = "stem",
+    include_code: bool = True,
 ) -> list[dict[str, object]]:
     """Run the --start pipeline: provider preflight, server start, optional watch.
 
@@ -920,6 +977,26 @@ def _start_and_watch(
         raise SystemExit(1)
 
     if watch != "off":
+        # The user's code/docs choice drives BOTH the estimate and the real
+        # index, so the estimate reflects exactly what will be indexed. An
+        # interactive run can re-estimate after toggling the scope.
+        chosen_include_code = include_code
+        # Opt-in pre-index advisory: only on an interactive terminal, default No,
+        # so it never runs under CI/--json. Reuses `index --estimate` so the
+        # file selection matches what indexing will actually load.
+        if not json_output and _stdin_is_tty():
+            if click.confirm(
+                "Estimate approximate embedding-token usage before the first " "index?",
+                default=False,
+            ):
+                loop_choice = _estimate_loop(project_root, chosen_include_code)
+                if loop_choice is None:
+                    console.print(
+                        "[dim]Skipped initial indexing. Index later with "
+                        f"[bold]brainpalace index {project_root}[/].[/]"
+                    )
+                    return post_init_steps
+                chosen_include_code = loop_choice
         if not json_output:
             console.print("[dim]Registering folder + enqueuing initial indexing…[/]")
         watch_result = _run_subcommand(
@@ -930,7 +1007,7 @@ def _start_and_watch(
                 str(project_root),
                 "--watch",
                 watch,
-                "--include-code",
+                "--include-code" if chosen_include_code else "--no-code",
             ],
             step="watch",
             json_output=json_output,
@@ -1113,6 +1190,17 @@ def _start_and_watch(
         "pip install 'brainpalace[lemma-hr]'."
     ),
 )
+@click.option(
+    "--include-code/--no-code",
+    "include_code",
+    default=True,
+    show_default=True,
+    help=(
+        "Index source code files alongside documents (default: ON). Use "
+        "--no-code for doc-only repos. Applies to the first index and to the "
+        "pre-index token estimate."
+    ),
+)
 def init_command(
     path: str | None,
     host: str,
@@ -1133,6 +1221,7 @@ def init_command(
     enable_reranking: bool | None,
     bm25_language: str,
     bm25_engine: str,
+    include_code: bool,
 ) -> None:
     """Initialize a new BrainPalace project.
 
@@ -1432,6 +1521,7 @@ def init_command(
                     watch=plan.watch,
                     json_output=json_output,
                     bm25_engine=bm25_engine,
+                    include_code=include_code,
                 )
                 # Report the TRUE persisted state (session blocks live in
                 # config.yaml, not config.json), so the banner reflects the
@@ -1582,6 +1672,7 @@ def init_command(
                 watch=plan.watch,
                 json_output=json_output,
                 bm25_engine=bm25_engine,
+                include_code=include_code,
             )
 
         _emit_init_result(

@@ -107,6 +107,12 @@ console = Console()
     default=None,
     help="Debounce window in seconds before a watched folder re-indexes.",
 )
+@click.option(
+    "--estimate",
+    "estimate_only",
+    is_flag=True,
+    help="Estimate approximate embedding-token usage and exit — do not index.",
+)
 @click.option("--json", "json_output", is_flag=True, help="Output as JSON")
 def index_command(
     folder_path: str,
@@ -125,6 +131,7 @@ def index_command(
     allow_external: bool,
     watch_mode: str | None,
     watch_debounce_seconds: int | None,
+    estimate_only: bool,
     json_output: bool,
 ) -> None:
     """Index documents from a folder.
@@ -157,6 +164,28 @@ def index_command(
 
     try:
         with DocServeClient(base_url=resolved_url) as client:
+            if estimate_only:
+                est = client.estimate_index(
+                    folder_path=str(folder),
+                    recursive=not no_recursive,
+                    include_code=include_code,
+                    include_patterns=include_patterns_list,
+                    include_types=include_types_list,
+                    exclude_patterns=exclude_patterns_list,
+                    generate_summaries=generate_summaries,
+                    chunk_size=chunk_size,
+                    chunk_overlap=chunk_overlap,
+                )
+                if json_output:
+                    import json
+
+                    click.echo(json.dumps(est, indent=2))
+                else:
+                    from .estimate_util import print_token_estimate
+
+                    print_token_estimate(console, est)
+                return
+
             response = client.index(
                 folder_path=str(folder),
                 chunk_size=chunk_size,

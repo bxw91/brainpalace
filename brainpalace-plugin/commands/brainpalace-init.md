@@ -26,7 +26,7 @@ context: brainpalace
 agent: setup-assistant
 skills:
   - configuring-brainpalace
-last_validated: 2026-06-06
+last_validated: 2026-06-09
 ---
 
 # Initialize BrainPalace Project
@@ -52,6 +52,7 @@ Initializes the current project for BrainPalace by creating the necessary config
 | --state-dir / -s | No | .brainpalace | Custom state directory for index data |
 | --language | No | en | Project default BM25 language (ISO 639-1, e.g. `en`, `de`, `fr`). Written to `bm25.language` in the project config. |
 | --bm25-engine | No | stem | BM25 tokenization engine: `stem` (Snowball/PyStemmer, ~27 languages) or `lemma` (simplemma, Croatian `hr` tier via the `hbs` data). |
+| --include-code / --no-code | No | on | Index source code files alongside documents. Use `--no-code` for doc-only repos. Applies to BOTH the first index and the pre-index token estimate. |
 | --git-history / --no-git-history | No | off | Index this repo's git commit history (message + changed-file list) as searchable chunks. **Off by default** — commit messages/diffs can contain secrets, so it is a deliberate opt-in. Interactive runs ask (default no); written to `git_indexing.enabled` only when enabled. |
 | --migrate-graph-store / --no-migrate-graph-store | No | (ask) | On an **already-initialized** project still on the legacy `simple` graph store, upgrade `graphrag.store_type` to `sqlite` (persistent + temporal). Interactive runs ask (default **yes**); the existing graph is replayed into sqlite on next start (JSON kept for rollback). No effect on fresh inits or projects already on sqlite. |
 | --json | No | false | Output as JSON |
@@ -87,6 +88,16 @@ Initializes the current project for BrainPalace by creating the necessary config
 > interactive run asks (default **yes**), or pass `--migrate-graph-store` /
 > `--no-migrate-graph-store`. The server replays the existing `simple` JSON graph
 > into sqlite on the next start (JSON kept for rollback); no re-indexing needed.
+
+> **Pre-index token estimate (opt-in).** On an interactive run, before the first
+> index `init` asks whether to estimate approximate embedding-token usage
+> (default **no**, never shown under `--json`/CI). The estimate uses the same
+> file-selection rules **and the same `--include-code`/`--no-code` scope** as the
+> real index, and reflects your chosen embedding provider's tokenizer. After it
+> prints you can **proceed**, **toggle code/docs scope and re-estimate**, or
+> **skip** indexing. (Only the code/docs scope is re-asked here — provider /
+> session / graph answers are already written and affect separate budgets.) Run
+> it anytime with `brainpalace index <path> --estimate`.
 
 ## Execution
 

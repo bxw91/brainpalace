@@ -26,6 +26,14 @@ class JobProgress(BaseModel):
     files_total: int = Field(default=0, ge=0, description="Total files to process")
     chunks_created: int = Field(default=0, ge=0, description="Chunks created so far")
     current_file: str = Field(default="", description="Currently processing file")
+    # Explicit phase-weighted percent (0-100) reported by the indexing pipeline.
+    # Kept SEPARATE from files_processed/files_total: the pipeline's progress is
+    # phase-weighted (load/chunk/embed/store), not a flat file ratio, while
+    # files_* now carry real document counts for display. (Older persisted jobs
+    # predating this field default to 0 — cosmetic only, for historical rows.)
+    percent: float = Field(
+        default=0.0, ge=0.0, le=100.0, description="Phase-weighted completion percent"
+    )
     updated_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
         description="Last progress update timestamp",
@@ -34,10 +42,8 @@ class JobProgress(BaseModel):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def percent_complete(self) -> float:
-        """Calculate completion percentage."""
-        if self.files_total == 0:
-            return 0.0
-        return round((self.files_processed / self.files_total) * 100, 1)
+        """Completion percentage (the explicit phase-weighted percent)."""
+        return round(self.percent, 1)
 
 
 class JobRecord(BaseModel):
@@ -129,8 +135,16 @@ class JobRecord(BaseModel):
     error: str | None = Field(default=None, description="Error message if failed")
     retry_count: int = Field(default=0, ge=0, description="Number of retry attempts")
     progress: JobProgress | None = Field(default=None, description="Progress tracking")
-    total_chunks: int = Field(default=0, ge=0, description="Total chunks indexed")
+    total_chunks: int = Field(
+        default=0, ge=0, description="Index-wide chunk count after this job"
+    )
     total_documents: int = Field(default=0, ge=0, description="Total documents indexed")
+    chunks_added: int = Field(
+        default=0, ge=0, description="Chunks inserted by THIS job (delta)"
+    )
+    chunks_removed: int = Field(
+        default=0, ge=0, description="Chunks evicted by THIS job (delta)"
+    )
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -232,6 +246,8 @@ class JobSummary(BaseModel):
     started_at: datetime | None = Field(default=None, description="When started")
     finished_at: datetime | None = Field(default=None, description="When finished")
     progress_percent: float = Field(default=0.0, description="Completion percentage")
+    chunks_added: int = Field(default=0, description="Chunks inserted by this job")
+    chunks_removed: int = Field(default=0, description="Chunks evicted by this job")
     error: str | None = Field(default=None, description="Error message if failed")
 
     @classmethod
@@ -250,6 +266,8 @@ class JobSummary(BaseModel):
             progress_percent=(
                 record.progress.percent_complete if record.progress else 0.0
             ),
+            chunks_added=record.chunks_added,
+            chunks_removed=record.chunks_removed,
             error=record.error,
         )
 
@@ -284,7 +302,11 @@ class JobDetailResponse(BaseModel):
 
     # Results
     total_documents: int = Field(default=0, description="Documents indexed")
-    total_chunks: int = Field(default=0, description="Chunks created")
+    total_chunks: int = Field(
+        default=0, description="Index-wide chunk count after this job"
+    )
+    chunks_added: int = Field(default=0, description="Chunks inserted by this job")
+    chunks_removed: int = Field(default=0, description="Chunks evicted by this job")
     error: str | None = Field(default=None, description="Error message if failed")
     retry_count: int = Field(default=0, description="Retry attempts")
     cancel_requested: bool = Field(
@@ -315,6 +337,8 @@ class JobDetailResponse(BaseModel):
             ),
             total_documents=record.total_documents,
             total_chunks=record.total_chunks,
+            chunks_added=record.chunks_added,
+            chunks_removed=record.chunks_removed,
             error=record.error,
             retry_count=record.retry_count,
             cancel_requested=record.cancel_requested,

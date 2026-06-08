@@ -2,9 +2,13 @@
 
 Queries PyPI for the latest published ``brainpalace-cli`` (the package users
 upgrade via ``brainpalace update``) and compares it to the installed version.
-The result is cached in-process with a TTL so the SPA can poll cheaply without
-hammering PyPI, and every failure path degrades silently to
-``update_available: False`` — a flaky network must never break the dashboard.
+Only the PyPI ``latest`` is cached in-process with a TTL so the SPA can poll
+cheaply without hammering PyPI; the *installed* version is read live on every
+call. That split matters: after an upgrade, the running dashboard re-reads the
+new installed version from disk immediately, so the banner self-clears even if
+the dashboard process was never restarted (it otherwise would have served a
+stale cached payload for up to the TTL). Every failure path degrades silently
+to ``update_available: False`` — a flaky network must never break the dashboard.
 """
 
 from __future__ import annotations
@@ -26,8 +30,11 @@ _TTL_SECONDS = 6 * 3600
 _TIMEOUT_SECONDS = 4.0
 
 # In-process cache: the dashboard is a long-running singleton, so a module-level
-# cache is enough — no need for a file. (checked_at_monotonic, payload)
-_cache: tuple[float, dict[str, Any]] | None = None
+# cache is enough — no need for a file. We cache ONLY the PyPI ``latest`` (plus
+# the wall-clock time it was fetched), never the installed version — the latter
+# is cheap to read and must stay live so the banner reacts to an in-place
+# upgrade. (checked_at_monotonic, latest, fetched_at_wall)
+_cache: tuple[float, str | None, float] | None = None
 
 
 def _installed_version() -> str:
@@ -71,8 +78,11 @@ async def _fetch_latest() -> str | None:
 
 
 async def get_update_status(*, force: bool = False) -> dict[str, Any]:
-    """Return ``{current, latest, update_available, checked_at, ...}`` (cached).
+    """Return ``{current, latest, update_available, checked_at, ...}``.
 
+    Only the PyPI ``latest`` is cached (TTL); ``current`` (installed version)
+    is read live every call and ``update_available`` is recomputed, so the
+    banner clears the instant an in-place upgrade makes ``current >= latest``.
     Never raises — a network/parse failure yields ``update_available: False``
     with ``latest: None`` so the banner simply stays hidden.
 
@@ -82,16 +92,17 @@ async def get_update_status(*, force: bool = False) -> dict[str, Any]:
     global _cache
     now = time.monotonic()
     if not force and _cache is not None and (now - _cache[0]) < _TTL_SECONDS:
-        return _cache[1]
+        latest, fetched_at = _cache[1], _cache[2]
+    else:
+        latest = await _fetch_latest()
+        fetched_at = time.time()
+        _cache = (now, latest, fetched_at)
 
     current = _installed_version()
-    latest = await _fetch_latest()
-    payload: dict[str, Any] = {
+    return {
         "current": current,
         "latest": latest,
         "update_available": bool(latest and _is_newer(latest, current)),
         "package": _PACKAGE,
-        "checked_at": time.time(),
+        "checked_at": fetched_at,
     }
-    _cache = (now, payload)
-    return payload

@@ -114,6 +114,36 @@ def running_servers() -> list[str]:
     return alive
 
 
+def _running_instances() -> tuple[list[str], bool]:
+    """Currently-alive per-project servers and whether the dashboard is up."""
+    return running_servers(), dashboard_running()
+
+
+def _preflight_notice() -> None:
+    """Warn, before the upgrade runs, what's live and will be bounced after.
+
+    Front-loads the disclosure so the user knows the upgrade touches running
+    instances; the actual restart still happens *after* the upgrade (stopping
+    them first would kill the dashboard the user may be reading and serves no
+    purpose). Silent when nothing is running.
+    """
+    servers, dash = _running_instances()
+    if not servers and not dash:
+        return
+    parts: list[str] = []
+    if servers:
+        plural = "s" if len(servers) != 1 else ""
+        parts.append(f"{len(servers)} running server{plural}")
+    if dash:
+        parts.append("the control-plane dashboard")
+    what = " and ".join(parts)
+    console.print(
+        f"[yellow]Heads up:[/] {what} currently running — they keep serving the "
+        "OLD code until restarted. You'll be offered a restart right after the "
+        "upgrade (or use --no-restart to do it yourself later)."
+    )
+
+
 def dashboard_running() -> bool:
     """True when the singleton control-plane dashboard is up (Python 3.12+)."""
     try:
@@ -192,9 +222,10 @@ def _restart_after_upgrade(*, assume_yes: bool) -> None:
 def update_command(yes: bool, no_restart: bool) -> None:
     """Upgrade BrainPalace (CLI + server) to the latest published version.
 
-    Auto-detects pipx / uv / pip and runs the matching upgrade. After it
-    finishes, offers to restart any running per-project servers and the
-    dashboard so they load the new code (skip with --no-restart).
+    Auto-detects pipx / uv / pip and runs the matching upgrade. Before running
+    it, warns which servers/dashboard are live (they keep serving old code until
+    restarted); after it finishes, offers to restart any running per-project
+    servers and the dashboard so they load the new code (skip with --no-restart).
     """
     manager = detect_install_manager()
     if manager is None:
@@ -208,6 +239,8 @@ def update_command(yes: bool, no_restart: bool) -> None:
     argv = upgrade_argv(manager)
     console.print(f"[dim]Detected install via [bold]{manager}[/].[/]")
     console.print(f"Will run: [bold]{' '.join(argv)}[/]")
+
+    _preflight_notice()
 
     if not yes and not click.confirm("Upgrade now?", default=True):
         console.print("[dim]Aborted.[/]")

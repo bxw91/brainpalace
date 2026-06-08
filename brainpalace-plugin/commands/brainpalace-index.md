@@ -18,7 +18,7 @@ parameters:
     default: false
 skills:
   - using-brainpalace
-last_validated: 2026-05-30
+last_validated: 2026-06-09
 ---
 
 # Index Documents
@@ -48,6 +48,7 @@ Indexes documents at the specified path for semantic search. Processes markdown,
 | --include-patterns | No | - | Additional glob include patterns |
 | --exclude-patterns | No | - | Additional glob exclude patterns |
 | --generate-summaries | No | false | Generate LLM summaries for better search quality |
+| --estimate | No | false | Print an approximate embedding-token estimate and exit — does NOT index. Uses the same .gitignore/exclude/file-type rules as a real index. |
 | --force | No | false | Force re-indexing (bypass manifest, evict all prior chunks) |
 | --allow-external | No | false | Allow indexing paths outside the project directory |
 | --json | No | false | Output results as JSON |
@@ -81,6 +82,11 @@ brainpalace index <path> --include-code
 **With file type presets:**
 ```bash
 brainpalace index <path> --include-type python,docs
+```
+
+**Estimate embedding-token cost before indexing (no indexing):**
+```bash
+brainpalace index <path> --estimate
 ```
 
 **Force full re-index (bypass incremental):**

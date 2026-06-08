@@ -45,8 +45,11 @@ from brainpalace_server.storage import (
 logger = logging.getLogger(__name__)
 
 
-# Type alias for progress callback
-ProgressCallback = Callable[[int, int, str], Awaitable[None]]
+# Type alias for progress callback.
+# Args: (percent_current, percent_total, message, files_processed?, files_total?)
+# — the two leading ints are the phase-weighted percent pair (total is 100); the
+# trailing two optional ints carry real document counts for display.
+ProgressCallback = Callable[..., Awaitable[None]]
 
 
 def _folder_chunk_ids(manifest: Any) -> list[str]:
@@ -283,6 +286,101 @@ class IndexingService:
             stored_metadata=stored_metadata,
         )
 
+    def _effective_include_patterns(self, request: IndexRequest) -> list[str]:
+        """Resolve include_types presets into the effective include-pattern set.
+
+        Single source of truth shared by the real pipeline and the dry-run
+        token estimate, so the estimate's file selection can never drift from
+        what indexing actually loads.
+        """
+        effective = list(request.include_patterns or [])
+        if request.include_types:
+            from brainpalace_server.services.file_type_presets import (
+                resolve_file_types,
+            )
+
+            for pattern in resolve_file_types(request.include_types):
+                if pattern not in effective:
+                    effective.append(pattern)
+        return effective
+
+    async def estimate_tokens(self, request: IndexRequest) -> dict[str, Any]:
+        """Approximate the embedding-token cost of indexing ``request`` — no
+        embedding, no enqueue, no provider calls.
+
+        Loads exactly the files the real pipeline would (same
+        ``document_loader.load_files`` call, honouring .gitignore, default
+        excludes, nested-project exclusion, include/exclude patterns and file
+        types), then counts tokens with the embedding provider's own tokenizer
+        (tiktoken for OpenAI; a chars/4 heuristic otherwise) and inflates by the
+        chunk-overlap ratio. The result is intentionally approximate.
+        """
+        abs_folder_path = os.path.abspath(request.folder_path)
+        effective_include_patterns = self._effective_include_patterns(request)
+        documents = await self.document_loader.load_files(
+            abs_folder_path,
+            recursive=request.recursive,
+            include_code=request.include_code,
+            include_patterns=effective_include_patterns or None,
+        )
+
+        provider_settings = load_provider_settings()
+        provider = str(provider_settings.embedding.provider).lower()
+        model = str(provider_settings.embedding.model)
+
+        # Pick the most accurate tokenizer available for the provider.
+        encoder = None
+        tokenizer = "heuristic(chars/4)"
+        if provider == "openai":
+            try:
+                import tiktoken
+
+                try:
+                    encoder = tiktoken.encoding_for_model(model)
+                except KeyError:
+                    encoder = tiktoken.get_encoding("cl100k_base")
+                tokenizer = f"tiktoken:{encoder.name}"
+            except Exception:  # pragma: no cover - tiktoken always present
+                encoder = None
+
+        def _count(text: str) -> int:
+            if encoder is not None:
+                return len(encoder.encode(text, disallowed_special=()))
+            return -(-len(text) // 4)  # ceil(len/4)
+
+        raw_tokens = 0
+        code_files = 0
+        doc_files = 0
+        total_bytes = 0
+        for d in documents:
+            raw_tokens += _count(d.text)
+            total_bytes += d.file_size
+            if d.metadata.get("source_type") == "code":
+                code_files += 1
+            else:
+                doc_files += 1
+
+        # Chunk overlap re-embeds the overlap region of each chunk, so embedded
+        # tokens exceed raw tokens by roughly overlap/chunk_size.
+        chunk_size = request.chunk_size or 512
+        overlap_factor = 1.0 + (request.chunk_overlap or 0) / max(chunk_size, 1)
+        est_embedding_tokens = int(round(raw_tokens * overlap_factor))
+
+        return {
+            "files": len(documents),
+            "code_files": code_files,
+            "doc_files": doc_files,
+            "total_bytes": total_bytes,
+            "raw_tokens": raw_tokens,
+            "est_embedding_tokens": est_embedding_tokens,
+            "overlap_factor": round(overlap_factor, 3),
+            "tokenizer": tokenizer,
+            "embedding_provider": provider,
+            "embedding_model": model,
+            "summaries_enabled": bool(request.generate_summaries),
+            "approximate": True,
+        }
+
     async def _run_indexing_pipeline(
         self,
         request: IndexRequest,
@@ -335,22 +433,7 @@ class IndexingService:
             )
 
             # Resolve file type presets to glob patterns (FTYPE-03, FTYPE-06)
-            effective_include_patterns = list(request.include_patterns or [])
-            if request.include_types:
-                from brainpalace_server.services.file_type_presets import (
-                    resolve_file_types,
-                )
-
-                preset_patterns = resolve_file_types(request.include_types)
-                # Union of preset patterns and explicit include_patterns
-                for pattern in preset_patterns:
-                    if pattern not in effective_include_patterns:
-                        effective_include_patterns.append(pattern)
-                logger.info(
-                    f"Resolved include_types {request.include_types} to "
-                    f"{len(preset_patterns)} patterns, "
-                    f"{len(effective_include_patterns)} total effective patterns"
-                )
+            effective_include_patterns = self._effective_include_patterns(request)
 
             documents = await self.document_loader.load_files(
                 abs_folder_path,
@@ -560,7 +643,11 @@ class IndexingService:
                     if progress_callback:
                         pct = 10 + int((processed / total_to_process) * 5)
                         await progress_callback(
-                            pct, 100, f"Chunking docs: {processed}/{total}"
+                            pct,
+                            100,
+                            f"Chunking docs: {processed}/{total}",
+                            processed,
+                            total_to_process,
                         )
 
                 doc_chunks = await doc_chunker.chunk_documents(
@@ -618,6 +705,8 @@ class IndexingService:
                                         100,
                                         f"Chunking code: {total_processed}/"
                                         f"{total_to_process}",
+                                        total_processed,
+                                        total_to_process,
                                     )
 
                             return progress_callback_fn

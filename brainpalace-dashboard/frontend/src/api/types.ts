@@ -174,6 +174,8 @@ export type JobRow = {
   started_at: string | null;
   finished_at: string | null;
   progress_percent: number | null;
+  chunks_added: number;
+  chunks_removed: number;
   error: string | null;
 };
 export type JobsPayload = { jobs: JobRow[] };
@@ -184,6 +186,7 @@ export type JobProgress = {
   files_total: number;
   chunks_created: number;
   current_file: string;
+  percent: number;
   percent_complete: number;
 };
 
@@ -203,6 +206,8 @@ export type JobDetail = {
   progress_percent: number;
   total_documents: number;
   total_chunks: number;
+  chunks_added: number;
+  chunks_removed: number;
   error: string | null;
   retry_count: number;
   cancel_requested: boolean;

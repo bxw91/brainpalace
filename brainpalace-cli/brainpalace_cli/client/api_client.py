@@ -388,6 +388,38 @@ class DocServeClient:
             message=data.get("message"),
         )
 
+    def estimate_index(
+        self,
+        folder_path: str,
+        recursive: bool = True,
+        include_code: bool = False,
+        include_patterns: list[str] | None = None,
+        exclude_patterns: list[str] | None = None,
+        include_types: list[str] | None = None,
+        generate_summaries: bool = False,
+        chunk_size: int = 512,
+        chunk_overlap: int = 50,
+    ) -> dict[str, Any]:
+        """Approximate embedding-token cost of indexing a folder (no enqueue).
+
+        Mirrors the file-selection arguments of ``index`` so the estimate
+        reflects exactly what would be indexed. Returns the server's estimate
+        dict (files, est_embedding_tokens, tokenizer, …).
+        """
+        body: dict[str, Any] = {
+            "folder_path": folder_path,
+            "recursive": recursive,
+            "include_code": include_code,
+            "include_patterns": include_patterns,
+            "exclude_patterns": exclude_patterns,
+            "generate_summaries": generate_summaries,
+            "chunk_size": chunk_size,
+            "chunk_overlap": chunk_overlap,
+        }
+        if include_types is not None:
+            body["include_types"] = include_types
+        return self._request("POST", "/index/estimate", json=body)
+
     def list_folders(self) -> list[FolderInfo]:
         """
         List all indexed folders.

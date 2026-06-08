@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-07
+last_validated: 2026-06-09
 ---
 
 <div align="center">
@@ -47,6 +47,7 @@ same prerequisites and end with the same `brainpalace` CLI on your `PATH`.
 | Need | Why |
 |---|---|
 | Python 3.10+ | CLI + server runtime |
+| Python 3.12+ | **Only for the web dashboard** — it's auto-included on 3.12+; on 3.10/3.11 the dashboard is skipped and the CLI/server still install and run |
 | `pipx` | Isolated install for the CLI (`apt install pipx` or `brew install pipx`, then `pipx ensurepath`) |
 | `git` | The installer fetches BrainPalace from GitHub |
 | One provider — cloud key **or** Ollama | Cloud: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `COHERE_API_KEY`, `GEMINI_API_KEY`, `GROK_API_KEY`. Local-only: a running Ollama with an embedding model pulled |
@@ -286,13 +287,13 @@ brainpalace query "where is the JWT token expiry validated?" --mode hybrid --top
 Query: where is the JWT token expiry validated?
 Found 3 results in 412ms
 
-╭─ [1] src/auth/middleware.py  (score 0.87) ─────────────────────────────╮
-│ def verify_token(token: str) -> Claims:                                │
-│     claims = decode(token, SECRET, algorithms=["HS256"])               │
+╭─ [1] src/auth/middleware.py  (score 0.87) ──────────────────────────────╮
+│ def verify_token(token: str) -> Claims:                                 │
+│     claims = decode(token, SECRET, algorithms=["HS256"])                │
 │     if claims.exp <= now():            # expiry check                   │
 │         raise TokenExpired()                                            │
 ╰─────────────────────────────────────────────────────────────────────────╯
-╭─ [2] src/auth/claims.py  (score 0.71) ─────────────────────────────────╮
+╭─ [2] src/auth/claims.py  (score 0.71) ──────────────────────────────────╮
 │ class Claims(BaseModel):                                                │
 │     exp: int   # unix epoch; compared in verify_token()                 │
 ╰─────────────────────────────────────────────────────────────────────────╯
@@ -308,7 +309,7 @@ brainpalace query "what is the embedding cache TTL?" --mode vector --top-k 2
 Query: what is the embedding cache TTL?
 Found 2 results in 233ms
 
-╭─ [1] docs/ARCHITECTURE.md  (score 0.81) ───────────────────────────────╮
+╭─ [1] docs/ARCHITECTURE.md  (score 0.81) ────────────────────────────────╮
 │ The embedding cache holds vectors for 3600 s (1 h) by default, keyed    │
 │ by provider:model:text-hash. Hit rate is reported in `status`.          │
 ╰─────────────────────────────────────────────────────────────────────────╯
@@ -328,15 +329,15 @@ brainpalace query "what calls QueryService.search?" --mode graph --top-k 3
 Query: what calls QueryService.search?
 Found 3 results in 388ms
 
-╭─ [1] api/routers/query.py  (graph: CALLS) ─────────────────────────────╮
+╭─ [1] api/routers/query.py  (graph: CALLS) ──────────────────────────────╮
 │ async def search(req: QueryRequest, svc = Depends(get_query_service)):  │
 │     return await svc.search(req.query)    # endpoint → QueryService     │
 ╰─────────────────────────────────────────────────────────────────────────╯
-╭─ [2] services/research_agent.py  (graph: CALLS) ───────────────────────╮
+╭─ [2] services/research_agent.py  (graph: CALLS) ────────────────────────╮
 │ hits = self.query_service.search(q, mode="multi")                       │
 │   edge: ResearchAgent ──CALLS──▶ QueryService.search                    │
 ╰─────────────────────────────────────────────────────────────────────────╯
-╭─ [3] cli/commands/query.py  (graph: CALLS) ────────────────────────────╮
+╭─ [3] cli/commands/query.py  (graph: CALLS) ─────────────────────────────╮
 │ results = client.search(text, mode=mode)                                │
 ╰─────────────────────────────────────────────────────────────────────────╯
 ```
@@ -355,7 +356,7 @@ brainpalace query "why did we switch the queue from redis to sqlite?" \
 Query: why did we switch the queue from redis to sqlite?
 Found 2 results in 540ms
 
-╭─ [1] session 2026-05-18  (score 0.79) ─────────────────────────────────╮
+╭─ [1] session 2026-05-18  (score 0.79) ──────────────────────────────────╮
 │ assistant: Dropping Redis for the job queue — the single-process server │
 │ made the extra daemon pure overhead. SQLite WAL gives durability with   │
 │ zero ops. Migrated JobQueueStore in this session.                       │
@@ -451,6 +452,9 @@ brainpalace/
 │       ├── commands/                        # CLI subcommands incl. `mcp`
 │       ├── mcp_server/                      # Opt-in MCP stdio shim
 │       └── client/                          # Python SDK
+├── brainpalace-dashboard/                  # Web control plane (Python 3.12+)
+│   ├── brainpalace_dashboard/               # FastAPI BFF + served SPA bundle (static/)
+│   └── frontend/                            # React + Vite source for the SPA
 └── docs/                                    # User + developer docs
 ```
 

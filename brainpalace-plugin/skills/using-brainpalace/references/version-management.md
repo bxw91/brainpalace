@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-05-30
+last_validated: 2026-06-09
 ---
 
 # BrainPalace Version Management
@@ -80,10 +80,24 @@ pip install brainpalace-rag==  # Shows error with all versions listed
 
 ## Upgrading
 
-### Upgrade to Latest
+### Upgrade to Latest (recommended)
+
+```bash
+brainpalace update
+```
+
+Auto-detects pipx / uv / pip and runs the matching upgrade. It prints a
+pre-flight notice listing any running servers + the control-plane dashboard
+(they keep serving the OLD code until restarted), then — after the upgrade —
+offers to restart them so they load the new version (`--no-restart` to skip,
+`--yes` to auto-confirm).
+
+### Upgrade with raw pip
 
 ```bash
 pip install --upgrade brainpalace-rag brainpalace-cli
+# then restart any running instances yourself:
+brainpalace stop && brainpalace start
 ```
 
 ### Upgrade to Specific Version

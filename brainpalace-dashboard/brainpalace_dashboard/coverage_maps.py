@@ -56,6 +56,10 @@ ENDPOINT_SURFACES: dict[str, str] = {
         "unsurfaced: read-only index identity consumed by the Config save "
         "data-compatibility guard, not a standalone control"
     ),
+    "/index/estimate": (
+        "unsurfaced: dry-run embedding-token advisory for the CLI/init "
+        "pre-index prompt, not a dashboard action"
+    ),
     # --- graph ---
     "/git/reindex": "Graph (rebuild)",
     # --- sessions ---

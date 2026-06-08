@@ -106,6 +106,40 @@ def test_update_check_reports_newer(tmp_path, monkeypatch):
     assert body["update_available"] is True
 
 
+def test_update_check_clears_after_in_place_upgrade_without_refetch(
+    tmp_path, monkeypatch
+):
+    """Installed version is read live: an in-place upgrade clears the banner
+    from the cached ``latest`` alone — no re-fetch, no dashboard restart."""
+    from brainpalace_dashboard.services import update_check
+
+    update_check._cache = None
+    fetches = {"n": 0}
+
+    async def _fake_latest() -> str:
+        fetches["n"] += 1
+        return "26.7.0"
+
+    monkeypatch.setattr(update_check, "_fetch_latest", _fake_latest)
+
+    c = _client(tmp_path, monkeypatch)
+
+    # 1) Old install, fresh check: banner shows.
+    monkeypatch.setattr(update_check, "_installed_version", lambda: "26.6.27")
+    first = c.get("/dashboard/api/settings/update-check?force=true").json()
+    assert first["update_available"] is True
+    assert fetches["n"] == 1
+
+    # 2) Upgrade happens in place (installed bumps), NO force → cache hit on
+    #    latest, but current is re-read live → banner self-clears.
+    monkeypatch.setattr(update_check, "_installed_version", lambda: "26.7.0")
+    second = c.get("/dashboard/api/settings/update-check").json()
+    assert second["current"] == "26.7.0"
+    assert second["latest"] == "26.7.0"
+    assert second["update_available"] is False
+    assert fetches["n"] == 1  # latest served from cache, not re-fetched
+
+
 def test_update_check_silent_on_fetch_failure(tmp_path, monkeypatch):
     from brainpalace_dashboard.services import update_check
 

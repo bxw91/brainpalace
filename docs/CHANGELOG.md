@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-08
+last_validated: 2026-06-09
 ---
 
 # Changelog
@@ -9,6 +9,59 @@ All notable changes to BrainPalace are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 Versioning is **CalVer** `YY.M.N` — 2-digit year · month · Nth release that
 month (the counter resets monthly). It looks like SemVer but is not.
+
+---
+
+## [26.6.31] - 2026-06-09
+
+### Added
+- Pre-index embedding-token estimate: `brainpalace index <path> --estimate`
+  prints an approximate embedding-token count (files, code/doc split, tokenizer)
+  **without** indexing, using the exact same file-selection rules as a real index
+  (.gitignore, default excludes, nested-project exclusion, include/exclude
+  patterns, file types). New server endpoint `POST /index/estimate`
+  (`IndexingService.estimate_tokens`, tiktoken for OpenAI / chars-4 heuristic
+  otherwise, chunk-overlap inflation). `brainpalace init` asks (opt-in, default
+  no, interactive only) whether to show the estimate before the first index;
+  after it, you can proceed, **toggle code/docs scope and re-estimate**, or skip
+  indexing. New `brainpalace init --include-code/--no-code` (default on) threads
+  the code/docs choice through **both** the estimate and the first index, so the
+  estimate matches what is actually indexed (was previously hardcoded to include
+  code).
+- Dashboard instance detail header now carries inline Start / Stop / Restart
+  (+ Open) controls for the selected instance, so bouncing the instance you're
+  viewing no longer requires detouring through Server → Instances.
+- Per-job chunk deltas: indexing jobs now record `chunks_added` / `chunks_removed`
+  (server `JobSummary` + `JobDetailResponse`). The Jobs table gains **+Chunks** /
+  **−Chunks** columns and a computed **Duration** column (right of Started); the
+  job-detail drawer shows "Chunks added" / "Chunks removed" plus a distinct
+  "Index total".
+
+### Changed
+- Jobs table merges the old separate **Status** and **Progress** columns into one:
+  the status badge always, with an inline progress bar shown only while a job is
+  active (the standalone progress column was dead weight for finished jobs).
+
+### Fixed
+- Job "Files" count no longer always reads `100 / 100`. `JobProgress` now stores
+  the pipeline's phase-weighted percent in a dedicated `percent` field, decoupled
+  from `files_processed` / `files_total`, which now carry real document counts.
+- Job detail no longer shows the same number for "Chunks" and "Chunks created":
+  the per-job insert delta (`chunks_added`) is computed from the store count
+  before/after plus eviction, distinct from the index-wide `total_chunks`.
+- Dashboard "update available" banner no longer goes stale after an upgrade.
+  `update_check` now caches only the PyPI `latest` (6h TTL) and reads the
+  *installed* version live on every poll, so the banner self-clears the moment
+  an in-place upgrade makes installed ≥ latest — even if the dashboard process
+  was never restarted (previously the whole payload was cached, so a stale
+  "26.6.x available" notice could linger for up to the TTL).
+
+### Changed
+- `brainpalace update` now prints a pre-flight notice listing the running
+  servers / control-plane dashboard *before* the upgrade runs (they keep
+  serving old code until restarted). The restart itself still happens after the
+  upgrade, on confirmation — stopping instances first would needlessly kill the
+  dashboard mid-upgrade.
 
 ---
 

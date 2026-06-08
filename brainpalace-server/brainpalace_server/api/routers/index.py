@@ -183,6 +183,43 @@ async def _handle_dry_run(
 
 
 @router.post(
+    "/estimate",
+    summary="Estimate embedding tokens",
+    description="Approximate the embedding-token cost of indexing a folder "
+    "WITHOUT embedding or enqueueing. Loads exactly the files the real pipeline "
+    "would (same .gitignore / exclude / nested-project / file-type rules) and "
+    "counts tokens with the embedding provider's tokenizer. Result is approximate.",
+)
+async def estimate_index_tokens(
+    request_body: IndexRequest,
+    request: Request,
+) -> dict[str, Any]:
+    """Dry-run token estimate for the given folder. Never enqueues a job."""
+    folder_path = Path(request_body.folder_path).expanduser().resolve()
+    if not folder_path.exists() or not folder_path.is_dir():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Folder not found or not a directory: {request_body.folder_path}",
+        )
+    if not os.access(folder_path, os.R_OK):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot read folder: {request_body.folder_path}",
+        )
+
+    indexing_service = request.app.state.indexing_service
+    try:
+        result: dict[str, Any] = await indexing_service.estimate_tokens(request_body)
+        return result
+    except Exception as exc:  # noqa: BLE001 - surface a clean 500 to the CLI
+        logger.error(f"Token estimate failed: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Token estimate failed: {exc}",
+        ) from exc
+
+
+@router.post(
     "/",
     response_model=IndexResponse,
     status_code=status.HTTP_202_ACCEPTED,

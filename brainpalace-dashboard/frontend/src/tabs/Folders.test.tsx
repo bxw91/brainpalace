@@ -120,6 +120,8 @@ describe("Folders tab", () => {
           started_at: null,
           finished_at: null,
           progress_percent: 42,
+          chunks_added: 0,
+          chunks_removed: 0,
           error: null,
         },
       ],

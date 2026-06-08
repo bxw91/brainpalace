@@ -269,6 +269,67 @@ class TestRestartAfterUpgrade:
         assert ["stop", "--path", "/proj/a", "--json"] not in subcmds
 
 
+class TestPreflightNotice:
+    """Before the upgrade runs, warn what's live (without stopping it)."""
+
+    def test_warns_about_running_instances_before_upgrade(
+        self, runner: CliRunner
+    ) -> None:
+        """A pre-flight line names the live servers/dashboard; nothing is
+        stopped before the upgrade subprocess runs."""
+        order: list[str] = []
+
+        def fake_run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess:
+            order.append("upgrade" if "upgrade" in argv else "other")
+            return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+
+        with (
+            patch(
+                "brainpalace_cli.commands.update.detect_install_manager",
+                return_value="pipx",
+            ),
+            patch(
+                "brainpalace_cli.commands.update.running_servers",
+                return_value=["/proj/a"],
+            ),
+            patch(
+                "brainpalace_cli.commands.update.dashboard_running",
+                return_value=True,
+            ),
+            patch("subprocess.run", side_effect=fake_run),
+        ):
+            result = runner.invoke(update_command, ["--yes", "--no-restart"])
+
+        assert result.exit_code == 0
+        out = result.output.lower()
+        assert "heads up" in out
+        assert "server" in out and "dashboard" in out
+        # --no-restart means the only subprocess is the upgrade itself: the
+        # pre-flight is informational, it never stops anything early.
+        assert order == ["upgrade"]
+
+    def test_silent_when_nothing_running(self, runner: CliRunner) -> None:
+        with (
+            patch(
+                "brainpalace_cli.commands.update.detect_install_manager",
+                return_value="pipx",
+            ),
+            patch("brainpalace_cli.commands.update.running_servers", return_value=[]),
+            patch(
+                "brainpalace_cli.commands.update.dashboard_running",
+                return_value=False,
+            ),
+            patch(
+                "subprocess.run",
+                side_effect=lambda a, **k: subprocess.CompletedProcess(a, 0),
+            ),
+        ):
+            result = runner.invoke(update_command, ["--yes"])
+
+        assert result.exit_code == 0
+        assert "heads up" not in result.output.lower()
+
+
 class TestUpdateRegistration:
     def test_command_registered(self, runner: CliRunner) -> None:
         result = runner.invoke(cli, ["update", "--help"])

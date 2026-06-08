@@ -4,6 +4,7 @@ import { Link, useRouterState, useNavigate } from "@tanstack/react-router";
 import { BrainCircuit, AlertCircle } from "lucide-react";
 import { listInstances } from "./api/client";
 import { Sidebar } from "./components/Sidebar";
+import { InstanceActions } from "./components/InstanceActions";
 import { UpdateBanner } from "./components/UpdateBanner";
 import { ToastProvider } from "./components/Toast";
 import {
@@ -131,15 +132,18 @@ function ShellInner({ children }: { children: ReactNode }) {
 
       {/* Main column */}
       <div className="flex min-w-0 flex-col">
-        <header className="flex items-center justify-between px-6 pt-5">
-          <div>
+        <header className="flex items-center justify-between gap-4 px-6 pt-5">
+          <div className="min-w-0">
             <p className="eyebrow">{view === "server" ? "Control plane" : "Instance"}</p>
-            <h1 className="mt-0.5 font-display text-lg font-semibold tracking-tight">
+            <h1 className="mt-0.5 truncate font-display text-lg font-semibold tracking-tight">
               {view === "server"
                 ? "Server"
                 : (selected?.project_root ?? selected?.name ?? "Instance")}
             </h1>
           </div>
+          {view === "instance" && selected && (
+            <InstanceActions instance={selected} />
+          )}
         </header>
         <div className="mt-3">
           <TabBar />

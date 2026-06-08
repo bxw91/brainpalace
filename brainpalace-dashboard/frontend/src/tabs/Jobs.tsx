@@ -32,6 +32,25 @@ function fmtTime(iso: string | null): string {
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleTimeString();
 }
 
+/** Elapsed ms between started/finished (live to now while still running). */
+function durationMs(j: JobRow): number | null {
+  if (!j.started_at) return null;
+  const start = new Date(j.started_at).getTime();
+  if (Number.isNaN(start)) return null;
+  const end = j.finished_at ? new Date(j.finished_at).getTime() : Date.now();
+  if (Number.isNaN(end)) return null;
+  return Math.max(0, end - start);
+}
+
+function fmtDuration(ms: number | null): string {
+  if (ms == null) return "—";
+  if (ms < 1000) return `${ms} ms`;
+  const s = ms / 1000;
+  if (s < 60) return `${s.toFixed(1)} s`;
+  const m = Math.floor(s / 60);
+  return `${m}m ${Math.round(s % 60)}s`;
+}
+
 export function Jobs({ instanceId }: { instanceId?: string }) {
   const ctx = useOptionalSelectedInstance();
   const id = instanceId ?? ctx?.selectedId ?? null;
@@ -100,43 +119,82 @@ export function Jobs({ instanceId }: { instanceId?: string }) {
       sortValue: (j) => j.operation,
     },
     {
+      // Status + progress merged: the badge alone for finished jobs (their
+      // progress is always 100%/empty — dead weight), plus an inline bar only
+      // while the job is still active.
       key: "status",
       header: "Status",
-      cell: (j) => (
-        <span
-          className={`rounded-md px-2 py-0.5 font-mono text-[0.66rem] uppercase tracking-wider ${STATUS_TONE[j.status] ?? "bg-ink-600 text-fg-muted"}`}
-        >
-          {j.status}
-        </span>
-      ),
-      sortValue: (j) => j.status,
-    },
-    {
-      key: "progress",
-      header: "Progress",
       cell: (j) => {
         const pct = Math.round(j.progress_percent ?? 0);
         return (
           <div className="flex items-center gap-2">
-            <div className="h-1.5 w-20 overflow-hidden rounded-full bg-ink-600">
-              <div
-                className={`h-full rounded-full ${j.status === "error" ? "bg-bad" : "bg-accent"}`}
-                style={{ width: `${pct}%` }}
-              />
-            </div>
-            <span className="font-mono text-[0.68rem] tabular-nums text-fg-faint">
-              {pct}%
+            <span
+              className={`rounded-md px-2 py-0.5 font-mono text-[0.66rem] uppercase tracking-wider ${STATUS_TONE[j.status] ?? "bg-ink-600 text-fg-muted"}`}
+            >
+              {j.status}
             </span>
+            {isJobActive(j) && (
+              <span className="flex items-center gap-1.5">
+                <div className="h-1.5 w-16 overflow-hidden rounded-full bg-ink-600">
+                  <div
+                    className="h-full rounded-full bg-accent"
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+                <span className="font-mono text-[0.66rem] tabular-nums text-fg-faint">
+                  {pct}%
+                </span>
+              </span>
+            )}
           </div>
         );
       },
-      sortValue: (j) => j.progress_percent ?? 0,
+      sortValue: (j) => j.status,
+    },
+    {
+      key: "chunks_added",
+      header: "+Chunks",
+      align: "right",
+      cell: (j) =>
+        j.chunks_added > 0 ? (
+          <span className="font-mono text-xs tabular-nums text-run">
+            +{j.chunks_added}
+          </span>
+        ) : (
+          <span className="text-fg-faint">—</span>
+        ),
+      sortValue: (j) => j.chunks_added ?? 0,
+    },
+    {
+      key: "chunks_removed",
+      header: "−Chunks",
+      align: "right",
+      cell: (j) =>
+        j.chunks_removed > 0 ? (
+          <span className="font-mono text-xs tabular-nums text-bad">
+            −{j.chunks_removed}
+          </span>
+        ) : (
+          <span className="text-fg-faint">—</span>
+        ),
+      sortValue: (j) => j.chunks_removed ?? 0,
     },
     {
       key: "started",
       header: "Started",
       cell: (j) => <span className="text-xs text-fg-muted">{fmtTime(j.started_at)}</span>,
       sortValue: (j) => j.started_at ?? "",
+    },
+    {
+      key: "duration",
+      header: "Duration",
+      align: "right",
+      cell: (j) => (
+        <span className="font-mono text-xs tabular-nums text-fg-muted">
+          {fmtDuration(durationMs(j))}
+        </span>
+      ),
+      sortValue: (j) => durationMs(j) ?? 0,
     },
     {
       key: "error",

@@ -22,6 +22,8 @@ const jobs: JobsPayload = {
       started_at: "2026-06-06T20:00:01Z",
       finished_at: null,
       progress_percent: 55,
+      chunks_added: 0,
+      chunks_removed: 0,
       error: null,
     },
     {
@@ -35,6 +37,8 @@ const jobs: JobsPayload = {
       started_at: "2026-06-06T19:00:01Z",
       finished_at: "2026-06-06T19:05:00Z",
       progress_percent: 100,
+      chunks_added: 120,
+      chunks_removed: 30,
       error: null,
     },
   ],
@@ -64,6 +68,16 @@ describe("Jobs tab", () => {
     const row = screen.getByTestId("job-row-job_run");
     expect(within(row).getByText(/running/i)).toBeInTheDocument();
     expect(within(row).getByText(/55/)).toBeInTheDocument();
+  });
+
+  it("shows chunk add/remove deltas and a computed duration", async () => {
+    wrap(<Jobs instanceId="a" />);
+    await screen.findByText("job_done");
+    const row = screen.getByTestId("job-row-job_done");
+    expect(within(row).getByText("+120")).toBeInTheDocument();
+    expect(within(row).getByText("−30")).toBeInTheDocument();
+    // 19:00:01 → 19:05:00 ≈ 4m 59s
+    expect(within(row).getByText(/4m 59s/)).toBeInTheDocument();
   });
 
   it("Cancel on a running job is confirm-gated then calls cancelJob", async () => {
