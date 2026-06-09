@@ -191,9 +191,18 @@ class TestLoadProviderSettingsGraphRAG:
         """load_provider_settings() parses graphrag: and logs an info message."""
         fake_path = Path("/fake/.brainpalace/config.yaml")
         with (
+            # Patch the live project-file resolver used by
+            # load_merged_config_dict (not the legacy _find_config_file, which
+            # load_provider_settings no longer calls). This makes proj_file
+            # truthy so the patched _load_yaml_config is actually invoked,
+            # independent of whether a real config.yaml exists on disk.
             patch(
-                "brainpalace_server.config.provider_config._find_config_file",
+                "brainpalace_server.config.provider_config._find_project_config_file",
                 return_value=fake_path,
+            ),
+            patch(
+                "brainpalace_server.config.provider_config._find_global_config_file",
+                return_value=None,
             ),
             patch(
                 "brainpalace_server.config.provider_config._load_yaml_config",
