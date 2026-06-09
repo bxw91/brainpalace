@@ -78,7 +78,8 @@ def test_init_json_non_interactive_archive_only(tmp_path, monkeypatch):
 
 def test_init_respects_xdg_global_default(tmp_path, monkeypatch):
     # An XDG global config with session_indexing disabled must NOT be clobbered
-    # back to ON by init's fresh-project default.
+    # back to ON. Under layered resolution (code < global < project) the project
+    # INHERITS the global by OMITTING the block — sparse config, no override.
     xdg = tmp_path / "xdg"
     xdg.mkdir()
     (xdg / "config.yaml").write_text(
@@ -89,8 +90,8 @@ def test_init_respects_xdg_global_default(tmp_path, monkeypatch):
     result = CliRunner().invoke(init_command, ["--path", str(tmp_path)])
     assert result.exit_code == 0, result.output
     cfg = _cfg(tmp_path)
-    assert cfg["session_indexing"]["enabled"] is False
-    assert cfg["session_indexing"]["archive"]["enabled"] is False
+    # No project-level override → the global's disabled values govern at runtime.
+    assert "session_indexing" not in cfg
 
 
 def test_init_flag_overrides_xdg_default(tmp_path, monkeypatch):
@@ -151,3 +152,29 @@ def test_init_yes_with_sessions_flag_enables_embedding(tmp_path, monkeypatch):
     )
     assert result.exit_code == 0, result.output
     assert _cfg(tmp_path)["session_indexing"]["enabled"] is True
+
+
+def test_init_interactive_accepting_global_default_inherits(tmp_path, monkeypatch):
+    # Global enables git history. Interactive run pre-fills the git prompt with
+    # the global default (yes); accepting it must NOT write git_indexing to the
+    # project (it inherits from global). Sparse-write: only divergences persist.
+    xdg = tmp_path / "xdg"
+    xdg.mkdir()
+    (xdg / "config.yaml").write_text(
+        "embedding:\n  provider: openai\n  model: text-embedding-3-large\n"
+        "git_indexing:\n  enabled: true\n"
+    )
+    monkeypatch.setattr("brainpalace_cli.commands.init.get_xdg_config_dir", lambda: xdg)
+    monkeypatch.setenv("OPENAI_API_KEY", "x")
+    monkeypatch.setattr("brainpalace_cli.commands.init._stdin_is_tty", lambda: True)
+    monkeypatch.setattr(
+        "brainpalace_cli.commands.init.claude_plugin_installed", lambda **k: False
+    )
+    # summarize=enter, embed=enter, git=enter(accept global yes), depth=enter, proceed=y
+    r = CliRunner().invoke(
+        init_command, ["--path", str(tmp_path), "--no-start"], input="\n\n\n\ny\n"
+    )
+    assert r.exit_code == 0, r.output
+    assert "(default taken from your global config)" in r.output
+    cfg = _cfg(tmp_path)
+    assert "git_indexing" not in cfg  # accepted global default → inherited

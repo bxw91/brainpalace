@@ -27,6 +27,7 @@ export function SchemaForm({
   errors,
   saving = false,
   showRestart = true,
+  onUnset,
 }: {
   schema: UiSchema;
   values: ConfigValues;
@@ -36,6 +37,8 @@ export function SchemaForm({
   saving?: boolean;
   /** Hide the "Save + Restart" button (e.g. global config has no instance). */
   showRestart?: boolean;
+  /** Remove a project override so the key inherits global/code (per-instance). */
+  onUnset?: (dotpath: string) => void;
 }) {
   const allPaths = useMemo(
     () => schema.sections.flatMap((s) => leafPaths(s.fields)),
@@ -72,6 +75,7 @@ export function SchemaForm({
                   errors={errors}
                   effective={effective}
                   providers={schema.providers}
+                  onUnset={onUnset}
                 />
               </div>
             ))}

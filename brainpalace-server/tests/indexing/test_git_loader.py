@@ -10,7 +10,9 @@ import pytest
 from brainpalace_server.indexing.git_loader import (
     CommitRecord,
     _build_args,
+    git_toplevel,
     load_commits,
+    resolve_commit_scope,
 )
 
 
@@ -115,3 +117,71 @@ def test_build_args_depth_zero_is_unlimited() -> None:
     assert not any(a.startswith("--max-count") for a in args)
     args_pos = _build_args(depth=10, since_sha=None, paths=None)
     assert "--max-count=10" in args_pos
+
+
+# ---------------------------------------------------------------------------
+# Phase 1 — monorepo subdir scope helpers
+# ---------------------------------------------------------------------------
+
+
+def _init_monorepo(root: Path) -> Path:
+    """Create a two-commit monorepo and return the subproject dir."""
+    subprocess.run(
+        ["git", "-C", str(root), "init", "-q"], check=True, capture_output=True
+    )
+    subprocess.run(
+        ["git", "-C", str(root), "config", "user.email", "t@t.t"],
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(root), "config", "user.name", "t"],
+        check=True,
+        capture_output=True,
+    )
+    (root / "rootfile.txt").write_text("root\n")
+    subprocess.run(
+        ["git", "-C", str(root), "add", "-A"], check=True, capture_output=True
+    )
+    subprocess.run(
+        ["git", "-C", str(root), "commit", "-qm", "root commit"],
+        check=True,
+        capture_output=True,
+    )
+    sub = root / "projects" / "sub"
+    sub.mkdir(parents=True)
+    (sub / "a.py").write_text("x = 1\n")
+    subprocess.run(
+        ["git", "-C", str(root), "add", "-A"], check=True, capture_output=True
+    )
+    subprocess.run(
+        ["git", "-C", str(root), "commit", "-qm", "sub commit"],
+        check=True,
+        capture_output=True,
+    )
+    return sub
+
+
+def test_git_toplevel_returns_repo_root(tmp_path: Path) -> None:
+    sub = _init_monorepo(tmp_path)
+    assert git_toplevel(sub) == tmp_path.resolve()
+
+
+def test_resolve_commit_scope_scopes_subdir_in_monorepo(tmp_path: Path) -> None:
+    sub = _init_monorepo(tmp_path)
+    scope = resolve_commit_scope(str(sub), path_filter=[])
+    assert scope == [str(sub.resolve())]
+
+
+def test_resolve_commit_scope_no_scope_when_project_is_repo_root(
+    tmp_path: Path,
+) -> None:
+    _init_monorepo(tmp_path)
+    scope = resolve_commit_scope(str(tmp_path), path_filter=[])
+    assert scope == []
+
+
+def test_resolve_commit_scope_respects_explicit_path_filter(tmp_path: Path) -> None:
+    sub = _init_monorepo(tmp_path)
+    scope = resolve_commit_scope(str(sub), path_filter=["only/this"])
+    assert scope == ["only/this"]

@@ -20,8 +20,12 @@ from pathlib import Path
 from typing import Any
 
 from brainpalace_server.config.git_config import GitIndexingConfig
+from brainpalace_server.config.indexing_config import load_indexing_config
 from brainpalace_server.indexing.git_chunker import GitCommitChunker
-from brainpalace_server.indexing.git_loader import load_commits
+from brainpalace_server.indexing.git_loader import load_commits, resolve_commit_scope
+from brainpalace_server.services.indexing_service import (
+    enforce_token_budget,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -105,8 +109,9 @@ class GitHistoryIndexService:
         state = self._load_state()
         last_sha = state.get(target)
 
+        scope_paths = resolve_commit_scope(target, config.path_filter)
         commits = load_commits(
-            target, depth=config.depth, since_sha=last_sha, paths=config.path_filter
+            target, depth=config.depth, since_sha=last_sha, paths=scope_paths
         )
         summary["commits_total"] = len(commits)
         if not commits:
@@ -126,6 +131,11 @@ class GitHistoryIndexService:
                     skipped += 1
 
         if new_chunks:
+            _budget = load_indexing_config().max_embed_tokens_per_job
+            _tok = enforce_token_budget(new_chunks, limit=_budget, force=False)
+            logger.info(
+                "Git embedding budget check ok: ~%d tokens (limit %d)", _tok, _budget
+            )
             embeddings = await self.embedding_generator.embed_chunks(new_chunks)
             await self.storage_backend.upsert_documents(
                 ids=[c.chunk_id for c in new_chunks],

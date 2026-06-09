@@ -267,7 +267,11 @@ class TestLoadProviderSettings:
         with (
             patch.dict(os.environ, {}, clear=True),
             patch(
-                "brainpalace_server.config.provider_config._find_config_file",
+                "brainpalace_server.config.provider_config._find_project_config_file",
+                return_value=None,
+            ),
+            patch(
+                "brainpalace_server.config.provider_config._find_global_config_file",
                 return_value=None,
             ),
         ):
@@ -293,8 +297,12 @@ class TestGraphragSectionWarning:
         fake_path = Path("/fake/.brainpalace/config.yaml")
         with (
             patch(
-                "brainpalace_server.config.provider_config._find_config_file",
+                "brainpalace_server.config.provider_config._find_project_config_file",
                 return_value=fake_path,
+            ),
+            patch(
+                "brainpalace_server.config.provider_config._find_global_config_file",
+                return_value=None,
             ),
             patch(
                 "brainpalace_server.config.provider_config._load_yaml_config",
@@ -312,8 +320,12 @@ class TestGraphragSectionWarning:
         fake_path = Path("/fake/.brainpalace/config.yaml")
         with (
             patch(
-                "brainpalace_server.config.provider_config._find_config_file",
+                "brainpalace_server.config.provider_config._find_project_config_file",
                 return_value=fake_path,
+            ),
+            patch(
+                "brainpalace_server.config.provider_config._find_global_config_file",
+                return_value=None,
             ),
             patch(
                 "brainpalace_server.config.provider_config._load_yaml_config",

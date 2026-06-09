@@ -219,9 +219,43 @@ class TestRestartAfterUpgrade:
         assert ["stop", "--path", "/proj/a", "--json"] in subcmds
         assert ["start", "--path", "/proj/a", "--no-dashboard", "--json"] in subcmds
         assert ["start", "--path", "/proj/b", "--no-dashboard", "--json"] in subcmds
-        # Dashboard bounced exactly once.
+        # Dashboard bounced exactly once (start with --json to capture the URL).
         assert ["dashboard", "stop"] in subcmds
-        assert ["dashboard", "start", "--no-open"] in subcmds
+        assert ["dashboard", "start", "--no-open", "--json"] in subcmds
+
+    def test_dashboard_restart_shows_url_panel(self, runner: CliRunner) -> None:
+        """After bouncing the dashboard, `update` prints the URL panel (parity
+        with `start` / `dashboard start`)."""
+
+        def fake_run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess:
+            if "dashboard" in argv and "start" in argv:
+                return subprocess.CompletedProcess(
+                    argv,
+                    0,
+                    stdout=(
+                        '{"status": "started", '
+                        '"base_url": "http://127.0.0.1:8787/dashboard/"}'
+                    ),
+                    stderr="",
+                )
+            return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+
+        with (
+            patch(
+                "brainpalace_cli.commands.update.detect_install_manager",
+                return_value="pipx",
+            ),
+            patch("brainpalace_cli.commands.update.running_servers", return_value=[]),
+            patch(
+                "brainpalace_cli.commands.update.dashboard_running", return_value=True
+            ),
+            patch("subprocess.run", side_effect=fake_run),
+        ):
+            result = runner.invoke(update_command, ["--yes"])
+
+        assert result.exit_code == 0
+        assert "Web Dashboard" in result.output
+        assert "8787/dashboard" in result.output
 
     def test_no_restart_flag_skips_and_prints_hint(self, runner: CliRunner) -> None:
         calls: list[list[str]] = []

@@ -122,3 +122,32 @@ async def test_non_repo_no_ops(tmp_path: Path) -> None:
     )
     assert summary["commits_new"] == 0
     assert emb.embedded == 0
+
+
+# ---------------------------------------------------------------------------
+# Phase 1 — monorepo subdir scope
+# ---------------------------------------------------------------------------
+
+
+def _init_monorepo(root: Path) -> Path:
+    """Create a two-commit monorepo and return the subproject dir."""
+    _run(root, "init", "-q")
+    _run(root, "config", "user.email", "t@t.t")
+    _run(root, "config", "user.name", "t")
+    (root / "rootfile.txt").write_text("root\n")
+    _run(root, "add", "-A")
+    _run(root, "commit", "-qm", "root commit")
+    sub = root / "projects" / "sub"
+    sub.mkdir(parents=True)
+    (sub / "a.py").write_text("x = 1\n")
+    _run(root, "add", "-A")
+    _run(root, "commit", "-qm", "sub commit")
+    return sub
+
+
+@pytest.mark.asyncio
+async def test_monorepo_subdir_only_indexes_subdir_commits(tmp_path: Path) -> None:
+    sub = _init_monorepo(tmp_path)
+    svc, store, emb = _svc(tmp_path / "state")
+    summary = await svc.index_repo(str(sub), GitIndexingConfig(enabled=True))
+    assert summary["commits_total"] == 1

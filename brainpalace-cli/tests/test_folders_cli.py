@@ -1,6 +1,7 @@
 """Tests for folders CLI commands."""
 
 import json
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -395,3 +396,147 @@ class TestFoldersHelp:
         assert result.exit_code == 0
         assert "--yes" in result.output
         assert "FOLDER_PATH" in result.output
+
+    def test_folders_prune_help(self, runner: CliRunner) -> None:
+        """Test 'brainpalace folders prune --help' output."""
+        result = runner.invoke(cli, ["folders", "prune", "--help"])
+        assert result.exit_code == 0
+        assert "prune" in result.output.lower()
+
+
+class TestFoldersPruneCommand:
+    """Tests for 'brainpalace folders prune' command."""
+
+    @patch("brainpalace_cli.commands.folders.DocServeClient")
+    def test_prune_removes_dead_folders(
+        self, mock_client_class: MagicMock, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """Test that prune removes folders whose path does not exist on disk."""
+        dead_path = "/nonexistent/dead/path"
+        live_path = str(tmp_path)  # tmp_path actually exists
+
+        mock_client = _make_mock_client(
+            folders=[
+                FolderInfo(
+                    folder_path=dead_path,
+                    chunk_count=5,
+                    last_indexed="2026-01-01T00:00:00Z",
+                ),
+                FolderInfo(
+                    folder_path=live_path,
+                    chunk_count=10,
+                    last_indexed="2026-01-01T00:00:00Z",
+                ),
+            ]
+        )
+        mock_client.delete_folder.return_value = {
+            "folder_path": dead_path,
+            "chunks_deleted": 5,
+            "message": "Removed",
+        }
+        mock_client_class.return_value = mock_client
+
+        result = runner.invoke(cli, ["folders", "prune"])
+
+        assert result.exit_code == 0
+        mock_client.delete_folder.assert_called_once_with(dead_path)
+        assert dead_path in result.output
+
+    @patch("brainpalace_cli.commands.folders.DocServeClient")
+    def test_prune_no_dead_folders(
+        self, mock_client_class: MagicMock, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """Test prune when all folders exist — nothing to remove."""
+        mock_client = _make_mock_client(
+            folders=[
+                FolderInfo(
+                    folder_path=str(tmp_path),
+                    chunk_count=10,
+                    last_indexed="2026-01-01T00:00:00Z",
+                ),
+            ]
+        )
+        mock_client_class.return_value = mock_client
+
+        result = runner.invoke(cli, ["folders", "prune"])
+
+        assert result.exit_code == 0
+        mock_client.delete_folder.assert_not_called()
+        assert "no dead" in result.output.lower()
+
+    @patch("brainpalace_cli.commands.folders.DocServeClient")
+    def test_prune_json_output(
+        self, mock_client_class: MagicMock, runner: CliRunner
+    ) -> None:
+        """Test prune with --json flag."""
+        dead_path = "/nonexistent/dead"
+        mock_client = _make_mock_client(
+            folders=[
+                FolderInfo(
+                    folder_path=dead_path,
+                    chunk_count=3,
+                    last_indexed="2026-01-01T00:00:00Z",
+                ),
+            ]
+        )
+        mock_client.delete_folder.return_value = {
+            "folder_path": dead_path,
+            "chunks_deleted": 3,
+            "message": "Removed",
+        }
+        mock_client_class.return_value = mock_client
+
+        result = runner.invoke(cli, ["folders", "prune", "--json"])
+
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert "pruned" in data
+        assert dead_path in data["pruned"]
+
+    @patch("brainpalace_cli.commands.folders.DocServeClient")
+    def test_prune_connection_error(
+        self, mock_client_class: MagicMock, runner: CliRunner
+    ) -> None:
+        """Test prune when server is unreachable."""
+        mock_client = _make_mock_client()
+        mock_client.list_folders.side_effect = ConnectionError("Cannot connect")
+        mock_client_class.return_value = mock_client
+
+        result = runner.invoke(cli, ["folders", "prune"])
+
+        assert result.exit_code == 7
+        assert "Connection Error" in result.output
+
+    @patch("brainpalace_cli.commands.folders.DocServeClient")
+    def test_prune_dry_run_lists_dead_folders_without_deleting(
+        self, mock_client_class: MagicMock, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        """Test --dry-run lists dead folders but does NOT call delete_folder."""
+        dead_path = "/nonexistent/dead/path"
+        live_path = str(tmp_path)  # tmp_path actually exists
+
+        mock_client = _make_mock_client(
+            folders=[
+                FolderInfo(
+                    folder_path=dead_path,
+                    chunk_count=5,
+                    last_indexed="2026-01-01T00:00:00Z",
+                ),
+                FolderInfo(
+                    folder_path=live_path,
+                    chunk_count=10,
+                    last_indexed="2026-01-01T00:00:00Z",
+                ),
+            ]
+        )
+        mock_client_class.return_value = mock_client
+
+        result = runner.invoke(cli, ["folders", "prune", "--dry-run"])
+
+        assert result.exit_code == 0
+        # dead path should be listed
+        assert dead_path in result.output
+        # output should indicate dry-run intent
+        assert "would prune" in result.output.lower()
+        # delete_folder must NOT have been called
+        mock_client.delete_folder.assert_not_called()

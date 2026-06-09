@@ -140,9 +140,13 @@ def test_cohere_env_picks_cohere_embedding(
     assert config["embedding"]["provider"] == "cohere"
 
 
-def test_copies_xdg_global_when_present(tmp_path: Path, isolated_xdg: Path) -> None:
-    """User has ~/.config/brainpalace/config.yaml → init copies it
-    instead of writing the hardcoded default. Respects user provider choice."""
+def test_inherits_xdg_global_when_present(tmp_path: Path, isolated_xdg: Path) -> None:
+    """User has ~/.config/brainpalace/config.yaml → init does NOT copy it.
+
+    Under layered resolution (code < global < project) the project INHERITS the
+    global, so the project config is sparse — it must NOT duplicate the global's
+    provider blocks. With no explicit per-project flags, the file is empty.
+    """
     xdg_config = isolated_xdg / "config.yaml"
     user_config = {
         "embedding": {"provider": "openai", "model": "text-embedding-3-large"},
@@ -154,10 +158,23 @@ def test_copies_xdg_global_when_present(tmp_path: Path, isolated_xdg: Path) -> N
     written = write_default_provider_config(tmp_path)
     assert written is True
 
-    data = yaml.safe_load((tmp_path / "config.yaml").read_text())
-    # Came from XDG, NOT the hardcoded Anthropic default.
-    assert data["summarization"]["provider"] == "openai"
-    assert data["summarization"]["model"] == "gpt-4o-mini"
+    data = yaml.safe_load((tmp_path / "config.yaml").read_text()) or {}
+    # Inherited, not copied: no duplicated provider blocks in the project file.
+    assert "summarization" not in data
+    assert "embedding" not in data
+
+
+def test_inherits_xdg_global_writes_only_explicit_divergences(
+    tmp_path: Path, isolated_xdg: Path
+) -> None:
+    """With a global present, only explicit per-project flags are written."""
+    (isolated_xdg / "config.yaml").write_text(
+        yaml.safe_dump({"embedding": {"provider": "openai"}})
+    )
+    written = write_default_provider_config(tmp_path, bm25_language="hr")
+    assert written is True
+    data = yaml.safe_load((tmp_path / "config.yaml").read_text()) or {}
+    assert data == {"bm25": {"language": "hr"}}  # only the divergence
 
 
 def test_preview_embedding_prefers_project_config(tmp_path, monkeypatch):

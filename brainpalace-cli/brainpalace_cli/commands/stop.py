@@ -171,12 +171,19 @@ def resolve_project_root_from_url(url: str, timeout: float = 2.0) -> Path:
     default=10,
     help="Timeout for graceful shutdown in seconds (default: 10)",
 )
+@click.option(
+    "--all",
+    "stop_all",
+    is_flag=True,
+    help="Also reap orphan server processes not referenced by the registry.",
+)
 @click.option("--json", "json_output", is_flag=True, help="Output as JSON")
 def stop_command(
     path: str | None,
     url: str | None,
     force: bool,
     timeout: int,
+    stop_all: bool,
     json_output: bool,
 ) -> None:
     """Stop the BrainPalace server for this project.
@@ -191,7 +198,22 @@ def stop_command(
       brainpalace stop --force                      # Force stop if graceful fails
       brainpalace stop --path /my/project           # Stop specific project's server
       brainpalace stop --url http://127.0.0.1:8001  # Stop server by URL
+      brainpalace stop --all                        # Reap orphan server processes
     """
+    if stop_all:
+        from brainpalace_cli.commands.reap import reap_orphans
+
+        reaped = reap_orphans()
+        if json_output:
+            click.echo(json.dumps({"reaped_pids": reaped}, indent=2))
+        elif reaped:
+            console.print(
+                f"[green]Reaped {len(reaped)} orphan server process(es):[/] "
+                f"{', '.join(map(str, reaped))}"
+            )
+        else:
+            console.print("[dim]No orphan server processes found.[/]")
+        return
     try:
         # Resolve project root
         if path:

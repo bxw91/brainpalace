@@ -17,9 +17,11 @@ import time
 from pathlib import Path
 from typing import Any
 
+from brainpalace_server.config.indexing_config import load_indexing_config
 from brainpalace_server.config.session_config import SessionIndexingConfig
 from brainpalace_server.indexing.session_chunker import SessionChunker
 from brainpalace_server.indexing.session_loader import load_session
+from brainpalace_server.services.indexing_service import enforce_token_budget
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +88,13 @@ class SessionIndexService:
                 skipped += 1
 
         if new_chunks:
+            _budget = load_indexing_config().max_embed_tokens_per_job
+            _tok = enforce_token_budget(new_chunks, limit=_budget, force=False)
+            logger.info(
+                "Session embedding budget check ok: ~%d tokens (limit %d)",
+                _tok,
+                _budget,
+            )
             embeddings = await self.embedding_generator.embed_chunks(new_chunks)
             await self.storage_backend.upsert_documents(
                 ids=[c.chunk_id for c in new_chunks],

@@ -28,7 +28,11 @@ def test_project_value_wins(tmp_path, monkeypatch):
     _write_global(tmp_path, monkeypatch, "graphrag:\n  enabled: true\n")
 
     eff = ConfigService().effective(state)
-    assert eff["graphrag.enabled"] == {"value": False, "source": "project"}
+    entry = eff["graphrag.enabled"]
+    assert entry["value"] is False
+    assert entry["source"] == "project"
+    # A project override carries what it WOULD inherit if unset (here: global).
+    assert entry["inherited"] == {"value": True, "source": "global"}
 
 
 def test_global_fallback_when_project_absent(tmp_path, monkeypatch):
@@ -37,8 +41,23 @@ def test_global_fallback_when_project_absent(tmp_path, monkeypatch):
     _write_global(tmp_path, monkeypatch, "summarization:\n  provider: gemini\n")
 
     eff = ConfigService().effective(state)
-    assert eff["summarization.provider"] == {"value": "gemini", "source": "global"}
-    assert eff["embedding.provider"] == {"value": "openai", "source": "project"}
+    assert eff["summarization.provider"]["value"] == "gemini"
+    assert eff["summarization.provider"]["source"] == "global"
+    # Not project-sourced → no inherited fallback attached.
+    assert eff["summarization.provider"]["inherited"] is None
+    assert eff["embedding.provider"]["value"] == "openai"
+    assert eff["embedding.provider"]["source"] == "project"
+
+
+def test_project_override_inherited_falls_to_code_default(tmp_path, monkeypatch):
+    state = _project(tmp_path)
+    # reranker.enabled set at project, absent from global → inherited = code default.
+    (state / "config.yaml").write_text("reranker:\n  enabled: false\n")
+    _write_global(tmp_path, monkeypatch, "")
+
+    entry = ConfigService().effective(state)["reranker.enabled"]
+    assert entry["source"] == "project"
+    assert entry["inherited"] == {"value": True, "source": "default"}
 
 
 def test_default_fallback_when_unset_everywhere(tmp_path, monkeypatch):
@@ -48,7 +67,11 @@ def test_default_fallback_when_unset_everywhere(tmp_path, monkeypatch):
 
     eff = ConfigService().effective(state)
     # reranker.enabled defaults True in ui_schema.DEFAULTS
-    assert eff["reranker.enabled"] == {"value": True, "source": "default"}
+    assert eff["reranker.enabled"] == {
+        "value": True,
+        "source": "default",
+        "inherited": None,
+    }
 
 
 def test_secret_is_masked(tmp_path, monkeypatch):

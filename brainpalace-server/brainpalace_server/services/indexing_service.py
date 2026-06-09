@@ -45,6 +45,30 @@ from brainpalace_server.storage import (
 logger = logging.getLogger(__name__)
 
 
+class BudgetExceededError(RuntimeError):
+    """Raised when an index job would embed more tokens than the configured budget."""
+
+
+def estimate_chunk_tokens(chunks: list[Any]) -> int:
+    """Cheap ceil(len/4) token sum over chunk .text — provider-agnostic, no API."""
+    return sum(-(-len(getattr(c, "text", "") or "") // 4) for c in chunks)
+
+
+def enforce_token_budget(chunks: list[Any], *, limit: int, force: bool) -> int:
+    """Raise BudgetExceededError when the to-embed tokens exceed ``limit``.
+
+    ``limit <= 0`` disables the guard. ``force`` bypasses it (explicit opt-in).
+    Returns the estimated token total for logging.
+    """
+    total = estimate_chunk_tokens(chunks)
+    if limit > 0 and not force and total > limit:
+        raise BudgetExceededError(
+            f"Index would embed ~{total:,} tokens, over the budget of {limit:,}. "
+            f"Raise indexing.max_embed_tokens_per_job or re-run with force_budget=true."
+        )
+    return total
+
+
 # Type alias for progress callback.
 # Args: (percent_current, percent_total, message, files_processed?, files_total?)
 # — the two leading ints are the phase-weighted percent pair (total is 100); the
@@ -364,7 +388,77 @@ class IndexingService:
         # tokens exceed raw tokens by roughly overlap/chunk_size.
         chunk_size = request.chunk_size or 512
         overlap_factor = 1.0 + (request.chunk_overlap or 0) / max(chunk_size, 1)
-        est_embedding_tokens = int(round(raw_tokens * overlap_factor))
+        doc_tokens = int(round(raw_tokens * overlap_factor))
+
+        # --- git history (same scope the real index uses; Phase 1) ---
+        git_tokens = 0
+        git_commits = 0
+        from brainpalace_server.config.git_config import (
+            load_git_indexing_config,
+        )  # noqa: PLC0415
+
+        git_cfg = load_git_indexing_config()
+        if git_cfg.enabled:
+            from brainpalace_server.indexing.git_chunker import (
+                GitCommitChunker,
+            )  # noqa: PLC0415
+            from brainpalace_server.indexing.git_loader import (  # noqa: PLC0415
+                load_commits,
+                resolve_commit_scope,
+            )
+
+            repo_path = git_cfg.repo_path or abs_folder_path
+            _max_files = git_cfg.max_files
+            _depth = git_cfg.depth
+            _repo_name = os.path.basename(abs_folder_path) or "git"
+
+            def _count_git_commits() -> tuple[int, int]:
+                scope = resolve_commit_scope(repo_path, git_cfg.path_filter or None)
+                commits = load_commits(repo_path, depth=_depth, paths=scope or None)
+                chunker = GitCommitChunker(max_files=_max_files)
+                tokens = 0
+                for rec in commits:
+                    for ch in chunker.chunk(rec, repo_name=_repo_name, branch=None):
+                        tokens += _count(ch.text)
+                return tokens, len(commits)
+
+            git_tokens, git_commits = await asyncio.to_thread(_count_git_commits)
+
+        # --- session transcripts (only when session indexing is enabled) ---
+        session_tokens = 0
+        session_files = 0
+        from brainpalace_server.config.session_config import (  # noqa: PLC0415
+            load_session_indexing_config,
+            resolve_session_capabilities,
+        )
+
+        sess_cfg = load_session_indexing_config()
+        caps = resolve_session_capabilities(sess_cfg)
+        if caps.index_enabled:
+            archive_dir = sess_cfg.archive.dir
+            if os.path.isabs(archive_dir):
+                archive_root = Path(archive_dir)
+            else:
+                archive_root = Path(abs_folder_path) / archive_dir
+            if archive_root.exists():
+                # Session transcripts use their own window/stride chunking, so
+                # the doc overlap factor is intentionally NOT applied here; it's
+                # an approximation of the raw transcript token cost only.
+                def _count_session_files(root: Path) -> tuple[int, int]:
+                    tokens, files = 0, 0
+                    for f in root.rglob("*.jsonl"):
+                        try:
+                            tokens += _count(f.read_text(errors="replace"))
+                            files += 1
+                        except OSError:
+                            continue
+                    return tokens, files
+
+                session_tokens, session_files = await asyncio.to_thread(
+                    _count_session_files, archive_root
+                )
+
+        total_tokens = doc_tokens + git_tokens + session_tokens
 
         return {
             "files": len(documents),
@@ -372,7 +466,12 @@ class IndexingService:
             "doc_files": doc_files,
             "total_bytes": total_bytes,
             "raw_tokens": raw_tokens,
-            "est_embedding_tokens": est_embedding_tokens,
+            "doc_tokens": doc_tokens,
+            "git_tokens": git_tokens,
+            "git_commits": git_commits,
+            "session_tokens": session_tokens,
+            "session_files": session_files,
+            "est_embedding_tokens": total_tokens,
             "overlap_factor": round(overlap_factor, 3),
             "tokenizer": tokenizer,
             "embedding_provider": provider,
@@ -585,9 +684,15 @@ class IndexingService:
                 self._state.completed_at = datetime.now(timezone.utc)
                 return None
 
-            # Step 2: Chunk documents and code files
+            # Step 2: Chunk documents and code files.
+            # Report the real document count here so the job's "Files" metric is
+            # correct for ALL runs — the code chunker reports no per-file progress,
+            # so without this a code-only job would show 0/0. files_processed
+            # catches up to files_total at completion.
             if progress_callback:
-                await progress_callback(10, 100, "Chunking documents...")
+                await progress_callback(
+                    10, 100, "Chunking documents...", 0, len(documents)
+                )
 
             # Separate documents by type
             doc_documents = [
@@ -801,6 +906,20 @@ class IndexingService:
             # Step 3: Generate embeddings
             if progress_callback:
                 await progress_callback(15, 100, "Generating embeddings...")
+
+            # Budget guard: block the job if the to-embed token count exceeds
+            # the configured cap (limit<=0 disables; force_budget bypasses).
+            from brainpalace_server.config.indexing_config import (  # noqa: PLC0415
+                load_indexing_config as _load_indexing_config,
+            )
+
+            _budget = _load_indexing_config().max_embed_tokens_per_job
+            _tok = enforce_token_budget(
+                chunks, limit=_budget, force=request.force_budget
+            )
+            logger.info(
+                "Embedding budget check ok: ~%d tokens (limit %d)", _tok, _budget
+            )
 
             async def embedding_progress(processed: int, total: int) -> None:
                 if progress_callback:
@@ -1107,10 +1226,7 @@ class IndexingService:
                 watch_mode=watch_mode,
                 watch_debounce_seconds=watch_debounce_seconds,
                 include_code=request.include_code,
-            )
-            logger.info(
-                f"Registered folder {abs_folder_path} with FolderManager "
-                f"({len(folder_chunk_ids)} chunks)"
+                source=request.trigger,
             )
 
         return eviction_summary_result

@@ -46,7 +46,18 @@ _STATUS_STYLE = {
         "or user code. Re-runs the report after fixing."
     ),
 )
-def doctor_command(url: str | None, json_output: bool, apply_fixes: bool) -> None:
+@click.option(
+    "--reap",
+    "reap",
+    is_flag=True,
+    help=(
+        "Kill orphan server processes not referenced by a live registry entry "
+        "(leaked servers that hold ports). Runs before the diagnostics."
+    ),
+)
+def doctor_command(
+    url: str | None, json_output: bool, apply_fixes: bool, reap: bool
+) -> None:
     """Diagnose your BrainPalace setup.
 
     Inspects Python version, project init state, provider config, required
@@ -55,7 +66,22 @@ def doctor_command(url: str | None, json_output: bool, apply_fixes: bool) -> Non
     be used in scripts (``brainpalace doctor || brainpalace init``).
 
     Pass ``--fix`` to auto-apply the safe subset of remediations and re-run.
+    Pass ``--reap`` to first kill orphan (unreferenced) server processes.
     """
+    reaped: list[int] = []
+    if reap:
+        from brainpalace_cli.commands.reap import reap_orphans
+
+        reaped = reap_orphans()
+        if not json_output:
+            if reaped:
+                console.print(
+                    f"[green]Reaped {len(reaped)} orphan server process(es):[/] "
+                    f"{', '.join(map(str, reaped))}"
+                )
+            else:
+                console.print("[dim]No orphan server processes found.[/]")
+
     report = run_doctor(server_url_override=url)
 
     fix_actions: list[str] = []
@@ -69,6 +95,8 @@ def doctor_command(url: str | None, json_output: bool, apply_fixes: bool) -> Non
         payload = json.loads(report_to_json(report))
         if apply_fixes:
             payload["applied_fixes"] = fix_actions
+        if reap:
+            payload["reaped_pids"] = reaped
         click.echo(json.dumps(payload, indent=2))
         raise SystemExit(report.exit_code)
 

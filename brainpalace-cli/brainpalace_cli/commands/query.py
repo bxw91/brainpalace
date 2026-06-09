@@ -109,7 +109,27 @@ def query_command(
     no_time_decay: bool,
     query_language: str | None,
 ) -> None:
-    """Search indexed documents with natural language or keyword query."""
+    """Search indexed documents with natural language or keyword query.
+
+    \b
+    --json output schema (stdout):
+      {
+        "query": "<text>",
+        "total_results": <int>,
+        "query_time_ms": <float>,
+        "results": [
+          {"text": "<chunk snippet>", "source": "<file path>",
+           "score": <float>, "chunk_id": "<id>"}
+        ]
+      }
+
+    Per-result keys are "text" and "source" (NOT "content"/"file_path").
+
+    \b
+    On failure --json instead emits {"error": "...", "detail": ...} (no
+    "results" key) AND exits non-zero. Consumers must check the exit code,
+    not just the presence of "results".
+    """
     # Get URL from config if not specified
     resolved_url = url or _get_default_url()
 

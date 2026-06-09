@@ -13,6 +13,7 @@ import {
   type QueryDetail,
   type ReplayResponse,
   type LogsPayload,
+  type UnsetResult,
 } from "./types";
 
 const BASE = "/dashboard/api";
@@ -99,6 +100,23 @@ export async function patchConfig(
     // 422 -> { errors: [...] }; 409 -> DataConflictEnvelope { conflict, ... }
     throw await readError(r);
   }
+  return r.json();
+}
+
+/**
+ * Remove project-level keys so they inherit from global / code default. Returns
+ * the removed keys plus the NEW effective value+source per requested key.
+ */
+export async function unsetConfig(
+  id: string,
+  dotpaths: string[],
+): Promise<UnsetResult> {
+  const r = await fetch(`${BASE}/instances/${id}/config/unset`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ dotpaths }),
+  });
+  if (!r.ok) throw await readError(r);
   return r.json();
 }
 

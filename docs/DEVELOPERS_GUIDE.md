@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-07
+last_validated: 2026-06-10
 ---
 
 # BrainPalace Developer Guide
@@ -301,10 +301,34 @@ Symlinks are resolved to canonical paths to ensure consistent state directories.
 Settings are resolved in order (first wins):
 
 1. Command-line flags (`--port 8080`)
-2. Environment variables (`DOC_SERVE_STATE_DIR`, `DOC_SERVE_MODE`)
-3. Project config (`.brainpalace/config.json`)
-4. Global config (`~/.brainpalace/config.json`, future)
-5. Built-in defaults
+2. Environment variables (`DOC_SERVE_STATE_DIR`, `DOC_SERVE_MODE`, kill-switches)
+3. Project config (`.brainpalace/config.yaml`)
+4. Global config (`~/.config/brainpalace/config.yaml`, XDG)
+5. Built-in (pydantic) defaults
+
+**`config.yaml` is resolved per key as `code < global < project`** (env on top).
+The server merges the global XDG `config.yaml` *under* the project file
+(`provider_config.load_merged_config_dict` / `load_raw_config`): a key the project
+omits is inherited from global, then the code default. Every block loader
+(provider, git, session, indexing, bm25, query-log) reads this merged dict.
+
+The project `config.yaml` is therefore **sparse** — it stores only values that
+diverge from the inherited one:
+
+- `brainpalace init` writes only explicit flags / divergent interactive answers;
+  prompts default to the global value and accepting it writes nothing (inherits).
+  With **no** global config, init seeds env-detected code defaults so the project
+  stands alone.
+- `brainpalace config unset <dotpath>` (and the dashboard's per-field **unset**
+  control) removes a project override so the key inherits again. The dashboard
+  shows a provenance badge (project/global/code) and, for project-set keys, the
+  value it would fall back to if unset (`ConfigService.effective().inherited`).
+
+Do **not** reintroduce verbatim "copy the global into the project" writes — that
+breaks inheritance (a later global edit would no longer propagate).
+
+> `config.json` (server `bind_host`/ports, runtime-managed) is **not** layered;
+> only `config.yaml` participates in `code < global < project` resolution.
 
 ### Health Endpoint Enhancement
 

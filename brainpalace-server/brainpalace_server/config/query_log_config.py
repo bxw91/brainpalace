@@ -16,7 +16,7 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, Field
 
-from brainpalace_server.config.provider_config import _find_config_file
+from brainpalace_server.config.provider_config import load_raw_config
 
 logger = logging.getLogger(__name__)
 
@@ -49,22 +49,16 @@ def load_query_log_config(
     ``QUERY_LOG_ENABLED=false`` forces ``enabled`` off even when the project
     opts in.
     """
-    path = config_path or _find_config_file()
     cfg = QueryLogConfig()
-    if path and Path(path).exists():
-        try:
-            raw = yaml.safe_load(Path(path).read_text()) or {}
-            block = raw.get("query_log")
-            if isinstance(block, dict):
-                cfg = QueryLogConfig(
-                    **{
-                        k: v
-                        for k, v in block.items()
-                        if k in QueryLogConfig.model_fields
-                    }
-                )
-        except (OSError, yaml.YAMLError, ValueError) as exc:
-            logger.warning("Could not parse query_log config: %s", exc)
+    try:
+        raw = load_raw_config(config_path)
+        block = raw.get("query_log")
+        if isinstance(block, dict):
+            cfg = QueryLogConfig(
+                **{k: v for k, v in block.items() if k in QueryLogConfig.model_fields}
+            )
+    except (OSError, yaml.YAMLError, ValueError) as exc:
+        logger.warning("Could not parse query_log config: %s", exc)
 
     if not _env_master_enabled():
         cfg = cfg.model_copy(update={"enabled": False})

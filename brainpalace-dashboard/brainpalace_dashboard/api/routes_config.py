@@ -118,6 +118,27 @@ def get_config_effective(id_: str) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail="instance not found") from None
 
 
+class ConfigUnset(BaseModel):
+    """Keys to remove from the project config so they inherit global/code."""
+
+    dotpaths: list[str]
+
+
+@router.post("/instances/{id_}/config/unset")
+def unset_config(id_: str, body: ConfigUnset) -> Any:
+    """Remove project-level keys so they inherit from global / code default.
+
+    Returns ``{"removed": [...], "effective": {dotpath: {value, source}}}`` with
+    the NEW resolved value + source per requested key, so the form can update the
+    field in place to its inherited value without a full refetch.
+    """
+    try:
+        state_dir = _state_dir_for(id_)
+    except InstanceNotFound:
+        raise HTTPException(status_code=404, detail="instance not found") from None
+    return config_service.unset(state_dir, body.dotpaths)
+
+
 @router.patch("/instances/{id_}/config")
 def patch_config(id_: str, body: ConfigPatch) -> Any:
     try:

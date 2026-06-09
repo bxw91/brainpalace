@@ -415,6 +415,7 @@ async def index_documents(
             folder_metadata_file=request_body.folder_metadata_file,
             watch_mode=request_body.watch_mode,
             watch_debounce_seconds=request_body.watch_debounce_seconds,
+            trigger=request_body.trigger,
         )
 
         result = await job_service.enqueue_job(
@@ -532,6 +533,7 @@ async def add_documents(
             include_types=request_body.include_types,
             exclude_patterns=request_body.exclude_patterns,
             force=request_body.force,
+            trigger="folders_add",
         )
 
         result = await job_service.enqueue_job(

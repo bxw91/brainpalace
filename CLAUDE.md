@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-07
+last_validated: 2026-06-10
 ---
 
 # BrainPalace — repo guide for Claude
@@ -32,6 +32,15 @@ two in the same change + note it in `docs/CHANGELOG.md`.** Canonical config path
 is XDG `~/.config/brainpalace/config.yaml` (legacy `~/.brainpalace/` is
 deprecated). Full rule + parity checklist:
 [docs/DEVELOPERS_GUIDE.md → Setup-surface parity](docs/DEVELOPERS_GUIDE.md#setup-surface-parity-cli--plugin--mcp).
+
+**Config resolves `code < global < project`** (env overrides on top). The server
+merges the global XDG `config.yaml` under the project `.brainpalace/config.yaml`
+per key (`provider_config.load_merged_config_dict` / `load_raw_config`); a key the
+project omits is inherited from global, then the code default. The project file is
+**sparse** — `init` writes only values that diverge from the inherited one, and
+`brainpalace config unset <dotpath>` (or the dashboard's per-field unset) removes
+a project override so the key inherits again. Don't reintroduce verbatim
+"copy the global into the project" writes.
 
 ## Dashboard parity — surface every feature (MANDATORY)
 

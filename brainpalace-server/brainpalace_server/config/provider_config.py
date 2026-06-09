@@ -399,19 +399,14 @@ class ProviderSettings(BaseModel):
     )
 
 
-def _find_config_file() -> Path | None:
-    """Find the configuration file in standard locations.
+def _find_project_config_file() -> Path | None:
+    """Find the PROJECT-scoped config file (never the global XDG one).
 
-    Search order:
+    Search order (project layer of ``code < global < project``):
     1. BRAINPALACE_CONFIG environment variable
-    2. State directory config.yaml (if BRAINPALACE_STATE_DIR or DOC_SERVE_STATE_DIR set)
+    2. State directory config.yaml (BRAINPALACE_STATE_DIR / DOC_SERVE_STATE_DIR)
     3. Current directory config.yaml
     4. Walk up from CWD: .brainpalace/config.yaml (or legacy path)
-    5. XDG config ~/.config/brainpalace/config.yaml (preferred)
-    6. Legacy ~/.brainpalace/config.yaml (deprecated, logs warning)
-
-    Returns:
-        Path to config file or None if not found
     """
     # 1. Environment variable override
     env_config = os.getenv("BRAINPALACE_CONFIG")
@@ -450,6 +445,16 @@ def _find_config_file() -> Path | None:
             return legacy_config
         current = current.parent
 
+    return None
+
+
+def _find_global_config_file() -> Path | None:
+    """Find the GLOBAL (machine-wide) config file — the middle resolution layer.
+
+    Search order (global layer of ``code < global < project``):
+    5. XDG config ~/.config/brainpalace/config.yaml (preferred)
+    6. Legacy ~/.brainpalace/config.yaml (deprecated, logs warning)
+    """
     # 5. XDG config directory (checked before legacy per XDG standard)
     # Server cannot import from CLI package — inline the XDG logic
     xdg_config_home = os.environ.get("XDG_CONFIG_HOME")
@@ -486,6 +491,72 @@ def _find_config_file() -> Path | None:
         return home_alt
 
     return None
+
+
+def _find_config_file() -> Path | None:
+    """Backward-compatible single-file resolver: project first, else global.
+
+    Prefer :func:`load_merged_config_dict` for new code — this returns only the
+    single most-specific file and does NOT layer global under project.
+    """
+    return _find_project_config_file() or _find_global_config_file()
+
+
+def _deep_merge(base: dict[str, Any], over: dict[str, Any]) -> dict[str, Any]:
+    """Recursively merge ``over`` onto ``base``; ``over`` wins per key.
+
+    Nested dicts are merged key-by-key; any non-dict value (or a type change)
+    replaces wholesale. Inputs are not mutated. This is the engine of the
+    ``code < global < project`` precedence: call with ``base=global`` and
+    ``over=project`` to let project values override global ones per key while
+    inheriting every key the project omits.
+    """
+    out: dict[str, Any] = dict(base)
+    for key, value in over.items():
+        if key in out and isinstance(out[key], dict) and isinstance(value, dict):
+            out[key] = _deep_merge(out[key], value)
+        else:
+            out[key] = value
+    return out
+
+
+def load_merged_config_dict(project_path: Path | None = None) -> dict[str, Any]:
+    """Resolve the effective config dict by layering ``global < project``.
+
+    Pydantic supplies the lowest (code-default) layer when these dicts are fed
+    into a settings model, so the full precedence is ``code < global < project``.
+    Environment-variable overrides are applied later, at point of use, so they
+    remain the highest-precedence layer (``env > project > global > code``).
+
+    Args:
+        project_path: Explicit project config file; defaults to the resolved
+            project-scoped file (``_find_project_config_file``).
+    """
+    global_file = _find_global_config_file()
+    global_dict = _load_yaml_config(global_file) if global_file else {}
+
+    proj_file = project_path or _find_project_config_file()
+    # A project file that IS the global file (e.g. running from the XDG dir)
+    # must not be merged onto itself.
+    if proj_file and global_file and Path(proj_file).resolve() == global_file.resolve():
+        proj_file = None
+    project_dict = _load_yaml_config(proj_file) if proj_file else {}
+
+    return _deep_merge(global_dict, project_dict)
+
+
+def load_raw_config(config_path: Path | None = None) -> dict[str, Any]:
+    """Raw effective config dict for per-block loaders (git/session/bm25/…).
+
+    With an explicit ``config_path`` this reads that single file verbatim (used
+    by tests and the server-less estimate). Otherwise it returns the merged
+    ``global < project`` dict so every block loader inherits global values for
+    keys the project omits, consistent with ``load_provider_settings``.
+    """
+    if config_path is not None:
+        path = Path(config_path)
+        return _load_yaml_config(path) if path.exists() else {}
+    return load_merged_config_dict()
 
 
 def _load_yaml_config(path: Path) -> dict[str, Any]:
@@ -530,17 +601,23 @@ def load_provider_settings() -> ProviderSettings:
     Returns:
         Validated ProviderSettings instance
     """
-    config_path = _find_config_file()
+    # Resolve the effective config by layering global < project (code defaults
+    # come from the pydantic model below). env vars still win at point of use.
+    project_file = _find_project_config_file()
+    global_file = _find_global_config_file()
+    raw_config = load_merged_config_dict()
 
-    if config_path:
-        logger.info(f"Loading provider config from {config_path}")
-        raw_config = _load_yaml_config(config_path)
+    if project_file or global_file:
+        logger.info(
+            "Loading provider config (project=%s, global=%s)",
+            project_file,
+            global_file,
+        )
         if "graphrag" in raw_config:
             logger.info(
-                "Parsed 'graphrag:' section from %s — values are applied to "
-                "GRAPH_* settings at server startup (env vars take "
-                "precedence). See docs/PROVIDER_CONFIGURATION.md.",
-                config_path,
+                "Parsed 'graphrag:' section — values are applied to GRAPH_* "
+                "settings at server startup (env vars take precedence). See "
+                "docs/PROVIDER_CONFIGURATION.md.",
             )
         settings = ProviderSettings(**raw_config)
     else:

@@ -517,14 +517,14 @@ url = "../brainpalace-dashboard"
 
 [[package]]
 name = "brainpalace-rag"
-version = "26.6.30"
+version = "26.6.31"
 description = "BrainPalace RAG - Intelligent document indexing and semantic search server that gives AI agents long-term memory"
 optional = false
 python-versions = "<4.0,>=3.10"
 groups = ["main"]
 files = [
-    {file = "brainpalace_rag-26.6.30-py3-none-any.whl", hash = "sha256:715be94650af8884be6be30b0342402c0dcaa1f6b0664ce9a282e2768b6771e0"},
-    {file = "brainpalace_rag-26.6.30.tar.gz", hash = "sha256:3bc7bf9ff7359c6489f5bcadef9efdcd21768dd21524cc22f9c494c46bf05d7c"},
+    {file = "brainpalace_rag-26.6.31-py3-none-any.whl", hash = "sha256:818e6e0710d3afeb3fc78e79453ee8644daff511c4246511ef0f0e5364a8c300"},
+    {file = "brainpalace_rag-26.6.31.tar.gz", hash = "sha256:ace14bb1ed51e2cc1c35402455037dc5956e257770f514affa3194840b25a2b9"},
 ]
 
 [package.dependencies]

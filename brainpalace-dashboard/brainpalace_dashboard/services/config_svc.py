@@ -72,6 +72,32 @@ def _flatten(data: dict[str, Any], prefix: str = "") -> dict[str, Any]:
     return out
 
 
+def _unset_dotpath(config: dict[str, Any], dotpath: str) -> bool:
+    """Delete ``dotpath`` from ``config`` in place, pruning emptied parents.
+
+    Returns True if a key was removed. Mirrors the CLI ``config_resolve``
+    implementation so unset behaves identically from the dashboard and the CLI.
+    """
+    parts = dotpath.split(".")
+    stack: list[tuple[dict[str, Any], str]] = []
+    cur: Any = config
+    for part in parts[:-1]:
+        if not isinstance(cur, dict) or part not in cur:
+            return False
+        stack.append((cur, part))
+        cur = cur[part]
+    leaf = parts[-1]
+    if not isinstance(cur, dict) or leaf not in cur:
+        return False
+    del cur[leaf]
+    for parent, key in reversed(stack):
+        if parent[key] == {}:
+            del parent[key]
+        else:
+            break
+    return True
+
+
 def _changed_dotpaths(merged: dict[str, Any], existing: dict[str, Any]) -> set[str]:
     """Leaf dotpaths whose value differs from (or is absent in) ``existing``.
 
@@ -144,10 +170,14 @@ class ConfigService:
         """Resolve each config key across project > global > code default.
 
         Returns ``{dotpath: {"value": <effective, secrets masked>,
-        "source": "project"|"global"|"default"}}``. A key absent from all three
-        layers is omitted. The dashboard uses this to show the editable value
-        (project layer) and a provenance hint (global/default) only when a key
-        is not set locally.
+        "source": "project"|"global"|"default", "inherited": {...}|None}}``.
+
+        ``inherited`` is populated only when the key is set at the PROJECT layer:
+        it is the ``{"value", "source"}`` the key WOULD resolve to if the project
+        override were removed (unset) — i.e. the global value, else the code
+        default, else ``None``. The dashboard uses it to show the live
+        "if you unset this, it becomes X (from <source>)" hint next to the unset
+        control. A key absent from all three layers is omitted.
         """
         project = _flatten(self._raw(self._config_path(state_dir)))
         global_ = _flatten(self._raw(self._global_config_path()))
@@ -159,8 +189,53 @@ class ConfigService:
                 value, source = global_[dotpath], "global"
             else:
                 value, source = DEFAULTS[dotpath], "default"
-            out[dotpath] = {"value": _mask_value(dotpath, value), "source": source}
+            entry: dict[str, Any] = {
+                "value": _mask_value(dotpath, value),
+                "source": source,
+            }
+            entry["inherited"] = (
+                self._inherited_for(dotpath, global_) if source == "project" else None
+            )
+            out[dotpath] = entry
         return out
+
+    @staticmethod
+    def _inherited_for(
+        dotpath: str, global_flat: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        """What ``dotpath`` resolves to if the project override is removed."""
+        if dotpath in global_flat:
+            return {
+                "value": _mask_value(dotpath, global_flat[dotpath]),
+                "source": "global",
+            }
+        if dotpath in DEFAULTS:
+            return {
+                "value": _mask_value(dotpath, DEFAULTS[dotpath]),
+                "source": "default",
+            }
+        return None
+
+    def unset(self, state_dir: Path, dotpaths: list[str]) -> dict[str, Any]:
+        """Remove project-level keys so they inherit from global / code default.
+
+        Deletes each dotpath from ``<state_dir>/config.yaml`` (pruning emptied
+        parent blocks), persists, and returns ``{"removed": [...], "effective":
+        {dotpath: {value, source}}}`` where ``effective`` reports the NEW resolved
+        value + source for each requested key after the unset. Idempotent: a key
+        already absent is reported but not in ``removed``.
+        """
+        path = self._config_path(Path(state_dir))
+        data = self._raw(path)
+        removed = [dp for dp in dotpaths if _unset_dotpath(data, dp)]
+        if removed:
+            self._atomic_write(path, data)
+        global_ = _flatten(self._raw(self._global_config_path()))
+        now: dict[str, Any] = {}
+        for dp in dotpaths:
+            inh = self._inherited_for(dp, global_)
+            now[dp] = inh or {"value": None, "source": "unset"}
+        return {"removed": removed, "effective": now}
 
     def schema(self) -> dict[str, Any]:
         return build_ui_schema()
@@ -206,8 +281,14 @@ class ConfigService:
         errors = [e for e in self.validate(merged) if e["field"] in changed]
         if errors:
             raise ConfigWriteError(errors)
+        self._atomic_write(path, merged)
+
+    @staticmethod
+    def _atomic_write(path: Path, data: dict[str, Any]) -> None:
+        """Persist ``data`` to ``path`` atomically, keeping a ``.bak`` copy."""
+        path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(".yaml.tmp")
-        tmp.write_text(yaml.safe_dump(merged, sort_keys=False))
+        tmp.write_text(yaml.safe_dump(data, sort_keys=False))
         if path.exists():
             path.replace(path.with_suffix(".yaml.bak"))
         os.replace(tmp, path)

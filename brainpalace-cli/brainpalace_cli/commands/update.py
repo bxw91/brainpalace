@@ -6,6 +6,7 @@ upgrade. The published wheels carry the correct version straight from
 code to take effect.
 """
 
+import json
 import shutil
 import subprocess
 import sys
@@ -207,7 +208,29 @@ def _restart_after_upgrade(*, assume_yes: bool) -> None:
     if dash:
         console.print("[dim]Restarting dashboard…[/]")
         _run([*argv, "dashboard", "stop"], "dashboard stop")
-        _run([*argv, "dashboard", "start", "--no-open"], "dashboard start")
+        # Use --json to capture the base_url, then render the standard panel so
+        # `update` shows the dashboard URL box just like `start`/`dashboard start`.
+        res = subprocess.run(
+            [*argv, "dashboard", "start", "--no-open", "--json"],
+            cwd=home,
+            capture_output=True,
+            text=True,
+        )
+        if res.returncode != 0:
+            console.print(
+                f"  [yellow]![/] dashboard start failed: {res.stderr.strip()}"
+            )
+        else:
+            from brainpalace_cli.commands._dashboard_url import render_dashboard_url
+
+            try:
+                data = json.loads(res.stdout or "{}")
+            except ValueError:
+                data = {}
+            render_dashboard_url(
+                {"base_url": data.get("base_url"), "started": True},
+                console=console,
+            )
 
     console.print("[green]Restart complete.[/]")
 

@@ -279,21 +279,13 @@ class QueryService:
                 f"Reranking enabled: Stage 1 retrieving {stage1_top_k} candidates "
                 f"for final top_k={original_top_k}"
             )
-            # Create modified request with expanded top_k for Stage 1
-            stage1_request = QueryRequest(
-                query=request.query,
-                top_k=stage1_top_k,
-                similarity_threshold=request.similarity_threshold,
-                mode=request.mode,
-                alpha=request.alpha,
-                source_types=request.source_types,
-                languages=request.languages,
-                file_paths=request.file_paths,
-                entity_types=request.entity_types,
-                relationship_types=request.relationship_types,
-                time_decay=request.time_decay,
-                language=request.language,
-            )
+            # Create modified request with expanded top_k for Stage 1.
+            # Internal over-fetch only: stage1_top_k may exceed the public
+            # QueryRequest top_k<=50 ceiling (it is bounded by
+            # RERANKER_MAX_CANDIDATES instead). model_copy skips validation, so
+            # it does not trip the le=50 constraint and preserves every other
+            # field. Stage 2 truncates back to original_top_k.
+            stage1_request = request.model_copy(update={"top_k": stage1_top_k})
         else:
             stage1_request = request
 

@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-09
+last_validated: 2026-06-10
 ---
 
 # Changelog
@@ -9,6 +9,51 @@ All notable changes to BrainPalace are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 Versioning is **CalVer** `YY.M.N` — 2-digit year · month · Nth release that
 month (the counter resets monthly). It looks like SemVer but is not.
+
+---
+
+## [Unreleased]
+
+## [26.6.32] - 2026-06-10
+
+### Added
+- feat(config): **layered config resolution — `code < global < project`.** The
+  server now resolves each config key by merging the global XDG `config.yaml`
+  under the project `config.yaml` (`load_merged_config_dict` / `load_raw_config`),
+  with code (pydantic) defaults beneath both; environment overrides still win
+  (`env > project > global > code`). Project config is **sparse** — `brainpalace
+  init` writes only values that diverge from what would be inherited; interactive
+  prompts default to the global value (flagged "from global") and accepting the
+  default leaves the project untouched so it keeps inheriting. New `brainpalace
+  config unset <dotpath>` removes a project key so it inherits from global/code,
+  reporting the new effective source. The dashboard config form shows a
+  provenance badge per field and an **unset** control (with the inherited target)
+  backed by `POST /config/unset`; `effective()` now returns the inherited
+  fallback for project-set keys. `--host`/`--language`/`--bm25-engine` flip to
+  inherit-by-default (`default=None`).
+- feat(indexing): per-job embedding token budget guard (`indexing.max_embed_tokens_per_job`, default 300k). Jobs that would embed more tokens than the budget are blocked with a clear error surfaced to the CLI. `force_budget: true` on `IndexRequest` bypasses the guard. `limit=0` disables it. Applied in the document pipeline, git-history index service, and session index service.
+- feat(folders): record + log folder-add provenance (trigger source).
+- feat(estimate): server-less in-process token estimate (`brainpalace_server.services.estimate.estimate_tokens_local`) so `brainpalace init` can show the cost estimate before starting a server or writing any index data.
+
+### Fixed
+- fix(query): reranking no longer returns HTTP 500 for ordinary `top_k`. With reranking enabled, the stage-1 over-fetch (`top_k × RERANKER_TOP_K_MULTIPLIER`, capped at `RERANKER_MAX_CANDIDATES`=100) rebuilt a public `QueryRequest`, tripping its `top_k ≤ 50` validator and surfacing as `Server Error (500): Query failed: … top_k Input should be less than or equal to 50` whenever `top_k × multiplier > 50` (default multiplier 10 → any `top_k ≥ 6`). Stage-1 now uses `request.model_copy(update={"top_k": stage1_top_k})`, bypassing the public-input ceiling for the internal over-fetch while staying bounded by `RERANKER_MAX_CANDIDATES`.
+- docs(cli): `brainpalace query --help` now documents the `--json` output schema — per-result keys are `text`/`source`/`score`/`chunk_id` (not `content`/`file_path`), and on failure `--json` emits `{"error": …}` (no `results` key) **and** exits non-zero, so consumers must check the exit code rather than only the presence of `results`.
+- fix(lifecycle): reap orphan server processes — `brainpalace stop --all` and `brainpalace doctor --reap` kill running `brainpalace_server.api.main` processes that no live registry entry references (leaked servers from a different install surface that hold ports and make `auto_port` climb). `start` now also reuses a project's live registry server (`find_reusable_server`) instead of spawning a duplicate on a climbed port when the project's own `runtime.json` is missing/stale.
+- fix(init): run the pre-index token estimate **before** writing index data; cancelling at the estimate rolls back the `.brainpalace` created this run (never an existing one). A pre-existing `.brainpalace` now prompts delete / keep (resume) / cancel up front instead of silently rebuilding. Index data dirs are created only after the estimate is accepted; the estimate is asked exactly once, up front (removed the duplicate prompt inside the start/watch step).
+- fix(estimate): include git-history and session embedding in the pre-index token estimate.
+- fix(folders): prune folder records for deleted paths on startup; add `brainpalace folders prune`.
+- fix(git): scope git-history indexing to the project subdir in monorepos (was embedding the entire monorepo history).
+- Job "Files" metric showed `0 / 0` for code-only index jobs (most real jobs).
+  The 26.6.31 fix threaded real file counts only through the doc-chunker
+  callback; the code-chunker progress callback is commented-out/unused, so
+  code-only runs never set `files_total`. Now the real document count is reported
+  on the existing 10% "Chunking documents" progress tick (which clears the
+  persist-threshold), so `files_total` is set for every run regardless of
+  doc/code mix. Verified live: a watcher re-index now shows e.g. `13 / 13`.
+- `brainpalace update` now prints the dashboard URL panel after restarting the
+  dashboard (parity with `start` / `dashboard start`) — it restarts with
+  `dashboard start --no-open --json` and renders the same `render_dashboard_url`
+  box. Previously the restart was silent about the URL.
 
 ---
 

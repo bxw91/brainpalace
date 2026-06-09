@@ -100,6 +100,24 @@ def _isolate_state_dir(tmp_path_factory, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _isolate_global_config(tmp_path_factory, monkeypatch):
+    """Empty the GLOBAL (XDG / legacy-home) config layer for every test.
+
+    Config now resolves ``code < global < project`` (load_merged_config_dict),
+    so without this the dev machine's real ``~/.config/brainpalace/config.yaml``
+    would be layered under every test's settings and make provider-config
+    assertions non-deterministic. Point XDG_CONFIG_HOME + HOME at empty temp
+    dirs so the global layer is absent unless a test writes one explicitly.
+    """
+    xdg = tmp_path_factory.mktemp("bp_xdg")
+    home = tmp_path_factory.mktemp("bp_home")
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg))
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("BRAINPALACE_CONFIG", raising=False)
+    yield
+
+
+@pytest.fixture(autouse=True)
 def reset_singletons():
     """Reset service singletons before each test."""
 

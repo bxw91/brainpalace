@@ -102,6 +102,7 @@ async def reconcile_folders(
                 watch_mode=rec.watch_mode,
                 watch_debounce_seconds=rec.watch_debounce_seconds,
                 include_code=rec.include_code,
+                source="reconcile",
             )
         except Exception as exc:  # noqa: BLE001 — never fail startup on a heal
             logger.warning(

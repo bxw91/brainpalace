@@ -24,17 +24,24 @@ async def test_initialize_empty_dir(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_initialize_with_existing_jsonl(tmp_path: Path) -> None:
     """Test initializing FolderManager with existing JSONL data."""
+    # Create actual directories so they survive the startup prune
+    folder1 = tmp_path / "folder1"
+    folder2 = tmp_path / "folder2"
+    folder1.mkdir()
+    folder2.mkdir()
+
     # Create JSONL file with test data
-    jsonl_path = tmp_path / "indexed_folders.jsonl"
+    jsonl_path = tmp_path / "state" / "indexed_folders.jsonl"
+    jsonl_path.parent.mkdir(parents=True, exist_ok=True)
     test_data = [
         {
-            "folder_path": "/path/to/folder1",
+            "folder_path": str(folder1),
             "chunk_count": 10,
             "last_indexed": "2026-01-01T00:00:00Z",
             "chunk_ids": ["chunk1", "chunk2"],
         },
         {
-            "folder_path": "/path/to/folder2",
+            "folder_path": str(folder2),
             "chunk_count": 20,
             "last_indexed": "2026-01-02T00:00:00Z",
             "chunk_ids": ["chunk3", "chunk4"],
@@ -46,14 +53,14 @@ async def test_initialize_with_existing_jsonl(tmp_path: Path) -> None:
             f.write(json.dumps(record) + "\n")
 
     # Initialize and verify
-    manager = FolderManager(state_dir=tmp_path)
+    manager = FolderManager(state_dir=tmp_path / "state")
     await manager.initialize()
 
     folders = await manager.list_folders()
     assert len(folders) == 2
-    assert folders[0].folder_path == "/path/to/folder1"
+    assert folders[0].folder_path == str(folder1)
     assert folders[0].chunk_count == 10
-    assert folders[1].folder_path == "/path/to/folder2"
+    assert folders[1].folder_path == str(folder2)
     assert folders[1].chunk_count == 20
 
 
@@ -168,7 +175,10 @@ async def test_list_folders_returns_sorted(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_persistence_survives_restart(tmp_path: Path) -> None:
     """Test that folder data persists across FolderManager instances."""
-    folder_path = str(tmp_path / "test_folder")
+    # Create the folder on disk so it survives the startup prune
+    test_folder = tmp_path / "test_folder"
+    test_folder.mkdir()
+    folder_path = str(test_folder)
 
     # Create first manager and add data
     manager1 = FolderManager(state_dir=tmp_path)
@@ -252,7 +262,14 @@ async def test_concurrent_adds_dont_corrupt(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_load_jsonl_handles_corrupt_lines(tmp_path: Path) -> None:
     """Test that corrupt JSONL lines are skipped with warnings."""
-    jsonl_path = tmp_path / "indexed_folders.jsonl"
+    # Create actual directories so they survive the startup prune
+    valid_path1 = tmp_path / "valid_path1"
+    valid_path2 = tmp_path / "valid_path2"
+    valid_path1.mkdir()
+    valid_path2.mkdir()
+
+    jsonl_path = tmp_path / "state" / "indexed_folders.jsonl"
+    jsonl_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Create JSONL with mix of valid and corrupt lines
     with open(jsonl_path, "w", encoding="utf-8") as f:
@@ -260,7 +277,7 @@ async def test_load_jsonl_handles_corrupt_lines(tmp_path: Path) -> None:
         f.write(
             json.dumps(
                 {
-                    "folder_path": "/valid/path",
+                    "folder_path": str(valid_path1),
                     "chunk_count": 10,
                     "last_indexed": "2026-01-01T00:00:00Z",
                     "chunk_ids": ["chunk1"],
@@ -278,7 +295,7 @@ async def test_load_jsonl_handles_corrupt_lines(tmp_path: Path) -> None:
         f.write(
             json.dumps(
                 {
-                    "folder_path": "/valid/path2",
+                    "folder_path": str(valid_path2),
                     "chunk_count": 20,
                     "last_indexed": "2026-01-02T00:00:00Z",
                     "chunk_ids": ["chunk2"],
@@ -288,13 +305,13 @@ async def test_load_jsonl_handles_corrupt_lines(tmp_path: Path) -> None:
         )
 
     # Initialize and verify only valid records loaded
-    manager = FolderManager(state_dir=tmp_path)
+    manager = FolderManager(state_dir=tmp_path / "state")
     await manager.initialize()
 
     folders = await manager.list_folders()
     assert len(folders) == 2
-    assert folders[0].folder_path == "/valid/path"
-    assert folders[1].folder_path == "/valid/path2"
+    assert folders[0].folder_path == str(valid_path1)
+    assert folders[1].folder_path == str(valid_path2)
 
 
 @pytest.mark.asyncio
@@ -313,3 +330,63 @@ async def test_get_folder_normalizes_path(tmp_path: Path) -> None:
     retrieved = await manager.get_folder(redundant_path)
     assert retrieved is not None
     assert retrieved.chunk_count == 10
+
+
+@pytest.mark.asyncio
+async def test_prune_missing_removes_dead_paths(tmp_path: Path) -> None:
+    """Test that prune_missing removes records for paths that no longer exist."""
+    live = tmp_path / "live"
+    live.mkdir()
+    dead = tmp_path / "dead"  # never created on disk
+
+    fm = FolderManager(state_dir=tmp_path / "state")
+    await fm.initialize()
+    await fm.add_folder(str(live), 1, ["c1"])
+    await fm.add_folder(str(dead), 1, ["c2"])
+
+    removed = await fm.prune_missing()
+
+    assert str(dead.resolve()) in removed
+    assert str(live.resolve()) not in removed
+    paths = {r.folder_path for r in await fm.list_folders()}
+    assert paths == {str(live.resolve())}
+
+
+@pytest.mark.asyncio
+async def test_prune_missing_persists_changes(tmp_path: Path) -> None:
+    """Test that prune_missing persists the pruned state to disk."""
+    dead = tmp_path / "dead"  # never created on disk
+
+    fm = FolderManager(state_dir=tmp_path / "state")
+    await fm.initialize()
+    await fm.add_folder(str(dead), 1, ["c1"])
+
+    await fm.prune_missing()
+
+    # Reload from disk — dead record should be gone
+    fm2 = FolderManager(state_dir=tmp_path / "state")
+    await fm2.initialize()
+    assert await fm2.list_folders() == []
+
+
+@pytest.mark.asyncio
+async def test_initialize_prunes_dead_paths_on_load(tmp_path: Path) -> None:
+    """Test that initialize() automatically prunes records for deleted paths."""
+    fm = FolderManager(state_dir=tmp_path / "state")
+    await fm.initialize()
+    await fm.add_folder(str(tmp_path / "gone"), 1, ["c1"])
+    # Simulate a fresh process loading the same JSONL.
+    fm2 = FolderManager(state_dir=tmp_path / "state")
+    await fm2.initialize()
+    assert await fm2.list_folders() == []
+
+
+@pytest.mark.asyncio
+async def test_add_folder_records_source(tmp_path: Path) -> None:
+    """add_folder records the provenance source on the returned FolderRecord."""
+    live = tmp_path / "live"
+    live.mkdir()
+    fm = FolderManager(tmp_path / "state")
+    await fm.initialize()
+    rec = await fm.add_folder(str(live), 1, ["c1"], source="folders_add")
+    assert rec.source == "folders_add"

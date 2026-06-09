@@ -463,8 +463,8 @@ async def test_remove_folder_watch_no_op_for_unknown_folder() -> None:
 
 
 @pytest.mark.asyncio
-async def test_enqueue_for_folder_calls_enqueue_job_with_source_auto() -> None:
-    """_enqueue_for_folder calls enqueue_job with source='auto' and force=False."""
+async def test_enqueue_for_folder_calls_enqueue_job_with_source_watch() -> None:
+    """_enqueue_for_folder calls enqueue_job with source='watch' and force=False."""
     folder_record = make_folder_record("/tmp/code", include_code=True)
 
     mock_folder_manager = MagicMock()
@@ -487,10 +487,7 @@ async def test_enqueue_for_folder_calls_enqueue_job_with_source_auto() -> None:
 
     mock_job_service.enqueue_job.assert_called_once()
     call_kwargs = mock_job_service.enqueue_job.call_args
-    assert call_kwargs.kwargs.get("source") == "auto" or (
-        len(call_kwargs.args) > 0 and False  # always use kwargs check
-    )
-    assert call_kwargs.kwargs["source"] == "auto"
+    assert call_kwargs.kwargs["source"] == "watch"
     assert call_kwargs.kwargs["force"] is False
     assert call_kwargs.kwargs["operation"] == "index"
     assert call_kwargs.kwargs["allow_external"] is True

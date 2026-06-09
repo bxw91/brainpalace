@@ -1,5 +1,6 @@
 """Init command for initializing an BrainPalace project."""
 
+import asyncio
 import json
 import os
 import shutil
@@ -182,22 +183,26 @@ def _write_reranker_config(state_dir: Path, enabled: bool) -> None:
 def write_default_provider_config(
     state_dir: Path,
     force: bool = False,
-    bm25_language: str = "en",
-    bm25_engine: str = "stem",
-    reranking: bool = True,
+    bm25_language: str | None = None,
+    bm25_engine: str | None = None,
+    reranking: bool | None = None,
 ) -> bool:
-    """Write a sane default config.yaml in the project state dir.
+    """Write the project ``config.yaml``, honouring layered resolution.
 
-    Phase L: ensures new projects get code-graph indexing on by default
-    without requiring the user to run `brainpalace config wizard`.
+    Config resolves ``code < global < project`` at runtime, so the project file
+    is SPARSE — it stores only what diverges from what would be inherited.
 
-    Precedence:
-    1. If a user-level config exists at XDG (~/.config/brainpalace/config.yaml),
-       copy it — respects whichever embedding/summarization provider the
-       user configured globally. The bm25 block is then merged/overwritten
-       with the explicitly passed language/engine values.
-    2. Otherwise write a default provider block chosen from detected env keys
-       (see build_default_provider_config) + graphrag code-only.
+    1. If a GLOBAL config exists at XDG (~/.config/brainpalace/config.yaml), the
+       project INHERITS it. Write only explicit per-project divergences passed on
+       the CLI (``--language``/``--bm25-engine``/``--reranking``); everything else
+       is resolved from global, then code defaults. With no divergences this is an
+       (almost) empty file.
+    2. If there is NO global config, seed the project with env-detected code
+       defaults (see :func:`build_default_provider_config`) so a fresh project is
+       self-sufficient. Passed flags win; omitted flags use the code default.
+
+    ``None`` for a flag means "not passed → inherit"; a concrete value means the
+    user set it explicitly and it is written.
 
     Returns True if the file was written, False if it already existed.
     """
@@ -206,21 +211,30 @@ def write_default_provider_config(
         return False
     state_dir.mkdir(parents=True, exist_ok=True)
 
-    # Prefer the user's global XDG config if present.
     xdg_global = get_xdg_config_dir() / "config.yaml"
     if xdg_global.is_file():
-        shutil.copy2(xdg_global, config_path)
-        # Merge bm25 + reranker blocks on top of the XDG copy.
-        _write_bm25_config(state_dir, bm25_language, bm25_engine)
-        _write_reranker_config(state_dir, reranking)
+        # Inherit the global config; persist only explicit divergences.
+        sparse: dict[str, object] = {}
+        bm: dict[str, object] = {}
+        if bm25_language is not None:
+            bm["language"] = bm25_language
+        if bm25_engine is not None:
+            bm["engine"] = bm25_engine
+        if bm:
+            sparse["bm25"] = bm
+        if reranking is not None:
+            sparse["reranker"] = {"enabled": reranking}
+        with open(config_path, "w", encoding="utf-8") as f:
+            yaml.safe_dump(sparse, f, default_flow_style=False, sort_keys=False)
         return True
 
+    # No global → seed env-detected code defaults so the project stands alone.
     with open(config_path, "w", encoding="utf-8") as f:
         yaml.safe_dump(
             build_default_provider_config(
-                bm25_language=bm25_language,
-                bm25_engine=bm25_engine,
-                reranking=reranking,
+                bm25_language=bm25_language or "en",
+                bm25_engine=bm25_engine or "stem",
+                reranking=reranking if reranking is not None else True,
             ),
             f,
             default_flow_style=False,
@@ -279,13 +293,14 @@ def _check_simplemma_importable() -> bool:
         return False
 
 
-def _preflight_lemma(engine: str, json_output: bool) -> None:
+def _preflight_lemma(engine: str | None, json_output: bool) -> None:
     """Fail fast when engine=lemma but simplemma is not installed.
 
     Mirrors the style of _preflight_providers: prints an actionable message
     (the exact pip install command) and exits non-zero BEFORE the server
     starts, so the user gets clear guidance instead of a cryptic mid-index
-    crash.
+    crash. ``engine=None`` means the project inherits the engine from
+    global/code (not the explicit ``lemma`` opt-in), so the check is skipped.
     """
     if engine != "lemma":
         return
@@ -864,58 +879,50 @@ def _emit_init_result(
         console.print("  • Check health: [bold]brainpalace status[/]")
 
 
-def _estimate_loop(project_root: Path, include_code: bool) -> bool | None:
-    """Interactive pre-index token-estimate loop.
+def _estimate_and_confirm_local(
+    project_root: Path, config_yaml: Path, include_code: bool
+) -> bool | None:
+    """Server-less pre-index token-estimate loop, shown BEFORE any data write.
 
-    Shows the embedding-token estimate for the current code/docs scope, then
-    lets the user proceed, toggle the scope and re-estimate, or skip indexing.
-    Returns the final ``include_code`` to index with, or ``None`` to skip the
-    initial index entirely.
+    Runs the in-process estimate (no server, no enqueue) against the just-written
+    project config, prints the breakdown, then lets the user proceed, toggle the
+    code/docs scope and re-estimate, or cancel. Returns the final ``include_code``
+    to index with, or ``None`` to cancel the whole init (caller rolls back).
 
     Only the code/docs scope is adjustable here — it's the one init answer that
-    actually moves the *embedding* estimate. Provider/session/graph answers are
-    written to config and applied before the server starts (changing them would
-    need a config rewrite + restart) and affect separate token budgets, so they
-    are not re-asked at this point.
+    actually moves the *embedding* estimate. Provider/session/git answers are
+    already resolved into the config at this point.
     """
-    import json as _json
+    from brainpalace_server.services.estimate import estimate_tokens_local
 
     from .estimate_util import print_token_estimate
 
     while True:
-        code_flag = "--include-code" if include_code else "--no-code"
-        est_result = _run_subcommand(
-            [
-                *_brainpalace_argv(),
-                "index",
-                str(project_root),
-                "--estimate",
-                code_flag,
-                "--json",
-            ],
-            step="estimate",
-            json_output=False,
-        )
-        if est_result.get("status") == "ok":
-            try:
-                print_token_estimate(console, _json.loads(str(est_result["stdout"])))
-            except (ValueError, KeyError):
-                console.print("[yellow]Could not parse the estimate.[/]")
-        else:
-            console.print("[yellow]Estimate unavailable; continuing.[/]")
+        try:
+            est = asyncio.run(
+                estimate_tokens_local(
+                    str(project_root),
+                    include_code=include_code,
+                    config_path=str(config_yaml),
+                )
+            )
+            print_token_estimate(console, est)
+        except Exception as exc:  # noqa: BLE001 - advisory only, never block init
+            console.print(f"[yellow]Estimate unavailable ({exc}); continuing.[/]")
+            return include_code
         console.print(
             f"[dim]Scope: {'code + docs' if include_code else 'docs only'}.[/]"
         )
         action = click.prompt(
             "Proceed with indexing, toggle code/docs scope and re-estimate, "
-            "or skip indexing?",
-            type=click.Choice(["proceed", "toggle", "skip"]),
+            "or cancel?",
+            type=click.Choice(["proceed", "toggle", "cancel"]),
             default="proceed",
         )
         if action == "toggle":
             include_code = not include_code
             continue
-        if action == "skip":
+        if action == "cancel":
             return None
         return include_code
 
@@ -929,7 +936,7 @@ def _start_and_watch(
     gitignore_added: bool,
     watch: str,
     json_output: bool,
-    bm25_engine: str = "stem",
+    bm25_engine: str | None = "stem",
     include_code: bool = True,
 ) -> list[dict[str, object]]:
     """Run the --start pipeline: provider preflight, server start, optional watch.
@@ -977,26 +984,9 @@ def _start_and_watch(
         raise SystemExit(1)
 
     if watch != "off":
-        # The user's code/docs choice drives BOTH the estimate and the real
-        # index, so the estimate reflects exactly what will be indexed. An
-        # interactive run can re-estimate after toggling the scope.
+        # The pre-index token estimate now runs once, up front in `init_command`
+        # (before any data is written), so the scope is already settled here.
         chosen_include_code = include_code
-        # Opt-in pre-index advisory: only on an interactive terminal, default No,
-        # so it never runs under CI/--json. Reuses `index --estimate` so the
-        # file selection matches what indexing will actually load.
-        if not json_output and _stdin_is_tty():
-            if click.confirm(
-                "Estimate approximate embedding-token usage before the first " "index?",
-                default=False,
-            ):
-                loop_choice = _estimate_loop(project_root, chosen_include_code)
-                if loop_choice is None:
-                    console.print(
-                        "[dim]Skipped initial indexing. Index later with "
-                        f"[bold]brainpalace index {project_root}[/].[/]"
-                    )
-                    return post_init_steps
-                chosen_include_code = loop_choice
         if not json_output:
             console.print("[dim]Registering folder + enqueuing initial indexing…[/]")
         watch_result = _run_subcommand(
@@ -1039,8 +1029,11 @@ def _start_and_watch(
 )
 @click.option(
     "--host",
-    default=DEFAULT_CONFIG["bind_host"],
-    help=f"Server bind host (default: {DEFAULT_CONFIG['bind_host']})",
+    default=None,
+    help=(
+        "Server bind host. Default: inherit from global config / code "
+        f"({DEFAULT_CONFIG['bind_host']}). Pass to override for this project."
+    ),
 )
 @click.option(
     "--port",
@@ -1159,11 +1152,11 @@ def _start_and_watch(
 @click.option(
     "--language",
     "bm25_language",
-    default="en",
-    show_default=True,
+    default=None,
     help=(
         "Project default natural language for BM25 indexing (ISO 639-1, e.g. "
-        "en, de, hr). Written to bm25.language in config.yaml."
+        "en, de, hr). Passed → written to bm25.language; omitted → inherit from "
+        "global config / code default (en)."
     ),
 )
 @click.option(
@@ -1180,13 +1173,13 @@ def _start_and_watch(
 @click.option(
     "--bm25-engine",
     "bm25_engine",
-    default="stem",
-    show_default=True,
+    default=None,
     type=click.Choice(["stem", "lemma"], case_sensitive=False),
     help=(
         "BM25 stemming engine: 'stem' (Snowball, no extra deps) or 'lemma' "
-        "(simplemma, better recall for morphologically-rich languages). Written "
-        "to bm25.engine in config.yaml. engine=lemma requires simplemma: "
+        "(simplemma, better recall for morphologically-rich languages). Passed "
+        "→ written to bm25.engine; omitted → inherit from global config / code "
+        "default (stem). engine=lemma requires simplemma: "
         "pip install 'brainpalace[lemma-hr]'."
     ),
 )
@@ -1203,7 +1196,7 @@ def _start_and_watch(
 )
 def init_command(
     path: str | None,
-    host: str,
+    host: str | None,
     port: int | None,
     force: bool,
     json_output: bool,
@@ -1219,8 +1212,8 @@ def init_command(
     enable_git_history: bool | None,
     enable_graph_migrate: bool | None,
     enable_reranking: bool | None,
-    bm25_language: str,
-    bm25_engine: str,
+    bm25_language: str | None,
+    bm25_engine: str | None,
     include_code: bool,
 ) -> None:
     """Initialize a new BrainPalace project.
@@ -1320,6 +1313,33 @@ def init_command(
             resolved_state_dir = migrate_state_dir(project_root)
         config_path = resolved_state_dir / "config.json"
 
+        # Pre-existing-index handling. A real, already-initialized project must
+        # not be silently rebuilt: an interactive run is offered delete / keep /
+        # cancel up front (before any other prompt), and the fresh-init
+        # estimate-rollback below only ever removes a `.brainpalace` THIS
+        # invocation created. `--force` keeps its existing overwrite semantics.
+        preexisting = config_path.exists()
+        if preexisting and not force and is_tty:
+            console.print(
+                f"[yellow].brainpalace already exists[/] at {resolved_state_dir}."
+            )
+            choice = click.prompt(
+                "An index already exists. Delete it and re-init, keep it "
+                "(resume), or cancel?",
+                type=click.Choice(["keep", "delete", "cancel"]),
+                default="keep",
+            )
+            if choice == "cancel":
+                console.print("[dim]Init cancelled.[/]")
+                return
+            if choice == "delete":
+                shutil.rmtree(resolved_state_dir, ignore_errors=True)
+                preexisting = False
+            # "keep" falls through to the existing already-initialized path.
+        # True only when we create `.brainpalace` during this run — guards the
+        # estimate-cancel rollback so it never deletes a user's existing index.
+        created_brainpalace = not preexisting
+
         # A re-init of a project still on the legacy in-memory 'simple' graph
         # store is the only case where the one-time sqlite upgrade is offered.
         # sqlite is now the default (persistent + temporal); the server replays
@@ -1343,18 +1363,39 @@ def init_command(
         # default (0 = entire history); an interactive opt-in may set a cap.
         git_depth: int | None = None
 
-        # Reranking is ON by default; an explicit flag or interactive answer wins.
-        reranking_final: bool = True if enable_reranking is None else enable_reranking
-
         if plan.confirm:
             embedding = _preview_embedding(project_root)
             plugin_present = claude_plugin_installed(project=project_root)
+
+            # Interactive prompt defaults come from the GLOBAL config when it sets
+            # the answer (config resolves code < global < project): the question is
+            # pre-filled with the global value and flagged "(from global)". If the
+            # user just accepts it, the sparse-write logic below leaves the project
+            # config untouched so the value keeps inheriting from global.
+            from brainpalace_cli.config_resolve import read_yaml as _ry_cfg
+            from brainpalace_cli.config_resolve import resolve as _resolve_cfg
+
+            _gcfg = _ry_cfg(get_xdg_config_dir() / "config.yaml")
+
+            def _global_default(dotpath: str, fallback: bool) -> tuple[bool, bool]:
+                """(default, came_from_global) for a boolean question."""
+                value, source = _resolve_cfg(dotpath, {}, _gcfg)
+                if source == "global":
+                    return bool(value), True
+                return fallback, False
+
+            def _from_global_note() -> None:
+                console.print("  [dim](default taken from your global config)[/]")
 
             # Granular consent — ask only what an explicit flag didn't already set.
             # Order: summarize first (free baseline recall), then embed (the paid
             # detail upgrade that references the summaries).
             extract_ans: bool = bool(plan.extract)
             if enable_extract is None:
+                _gmode, _gmode_from = _resolve_cfg("session_extraction.mode", {}, _gcfg)
+                _extract_default = (
+                    str(_gmode) != "off" if _gmode_from == "global" else False
+                )
                 console.print(
                     "\n[bold]Summarize chat sessions?[/] "
                     "(distil past chats into summaries + a decisions digest)\n"
@@ -1363,7 +1404,11 @@ def init_command(
                     "  Makes past chats searchable by topic. Reads full transcripts; "
                     "writes\n  BRAINPALACE_DECISIONS.md. Disable later: --no-extract."
                 )
-                extract_ans = click.confirm("Summarize chat sessions?", default=False)
+                if _gmode_from == "global":
+                    _from_global_note()
+                extract_ans = click.confirm(
+                    "Summarize chat sessions?", default=_extract_default
+                )
 
             sessions_ans: bool = bool(plan.sessions)
             if enable_sessions is None:
@@ -1374,6 +1419,9 @@ def init_command(
 
                 prov, model = embedding
                 tag = f"{_provider_label(prov)} {_trim_model_id(model)}"
+                _sess_default, _sess_from = _global_default(
+                    "session_indexing.enabled", False
+                )
                 console.print(
                     "\n[bold]Embed chat sessions too?[/] "
                     "(search the FULL verbatim text, not just summaries)\n"
@@ -1383,11 +1431,16 @@ def init_command(
                     "(usually a few cents), but a large history\n  adds many tokens. "
                     "Enable later: --sessions."
                 )
-                sessions_ans = click.confirm("Embed chat sessions too?", default=False)
+                if _sess_from:
+                    _from_global_note()
+                sessions_ans = click.confirm(
+                    "Embed chat sessions too?", default=_sess_default
+                )
                 sessions_chosen = True  # prompt answer is an explicit choice
 
             git_history_ans: bool = bool(plan.git_history)
             if enable_git_history is None:
+                _git_default, _git_from = _global_default("git_indexing.enabled", True)
                 console.print(
                     "\n[bold]Index git commit history?[/] "
                     "(make past commits searchable: message + changed-file list)\n"
@@ -1395,8 +1448,10 @@ def init_command(
                     "Nothing is copied;\n  chunks reference the commit sha. "
                     "Disable later: --no-git-history."
                 )
+                if _git_from:
+                    _from_global_note()
                 git_history_ans = click.confirm(
-                    "Index git commit history?", default=True
+                    "Index git commit history?", default=_git_default
                 )
                 if git_history_ans:
                     console.print(
@@ -1562,20 +1617,20 @@ def init_command(
                 )
             return
 
-        # Create state directory structure
+        # Create the state directory + config/log dirs only — the index DATA
+        # dirs (chroma/bm25/llamaindex) are deferred until AFTER the pre-index
+        # estimate is accepted, so a cancel leaves nothing heavy behind.
         resolved_state_dir.mkdir(parents=True, exist_ok=True)
-        (resolved_state_dir / "data").mkdir(exist_ok=True)
-        (resolved_state_dir / "data" / "chroma_db").mkdir(exist_ok=True)
-        (resolved_state_dir / "data" / "bm25_index").mkdir(exist_ok=True)
-        (resolved_state_dir / "data" / "llamaindex").mkdir(exist_ok=True)
         (resolved_state_dir / "logs").mkdir(exist_ok=True)
 
-        # Build configuration
+        # Build configuration. --host is now inherit-by-default: only override
+        # the code default when explicitly passed.
         config = {
             **DEFAULT_CONFIG,
-            "bind_host": host,
             "project_root": str(project_root),
         }
+        if host is not None:
+            config["bind_host"] = host
         if port is not None:
             config["port"] = port
             config["auto_port"] = False
@@ -1596,52 +1651,67 @@ def init_command(
             force=False,
             bm25_language=bm25_language,
             bm25_engine=bm25_engine,
-            reranking=reranking_final,
+            reranking=enable_reranking,
         )
         # On re-init of an existing project (provider block preserved), still
         # honor an explicit --reranking/--no-reranking by merging just that flag.
         if not provider_config_written and enable_reranking is not None:
-            _write_reranker_config(resolved_state_dir, reranking_final)
+            _write_reranker_config(resolved_state_dir, enable_reranking)
         if force and not provider_config_written and not json_output:
             console.print(
                 "[dim]Preserved existing .brainpalace/config.yaml provider "
                 "settings (use `brainpalace config` to change providers).[/]"
             )
 
-        # Two INDEPENDENT capabilities resolved by the plan: ARCHIVE (raw
-        # transcript backup, free) and INDEX (embeddings, billable). The plan
-        # already accounts for explicit flags, --yes, and TTY consent. Two
-        # guards remain here:
-        #   - only write when we just wrote config.yaml (provider_config_written);
-        #     a re-init over an existing project leaves it untouched.
-        #   - respect an XDG-inherited session_indexing block unless the user
-        #     passed the matching flag explicitly.
-        inherited = _existing_session_keys(resolved_state_dir)
-        sess: bool | None = plan.sessions
-        arch: bool | None = plan.archive
-        if not provider_config_written:
-            sess = None
-            arch = None
-        else:
-            if not sessions_chosen and "enabled" in inherited:
-                sess = None  # respect XDG global default (no explicit choice)
-            if enable_archive is None and "archive" in inherited:
-                arch = None  # respect XDG archive block
-        write_session_config(resolved_state_dir, index=sess, archive=arch)
+        # SESSION + GIT writes honour layered resolution (code < global <
+        # project). Two regimes:
+        #   - NO global config → the project is the sole source of truth, so seed
+        #     explicit session defaults (archive ON, index per plan) exactly as
+        #     before; there is nothing to inherit.
+        #   - A global config EXISTS → the project inherits it. Persist only an
+        #     explicit CLI flag, or an interactive answer that DIVERGES from the
+        #     inherited value. A bare run writes nothing and inherits — so a
+        #     global that disables a capability is never clobbered back on.
+        from brainpalace_cli.config_resolve import inherited as _inherited
+        from brainpalace_cli.config_resolve import read_yaml as _read_yaml_cfg
 
-        # Git-history opt-in (privacy-first; only written when chosen). Guard like
-        # the session blocks so a re-init over an existing project leaves a prior
-        # choice untouched.
-        git_choice = (
-            plan.git_history
-            if (provider_config_written or enable_git_history is not None)
-            else None
-        )
-        write_git_config(
-            resolved_state_dir,
-            enabled=git_choice if git_choice else None,
-            depth=git_depth,
-        )
+        _xdg_global_path = get_xdg_config_dir() / "config.yaml"
+        _has_global = _xdg_global_path.is_file()
+        _glob = _read_yaml_cfg(_xdg_global_path)
+        _inh_sessions = _inherited("session_indexing.enabled", _glob)[0]
+        _inh_git = _inherited("git_indexing.enabled", _glob)[0]
+
+        sess: bool | None
+        arch: bool | None
+        git_choice: bool | None
+        if not provider_config_written:
+            sess = arch = git_choice = None
+        elif not _has_global:
+            # Sole source of truth: write the resolved plan defaults explicitly.
+            sess = plan.sessions
+            arch = plan.archive
+            git_choice = (
+                enable_git_history
+                if enable_git_history is not None
+                else (True if plan.git_history else None)
+            )
+        else:
+            # Inherit the global; persist only flags / divergent interactive answers.
+            if enable_sessions is not None:
+                sess = enable_sessions
+            elif sessions_chosen and plan.sessions != _inh_sessions:
+                sess = plan.sessions
+            else:
+                sess = None
+            arch = enable_archive  # archive is flag-only (no interactive prompt)
+            if enable_git_history is not None:
+                git_choice = enable_git_history
+            elif plan.confirm and bool(plan.git_history) != bool(_inh_git):
+                git_choice = plan.git_history
+            else:
+                git_choice = None
+        write_session_config(resolved_state_dir, index=sess, archive=arch)
+        write_git_config(resolved_state_dir, enabled=git_choice, depth=git_depth)
 
         # Resolve + persist the session-summarization mode (subagent), and
         # reconcile the Claude Code hooks by plugin presence. Apply on a fresh
@@ -1659,6 +1729,32 @@ def init_command(
 
         # B5: ensure .brainpalace/ is git-ignored for the project.
         gitignore_added = ensure_gitignore_entry(project_root)
+
+        # Pre-index token estimate BEFORE writing any index data or starting the
+        # server, so a surprising cost can be cancelled with a clean rollback.
+        # Only on an interactive run that will actually start + index; the config
+        # is already fully written, so the estimate honours the resolved
+        # provider/git/session choices.
+        if is_tty and plan.start:
+            chosen = _estimate_and_confirm_local(
+                project_root, resolved_state_dir / "config.yaml", include_code
+            )
+            if chosen is None:
+                if created_brainpalace:
+                    shutil.rmtree(resolved_state_dir, ignore_errors=True)
+                    console.print("[dim]Cancelled — removed .brainpalace.[/]")
+                else:
+                    console.print("[dim]Cancelled — kept existing .brainpalace.[/]")
+                return
+            include_code = chosen
+
+        # Index DATA dirs are created only now — after the estimate was accepted
+        # (or skipped for a non-interactive run) — so a cancel above leaves no
+        # ChromaDB/BM25 scaffolding behind.
+        (resolved_state_dir / "data").mkdir(exist_ok=True)
+        (resolved_state_dir / "data" / "chroma_db").mkdir(exist_ok=True)
+        (resolved_state_dir / "data" / "bm25_index").mkdir(exist_ok=True)
+        (resolved_state_dir / "data" / "llamaindex").mkdir(exist_ok=True)
 
         post_init_steps = []
 

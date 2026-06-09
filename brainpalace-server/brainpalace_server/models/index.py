@@ -69,6 +69,10 @@ class IndexRequest(BaseModel):
         default=False,
         description="Force re-indexing even if embedding provider has changed",
     )
+    force_budget: bool = Field(
+        default=False,
+        description="Bypass the per-job embedding-token budget guard.",
+    )
 
     # File filtering options
     include_patterns: list[str] | None = Field(
@@ -120,6 +124,15 @@ class IndexRequest(BaseModel):
     watch_debounce_seconds: int | None = Field(
         default=None,
         description="Per-folder debounce in seconds (None = use global default)",
+    )
+
+    # Provenance
+    trigger: str = Field(
+        default="manual",
+        description=(
+            "Provenance of this index request for logging: 'manual' (CLI index), "
+            "'folders_add', 'watch' (file watcher), 'reconcile' (startup), 'init'."
+        ),
     )
 
     model_config = {

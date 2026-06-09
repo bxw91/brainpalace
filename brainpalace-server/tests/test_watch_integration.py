@@ -98,6 +98,11 @@ class TestJobRecordWatchFields:
         job = _make_job(source="auto")
         assert job.source == "auto"
 
+    def test_source_field_watch(self) -> None:
+        """JobRecord source can be 'watch' for file-watcher-triggered re-indexes."""
+        job = _make_job(source="watch")
+        assert job.source == "watch"
+
 
 class TestJobWorkerWatchIntegration:
     """Test that JobWorker notifies FileWatcherService after job completion."""
@@ -121,6 +126,7 @@ class TestJobWorkerWatchIntegration:
         mock_record.chunk_count = 10
         mock_record.chunk_ids = ["c1", "c2"]
         mock_record.include_code = True
+        mock_record.source = "manual"
         mock_folder_manager.get_folder = AsyncMock(return_value=mock_record)
         mock_folder_manager.add_folder = AsyncMock(return_value=mock_record)
 
@@ -136,6 +142,7 @@ class TestJobWorkerWatchIntegration:
             watch_mode="auto",
             watch_debounce_seconds=15,
             include_code=True,
+            source=mock_record.source,
         )
 
         # Verify FileWatcherService.add_folder_watch was called

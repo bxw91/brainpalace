@@ -27,7 +27,10 @@ def test_get_config_effective_route(monkeypatch, tmp_path):
     resp = client.get("/dashboard/api/instances/abc/config/effective")
     assert resp.status_code == 200
     body = resp.json()
-    assert body["embedding.provider"] == {"value": "openai", "source": "project"}
+    assert body["embedding.provider"]["value"] == "openai"
+    assert body["embedding.provider"]["source"] == "project"
+    # Project-sourced keys carry the inherited-if-unset fallback.
+    assert "inherited" in body["embedding.provider"]
     # An unset key falls back to its code default with source "default".
     assert body["reranker.enabled"]["source"] == "default"
 
@@ -61,3 +64,22 @@ def test_patch_config_ok_with_restart(monkeypatch, tmp_path):
     assert resp.status_code == 200
     assert resp.json()["restarted"] is True
     assert restarted == {"x": True}
+
+
+def test_post_config_unset_route(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))  # empty global
+    monkeypatch.setattr(rc, "_state_dir_for", lambda id_: tmp_path)
+    (tmp_path / "config.yaml").write_text("bm25:\n  language: hr\n")
+    client = TestClient(create_app())
+    resp = client.post(
+        "/dashboard/api/instances/abc/config/unset",
+        json={"dotpaths": ["bm25.language"]},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["removed"] == ["bm25.language"]
+    # No global → inherits the code default ("en", source "default").
+    assert body["effective"]["bm25.language"] == {"value": "en", "source": "default"}
+    import yaml as _yaml
+
+    assert (_yaml.safe_load((tmp_path / "config.yaml").read_text()) or {}) == {}

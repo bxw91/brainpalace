@@ -96,6 +96,7 @@ describe("api client", () => {
     expect(JSON.parse(init?.body as string)).toEqual({
       values: { embedding: { provider: "ollama" } },
       restart: false,
+      force_reindex: false,
     });
   });
 

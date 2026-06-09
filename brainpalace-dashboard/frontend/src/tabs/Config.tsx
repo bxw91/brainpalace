@@ -1,7 +1,13 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ServerOff, RotateCcw } from "lucide-react";
-import { getSchema, getConfig, getConfigEffective, patchConfig } from "../api/client";
+import {
+  getSchema,
+  getConfig,
+  getConfigEffective,
+  patchConfig,
+  unsetConfig,
+} from "../api/client";
 import { SchemaForm } from "../components/SchemaForm/SchemaForm";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { DataConflictDialog } from "../components/DataConflictDialog";
@@ -108,6 +114,24 @@ export function Config({ instanceId }: { instanceId?: string }) {
     },
   });
 
+  const unsetMutation = useMutation({
+    mutationFn: (dotpath: string) => unsetConfig(id!, [dotpath]),
+    onSuccess: (res) => {
+      const dp = res.removed[0];
+      const eff = dp ? res.effective[dp] : undefined;
+      toast(
+        dp
+          ? `Unset ${dp} — now inheriting ${eff ? `from ${eff.source}` : "default"}.`
+          : "Nothing to unset.",
+        "success",
+      );
+      qc.invalidateQueries({ queryKey: ["config", id] });
+      qc.invalidateQueries({ queryKey: ["config-effective", id] });
+    },
+    onError: (err: unknown) =>
+      toast(err instanceof Error ? err.message : "Failed to unset.", "error"),
+  });
+
   if (!id) {
     return (
       <div data-testid="tab-config" className="panel grid place-items-center p-12">
@@ -184,6 +208,7 @@ export function Config({ instanceId }: { instanceId?: string }) {
         errors={fieldErrors}
         saving={mutation.isPending}
         onSave={(values, restart) => setPendingSave({ values, restart })}
+        onUnset={(dotpath) => unsetMutation.mutate(dotpath)}
       />
       <ConfirmDialog
         open={!!pendingSave}

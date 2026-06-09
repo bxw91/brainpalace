@@ -8,7 +8,7 @@ Key design decisions:
 - One asyncio Task per folder (independent lifecycle)
 - anyio.Event for clean shutdown (watchfiles supports stop_event natively)
 - Deduplication via existing dedupe_key mechanism (no double-indexing)
-- source="auto" distinguishes watcher-triggered jobs from manual jobs
+- source="watch" marks watcher-triggered jobs (provenance flows to FolderRecord.source)
 """
 
 from __future__ import annotations
@@ -374,13 +374,14 @@ class FileWatcherService:
                 include_code=include_code,
                 recursive=True,
                 force=False,
+                trigger="watch",
             )
             response = await self._job_service.enqueue_job(
                 request=request,
                 operation="index",
                 force=False,
                 allow_external=True,
-                source="auto",
+                source="watch",
             )
 
             # Stamp regardless of dedupe_hit — both signal that a job for

@@ -166,3 +166,45 @@ class TestConfigPathCommand:
             assert result.exit_code == 0
             assert str(config_file) in result.output
             assert '"exists": true' in result.output
+
+
+class TestConfigUnsetCommand:
+    """Tests for 'brainpalace config unset' command."""
+
+    def test_unset_removes_project_key_and_reports_inherited(
+        self, tmp_path, monkeypatch
+    ):
+        from click.testing import CliRunner
+
+        from brainpalace_cli.cli import cli
+
+        proj = tmp_path / "proj"
+        (proj / ".brainpalace").mkdir(parents=True)
+        (proj / ".brainpalace" / "config.yaml").write_text(
+            "bm25:\n  language: hr\n  engine: stem\n"
+        )
+        # Empty global so the fallback is the code default.
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+        monkeypatch.chdir(proj)
+        result = CliRunner().invoke(cli, ["config", "unset", "bm25.language"])
+        assert result.exit_code == 0, result.output
+        assert "will now use" in result.output
+        import yaml
+
+        data = yaml.safe_load((proj / ".brainpalace" / "config.yaml").read_text())
+        assert "language" not in data["bm25"]
+        assert data["bm25"]["engine"] == "stem"
+
+    def test_unset_missing_key_is_noop(self, tmp_path, monkeypatch):
+        from click.testing import CliRunner
+
+        from brainpalace_cli.cli import cli
+
+        proj = tmp_path / "proj"
+        (proj / ".brainpalace").mkdir(parents=True)
+        (proj / ".brainpalace" / "config.yaml").write_text("bm25:\n  engine: stem\n")
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+        monkeypatch.chdir(proj)
+        result = CliRunner().invoke(cli, ["config", "unset", "bm25.language"])
+        assert result.exit_code == 0, result.output
+        assert "nothing to unset" in result.output

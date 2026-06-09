@@ -34,6 +34,7 @@ function renderForm(props: {
   errors?: Record<string, string>;
   schema?: UiSchema;
   effective?: EffectiveConfig;
+  onUnset?: (dotpath: string) => void;
 }) {
   const onSave = props.onSave ?? vi.fn();
   render(
@@ -43,6 +44,7 @@ function renderForm(props: {
       effective={props.effective}
       onSave={onSave}
       errors={props.errors}
+      onUnset={props.onUnset}
     />,
   );
   return onSave;
@@ -84,6 +86,39 @@ describe("SchemaForm provenance", () => {
     expect(
       (screen.getByTestId("text-embedding.base_url") as HTMLInputElement).value,
     ).toBe("");
+  });
+
+  it("shows a source badge per field and an unset control on project-set keys", () => {
+    const onUnset = vi.fn();
+    renderForm({
+      schema: provSchema,
+      values: { embedding: { provider: "ollama" } },
+      effective: {
+        // project-set, would inherit the global value if unset
+        "embedding.provider": {
+          value: "ollama",
+          source: "project",
+          inherited: { value: "openai", source: "global" },
+        },
+        "embedding.base_url": { value: "http://host:11434", source: "global" },
+      },
+      onUnset,
+    });
+    // Source badges reflect provenance.
+    expect(
+      screen.getByTestId("field-source-embedding.provider"),
+    ).toHaveTextContent("project");
+    expect(
+      screen.getByTestId("field-source-embedding.base_url"),
+    ).toHaveTextContent("global");
+    // Unset control only on the project-set field; shows the inherited target.
+    const unset = screen.getByTestId("field-unset-embedding.provider");
+    expect(unset).toHaveTextContent("openai from global");
+    expect(
+      screen.queryByTestId("field-unset-embedding.base_url"),
+    ).toBeNull();
+    fireEvent.click(unset);
+    expect(onUnset).toHaveBeenCalledWith("embedding.provider");
   });
 });
 

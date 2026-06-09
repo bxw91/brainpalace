@@ -39,6 +39,17 @@ def print_token_estimate(console: Console, est: dict[str, Any]) -> None:
         f"[dim](overlap ×{est.get('overlap_factor', 1.0)} · "
         f"{est.get('embedding_provider', '?')}/{est.get('embedding_model', '?')})[/]"
     )
+    git_tokens = est.get("git_tokens", 0)
+    session_tokens = est.get("session_tokens", 0)
+    if git_tokens or session_tokens:
+        _segments = [f"[dim]docs[/] ~{est.get('doc_tokens', 0):,}"]
+        if git_tokens:
+            _segments.append(
+                f"[dim]git[/] ~{git_tokens:,} ({est.get('git_commits', 0):,} commits)"
+            )
+        if session_tokens:
+            _segments.append(f"[dim]sessions[/] ~{session_tokens:,}")
+        console.print("    " + " · ".join(_segments))
     if est.get("summaries_enabled"):
         console.print(
             "  [yellow]Note:[/] code summaries are ON — that adds a separate "

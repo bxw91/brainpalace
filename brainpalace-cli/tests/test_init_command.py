@@ -8,6 +8,44 @@ from click.testing import CliRunner
 from brainpalace_cli.commands.init import init_command
 
 
+def test_init_existing_brainpalace_offers_delete_or_cancel(tmp_path, monkeypatch):
+    """A pre-existing .brainpalace triggers delete/keep/cancel; cancel preserves it."""
+    proj = tmp_path / "proj"
+    (proj / ".brainpalace").mkdir(parents=True)
+    (proj / ".brainpalace" / "config.json").write_text("{}")
+    monkeypatch.setattr("brainpalace_cli.commands.init._stdin_is_tty", lambda: True)
+    # User answers "cancel" to the delete/keep/cancel prompt.
+    result = CliRunner().invoke(
+        init_command, ["--path", str(proj), "--no-start"], input="cancel\n"
+    )
+    assert "already exists" in result.output.lower()
+    # Cancel must NOT delete the pre-existing dir.
+    assert (proj / ".brainpalace" / "config.json").exists()
+
+
+def test_init_cancel_after_estimate_removes_created_brainpalace(tmp_path, monkeypatch):
+    """Cancelling at the up-front estimate rolls back the .brainpalace we created."""
+    proj = tmp_path / "fresh"
+    proj.mkdir()
+    (proj / "a.py").write_text("x = 1\n")
+    monkeypatch.setattr("brainpalace_cli.commands.init._stdin_is_tty", lambda: True)
+    # Per-capability prompts suppressed by flags ⇒ only the plan "Proceed?" confirm
+    # (y) then the estimate prompt (cancel). Estimate cancel ⇒ rollback.
+    result = CliRunner().invoke(
+        init_command,
+        [
+            "--path",
+            str(proj),
+            "--no-git-history",
+            "--no-sessions",
+            "--no-extract",
+        ],
+        input="y\ncancel\n",
+    )
+    assert result.exit_code == 0, result.output
+    assert not (proj / ".brainpalace").exists()
+
+
 def test_init_git_history_flag_writes_enabled(tmp_path, monkeypatch):
     monkeypatch.setattr("brainpalace_cli.commands.init._stdin_is_tty", lambda: False)
     r = CliRunner().invoke(
@@ -125,12 +163,13 @@ def test_init_migrate_prompt_shown_interactively(tmp_path, monkeypatch):
     )
     monkeypatch.setattr("brainpalace_cli.commands.init._stdin_is_tty", lambda: True)
     sd = _existing_simple_project(tmp_path)
-    # Prompt order: summarize, embed, git-history, upgrade-store, Proceed.
-    # summarize=Y, embed=N, git-history=N, upgrade-store=Y, proceed=Y
+    # Pre-existing .brainpalace ⇒ keep/delete/cancel first (keep), then prompt
+    # order: summarize, embed, git-history, upgrade-store, Proceed.
+    # keep, summarize=Y, embed=N, git-history=N, upgrade-store=Y, proceed=Y
     r = CliRunner().invoke(
         init_command,
         ["--path", str(tmp_path), "--no-start"],
-        input="y\nn\nn\ny\ny\n",
+        input="keep\ny\nn\nn\ny\ny\n",
     )
     assert r.exit_code == 0, r.output
     assert "Upgrade graph store to sqlite?" in r.output
@@ -177,9 +216,10 @@ def test_init_reinit_honors_no_summarize_no_embed(tmp_path, monkeypatch):
         lambda *a, **k: None,
     )
     sd = _existing_sqlite_project(tmp_path)
-    # store=sqlite ⇒ no upgrade prompt. summarize=N, embed=N, git=N, proceed=Y.
+    # Pre-existing .brainpalace ⇒ keep first. store=sqlite ⇒ no upgrade prompt.
+    # keep, summarize=N, embed=N, git=N, proceed=Y.
     r = CliRunner().invoke(
-        init_command, ["--path", str(tmp_path)], input="n\nn\nn\ny\n"
+        init_command, ["--path", str(tmp_path)], input="keep\nn\nn\nn\ny\n"
     )
     assert r.exit_code == 0, r.output
     data = yaml.safe_load((sd / "config.yaml").read_text())
@@ -209,12 +249,13 @@ def test_init_existing_project_git_history_prompt_persists(tmp_path, monkeypatch
     )
     monkeypatch.setattr("brainpalace_cli.commands.init._stdin_is_tty", lambda: True)
     sd = _existing_simple_project(tmp_path)
-    # Prompt order: summarize, embed, git-history, depth, upgrade-store, Proceed.
-    # summarize=Y, embed=N, git-history=Y, depth=0, upgrade-store=N, proceed=Y
+    # Pre-existing .brainpalace ⇒ keep first. Prompt order: summarize, embed,
+    # git-history, depth, upgrade-store, Proceed.
+    # keep, summarize=Y, embed=N, git-history=Y, depth=0, upgrade-store=N, proceed=Y
     r = CliRunner().invoke(
         init_command,
         ["--path", str(tmp_path), "--no-start"],
-        input="y\nn\ny\n0\nn\ny\n",
+        input="keep\ny\nn\ny\n0\nn\ny\n",
     )
     assert r.exit_code == 0, r.output
     data = yaml.safe_load((sd / "config.yaml").read_text())

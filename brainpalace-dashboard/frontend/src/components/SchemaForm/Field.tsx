@@ -21,6 +21,8 @@ export type FieldProps = {
   effective?: EffectiveConfig;
   /** Canonical provider descriptor — drives conditional model/base_url/env. */
   providers?: ProvidersDescriptor;
+  /** Remove the project override for a key so it inherits global/code default. */
+  onUnset?: (dotpath: string) => void;
 };
 
 /**
@@ -67,6 +69,15 @@ function fmtDefault(v: unknown): string {
 }
 
 /** Renders one schema field (label + control + help + inline error). */
+/** "<value> from <source>" describing what a key inherits if unset. */
+function inheritedLabel(
+  inherited: { value: unknown; source: string } | null | undefined,
+): string | null {
+  if (!inherited) return null;
+  const src = inherited.source === "default" ? "code default" : inherited.source;
+  return `${fmtDefault(inherited.value)} from ${src}`;
+}
+
 export function Field({
   field,
   getValue,
@@ -74,6 +85,7 @@ export function Field({
   errors,
   effective,
   providers,
+  onUnset,
 }: FieldProps) {
   if (field.widget === "group") {
     return (
@@ -83,6 +95,7 @@ export function Field({
         setValue={setValue}
         errors={errors}
         effective={effective}
+        onUnset={onUnset}
       />
     );
   }
@@ -229,6 +242,19 @@ export function Field({
           className="block text-sm font-medium text-fg"
         >
           {field.label}
+          {eff?.source && (
+            <span
+              data-testid={`field-source-${field.dotpath}`}
+              title={`Value source: ${eff.source}`}
+              className={`ml-2 rounded px-1.5 py-0.5 align-middle text-[10px] font-semibold uppercase tracking-wide ${
+                eff.source === "project"
+                  ? "bg-accent/15 text-accent"
+                  : "bg-fg-faint/10 text-fg-faint"
+              }`}
+            >
+              {eff.source === "default" ? "code" : eff.source}
+            </span>
+          )}
           {hint && (
             <span
               data-testid={`field-default-${field.dotpath}`}
@@ -236,6 +262,27 @@ export function Field({
             >
               {hint}
             </span>
+          )}
+          {/* Unset = inherit. Only when the value is set at the project layer. */}
+          {eff?.source === "project" && onUnset && (
+            <button
+              type="button"
+              data-testid={`field-unset-${field.dotpath}`}
+              onClick={() => onUnset(field.dotpath)}
+              title={
+                inheritedLabel(eff.inherited)
+                  ? `Unset — will use ${inheritedLabel(eff.inherited)}`
+                  : "Remove this project override"
+              }
+              className="ml-2 align-middle text-xs font-normal text-accent hover:underline"
+            >
+              unset
+              {inheritedLabel(eff.inherited) && (
+                <span className="ml-1 text-fg-faint">
+                  (→ {inheritedLabel(eff.inherited)})
+                </span>
+              )}
+            </button>
           )}
         </label>
         {field.help && (

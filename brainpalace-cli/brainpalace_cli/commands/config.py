@@ -472,6 +472,67 @@ def show_config(json_output: bool) -> None:
     console.print()
 
 
+@config_group.command("unset")
+@click.argument("dotpaths", nargs=-1, required=True)
+@click.option(
+    "--global",
+    "global_",
+    is_flag=True,
+    help="Unset from the global XDG config instead of the project config.",
+)
+@click.option("--json", "json_output", is_flag=True, help="Output as JSON")
+def unset_config(dotpaths: tuple[str, ...], global_: bool, json_output: bool) -> None:
+    """Remove KEY(s) from config so they inherit the layered default.
+
+    Each KEY is a dotted path (e.g. ``bm25.language``, ``git_indexing.enabled``).
+    Removing a project value makes BrainPalace fall back to the global config,
+    then the built-in code default — config resolves ``project < global < code``.
+
+    \b
+    Examples:
+      brainpalace config unset bm25.language        # inherit from global/code
+      brainpalace config unset git_indexing.enabled session_indexing.enabled
+      brainpalace config unset --global reranker.enabled
+    """
+    from brainpalace_cli.config_resolve import (
+        global_config_path,
+        inherited,
+        read_yaml,
+        unset_dotpath,
+    )
+
+    target = global_config_path() if global_ else _resolve_wizard_config_path()
+    data = read_yaml(target)
+    removed = [dp for dp in dotpaths if unset_dotpath(data, dp)]
+    if removed:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with open(target, "w", encoding="utf-8") as f:
+            yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
+
+    glob = {} if global_ else read_yaml(global_config_path())
+    if json_output:
+        result = {}
+        for dp in dotpaths:
+            entry: dict[str, Any] = {"removed": dp in removed}
+            if dp in removed and not global_:
+                val, src = inherited(dp, glob)
+                entry["now_uses"] = {"value": val, "source": src}
+            result[dp] = entry
+        click.echo(json.dumps(result, indent=2))
+        return
+
+    for dp in dotpaths:
+        if dp not in removed:
+            console.print(f"[dim]{dp} was not set; nothing to unset.[/]")
+        elif global_:
+            console.print(f"[green]Unset[/] {dp} from the global config.")
+        else:
+            val, src = inherited(dp, glob)
+            console.print(
+                f"[green]Unset[/] {dp} — will now use [cyan]{val}[/] from {src}."
+            )
+
+
 @config_group.command("path")
 @click.option("--json", "json_output", is_flag=True, help="Output as JSON")
 def config_path(json_output: bool) -> None:

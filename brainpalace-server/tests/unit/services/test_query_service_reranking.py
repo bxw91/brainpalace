@@ -353,6 +353,75 @@ class TestExecuteQueryWithReranking:
             mock_rerank.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_execute_query_rerank_stage1_topk_exceeds_50(self) -> None:
+        """Stage-1 over-fetch above the public le=50 ceiling must not 500.
+
+        Regression: with reranking on, stage1_top_k = top_k * multiplier can
+        exceed 50 (here 10*10=100). The old code rebuilt a public QueryRequest,
+        tripping its top_k<=50 validator -> "Query failed: ... top_k Input
+        should be less than or equal to 50" (HTTP 500). model_copy must bypass
+        that and run cleanly.
+        """
+        from brainpalace_server.config.settings import Settings
+
+        mock_vector_store = MagicMock()
+        mock_vector_store.is_initialized = True
+        mock_vector_store.get_count = AsyncMock(return_value=200)
+        captured_topk: dict[str, int] = {}
+
+        async def _capture_search(query_embedding, top_k, **kwargs):  # noqa: ANN001
+            captured_topk["stage1"] = top_k
+            return [
+                MagicMock(
+                    text=f"doc{i}",
+                    chunk_id=f"chunk_{i}",
+                    score=1.0 - i * 0.005,
+                    metadata={"source": f"doc{i}.txt"},
+                )
+                for i in range(60)
+            ]
+
+        mock_vector_store.similarity_search = AsyncMock(side_effect=_capture_search)
+
+        mock_embedding_gen = MagicMock()
+        mock_embedding_gen.embed_query = AsyncMock(return_value=[0.1] * 768)
+
+        mock_bm25 = MagicMock()
+        mock_bm25.is_initialized = True
+        mock_bm25.search_with_filters = AsyncMock(return_value=[])
+
+        query_service = QueryService(
+            vector_store=mock_vector_store,
+            embedding_generator=mock_embedding_gen,
+            bm25_manager=mock_bm25,
+            graph_index_manager=MagicMock(),
+        )
+
+        mock_settings = Settings(
+            ENABLE_RERANKING=True,
+            RERANKER_TOP_K_MULTIPLIER=10,
+            RERANKER_MAX_CANDIDATES=100,
+        )
+
+        with (
+            patch.object(
+                query_service, "_rerank_results", new_callable=AsyncMock
+            ) as mock_rerank,
+            patch("brainpalace_server.services.query_service.settings", mock_settings),
+        ):
+            mock_rerank.return_value = [
+                QueryResult(text="reranked", source="r.txt", score=0.9, chunk_id="c")
+            ]
+            # top_k=10 -> stage1 = min(10*10, 100) = 100 (> 50).
+            request = QueryRequest(query="q", top_k=10, mode=QueryMode.HYBRID)
+
+            # Must not raise a pydantic ValidationError.
+            await query_service.execute_query(request)
+
+        # Stage-1 actually over-fetched beyond the le=50 public ceiling.
+        assert captured_topk["stage1"] == 100
+
+    @pytest.mark.asyncio
     async def test_execute_query_skips_rerank_when_disabled(self) -> None:
         """execute_query does not call _rerank_results when disabled."""
         # Create mock services

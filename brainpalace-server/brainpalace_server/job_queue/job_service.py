@@ -114,7 +114,8 @@ class JobQueueService:
             operation: Operation type - 'index' (replace) or 'add' (append).
             force: If True, skip deduplication check and always create new job.
             allow_external: If True, allow paths outside project root.
-            source: Job source - 'manual' (user-triggered) or 'auto' (watcher).
+            source: Job source - 'manual' (user-triggered), 'auto' (re-queue/retry),
+                'watch' (file-watcher-triggered), 'folders_add', 'reconcile', or 'init'.
 
         Returns:
             JobEnqueueResponse with job details and queue position.

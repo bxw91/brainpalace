@@ -29,6 +29,8 @@ class FolderRecord:
         watch_mode: File watch mode: 'off' or 'auto'
         watch_debounce_seconds: Per-folder debounce in seconds (None = use global)
         include_code: Whether to index code files (preserved for watcher jobs)
+        source: Provenance of the registration (e.g. 'manual', 'watch',
+            'folders_add', 'reconcile', 'init', 'unknown')
     """
 
     folder_path: str
@@ -38,6 +40,7 @@ class FolderRecord:
     watch_mode: str = "off"
     watch_debounce_seconds: int | None = None
     include_code: bool = False
+    source: str = "unknown"
 
 
 class FolderManager:
@@ -65,7 +68,8 @@ class FolderManager:
         """Initialize the folder manager by loading existing records.
 
         Loads folder records from JSONL file if it exists. Handles
-        missing files gracefully (starts with empty cache).
+        missing files gracefully (starts with empty cache). Automatically
+        prunes records whose folder_path no longer exists on disk.
 
         Raises:
             OSError: If JSONL file exists but cannot be read
@@ -79,6 +83,9 @@ class FolderManager:
                 )
             else:
                 logger.info("No existing folder records found, starting fresh")
+            pruned = self._prune_missing_unlocked()
+            if pruned:
+                await self._persist()
 
     async def add_folder(
         self,
@@ -88,6 +95,7 @@ class FolderManager:
         watch_mode: str = "off",
         watch_debounce_seconds: int | None = None,
         include_code: bool = False,
+        source: str = "unknown",
     ) -> FolderRecord:
         """Add or update a folder record.
 
@@ -101,6 +109,8 @@ class FolderManager:
             watch_mode: File watch mode: 'off' or 'auto'
             watch_debounce_seconds: Per-folder debounce in seconds (None = global)
             include_code: Whether code files were indexed (preserved for watcher jobs)
+            source: Provenance of the registration (e.g. 'manual', 'watch',
+                'folders_add', 'reconcile', 'init')
 
         Returns:
             The created or updated FolderRecord
@@ -116,15 +126,20 @@ class FolderManager:
             watch_mode=watch_mode,
             watch_debounce_seconds=watch_debounce_seconds,
             include_code=include_code,
+            source=source,
         )
 
         async with self._lock:
             self._cache[normalized_path] = record
             await self._persist()
 
-        logger.debug(
-            f"Added folder record: {normalized_path} "
-            f"({chunk_count} chunks, {len(chunk_ids)} IDs)"
+        logger.info(
+            "Registered folder %s (source=%s, watch=%s, %d chunks, %d ids)",
+            normalized_path,
+            source,
+            watch_mode,
+            chunk_count,
+            len(chunk_ids),
         )
         return record
 
@@ -189,6 +204,37 @@ class FolderManager:
             else:
                 logger.info("Cleared folder records (no JSONL file to delete)")
 
+    def _prune_missing_unlocked(self) -> list[str]:
+        """Drop cache entries whose folder_path no longer exists on disk.
+
+        Caller must hold self._lock.
+
+        Returns:
+            List of removed folder paths.
+        """
+        removed = [p for p in list(self._cache) if not Path(p).exists()]
+        for p in removed:
+            del self._cache[p]
+        if removed:
+            logger.warning(
+                "Pruned %d folder record(s) for missing paths: %s",
+                len(removed),
+                removed,
+            )
+        return removed
+
+    async def prune_missing(self) -> list[str]:
+        """Remove records whose folder no longer exists on disk; persist if changed.
+
+        Returns:
+            List of folder paths that were removed.
+        """
+        async with self._lock:
+            removed = self._prune_missing_unlocked()
+            if removed:
+                await self._persist()
+            return removed
+
     async def _persist(self) -> None:
         """Persist the cache to JSONL file using atomic write.
 
@@ -223,6 +269,7 @@ class FolderManager:
                         watch_mode=data.get("watch_mode", "off"),
                         watch_debounce_seconds=data.get("watch_debounce_seconds"),
                         include_code=data.get("include_code", False),
+                        source=data.get("source", "unknown"),
                     )
                     records[record.folder_path] = record
                 except (json.JSONDecodeError, KeyError, TypeError) as e:

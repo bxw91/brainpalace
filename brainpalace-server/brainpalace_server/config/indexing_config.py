@@ -25,7 +25,7 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, Field
 
-from brainpalace_server.config.provider_config import _find_config_file
+from brainpalace_server.config.provider_config import load_raw_config
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +56,14 @@ class IndexingConfig(BaseModel):
         default=True,
         description="Skip single-line / minified blobs (*.min.js, *.min.css) entirely.",
     )
+    max_embed_tokens_per_job: int = Field(
+        default=300_000,
+        ge=0,
+        description=(
+            "Hard cap on embedding tokens per index job. 0 disables the guard. "
+            "Over the cap the job fails with a budget error unless force_budget."
+        ),
+    )
 
 
 def _env_int(name: str, current: int) -> int:
@@ -78,22 +86,16 @@ def _env_bool(name: str, current: bool) -> bool:
 
 def load_indexing_config(config_path: Path | None = None) -> IndexingConfig:
     """Load the ``indexing:`` block, or defaults if absent. Env overrides win."""
-    path = config_path or _find_config_file()
     cfg = IndexingConfig()
-    if path and Path(path).exists():
-        try:
-            raw = yaml.safe_load(Path(path).read_text()) or {}
-            block = raw.get("indexing")
-            if isinstance(block, dict):
-                cfg = IndexingConfig(
-                    **{
-                        k: v
-                        for k, v in block.items()
-                        if k in IndexingConfig.model_fields
-                    }
-                )
-        except (OSError, yaml.YAMLError, ValueError) as exc:
-            logger.warning("Could not parse indexing config: %s", exc)
+    try:
+        raw = load_raw_config(config_path)
+        block = raw.get("indexing")
+        if isinstance(block, dict):
+            cfg = IndexingConfig(
+                **{k: v for k, v in block.items() if k in IndexingConfig.model_fields}
+            )
+    except (OSError, yaml.YAMLError, ValueError) as exc:
+        logger.warning("Could not parse indexing config: %s", exc)
 
     return cfg.model_copy(
         update={
@@ -105,5 +107,8 @@ def load_indexing_config(config_path: Path | None = None) -> IndexingConfig:
                 "INDEX_MAX_FILE_BYTES", cfg.max_file_bytes_throttle
             ),
             "skip_minified": _env_bool("INDEX_SKIP_MINIFIED", cfg.skip_minified),
+            "max_embed_tokens_per_job": _env_int(
+                "INDEX_MAX_EMBED_TOKENS", cfg.max_embed_tokens_per_job
+            ),
         }
     )

@@ -96,7 +96,8 @@ class JobRecord(BaseModel):
     source: str = Field(
         default="manual",
         description=(
-            "Job source: 'manual' (user-triggered) or 'auto' (watcher-triggered)"
+            "Job source: 'manual' (user-triggered), 'auto' (re-queue/retry), "
+            "'watch' (file-watcher-triggered), 'folders_add', 'reconcile', or 'init'."
         ),
     )
     watch_mode: str | None = Field(

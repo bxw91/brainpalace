@@ -31,6 +31,39 @@ _PRETTY = f"{_COMMIT}%n%H%n%an%n%ae%n%cI%n%s%n%b%n{_ENDMSG}"
 DEFAULT_DEPTH = 0
 
 
+def git_toplevel(repo_path: str | Path) -> Path | None:
+    """Return the git working-tree root for ``repo_path``, or None if not a repo."""
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(repo_path), "rev-parse", "--show-toplevel"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        return Path(out).resolve() if out else None
+    except (subprocess.CalledProcessError, OSError):
+        return None
+
+
+def resolve_commit_scope(
+    project_root: str | Path, path_filter: list[str] | None
+) -> list[str]:
+    """Decide which ``git log -- <paths>`` to pass for a project.
+
+    - An explicit ``path_filter`` always wins (returned unchanged).
+    - Otherwise, when the project root is a *subdirectory* of a larger repo
+      (monorepo), scope to the project subdir so only its commits are indexed.
+    - When the project root IS the repo root, return ``[]`` (index all commits).
+    """
+    if path_filter:
+        return list(path_filter)
+    root = Path(project_root).resolve()
+    top = git_toplevel(root)
+    if top is not None and top != root:
+        return [str(root)]
+    return []
+
+
 @dataclass
 class CommitRecord:
     """One commit lifted from ``git log`` — message + diff stat summary."""

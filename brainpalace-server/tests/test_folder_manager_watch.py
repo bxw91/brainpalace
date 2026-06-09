@@ -5,7 +5,7 @@ Covers:
 - Backward compatibility: v7.0 JSONL records without watch fields load cleanly
 - add_folder with watch_mode and watch_debounce_seconds persists to JSONL
 - JobRecord with source field
-- enqueue_job with source="auto" creates job with correct source field
+- enqueue_job with source="auto"/"watch" creates job with correct source field
 """
 
 from __future__ import annotations
@@ -82,12 +82,15 @@ def test_folder_record_asdict_includes_watch_fields() -> None:
 async def test_load_jsonl_v7_records_missing_watch_fields() -> None:
     """v7.0 JSONL records without watch fields load with backward-compat defaults."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        state_dir = Path(tmpdir)
+        state_dir = Path(tmpdir) / "state"
+        state_dir.mkdir()
+        docs_dir = Path(tmpdir) / "docs"
+        docs_dir.mkdir()
         jsonl_path = state_dir / "indexed_folders.jsonl"
 
         # Write a v7.0-style record WITHOUT watch fields
         v7_record = {
-            "folder_path": "/home/dev/docs",
+            "folder_path": str(docs_dir),
             "chunk_count": 42,
             "last_indexed": "2026-02-24T01:00:00+00:00",
             "chunk_ids": ["id1", "id2"],
@@ -102,7 +105,7 @@ async def test_load_jsonl_v7_records_missing_watch_fields() -> None:
         assert len(records) == 1
 
         record = records[0]
-        assert record.folder_path == "/home/dev/docs"
+        assert record.folder_path == str(docs_dir)
         assert record.watch_mode == "off"  # backward compat default
         assert record.watch_debounce_seconds is None  # backward compat default
         assert record.include_code is False  # backward compat default
@@ -112,17 +115,22 @@ async def test_load_jsonl_v7_records_missing_watch_fields() -> None:
 async def test_load_jsonl_mixed_records() -> None:
     """JSONL file with mixed v7.0 and v8.0 records loads correctly."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        state_dir = Path(tmpdir)
+        state_dir = Path(tmpdir) / "state"
+        state_dir.mkdir()
+        old_docs_dir = Path(tmpdir) / "old-docs"
+        old_docs_dir.mkdir()
+        new_docs_dir = Path(tmpdir) / "new-docs"
+        new_docs_dir.mkdir()
         jsonl_path = state_dir / "indexed_folders.jsonl"
 
         v7_record = {
-            "folder_path": "/home/dev/old-docs",
+            "folder_path": str(old_docs_dir),
             "chunk_count": 10,
             "last_indexed": "2026-01-01T00:00:00+00:00",
             "chunk_ids": [],
         }
         v8_record = {
-            "folder_path": "/home/dev/new-docs",
+            "folder_path": str(new_docs_dir),
             "chunk_count": 20,
             "last_indexed": "2026-03-01T00:00:00+00:00",
             "chunk_ids": ["a", "b"],
@@ -161,12 +169,15 @@ async def test_load_jsonl_mixed_records() -> None:
 async def test_add_folder_persists_watch_fields() -> None:
     """add_folder with watch_mode and watch_debounce_seconds persists to JSONL."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        state_dir = Path(tmpdir)
+        state_dir = Path(tmpdir) / "state"
+        state_dir.mkdir()
+        src_dir = Path(tmpdir) / "src"
+        src_dir.mkdir()
         folder_manager = FolderManager(state_dir=state_dir)
         await folder_manager.initialize()
 
         record = await folder_manager.add_folder(
-            folder_path=str(state_dir / "src"),
+            folder_path=str(src_dir),
             chunk_count=100,
             chunk_ids=["c1"],
             watch_mode="auto",
@@ -315,6 +326,48 @@ async def test_enqueue_job_with_source_auto() -> None:
 
 
 @pytest.mark.asyncio
+async def test_enqueue_job_with_source_watch() -> None:
+    """enqueue_job with source='watch' creates a job with source='watch'.
+
+    Verifies the provenance chain for file-watcher-triggered re-indexes:
+    FileWatcherService calls enqueue_job(source='watch'), the JobRecord is
+    stored with source='watch', and when job_worker reconstructs the
+    IndexRequest it uses trigger=job.source='watch'.
+    """
+    from brainpalace_server.job_queue.job_service import JobQueueService
+    from brainpalace_server.models.job import JobEnqueueResponse
+
+    mock_store = MagicMock()
+    mock_store.find_by_dedupe_key = AsyncMock(return_value=None)
+    mock_store.get_queue_length = AsyncMock(return_value=1)
+
+    captured_jobs: list[JobRecord] = []
+
+    async def capture_append(job: JobRecord) -> int:
+        captured_jobs.append(job)
+        return 0
+
+    mock_store.append_job = capture_append
+
+    service = JobQueueService(store=mock_store, project_root=None)
+
+    request = IndexRequest(folder_path="/tmp/docs", trigger="watch")
+    response = await service.enqueue_job(
+        request=request,
+        operation="index",
+        force=False,
+        source="watch",
+    )
+
+    assert isinstance(response, JobEnqueueResponse)
+    assert response.dedupe_hit is False
+    assert len(captured_jobs) == 1
+    # job.source="watch" means job_worker sets trigger=job.source="watch" on
+    # the reconstructed IndexRequest, so add_folder is called with source="watch".
+    assert captured_jobs[0].source == "watch"
+
+
+@pytest.mark.asyncio
 async def test_enqueue_job_default_source_is_manual() -> None:
     """enqueue_job without source param defaults to source='manual'."""
     from brainpalace_server.job_queue.job_service import JobQueueService
@@ -338,3 +391,41 @@ async def test_enqueue_job_default_source_is_manual() -> None:
 
     assert len(captured_jobs) == 1
     assert captured_jobs[0].source == "manual"
+
+
+# ---------------------------------------------------------------------------
+# Fix B: folders_add provenance — IndexRequest.trigger flows to FolderRecord.source
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_folders_add_trigger_recorded_as_source_folders_add() -> None:
+    """source='folders_add' passed to add_folder is persisted in FolderRecord.
+
+    This verifies the persistence round-trip: add_folder stores the source value
+    and it survives a FolderManager reload.
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        state_dir = Path(tmpdir) / "state"
+        state_dir.mkdir()
+        folder_dir = Path(tmpdir) / "myproject"
+        folder_dir.mkdir()
+
+        folder_manager = FolderManager(state_dir=state_dir)
+        await folder_manager.initialize()
+
+        record = await folder_manager.add_folder(
+            folder_path=str(folder_dir),
+            chunk_count=5,
+            chunk_ids=["c1"],
+            source="folders_add",
+        )
+
+        assert record.source == "folders_add"
+
+        # Reload to verify persistence
+        fm2 = FolderManager(state_dir=state_dir)
+        await fm2.initialize()
+        records = await fm2.list_folders()
+        assert len(records) == 1
+        assert records[0].source == "folders_add"

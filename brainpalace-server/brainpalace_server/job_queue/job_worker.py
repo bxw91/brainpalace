@@ -281,6 +281,7 @@ class JobWorker:
                 injector_script=job.injector_script,
                 folder_metadata_file=job.folder_metadata_file,
                 force=job.force,
+                trigger=job.source,
             )
 
             # Build content injector if job has injection params
@@ -542,6 +543,7 @@ class JobWorker:
                         watch_mode=job.watch_mode,
                         watch_debounce_seconds=job.watch_debounce_seconds,
                         include_code=folder_record.include_code,
+                        source=folder_record.source,
                     )
                     logger.info(
                         f"Updated watch config for {job.folder_path}: "

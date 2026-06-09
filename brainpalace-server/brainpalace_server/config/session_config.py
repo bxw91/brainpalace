@@ -28,7 +28,7 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, Field
 
-from brainpalace_server.config.provider_config import _find_config_file
+from brainpalace_server.config.provider_config import load_raw_config
 
 logger = logging.getLogger(__name__)
 
@@ -139,16 +139,14 @@ def load_session_extraction_config(
     rather than raising — a config typo must never silently switch on paid
     server-side distillation.
     """
-    path = config_path or _find_config_file()
     block: dict[str, Any] | None = None
-    if path and Path(path).exists():
-        try:
-            raw = yaml.safe_load(Path(path).read_text()) or {}
-            maybe = raw.get("session_extraction")
-            if isinstance(maybe, dict):
-                block = maybe
-        except (OSError, yaml.YAMLError, ValueError) as exc:
-            logger.warning("Could not parse session_extraction config: %s", exc)
+    try:
+        raw = load_raw_config(config_path)
+        maybe = raw.get("session_extraction")
+        if isinstance(maybe, dict):
+            block = maybe
+    except (OSError, yaml.YAMLError, ValueError) as exc:
+        logger.warning("Could not parse session_extraction config: %s", exc)
 
     if block is None:
         return SessionExtractionConfig()
@@ -242,16 +240,14 @@ def load_session_indexing_config(
     ``SESSION_INDEXING_ENABLED=false`` forces ``enabled`` off regardless.
     Archive's env switch is applied in :func:`resolve_session_capabilities`.
     """
-    path = config_path or _find_config_file()
     block: dict[str, Any] | None = None
-    if path and Path(path).exists():
-        try:
-            raw = yaml.safe_load(Path(path).read_text()) or {}
-            maybe = raw.get("session_indexing")
-            if isinstance(maybe, dict):
-                block = maybe
-        except (OSError, yaml.YAMLError, ValueError) as exc:
-            logger.warning("Could not parse session_indexing config: %s", exc)
+    try:
+        raw = load_raw_config(config_path)
+        maybe = raw.get("session_indexing")
+        if isinstance(maybe, dict):
+            block = maybe
+    except (OSError, yaml.YAMLError, ValueError) as exc:
+        logger.warning("Could not parse session_indexing config: %s", exc)
 
     if block is not None:
         try:

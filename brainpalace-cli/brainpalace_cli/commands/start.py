@@ -196,6 +196,26 @@ def check_health(base_url: str, timeout: float = 3.0) -> bool:
         return False
 
 
+def find_reusable_server(project_root: Path) -> str | None:
+    """Return the base_url of a live registry server for this project, else None.
+
+    Complements :func:`classify_existing_server` (which reads the project's own
+    runtime.json) by also honouring the global registry, so a server started
+    from a different install surface (source venv vs pipx) is reused instead of
+    duplicated on a climbed port.
+    """
+    from brainpalace_cli.commands.list_cmd import get_registry
+
+    entry = get_registry().get(str(Path(project_root).resolve()))
+    if not isinstance(entry, dict):
+        return None
+    pid = entry.get("pid", 0)
+    base_url = entry.get("base_url", "")
+    if pid and is_process_alive(pid) and base_url and check_health(base_url):
+        return str(base_url)
+    return None
+
+
 class ServerAlreadyRunningError(RuntimeError):
     """Raised when a healthy server for the same project is already running.
 
@@ -494,6 +514,29 @@ def start_command(
 
         # Read configuration
         config = read_config(state_dir)
+
+        # Cross-install reuse: a live, healthy server for THIS project may be
+        # recorded in the GLOBAL registry even when this project's runtime.json
+        # is missing or stale (e.g. it was started from a different install
+        # surface). Reuse it instead of spawning a duplicate that would climb to
+        # a new port and double-write the shared data dir.
+        reusable = find_reusable_server(project_root)
+        if reusable:
+            dash = _ensure_dashboard(no_dashboard=no_dashboard, json_output=json_output)
+            if json_output:
+                click.echo(
+                    json.dumps(
+                        {
+                            "status": "already_running",
+                            "base_url": reusable,
+                            "project_root": str(project_root),
+                            **_dashboard_json(dash),
+                        }
+                    )
+                )
+            else:
+                console.print(f"[green]Reusing running server:[/] {reusable}")
+            return
 
         # Check for existing runtime. A live server must never be replaced by a
         # second one on another port (that duplicates writes to the shared data

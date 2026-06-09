@@ -299,3 +299,84 @@ def remove_folder_cmd(
             else:
                 console.print(f"[red]Server Error ({e.status_code}):[/] {e.detail}")
         raise SystemExit(1) from e
+
+
+@folders_group.command("prune")
+@click.option(
+    "--url",
+    envvar="BRAINPALACE_URL",
+    default=None,
+    help="BrainPalace server URL (default: from config or http://127.0.0.1:8000)",
+)
+@click.option("--json", "json_output", is_flag=True, help="Output as JSON")
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="List folders that would be pruned without deleting them.",
+)
+def prune_folders_cmd(url: str | None, json_output: bool, dry_run: bool) -> None:
+    """Remove indexed-folder records whose path no longer exists on disk.
+
+    Queries the server for all known folder records, checks each path
+    locally, and removes any that are no longer present.
+
+    \b
+    Examples:
+      brainpalace folders prune
+      brainpalace folders prune --json
+      brainpalace folders prune --dry-run
+    """
+    resolved_url = url or get_server_url()
+
+    try:
+        with DocServeClient(base_url=resolved_url) as client:
+            records = client.list_folders()
+            removed: list[str] = []
+            errors: list[str] = []
+            for rec in records:
+                if not Path(rec.folder_path).exists():
+                    if dry_run:
+                        removed.append(rec.folder_path)
+                    else:
+                        try:
+                            client.delete_folder(rec.folder_path)
+                            removed.append(rec.folder_path)
+                        except ServerError as e:
+                            errors.append(
+                                f"{rec.folder_path}: {getattr(e, 'detail', e)}"
+                            )
+
+        if dry_run:
+            if json_output:
+                click.echo(json.dumps({"would_prune": removed}, indent=2))
+                return
+            if removed:
+                console.print(
+                    f"[green]Would prune {len(removed)} dead folder record(s):[/]"
+                )
+                for p in removed:
+                    console.print(f"  • {p}")
+            else:
+                console.print("[dim]No dead folder records found.[/]")
+            return
+
+        if json_output:
+            output: dict[str, object] = {"pruned": removed}
+            if errors:
+                output["errors"] = errors
+            click.echo(json.dumps(output, indent=2))
+            return
+
+        if removed:
+            console.print(f"[green]Pruned {len(removed)} dead folder record(s):[/]")
+            for p in removed:
+                console.print(f"  • {p}")
+        else:
+            console.print("[dim]No dead folder records found.[/]")
+
+        if errors:
+            for err in errors:
+                console.print(f"[red]Error:[/] {err}")
+
+    except ConnectionError as e:
+        exit_on_connection_error(e, base_url=resolved_url, json_output=json_output)

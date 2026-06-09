@@ -97,11 +97,25 @@ export type UiSchema = z.infer<typeof UiSchema>;
 export type ConfigValues = Record<string, unknown>;
 
 /** Per-key effective value + provenance across project > global > code default. */
+export type EffectiveSource = "project" | "global" | "default" | "unset";
 export type EffectiveEntry = {
   value: unknown;
-  source: "project" | "global" | "default";
+  source: EffectiveSource;
+  /**
+   * For a PROJECT-sourced key: the value+source it would fall back to if the
+   * project override were removed (unset) — global, else code default, else
+   * null. Powers the "if you unset, you'll use X from <source>" hint. Absent /
+   * null for keys not set at the project layer.
+   */
+  inherited?: { value: unknown; source: EffectiveSource } | null;
 };
 export type EffectiveConfig = Record<string, EffectiveEntry>;
+
+/** Response of POST /config/unset. */
+export type UnsetResult = {
+  removed: string[];
+  effective: Record<string, { value: unknown; source: EffectiveSource }>;
+};
 
 /** Validation error returned by a 422 PATCH. */
 export type ConfigError = { field: string; message: string; suggestion?: string };
