@@ -14,6 +14,7 @@ from brainpalace_server.config.provider_config import (
     validate_provider_config,
 )
 from brainpalace_server.config.session_config import load_session_extraction_config
+from brainpalace_server.indexing import get_embedding_generator
 from brainpalace_server.models import HealthStatus, IndexingStatus
 from brainpalace_server.models.health import ProviderHealth, ProvidersStatus
 from brainpalace_server.providers.factory import ProviderRegistry
@@ -624,3 +625,42 @@ async def postgres_health(request: Request) -> dict[str, Any]:
             "backend": "postgres",
             "error": str(e),
         }
+
+
+@router.post(
+    "/providers/test",
+    summary="Live provider connectivity test",
+    description="Embeds one short string against the configured embedding "
+    "provider (a real, ~1-token API call — only triggered by an explicit "
+    "user click) and config-validates the summarization provider without "
+    "any LLM spend. Failures are reported in the body, never raised.",
+)
+async def providers_test() -> dict[str, Any]:
+    import time as _time
+
+    provider_settings = load_provider_settings()
+
+    embedding: dict[str, Any] = {
+        "provider": str(provider_settings.embedding.provider),
+        "model": str(provider_settings.embedding.model),
+        "ok": False,
+        "latency_ms": 0.0,
+        "error": None,
+    }
+    start = _time.time()
+    try:
+        embedder = get_embedding_generator()
+        vec = await embedder.embed_query("ping")
+        embedding["ok"] = bool(vec)
+    except Exception as exc:  # noqa: BLE001 — report, never raise
+        embedding["error"] = str(exc)
+    embedding["latency_ms"] = round((_time.time() - start) * 1000, 1)
+
+    summarization = {
+        "provider": str(provider_settings.summarization.provider),
+        "model": str(provider_settings.summarization.model),
+        "ok": True,
+        "checked": "config-only",
+        "error": None,
+    }
+    return {"embedding": embedding, "summarization": summarization}

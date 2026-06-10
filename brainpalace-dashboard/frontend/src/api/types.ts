@@ -176,6 +176,32 @@ export type FolderRow = {
 };
 export type FoldersPayload = { folders: FolderRow[]; total: number };
 
+/** Indexed-file listing for one folder (server `/index/documents`). */
+export type DocumentRow = {
+  path: string;
+  chunk_count: number;
+  size_bytes: number;
+  mtime: number;
+  last_embedded_at: number;
+};
+export type DocumentsPayload = {
+  folder: string;
+  total: number;
+  files: DocumentRow[];
+};
+
+/** Chunks of one file (server `/index/documents/chunks`). */
+export type ChunkRow = {
+  chunk_id: string;
+  text: string;
+  metadata: Record<string, unknown>;
+};
+export type DocumentChunksPayload = {
+  path: string;
+  total_chunks: number;
+  chunks: ChunkRow[];
+};
+
 /** One indexing job (server `/index/jobs/`). */
 export type JobRow = {
   id: string;
@@ -238,6 +264,30 @@ export type CachePayload = {
   size_bytes: number;
 };
 
+/** Cache hit-rate snapshot history (server `/index/cache/history`). */
+export type CacheSnapshot = {
+  ts: number;
+  hits: number;
+  misses: number;
+  entry_count: number;
+  size_bytes: number;
+};
+export type CacheHistoryPayload = { snapshots: CacheSnapshot[] };
+
+/** Cost estimate (server `/index/cache/economics`). All `est_*` may be null. */
+export type CacheEconomics = {
+  provider: string;
+  model: string;
+  price_usd_per_mtok: number | null;
+  avg_tokens_per_chunk: number;
+  session_hits: number;
+  session_misses: number;
+  est_spend_usd: number | null;
+  est_saved_usd: number | null;
+  cached_entries: number;
+  est_reindex_cost_usd: number | null;
+};
+
 /** Curated session memory (server `/memories/`). */
 export type MemoryRow = {
   id: string;
@@ -252,6 +302,32 @@ export type MemoriesPayload = {
   total: number;
   char_count: number;
   char_cap: number;
+};
+
+/** Archived-session metadata (server `/sessions/archive`). */
+export type ArchivedSession = {
+  session_id: string;
+  archive_path: string;
+  mtime: number;
+  size_bytes: number;
+};
+export type SessionArchivePayload = {
+  sessions: ArchivedSession[];
+  archived_sessions: number;
+  archived_files: number;
+  tombstoned: number;
+  archived_bytes: number;
+};
+
+/** Decision browse + temporal timeline (server `/sessions/{decisions,timeline}`). */
+export type DecisionNode = { id: string; name: string; label: string };
+export type TimelineRow = {
+  subject: string;
+  predicate: string;
+  object: string;
+  valid_from: string | null;
+  valid_until: string | null;
+  valid: boolean;
 };
 
 /** Query-history list row (server `/query/history`). */
@@ -280,6 +356,23 @@ export type QueryDetail = QueryRow & {
   results: QueryResultRow[];
 };
 
+/** Aggregated query analytics (server `/query/stats`). */
+export type QueryStats = {
+  total: number;
+  zero_result_count: number;
+  mode_distribution: Record<string, number>;
+  latency: { p50: number; p95: number; avg: number };
+  latency_trend: Array<{ bucket: string; count: number; p50: number; p95: number }>;
+  top_queries: Array<{
+    query: string;
+    count: number;
+    avg_latency_ms: number;
+    zero_results: number;
+    last_ts: number;
+  }>;
+  zero_result_queries: Array<{ query: string; count: number; last_ts: number }>;
+};
+
 /** Live replay response (server `/query/`). */
 export type ReplayResult = {
   text: string;
@@ -288,6 +381,11 @@ export type ReplayResult = {
   chunk_id: string;
   source_type?: string;
   language?: string | null;
+  vector_score?: number | null;
+  bm25_score?: number | null;
+  graph_score?: number | null;
+  rerank_score?: number | null;
+  original_rank?: number | null;
   [k: string]: unknown;
 };
 export type ReplayResponse = {
@@ -298,3 +396,33 @@ export type ReplayResponse = {
 
 /** Server log tail (server `/health/logs`). */
 export type LogsPayload = { lines: string[]; unavailable?: boolean };
+
+/** Graph browse (server `/graph/nodes`, `/graph/neighbors`). */
+export type GraphNodeHit = {
+  id: string;
+  name: string;
+  label: string | null;
+  degree: number;
+};
+export type GraphSubgraph = {
+  nodes: Array<{ id: string; name: string; label: string | null }>;
+  edges: Array<{ id: string; source: string; target: string; label: string | null }>;
+};
+
+/** Live provider connectivity test (server `POST /health/providers/test`). */
+export type ProviderTestResult = {
+  embedding: {
+    provider: string;
+    model: string;
+    ok: boolean;
+    latency_ms: number;
+    error: string | null;
+  };
+  summarization: {
+    provider: string;
+    model: string;
+    ok: boolean;
+    checked: string;
+    error: string | null;
+  };
+};

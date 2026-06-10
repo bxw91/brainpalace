@@ -17,9 +17,11 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 
+from brainpalace_server.config.provider_config import load_provider_settings
 from brainpalace_server.services.embedding_cache import get_embedding_cache
+from brainpalace_server.services.pricing import lookup_embedding_price
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +48,8 @@ async def _cache_status_impl(request: Request) -> dict[str, Any]:
             status_code=503,
             detail="Embedding cache service not initialised",
         )
+
+    await cache.maybe_snapshot()
 
     stats = cache.get_stats()
     disk_stats = await cache.get_disk_stats()
@@ -133,3 +137,73 @@ async def cache_status_no_slash(request: Request) -> dict[str, Any]:
 async def clear_cache_no_slash(request: Request) -> dict[str, Any]:
     """DELETE /index/cache (no slash) — alias."""
     return await _clear_cache_impl(request)
+
+
+# --- History + economics (dashboard cost-&-cache panel) ---
+
+
+@router.get(
+    "/history",
+    summary="Embedding Cache Hit-Rate History",
+    description=(
+        "Persisted hit/miss snapshots over time (oldest first). Reading this "
+        "endpoint also writes an opportunistic snapshot, throttled to one per "
+        "5 minutes. Returns 503 if the cache service is not initialised."
+    ),
+)
+async def cache_history(
+    request: Request, since: float | None = Query(None, ge=0)
+) -> dict[str, Any]:
+    """GET /index/cache/history — persisted hit-rate snapshots."""
+    cache = get_embedding_cache()
+    if cache is None:
+        raise HTTPException(
+            status_code=503, detail="Embedding cache service not initialised"
+        )
+    await cache.maybe_snapshot()
+    return {"snapshots": await cache.get_stats_history(since)}
+
+
+@router.get(
+    "/economics",
+    summary="Embedding Cost Estimate",
+    description=(
+        "ESTIMATED provider spend and cache savings: session hit/miss counters "
+        "x avg_tokens x a static published price table. Null estimates when the "
+        "provider/model has no known price (e.g. local providers). Returns 503 "
+        "if the cache service is not initialised."
+    ),
+)
+async def cache_economics(
+    request: Request, avg_tokens: int = Query(400, ge=1, le=100_000)
+) -> dict[str, Any]:
+    """GET /index/cache/economics — estimated spend / savings."""
+    cache = get_embedding_cache()
+    if cache is None:
+        raise HTTPException(
+            status_code=503, detail="Embedding cache service not initialised"
+        )
+    stats = cache.get_stats()
+    disk = await cache.get_disk_stats()
+    provider_settings = load_provider_settings()
+    provider = str(provider_settings.embedding.provider)
+    model = str(provider_settings.embedding.model)
+    price = lookup_embedding_price(provider, model)
+
+    def cost(calls: int) -> float | None:
+        if price is None:
+            return None
+        return round(calls * avg_tokens / 1_000_000 * price, 6)
+
+    return {
+        "provider": provider,
+        "model": model,
+        "price_usd_per_mtok": price,
+        "avg_tokens_per_chunk": avg_tokens,
+        "session_hits": stats["hits"],
+        "session_misses": stats["misses"],
+        "est_spend_usd": cost(stats["misses"]),
+        "est_saved_usd": cost(stats["hits"]),
+        "cached_entries": disk["entry_count"],
+        "est_reindex_cost_usd": cost(disk["entry_count"]),
+    }

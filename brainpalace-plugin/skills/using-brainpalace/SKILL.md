@@ -18,10 +18,10 @@ allowed-tools:
   - Bash
   - Read
 metadata:
-  version: 7.0.0
+  version: 7.1.0
   category: ai-tools
   author: bxw91
-  last_validated: 2026-06-05
+  last_validated: 2026-06-10
 ---
 
 # BrainPalace Expert Skill
@@ -68,6 +68,26 @@ brainpalace query "..." --mode <picked-from-table> --top-k 8 --json
 ```
 
 After BrainPalace returns confirmed file paths, use `Read` to read those files directly.
+
+### Parsing `--json` Output
+
+Per-result keys are `text`, `source`, `score`, `chunk_id` — there is NO
+`file_path`, `content`, or any line-number field. On failure, stdout is
+`{"error": ...}` with **no** `results` key and a non-zero exit code. Never
+append `2>/dev/null` to brainpalace commands — error diagnostics go to stderr.
+
+Canonical parse pattern (copy this; check the `error` key first):
+
+```bash
+brainpalace query "..." --mode hybrid --top-k 8 --json | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+if 'error' in d: sys.exit('brainpalace error: %s' % d['error'])
+for r in d['results']:
+    print(r['source'], r['score'])
+    print(r['text'][:500])
+"
+```
 
 **Allowed Glob/Grep cases (NOT codebase search):**
 - Searching INSIDE a single file BrainPalace already returned

@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Database, Trash2, Target, XCircle, HardDrive } from "lucide-react";
-import { getCache, clearCache } from "../api/client";
+import { getCache, getCacheHistory, clearCache } from "../api/client";
 import { StatCard } from "../components/StatCard";
+import { RateChart } from "../components/Charts";
+import { CacheEconomicsPanel } from "../components/CacheEconomics";
 import { HitRateGauge } from "../components/HitRateGauge";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { useToast } from "../components/Toast";
@@ -36,11 +38,32 @@ export function Cache({ instanceId }: { instanceId?: string }) {
   const qc = useQueryClient();
   const [clearOpen, setClearOpen] = useState(false);
 
+  // 60s polling drives the server's opportunistic stats_history snapshots
+  // (GET /index/cache/ calls maybe_snapshot; the 5-min server throttle
+  // bounds the write rate).
   const cacheQ = useQuery({
     queryKey: ["cache", id],
     queryFn: () => getCache(id!),
     enabled: !!id,
     retry: false,
+    refetchInterval: 60_000,
+  });
+
+  const historyQ = useQuery({
+    queryKey: ["cache-history", id],
+    queryFn: () => getCacheHistory(id!),
+    enabled: !!id,
+    retry: false,
+    refetchInterval: 60_000,
+  });
+
+  const trend = (historyQ.data?.snapshots ?? []).map((s) => {
+    const total = s.hits + s.misses;
+    const d = new Date(s.ts * 1000);
+    return {
+      label: `${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, "0")}`,
+      value: total > 0 ? Math.round((s.hits / total) * 100) : 0,
+    };
   });
 
   const clearM = useMutation({
@@ -50,6 +73,8 @@ export function Cache({ instanceId }: { instanceId?: string }) {
       toast("Embedding cache cleared.", "success");
       qc.invalidateQueries({ queryKey: ["cache", id] });
       qc.invalidateQueries({ queryKey: ["status", id] });
+      qc.invalidateQueries({ queryKey: ["cache-history", id] });
+      qc.invalidateQueries({ queryKey: ["cache-economics", id] });
     },
     onError: (e: unknown) =>
       toast(e instanceof Error ? e.message : "Failed to clear cache.", "error"),
@@ -134,6 +159,12 @@ export function Cache({ instanceId }: { instanceId?: string }) {
           />
         </div>
       </div>
+
+      <div className="panel p-5">
+        <p className="eyebrow mb-3">Hit rate over time (%)</p>
+        <RateChart data={trend} />
+      </div>
+      <CacheEconomicsPanel instanceId={id} />
 
       <ConfirmDialog
         open={clearOpen}

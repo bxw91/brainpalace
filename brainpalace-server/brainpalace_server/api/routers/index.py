@@ -613,3 +613,105 @@ async def reset_index(request: Request) -> IndexResponse:
         status="completed",
         message="Index has been reset successfully",
     )
+
+
+@router.get(
+    "/documents",
+    summary="List Indexed Documents",
+    description="Files in one indexed folder's manifest with per-file chunk "
+    "counts (read-only; backs the dashboard Documents tab).",
+)
+async def list_documents(
+    request: Request,
+    folder: str = Query(..., description="Indexed folder path."),
+    contains: str | None = Query(
+        None, description="Case-insensitive substring filter on path."
+    ),
+    limit: int = Query(200, ge=1, le=1000, description="Max files to return."),
+    offset: int = Query(0, ge=0, description="Files to skip."),
+) -> dict[str, Any]:
+    """List one folder's indexed files from its persisted manifest."""
+    indexing_service = request.app.state.indexing_service
+    tracker = getattr(indexing_service, "manifest_tracker", None)
+    if tracker is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Manifest tracking is not active on this server.",
+        )
+    manifest = await tracker.load(folder)
+    if manifest is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No manifest for folder: {folder}",
+        )
+    items = sorted(manifest.files.items())
+    if contains:
+        needle = contains.lower()
+        items = [(p, rec) for p, rec in items if needle in p.lower()]
+    total = len(items)
+    page = items[offset : offset + limit]
+    return {
+        "folder": folder,
+        "total": total,
+        "files": [
+            {
+                "path": p,
+                "chunk_count": len(rec.chunk_ids),
+                "size_bytes": rec.size_bytes,
+                "mtime": rec.mtime,
+                "last_embedded_at": rec.last_embedded_at,
+            }
+            for p, rec in page
+        ],
+    }
+
+
+@router.get(
+    "/documents/chunks",
+    summary="Chunks Of One Document",
+    description="Chunk text + metadata for one indexed file, resolved via its "
+    "manifest chunk ids (read-only; backs the dashboard chunk drawer).",
+)
+async def document_chunks(
+    request: Request,
+    folder: str = Query(..., description="Indexed folder path."),
+    path: str = Query(..., description="Indexed file path within the folder."),
+    limit: int = Query(50, ge=1, le=500, description="Max chunks to return."),
+) -> dict[str, Any]:
+    """Return up to ``limit`` chunks (text + metadata) for one indexed file."""
+    indexing_service = request.app.state.indexing_service
+    tracker = getattr(indexing_service, "manifest_tracker", None)
+    if tracker is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Manifest tracking is not active on this server.",
+        )
+    manifest = await tracker.load(folder)
+    record = manifest.files.get(path) if manifest is not None else None
+    if record is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"File not in the index manifest: {path}",
+        )
+    backend = getattr(request.app.state, "storage_backend", None)
+    if backend is None or not backend.is_initialized:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Storage backend not ready.",
+        )
+    chunks: list[dict[str, Any]] = []
+    for cid in record.chunk_ids[:limit]:
+        doc = await backend.get_by_id(cid)
+        if doc is not None:
+            chunks.append(
+                {
+                    "chunk_id": cid,
+                    "text": doc.get("text", ""),
+                    "metadata": doc.get("metadata", {}) or {},
+                }
+            )
+    return {
+        "path": path,
+        "total_chunks": len(record.chunk_ids),
+        "chunks": chunks,
+    }

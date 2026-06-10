@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Play, Pause } from "lucide-react";
 import { getLogs } from "../api/client";
+import { LogAlerts } from "../components/LogAlerts";
 import { useOptionalSelectedInstance } from "../state/selectedInstance";
 import {
   NoInstance,
@@ -136,6 +137,8 @@ export function Logs({ instanceId }: { instanceId?: string }) {
           {autoTail ? "Tailing" : "Auto-tail"}
         </button>
       </div>
+
+      <LogAlerts lines={logLines} />
 
       <div
         ref={paneRef}

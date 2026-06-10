@@ -6,6 +6,8 @@ import type { QueryRow } from "../api/types";
 import { DataTable, type Column } from "../components/DataTable";
 import { QueryDrawer } from "../components/QueryDrawer";
 import { VolumeChart, LatencyChart, type TimeSeriesDatum } from "../components/Charts";
+import { CompareGrid, type CompareRun } from "../components/CompareGrid";
+import { QueryAnalytics } from "../components/QueryAnalytics";
 import { useOptionalSelectedInstance } from "../state/selectedInstance";
 import { useToast } from "../components/Toast";
 import {
@@ -17,6 +19,13 @@ import {
 } from "../components/TabState";
 
 const RUN_MODES = ["hybrid", "vector", "bm25", "graph", "multi"] as const;
+
+const COMPARE_MODES = ["bm25", "vector", "hybrid", "graph"] as const;
+const RERANK_OPTIONS = [
+  { value: "default", label: "reranker: server default" },
+  { value: "on", label: "reranker: on" },
+  { value: "off", label: "reranker: off" },
+] as const;
 
 const MODES = ["all", "hybrid", "vector", "bm25", "graph", "multi"] as const;
 const RANGES = [
@@ -98,6 +107,12 @@ export function Queries({ instanceId }: { instanceId?: string }) {
   const [composerOpen, setComposerOpen] = useState(false);
   const [runText, setRunText] = useState("");
   const [runMode, setRunMode] = useState<string>("hybrid");
+  const [compare, setCompare] = useState(false);
+  const [rerankOpt, setRerankOpt] = useState<string>("default");
+  const [compareRuns, setCompareRuns] = useState<CompareRun[] | null>(null);
+
+  const rerankFlag: boolean | undefined =
+    rerankOpt === "default" ? undefined : rerankOpt === "on";
 
   const days = RANGES.find((r) => r.key === range)!.days;
   const since = Math.floor(Date.now() / 1000 - days * 86400);
@@ -116,8 +131,32 @@ export function Queries({ instanceId }: { instanceId?: string }) {
   });
 
   const runM = useMutation({
-    mutationFn: () =>
-      replayQuery(id!, { query: runText.trim(), mode: runMode, top_k: 5 }),
+    mutationFn: async () => {
+      const base = { query: runText.trim(), top_k: 5 } as const;
+      const body = (mode: string) => ({
+        ...base,
+        mode,
+        ...(rerankFlag !== undefined ? { rerank: rerankFlag } : {}),
+      });
+      if (!compare) return replayQuery(id!, body(runMode));
+      setCompareRuns(COMPARE_MODES.map((m) => ({ mode: m, pending: true })));
+      const settled = await Promise.allSettled(
+        COMPARE_MODES.map((m) => replayQuery(id!, body(m))),
+      );
+      setCompareRuns(
+        COMPARE_MODES.map((m, i) => {
+          const s = settled[i];
+          return s.status === "fulfilled"
+            ? { mode: m, pending: false, data: s.value }
+            : {
+                mode: m,
+                pending: false,
+                error: s.reason instanceof Error ? s.reason.message : "failed",
+              };
+        }),
+      );
+      return undefined;
+    },
     onSuccess: () => {
       toast("Query ran.", "success");
       qc.invalidateQueries({ queryKey: ["queries", id] });
@@ -270,6 +309,7 @@ export function Queries({ instanceId }: { instanceId?: string }) {
                 id="select-run-mode"
                 data-testid="select-run-mode"
                 value={runMode}
+                disabled={compare}
                 onChange={(e) => setRunMode(e.target.value)}
                 className="rounded-lg border border-line bg-ink-900/50 px-3 py-2 text-sm text-fg focus:border-accent/60 focus:outline-none focus:ring-2 focus:ring-accent/30"
               >
@@ -280,6 +320,36 @@ export function Queries({ instanceId }: { instanceId?: string }) {
                 ))}
               </select>
             </div>
+            <div>
+              <label
+                htmlFor="select-rerank"
+                className="mb-1.5 block text-xs font-medium text-fg-muted"
+              >
+                Reranker
+              </label>
+              <select
+                id="select-rerank"
+                data-testid="select-rerank"
+                value={rerankOpt}
+                onChange={(e) => setRerankOpt(e.target.value)}
+                className="rounded-lg border border-line bg-ink-900/50 px-3 py-2 text-sm text-fg focus:border-accent/60 focus:outline-none focus:ring-2 focus:ring-accent/30"
+              >
+                {RERANK_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button
+              type="button"
+              data-testid="toggle-compare"
+              aria-pressed={compare}
+              onClick={() => setCompare((v) => !v)}
+              className={compare ? "btn-primary btn-sm" : "btn-ghost btn-sm"}
+            >
+              Compare modes
+            </button>
             <button
               type="button"
               data-testid="btn-run-query"
@@ -296,7 +366,7 @@ export function Queries({ instanceId }: { instanceId?: string }) {
             </button>
           </div>
 
-          {runResults && (
+          {!compare && runResults && (
             <div data-testid="run-results" className="mt-1">
               <p className="eyebrow mb-2 text-run">
                 {runResults.total_results} result
@@ -320,6 +390,8 @@ export function Queries({ instanceId }: { instanceId?: string }) {
               )}
             </div>
           )}
+
+          {compare && compareRuns && <CompareGrid runs={compareRuns} />}
         </div>
       )}
 
@@ -333,6 +405,8 @@ export function Queries({ instanceId }: { instanceId?: string }) {
           <LatencyChart data={charts.latency} />
         </div>
       </div>
+
+      <QueryAnalytics instanceId={id} since={since} windowKey={range} />
 
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-1.5">

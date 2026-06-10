@@ -134,6 +134,7 @@ _DASHBOARD_ROUTE_PREFIXES = (
     "/jobs",
     "/cache",
     "/git",
+    "/graph",
     "/sessions",
     "/memories",
     "/context",

@@ -194,7 +194,9 @@ class QueryService:
         """
         Execute a search query based on the requested mode.
 
-        Supports optional two-stage reranking when ENABLE_RERANKING=True.
+        Supports optional two-stage reranking when ENABLE_RERANKING=True,
+        or per-request via ``request.rerank`` (True forces, False disables,
+        None follows the setting).
         Stage 1: Broad retrieval with expanded top_k
         Stage 2: Cross-encoder reranking for precision
 
@@ -237,6 +239,7 @@ class QueryService:
                 "similarity_threshold": request.similarity_threshold,
                 "alpha": request.alpha,
                 "time_decay": decay_active,
+                "rerank": request.rerank,
                 "source_types": sorted(request.source_types or []),
                 "languages": sorted(request.languages or []),
                 "file_paths": sorted(request.file_paths or []),
@@ -264,6 +267,9 @@ class QueryService:
         enable_reranking = getattr(settings, "ENABLE_RERANKING", False)
         if not isinstance(enable_reranking, bool):
             enable_reranking = False
+        # Per-request override (Retrieval Explorer): true forces, false disables.
+        if request.rerank is not None:
+            enable_reranking = request.rerank
         original_top_k = request.top_k
 
         # Stage 1: Adjust top_k for reranking if enabled

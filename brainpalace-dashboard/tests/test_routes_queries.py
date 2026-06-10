@@ -16,6 +16,8 @@ class FakeProxy:
             return {"id": "1", "results": [{"path": "a.py"}]}
         if path == "/query/":
             return {"results": [{"path": "a.py"}], "query_time_ms": 1.0}
+        if path == "/query/stats":
+            return {"total": 3}
         return {}
 
 
@@ -75,3 +77,50 @@ def test_replay_includes_alpha(monkeypatch):
     assert body["alpha"] == 0.2
     assert body["mode"] == "hybrid"
     assert body["top_k"] == 5
+
+
+def test_replay_forwards_rerank(monkeypatch):
+    fake = FakeProxy()
+    monkeypatch.setattr(rq, "proxy", fake)
+    c = TestClient(create_app())
+    c.post(
+        "/dashboard/api/instances/abc/queries/replay",
+        json={"query": "x", "mode": "hybrid", "top_k": 5, "rerank": False},
+    )
+    _method, path, body, _params = fake.calls[-1]
+    assert path == "/query/"
+    assert body["rerank"] is False
+
+
+def test_replay_omits_rerank_when_absent(monkeypatch):
+    fake = FakeProxy()
+    monkeypatch.setattr(rq, "proxy", fake)
+    c = TestClient(create_app())
+    c.post(
+        "/dashboard/api/instances/abc/queries/replay",
+        json={"query": "x", "mode": "hybrid", "top_k": 5},
+    )
+    _method, _path, body, _params = fake.calls[-1]
+    assert "rerank" not in body
+
+
+def test_stats_proxies_with_params(monkeypatch):
+    fake = FakeProxy()
+    monkeypatch.setattr(rq, "proxy", fake)
+    c = TestClient(create_app())
+    r = c.get("/dashboard/api/instances/abc/queries/stats?since=9.5&top_n=3")
+    assert r.status_code == 200
+    assert r.json()["total"] == 3
+    method, path, _json, params = fake.calls[-1]
+    assert (method, path) == ("GET", "/query/stats")
+    assert params == {"since": 9.5, "top_n": 3}
+
+
+def test_stats_not_shadowed_by_detail_route(monkeypatch):
+    """'/stats' must never be captured by the '/{qid}' detail route."""
+    fake = FakeProxy()
+    monkeypatch.setattr(rq, "proxy", fake)
+    c = TestClient(create_app())
+    c.get("/dashboard/api/instances/abc/queries/stats")
+    _method, path, _json, _params = fake.calls[-1]
+    assert path == "/query/stats"  # NOT /query/history/stats

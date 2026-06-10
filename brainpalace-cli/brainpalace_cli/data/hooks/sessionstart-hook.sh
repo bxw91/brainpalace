@@ -78,7 +78,11 @@ context = sys.argv[2] if len(sys.argv) > 2 else ""
 msg = (
     "BrainPalace is indexed for this project — prefer `brainpalace query` "
     "over Glob/Grep for codebase search. If the server is not running, "
-    "start it with `brainpalace start`."
+    "start it with `brainpalace start`. "
+    "`brainpalace query --json` result keys are text/source/score/chunk_id "
+    "(no file_path, no line numbers); on failure stdout is "
+    '{"error": ...} with no "results" key and a non-zero exit — check for '
+    "it, and never append 2>/dev/null to brainpalace commands."
     + note
 )
 if context.strip():

@@ -109,6 +109,87 @@ export const LatencyChart = memo(function LatencyChart({
   );
 });
 
+/** Single-line percentage trend (0–100), used for cache hit-rate over time. */
+export const RateChart = memo(function RateChart({
+  data,
+}: {
+  data: TimeSeriesDatum[];
+}) {
+  if (data.length < 2) {
+    return (
+      <p className="px-1 py-8 text-center text-sm text-fg-faint">
+        Not enough snapshots yet — points accrue every ~5 minutes while the
+        dashboard is open.
+      </p>
+    );
+  }
+  return (
+    <div data-testid="rate-chart" style={{ width: "100%", height: 180 }}>
+      <ResponsiveContainer>
+        <LineChart data={data} margin={{ top: 8, right: 12, bottom: 4, left: 0 }}>
+          <XAxis
+            dataKey="label"
+            tick={{ fill: "#5f7488", fontSize: 10 }}
+            axisLine={{ stroke: "#1e2c3a" }}
+            tickLine={false}
+            interval="preserveStartEnd"
+          />
+          <YAxis
+            domain={[0, 100]}
+            tick={{ fill: "#5f7488", fontSize: 10 }}
+            axisLine={false}
+            tickLine={false}
+            width={32}
+          />
+          <Tooltip contentStyle={TOOLTIP_STYLE} />
+          <Line dataKey="value" stroke="#2dd4bf" dot={false} strokeWidth={2} />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+});
+
+export type PercentileDatum = { label: string; p50: number; p95: number };
+
+/** Dual-line p50/p95 latency trend. memo'd for the same reason as VolumeChart. */
+export const PercentileChart = memo(function PercentileChart({
+  data,
+}: {
+  data: PercentileDatum[];
+}) {
+  if (data.length === 0) {
+    return (
+      <p className="px-1 py-8 text-center text-sm text-fg-faint">
+        No queries in this window.
+      </p>
+    );
+  }
+  return (
+    <div data-testid="percentile-chart" style={{ width: "100%", height: 180 }}>
+      <ResponsiveContainer>
+        <LineChart data={data} margin={{ top: 8, right: 12, bottom: 4, left: 0 }}>
+          <XAxis
+            dataKey="label"
+            tick={{ fill: "#5f7488", fontSize: 10 }}
+            axisLine={{ stroke: "#1e2c3a" }}
+            tickLine={false}
+            interval="preserveStartEnd"
+          />
+          <YAxis
+            tick={{ fill: "#5f7488", fontSize: 10 }}
+            axisLine={false}
+            tickLine={false}
+            width={36}
+          />
+          <Tooltip contentStyle={TOOLTIP_STYLE} />
+          <Line dataKey="p50" stroke="#2dd4bf" dot={false} strokeWidth={2} />
+          <Line dataKey="p95" stroke="#f59e0b" dot={false} strokeWidth={2} />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+});
+
 export type ChunkDatum = { name: string; chunks: number; reachable: boolean };
 
 /** Horizontal bar of per-instance chunk counts. */

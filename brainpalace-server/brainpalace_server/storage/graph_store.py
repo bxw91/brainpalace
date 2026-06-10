@@ -589,6 +589,55 @@ class GraphStoreManager:
         names: list[str] = store.find_decision_nodes(text)
         return names
 
+    def nodes_by_label(
+        self,
+        label: str,
+        contains: str | None = None,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        """Browse nodes of one label; empty on simple backend or disabled."""
+        if not settings.ENABLE_GRAPH_INDEX or self._graph_store is None:
+            return []
+        store = self._graph_store
+        if not hasattr(store, "nodes_by_label"):
+            return []
+        result: list[dict[str, Any]] = store.nodes_by_label(
+            label, contains=contains, limit=limit
+        )
+        return result
+
+    def timeline_named(self, entity_name: str) -> list[dict[str, Any]]:
+        """Name-resolved timeline; empty on simple backend or disabled."""
+        if not settings.ENABLE_GRAPH_INDEX or self._graph_store is None:
+            return []
+        store = self._graph_store
+        if not hasattr(store, "timeline_named"):
+            return []
+        result: list[dict[str, Any]] = store.timeline_named(entity_name)
+        return result
+
+    def search_nodes(self, text: str, limit: int = 20) -> list[dict[str, Any]]:
+        """Browse-search nodes; empty on simple backend or disabled."""
+        if not settings.ENABLE_GRAPH_INDEX or self._graph_store is None:
+            return []
+        store = self._graph_store
+        if not hasattr(store, "search_nodes"):
+            return []
+        result: list[dict[str, Any]] = store.search_nodes(text, limit=limit)
+        return result
+
+    def neighbors(
+        self, node_ids: list[str], limit: int = 200
+    ) -> dict[str, list[dict[str, Any]]]:
+        """Subgraph around nodes; empty on simple backend or disabled."""
+        if not settings.ENABLE_GRAPH_INDEX or self._graph_store is None:
+            return {"nodes": [], "edges": []}
+        store = self._graph_store
+        if not hasattr(store, "neighbors"):
+            return {"nodes": [], "edges": []}
+        result: dict[str, list[dict[str, Any]]] = store.neighbors(node_ids, limit=limit)
+        return result
+
     def clear(self) -> None:
         """Clear all graph data.
 

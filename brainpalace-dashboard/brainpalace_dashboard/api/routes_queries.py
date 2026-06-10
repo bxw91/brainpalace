@@ -62,6 +62,14 @@ async def history(
     return await _call(id_, "GET", "/query/history", params=params)
 
 
+@router.get("/stats")
+async def stats(id_: str, since: float | None = None, top_n: int = 10) -> Any:
+    params = {
+        k: v for k, v in {"since": since, "top_n": top_n}.items() if v is not None
+    }
+    return await _call(id_, "GET", "/query/stats", params=params)
+
+
 @router.get("/{qid}")
 async def detail(id_: str, qid: str) -> Any:
     return await _call(id_, "GET", f"/query/history/{qid}")
@@ -74,6 +82,7 @@ async def replay(id_: str, body: Annotated[dict[str, Any], Body(...)]) -> Any:
         "mode": body.get("mode", "hybrid"),
         "top_k": body.get("top_k", 5),
     }
-    if "alpha" in body:
-        payload["alpha"] = body["alpha"]
+    for key in ("alpha", "rerank"):
+        if key in body:
+            payload[key] = body[key]
     return await _call(id_, "POST", "/query/", json=payload)

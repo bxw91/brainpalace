@@ -83,15 +83,86 @@ async def cache(id_: str) -> Any:
     return await _call(id_, "GET", "/index/cache/")
 
 
+@router.get("/cache/history")
+async def cache_history(id_: str, since: float | None = None) -> Any:
+    params: dict[str, Any] = {}
+    if since is not None:
+        params["since"] = since
+    return await _call(id_, "GET", "/index/cache/history", params=params)
+
+
+@router.get("/cache/economics")
+async def cache_economics(id_: str, avg_tokens: int = 400) -> Any:
+    return await _call(
+        id_, "GET", "/index/cache/economics", params={"avg_tokens": avg_tokens}
+    )
+
+
+@router.get("/documents")
+async def documents(
+    id_: str,
+    folder: str,
+    contains: str | None = None,
+    limit: int = 200,
+    offset: int = 0,
+) -> Any:
+    params: dict[str, Any] = {"folder": folder, "limit": limit, "offset": offset}
+    if contains:
+        params["contains"] = contains
+    return await _call(id_, "GET", "/index/documents", params=params)
+
+
+@router.get("/documents/chunks")
+async def document_chunks(id_: str, folder: str, path: str, limit: int = 50) -> Any:
+    return await _call(
+        id_,
+        "GET",
+        "/index/documents/chunks",
+        params={"folder": folder, "path": path, "limit": limit},
+    )
+
+
 @router.get("/graph")
 async def graph(id_: str) -> Any:
     # graph stats live inside /health/status; expose a focused view client-side.
     return await _call(id_, "GET", "/health/status")
 
 
+@router.get("/graph/nodes")
+async def graph_nodes(id_: str, q: str, limit: int = 20) -> Any:
+    return await _call(id_, "GET", "/graph/nodes", params={"q": q, "limit": limit})
+
+
+@router.get("/graph/neighbors")
+async def graph_neighbors(id_: str, node: str, limit: int = 200) -> Any:
+    return await _call(
+        id_, "GET", "/graph/neighbors", params={"node": node, "limit": limit}
+    )
+
+
 @router.get("/memories")
 async def memories(id_: str) -> Any:
     return await _call(id_, "GET", "/memories/")
+
+
+@router.get("/sessions/archive")
+async def sessions_archive(id_: str) -> Any:
+    return await _call(id_, "GET", "/sessions/archive")
+
+
+@router.get("/sessions/decisions")
+async def sessions_decisions(
+    id_: str, contains: str | None = None, limit: int = 50
+) -> Any:
+    params: dict[str, Any] = {"limit": limit}
+    if contains:
+        params["contains"] = contains
+    return await _call(id_, "GET", "/sessions/decisions", params=params)
+
+
+@router.get("/sessions/timeline")
+async def sessions_timeline(id_: str, entity: str) -> Any:
+    return await _call(id_, "GET", "/sessions/timeline", params={"entity": entity})
 
 
 @router.get("/runtime")
@@ -142,6 +213,11 @@ async def cancel_job(id_: str, job_id: str) -> Any:
     return await _call(id_, "DELETE", f"/index/jobs/{job_id}")
 
 
+@router.post("/providers/test")
+async def providers_test(id_: str) -> Any:
+    return await _call(id_, "POST", "/health/providers/test")
+
+
 @router.post("/git/reindex")
 async def git_reindex(id_: str) -> Any:
     return await _call(id_, "POST", "/git/reindex")
@@ -150,6 +226,11 @@ async def git_reindex(id_: str) -> Any:
 @router.post("/sessions/reindex")
 async def sessions_reindex(id_: str) -> Any:
     return await _call(id_, "POST", "/sessions/reindex")
+
+
+@router.post("/memories")
+async def memory_create(id_: str, body: Annotated[dict[str, Any], Body(...)]) -> Any:
+    return await _call(id_, "POST", "/memories/", json=body)
 
 
 @router.post("/memories/{memory_id}/obsolete")

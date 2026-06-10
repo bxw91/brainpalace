@@ -62,6 +62,13 @@ class QueryRequest(BaseModel):
             "globally). Set false to disable for this query."
         ),
     )
+    rerank: bool | None = Field(
+        default=None,
+        description=(
+            "Per-request reranking override: true forces two-stage reranking, "
+            "false disables it, null (default) follows ENABLE_RERANKING."
+        ),
+    )
 
     # Content filtering
     source_types: list[str] | None = Field(

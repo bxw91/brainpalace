@@ -495,36 +495,34 @@ stem = ["PyStemmer"]
 
 [[package]]
 name = "brainpalace-dashboard"
-version = "26.6.27"
+version = "26.6.32"
 description = "BrainPalace control-plane web dashboard"
 optional = false
-python-versions = "^3.12"
+python-versions = "<4.0,>=3.12"
 groups = ["main"]
 markers = "python_version >= \"3.12\""
-files = []
-develop = true
+files = [
+    {file = "brainpalace_dashboard-26.6.32-py3-none-any.whl", hash = "sha256:a70dd65786bedfba013e90eb743dd81ca3883b970e2ff29f5a282aa9f1168138"},
+    {file = "brainpalace_dashboard-26.6.32.tar.gz", hash = "sha256:23a608eb9643c06c5eb2178f395b877c345e270aa927cc43ee1fc57f8e269e60"},
+]
 
 [package.dependencies]
-brainpalace-cli = {path = "../brainpalace-cli", develop = true}
-fastapi = "^0.115"
-httpx = "^0.28.0"
-sse-starlette = "^2.1"
-uvicorn = "^0.32.0"
-
-[package.source]
-type = "directory"
-url = "../brainpalace-dashboard"
+brainpalace-cli = "26.6.32"
+fastapi = ">=0.115,<0.116"
+httpx = ">=0.28.0,<0.29.0"
+sse-starlette = ">=2.1,<3.0"
+uvicorn = ">=0.32.0,<0.33.0"
 
 [[package]]
 name = "brainpalace-rag"
-version = "26.6.31"
+version = "26.6.32"
 description = "BrainPalace RAG - Intelligent document indexing and semantic search server that gives AI agents long-term memory"
 optional = false
 python-versions = "<4.0,>=3.10"
 groups = ["main"]
 files = [
-    {file = "brainpalace_rag-26.6.31-py3-none-any.whl", hash = "sha256:818e6e0710d3afeb3fc78e79453ee8644daff511c4246511ef0f0e5364a8c300"},
-    {file = "brainpalace_rag-26.6.31.tar.gz", hash = "sha256:ace14bb1ed51e2cc1c35402455037dc5956e257770f514affa3194840b25a2b9"},
+    {file = "brainpalace_rag-26.6.32-py3-none-any.whl", hash = "sha256:73e9912566015749d65a7e07532b5ee77c01052debe58f8df119a91a043a57f6"},
+    {file = "brainpalace_rag-26.6.32.tar.gz", hash = "sha256:7b6cbce872739d232e0eb8693c8f269767e6d31855275f7a8c61603caeb1ca9e"},
 ]
 
 [package.dependencies]

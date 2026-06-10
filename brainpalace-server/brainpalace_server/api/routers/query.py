@@ -178,6 +178,32 @@ async def query_history(
 
 
 @router.get(
+    "/stats",
+    summary="Query Analytics",
+    description="Aggregated analytics over the query history log: totals, mode "
+    "distribution, latency percentiles + trend, top and zero-result queries.",
+)
+async def query_stats(
+    request: Request,
+    since: float | None = None,
+    top_n: int = 10,
+) -> dict[str, Any]:
+    """Aggregate stats; an empty shape when the query log is disabled."""
+    log: QueryLogService | None = getattr(request.app.state, "query_log_service", None)
+    if log is None:
+        return {
+            "total": 0,
+            "zero_result_count": 0,
+            "mode_distribution": {},
+            "latency": {"p50": 0.0, "p95": 0.0, "avg": 0.0},
+            "latency_trend": [],
+            "top_queries": [],
+            "zero_result_queries": [],
+        }
+    return log.stats(since=since, top_n=top_n)
+
+
+@router.get(
     "/history/{qid}",
     summary="Query History Detail",
     description="Return a single logged query including its truncated results.",

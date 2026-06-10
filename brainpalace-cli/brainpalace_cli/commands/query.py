@@ -126,9 +126,9 @@ def query_command(
     Per-result keys are "text" and "source" (NOT "content"/"file_path").
 
     \b
-    On failure --json instead emits {"error": "...", "detail": ...} (no
-    "results" key) AND exits non-zero. Consumers must check the exit code,
-    not just the presence of "results".
+    On failure --json instead emits {"error": "...", "detail": ..., "hint":
+    "..."} (no "results" key) AND exits non-zero. Consumers must check the
+    exit code, not just the presence of "results".
     """
     # Get URL from config if not specified
     resolved_url = url or _get_default_url()
@@ -251,7 +251,24 @@ def query_command(
         if json_output:
             import json
 
-            click.echo(json.dumps({"error": str(e), "detail": e.detail}))
+            click.echo(
+                json.dumps(
+                    {
+                        "error": str(e),
+                        "detail": e.detail,
+                        # Failure-time schema hint: broken consumer scripts are
+                        # guaranteed to be looking at this payload, so teach the
+                        # success shape here (raw CLI users have no other push
+                        # channel — they never run --help).
+                        "hint": (
+                            "On success, results use keys "
+                            "text/source/score/chunk_id (no file_path, no "
+                            "line numbers). On failure there is no 'results' "
+                            "key and the exit code is non-zero — check both."
+                        ),
+                    }
+                )
+            )
         else:
             console.print(f"[red]Server Error ({e.status_code}):[/] {e.detail}")
             if e.status_code == 503:

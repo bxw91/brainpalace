@@ -9,6 +9,8 @@ import {
   unsetConfig,
 } from "../api/client";
 import { SchemaForm } from "../components/SchemaForm/SchemaForm";
+import { ProviderTest } from "../components/ProviderTest";
+import { ConfigDiff } from "../components/ConfigDiff";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { DataConflictDialog } from "../components/DataConflictDialog";
 import { useToast } from "../components/Toast";
@@ -159,6 +161,11 @@ export function Config({ instanceId }: { instanceId?: string }) {
     );
   }
 
+  const instanceOptions = (ctx?.instances ?? []).map((i) => ({
+    id: i.id,
+    name: i.name,
+  }));
+
   if (schemaQ.isError || configQ.isError || !schemaQ.data || !configQ.data) {
     const reason = (configQ.error ?? schemaQ.error) as Error | undefined;
     const refetching = schemaQ.isFetching || configQ.isFetching;
@@ -200,7 +207,8 @@ export function Config({ instanceId }: { instanceId?: string }) {
   }
 
   return (
-    <div data-testid="tab-config">
+    <div data-testid="tab-config" className="flex flex-col gap-4">
+      <ProviderTest instanceId={id} />
       <SchemaForm
         schema={schemaQ.data}
         values={configQ.data}
@@ -244,6 +252,7 @@ export function Config({ instanceId }: { instanceId?: string }) {
           }
         }}
       />
+      <ConfigDiff instanceId={id} instances={instanceOptions} />
     </div>
   );
 }

@@ -1297,6 +1297,11 @@ from brainpalace_server.api.routers.git import (  # noqa: E402 — late import, 
 )
 
 app.include_router(git_router, prefix="/git", tags=["Git"])
+from brainpalace_server.api.routers.graph import (  # noqa: E402 — late import, registered after app setup
+    router as graph_browse_router,
+)
+
+app.include_router(graph_browse_router, prefix="/graph", tags=["Graph"])
 
 
 @app.get("/", include_in_schema=False)

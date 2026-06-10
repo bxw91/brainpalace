@@ -21,6 +21,9 @@ import type { MemoryRow } from "../api/types";
 import { DataTable, type Column } from "../components/DataTable";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { useToast } from "../components/Toast";
+import { SessionArchivePanel } from "../components/SessionArchivePanel";
+import { DecisionTimeline } from "../components/DecisionTimeline";
+import { MemoryComposer } from "../components/MemoryComposer";
 import { useOptionalSelectedInstance } from "../state/selectedInstance";
 import {
   NoInstance,
@@ -258,6 +261,8 @@ export function Sessions({ instanceId }: { instanceId?: string }) {
         </div>
       </div>
 
+      <MemoryComposer instanceId={id} />
+
       <div className="flex items-center justify-between">
         <div>
           <p className="eyebrow">Curated memories</p>
@@ -315,6 +320,9 @@ export function Sessions({ instanceId }: { instanceId?: string }) {
           ),
         }}
       />
+
+      <SessionArchivePanel instanceId={id} />
+      <DecisionTimeline instanceId={id} />
 
       <ConfirmDialog
         open={obsoleteTarget !== null}

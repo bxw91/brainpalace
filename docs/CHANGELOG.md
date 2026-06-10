@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-10
+last_validated: 2026-06-11
 ---
 
 # Changelog
@@ -13,6 +13,53 @@ month (the counter resets monthly). It looks like SemVer but is not.
 ---
 
 ## [Unreleased]
+
+## [26.6.33] - 2026-06-11
+
+### Added
+- Dashboard Retrieval Explorer: the Queries composer can run one query across
+  bm25/vector/hybrid/graph side-by-side with per-result score chips and shared-chunk
+  highlighting, plus a per-request reranker on/off override (`QueryRequest.rerank`).
+- Dashboard query analytics: the Queries tab now aggregates the query log —
+  top queries, latency p50/p95 trend, mode distribution, and zero-result
+  queries — via the new `GET /query/stats` endpoint.
+- Dashboard Documents tab: browse indexed files per folder with chunk counts
+  and open any file's chunks (text + source_type/language metadata) via the new
+  read-only `GET /index/documents` and `GET /index/documents/chunks` endpoints.
+- Dashboard Cache tab: embedding-cache hit-rate trend (persisted snapshots via
+  `GET /index/cache/history`) and an estimated spend/savings panel
+  (`GET /index/cache/economics`, static price table — estimates only).
+- Dashboard session-memory browser: archived-session inventory
+  (`GET /sessions/archive` — metadata only, transcripts never exposed),
+  Decision browser with temporal supersession timeline
+  (`GET /sessions/decisions`, `GET /sessions/timeline`), and curated-memory
+  creation from the Sessions tab.
+- Dashboard graph browser: search seed entities and explore the knowledge graph
+  on a WebGL canvas (sigma.js, lazy-loaded) with click-to-expand neighbors, via
+  the new `GET /graph/nodes` and `GET /graph/neighbors` endpoints.
+- Dashboard polish: one-click provider connectivity test
+  (`POST /health/providers/test` — live 1-token embed on explicit click),
+  log alerts strip (errors / self-heal / auth events), Cmd/Ctrl+K command
+  palette, and cross-instance effective-config diff.
+
+### Changed
+- feat(hooks): the SessionStart reminder (plugin hook + `install-session-hooks`
+  template) now includes the `query --json` result schema — per-result keys
+  `text`/`source`/`score`/`chunk_id` (no `file_path`, no line numbers), the
+  `{"error": …}`-without-`results` failure shape, and a "never append
+  `2>/dev/null`" rule — so AI agents parse query output correctly without
+  reading `--help`. Existing installs pick it up via `brainpalace
+  install-session-hooks` (plugin users get it with the plugin update). Both
+  hook copies updated in lockstep (setup-surface parity).
+- feat(skill): `using-brainpalace` skill gains a "Parsing `--json` Output"
+  section (result keys, error shape, canonical parse snippet, `2>/dev/null`
+  ban). This is the push channel for non-Claude runtimes — `brainpalace
+  install-agent` converts the skill into Codex/Gemini/opencode context files.
+- feat(query): the `--json` server-error payload now includes a `hint` field
+  teaching the success schema (`text`/`source`/`score`/`chunk_id`, no
+  `results` key on failure, non-zero exit) — failure time is the only contact
+  point for raw CLI consumers that never read `--help`. Connection errors
+  already carried a `hint`.
 
 ## [26.6.32] - 2026-06-10
 

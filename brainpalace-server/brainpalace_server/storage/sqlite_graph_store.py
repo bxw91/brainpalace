@@ -261,6 +261,120 @@ class SQLitePropertyGraphStore:
         ).fetchall()
         return [r["name"] for r in rows]
 
+    def nodes_by_label(
+        self,
+        label: str,
+        contains: str | None = None,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        """Nodes of one label, optionally name-filtered (dashboard browse)."""
+        sql = "SELECT id, name, label FROM nodes WHERE label = ?"
+        params: list[Any] = [label]
+        if contains:
+            escaped = (
+                contains.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            )
+            sql += " AND name LIKE ? ESCAPE '\\'"
+            params.append(f"%{escaped}%")
+        sql += " ORDER BY name LIMIT ?"
+        params.append(max(0, limit))
+        rows = self._conn.execute(sql, params).fetchall()
+        return [{"id": r["id"], "name": r["name"], "label": r["label"]} for r in rows]
+
+    def timeline_named(self, entity_name: str) -> list[dict[str, Any]]:
+        """Like ``timeline`` but with subject/object resolved to node names."""
+        node_id = self._id_for_name(entity_name)
+        if node_id is None:
+            return []
+        rows = self._conn.execute(
+            "SELECT e.label AS predicate, e.valid_from, e.valid_until, "
+            "       s.name AS subject, t.name AS object "
+            "FROM edges e "
+            "JOIN nodes s ON s.id = e.source_id "
+            "JOIN nodes t ON t.id = e.target_id "
+            "WHERE e.source_id = ? OR e.target_id = ? "
+            "ORDER BY e.valid_from",
+            (node_id, node_id),
+        ).fetchall()
+        return [
+            {
+                "subject": r["subject"],
+                "predicate": r["predicate"],
+                "object": r["object"],
+                "valid_from": r["valid_from"],
+                "valid_until": r["valid_until"],
+                "valid": r["valid_until"] is None,
+            }
+            for r in rows
+        ]
+
+    def search_nodes(self, text: str, limit: int = 20) -> list[dict[str, Any]]:
+        """Name-substring node search with active-edge degree (browser seeds)."""
+        escaped = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        rows = self._conn.execute(
+            "SELECT n.id, n.name, n.label, "
+            "  (SELECT count(*) FROM edges e "
+            "   WHERE (e.source_id = n.id OR e.target_id = n.id) "
+            "   AND e.valid_until IS NULL) AS degree "
+            "FROM nodes n WHERE n.name LIKE ? ESCAPE '\\' COLLATE NOCASE "
+            "ORDER BY degree DESC, n.name LIMIT ?",
+            (f"%{escaped}%", limit),
+        ).fetchall()
+        return [
+            {
+                "id": r["id"],
+                "name": r["name"],
+                "label": r["label"],
+                "degree": int(r["degree"]),
+            }
+            for r in rows
+        ]
+
+    def neighbors(
+        self, node_ids: list[str], limit: int = 200
+    ) -> dict[str, list[dict[str, Any]]]:
+        """Active edges touching ``node_ids`` plus every connected node."""
+        if not node_ids:
+            return {"nodes": [], "edges": []}
+        placeholders = ",".join("?" * len(node_ids))
+        edge_rows = self._conn.execute(
+            "SELECT id, source_id, target_id, label FROM edges "
+            f"WHERE (source_id IN ({placeholders}) "
+            f"   OR target_id IN ({placeholders})) "
+            "AND valid_until IS NULL LIMIT ?",
+            [*node_ids, *node_ids, limit],
+        ).fetchall()
+        ids = set(node_ids)
+        for r in edge_rows:
+            ids.add(r["source_id"])
+            ids.add(r["target_id"])
+        node_rows: list[Any] = []
+        id_list = list(ids)
+        # Chunk the IN clause to stay under SQLite's bound-parameter limit.
+        for i in range(0, len(id_list), 500):
+            chunk = id_list[i : i + 500]
+            ph = ",".join("?" * len(chunk))
+            node_rows.extend(
+                self._conn.execute(
+                    f"SELECT id, name, label FROM nodes WHERE id IN ({ph})", chunk
+                ).fetchall()
+            )
+        return {
+            "nodes": [
+                {"id": r["id"], "name": r["name"], "label": r["label"]}
+                for r in node_rows
+            ],
+            "edges": [
+                {
+                    "id": r["id"],
+                    "source": r["source_id"],
+                    "target": r["target_id"],
+                    "label": r["label"],
+                }
+                for r in edge_rows
+            ],
+        }
+
     # ----------------------------------------------------------------- counts
     def node_count(self) -> int:
         return int(self._conn.execute("SELECT count(*) FROM nodes").fetchone()[0])

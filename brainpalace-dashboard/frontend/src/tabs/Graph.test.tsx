@@ -8,6 +8,12 @@ import * as client from "../api/client";
 
 vi.mock("../api/client");
 
+vi.mock("../components/GraphCanvas", () => ({
+  default: ({ data }: { data: { nodes: unknown[] } }) => (
+    <div data-testid="graph-canvas-stub">{data.nodes.length} nodes</div>
+  ),
+}));
+
 const status = {
   graph_index: {
     enabled: true,
@@ -73,5 +79,40 @@ describe("Graph tab", () => {
     const err = await screen.findByTestId("graph-error");
     expect(within(err).getByText(/graph 500/)).toBeInTheDocument();
     expect(screen.getByTestId("graph-error-retry")).toBeInTheDocument();
+  });
+});
+
+describe("graph browser", () => {
+  it("shows error message when searchGraphNodes rejects", async () => {
+    vi.mocked(client.searchGraphNodes).mockRejectedValue(new Error("boom"));
+    wrap(<Graph instanceId="a" />);
+    fireEvent.change(await screen.findByTestId("input-graph-search"), {
+      target: { value: "query" },
+    });
+    fireEvent.click(screen.getByTestId("btn-graph-search"));
+    expect(await screen.findByText(/boom/)).toBeInTheDocument();
+  });
+
+  it("searches seeds and opens the canvas on Explore", async () => {
+    vi.mocked(client.searchGraphNodes).mockResolvedValue({
+      nodes: [{ id: "n1", name: "QueryService", label: "Class", degree: 3 }],
+    });
+    vi.mocked(client.getGraphNeighbors).mockResolvedValue({
+      nodes: [
+        { id: "n1", name: "QueryService", label: "Class" },
+        { id: "n2", name: "execute_query", label: "Function" },
+      ],
+      edges: [{ id: "e1", source: "n1", target: "n2", label: "contains" }],
+    });
+    wrap(<Graph instanceId="a" />);
+    fireEvent.change(await screen.findByTestId("input-graph-search"), {
+      target: { value: "query" },
+    });
+    fireEvent.click(screen.getByTestId("btn-graph-search"));
+    fireEvent.click(await screen.findByTestId("btn-explore-n1"));
+    expect(await screen.findByTestId("graph-canvas-stub")).toHaveTextContent(
+      "2 nodes",
+    );
+    expect(client.getGraphNeighbors).toHaveBeenCalledWith("a", "n1", 200);
   });
 });

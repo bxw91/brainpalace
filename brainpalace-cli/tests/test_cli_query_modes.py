@@ -141,3 +141,6 @@ class TestCLIQueryModes:
         payload = json.loads(result.output)
         assert "error" in payload
         assert "results" not in payload
+        # Failure-time schema hint: the error payload teaches the success
+        # shape, since raw CLI consumers have no session-start channel.
+        assert "text/source/score/chunk_id" in payload["hint"]

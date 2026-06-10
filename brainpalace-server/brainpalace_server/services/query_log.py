@@ -34,6 +34,15 @@ CREATE INDEX IF NOT EXISTS idx_queries_mode ON queries(mode);
 """
 
 
+def _percentile(values: list[float], pct: float) -> float:
+    """Nearest-rank percentile; 0.0 for an empty list."""
+    if not values:
+        return 0.0
+    s = sorted(values)
+    k = max(0, min(len(s) - 1, round(pct * (len(s) - 1))))
+    return float(s[k])
+
+
 class QueryLogService:
     """SQLite-backed query history store.
 
@@ -144,6 +153,99 @@ class QueryLogService:
         d["results"] = json.loads(d.pop("results_json") or "[]")
         d["filters"] = json.loads(d.pop("filters_json") or "{}")
         return d
+
+    def stats(
+        self,
+        *,
+        since: float | None = None,
+        top_n: int = 10,
+    ) -> dict[str, Any]:
+        """Aggregate analytics over the log (dashboard Queries analytics panel).
+
+        Returns totals, mode distribution, latency p50/p95/avg, an hourly
+        latency trend, the most frequent queries, and zero-result queries.
+        """
+        clauses: list[str] = []
+        params: list[Any] = []
+        if since is not None:
+            clauses.append("ts >= ?")
+            params.append(since)
+        where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+        zwhere = f"{where} AND result_count = 0" if where else " WHERE result_count = 0"
+        with self._conn() as c:
+            total = int(
+                c.execute(f"SELECT count(*) FROM queries{where}", params).fetchone()[0]
+            )
+            zero_total = int(
+                c.execute(f"SELECT count(*) FROM queries{zwhere}", params).fetchone()[0]
+            )
+            mode_rows = c.execute(
+                f"SELECT mode, count(*) AS n FROM queries{where} GROUP BY mode",
+                params,
+            ).fetchall()
+            lat_rows = c.execute(
+                f"SELECT ts, latency_ms FROM queries{where} ORDER BY ts", params
+            ).fetchall()
+            top_rows = c.execute(
+                "SELECT query, count(*) AS n, avg(latency_ms) AS avg_latency_ms, "
+                "sum(CASE WHEN result_count = 0 THEN 1 ELSE 0 END) AS zero_results, "
+                f"max(ts) AS last_ts FROM queries{where} "
+                "GROUP BY query ORDER BY n DESC, last_ts DESC LIMIT ?",
+                [*params, top_n],
+            ).fetchall()
+            zero_rows = c.execute(
+                f"SELECT query, count(*) AS n, max(ts) AS last_ts FROM queries{zwhere} "
+                "GROUP BY query ORDER BY n DESC, last_ts DESC LIMIT ?",
+                [*params, top_n],
+            ).fetchall()
+
+        lats = [float(r["latency_ms"]) for r in lat_rows]
+        buckets: dict[str, list[float]] = {}
+        order: list[str] = []
+        for r in lat_rows:
+            key = time.strftime("%Y-%m-%d %H:00", time.gmtime(r["ts"]))
+            if key not in buckets:
+                buckets[key] = []
+                order.append(key)
+            buckets[key].append(float(r["latency_ms"]))
+
+        return {
+            "total": total,
+            "zero_result_count": zero_total,
+            "mode_distribution": {r["mode"]: int(r["n"]) for r in mode_rows},
+            "latency": {
+                "p50": _percentile(lats, 0.50),
+                "p95": _percentile(lats, 0.95),
+                "avg": (sum(lats) / len(lats)) if lats else 0.0,
+            },
+            "latency_trend": [
+                {
+                    "bucket": k,
+                    "count": len(buckets[k]),
+                    "p50": _percentile(buckets[k], 0.50),
+                    "p95": _percentile(buckets[k], 0.95),
+                }
+                for k in order
+            ],
+            "top_queries": [
+                {
+                    "query": r["query"],
+                    "count": int(r["n"]),
+                    "avg_latency_ms": float(r["avg_latency_ms"] or 0.0),
+                    "zero_results": int(r["zero_results"] or 0),
+                    "last_ts": float(r["last_ts"]),
+                }
+                for r in top_rows
+            ],
+            "zero_result_queries": [
+                {
+                    "query": r["query"],
+                    "count": int(r["n"]),
+                    "last_ts": float(r["last_ts"]),
+                }
+                for r in zero_rows
+            ],
+        }
 
     def purge(self, retention_days: int) -> int:
         """Delete rows older than ``retention_days``. ``<= 0`` keeps forever."""

@@ -53,10 +53,22 @@ CREATE TABLE IF NOT EXISTS metadata (
     value TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_last_accessed ON embeddings (last_accessed);
+CREATE TABLE IF NOT EXISTS stats_history (
+    ts REAL NOT NULL,
+    hits INTEGER NOT NULL,
+    misses INTEGER NOT NULL,
+    entry_count INTEGER NOT NULL,
+    size_bytes INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_stats_history_ts ON stats_history (ts);
 """
 
 _MEM_LRU_DEFAULT = 10_000  # entries
 _MAX_DISK_MB_DEFAULT = 500
+
+# Snapshot rows older than this are pruned on every successful snapshot,
+# keeping stats_history bounded (~288 rows/day at 5-min cadence x 30 days).
+STATS_HISTORY_RETENTION_S = 30 * 86400
 
 
 class EmbeddingCacheService:
@@ -119,6 +131,9 @@ class EmbeddingCacheService:
         # Runtime counters (always in-process; optionally persisted)
         self._hits: int = 0
         self._misses: int = 0
+
+        # Throttle state for hit-rate history snapshots
+        self._last_snapshot_ts: float = 0.0
 
     async def initialize(self, provider_fingerprint: str) -> None:
         """Open DB, create schema, and auto-wipe on fingerprint mismatch.
@@ -516,6 +531,71 @@ class EmbeddingCacheService:
             size_row = await cur2.fetchone()
             size_bytes: int = size_row[0] if size_row else 0
         return {"entry_count": count, "size_bytes": size_bytes}
+
+    async def maybe_snapshot(self, min_interval_s: float = 300.0) -> bool:
+        """Persist a hit-rate snapshot row, at most once per ``min_interval_s``.
+
+        Called opportunistically from the cache status/history endpoints —
+        the dashboard's polling provides the cadence, so no background task
+        is needed. Each successful snapshot also prunes rows older than
+        ``STATS_HISTORY_RETENTION_S`` (30 days), keeping the table bounded.
+
+        Args:
+            min_interval_s: Minimum seconds between persisted snapshots.
+
+        Returns:
+            True when a row was written, False when throttled.
+        """
+        now = time.time()
+        if now - self._last_snapshot_ts < min_interval_s:
+            return False
+        self._last_snapshot_ts = now
+        stats = self.get_stats()
+        disk = await self.get_disk_stats()
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("PRAGMA journal_mode=WAL")
+            await db.execute(
+                "INSERT INTO stats_history "
+                "(ts, hits, misses, entry_count, size_bytes) VALUES (?,?,?,?,?)",
+                (
+                    now,
+                    stats["hits"],
+                    stats["misses"],
+                    disk["entry_count"],
+                    disk["size_bytes"],
+                ),
+            )
+            await db.execute(
+                "DELETE FROM stats_history WHERE ts < ?",
+                (now - STATS_HISTORY_RETENTION_S,),
+            )
+            await db.commit()
+        return True
+
+    async def get_stats_history(
+        self, since: float | None = None
+    ) -> list[dict[str, Any]]:
+        """Return snapshot rows (oldest first), optionally from ``since`` on.
+
+        Args:
+            since: Optional UNIX timestamp; only rows with ``ts >= since``
+                are returned.
+
+        Returns:
+            List of dicts with keys ``ts``, ``hits``, ``misses``,
+            ``entry_count``, ``size_bytes``, ordered oldest first.
+        """
+        sql = "SELECT ts, hits, misses, entry_count, size_bytes FROM stats_history"
+        params: list[Any] = []
+        if since is not None:
+            sql += " WHERE ts >= ?"
+            params.append(since)
+        sql += " ORDER BY ts"
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cur = await db.execute(sql, params)
+            rows = await cur.fetchall()
+        return [dict(r) for r in rows]
 
 
 # ---------------------------------------------------------------------------

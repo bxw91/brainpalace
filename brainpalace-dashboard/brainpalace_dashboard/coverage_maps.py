@@ -34,6 +34,7 @@ ENDPOINT_SURFACES: dict[str, str] = {
     "/health/": "Overview/Instances (health ping)",
     "/health/status": "Overview/Graph/Sessions (feature status)",
     "/health/providers": "Config/Overview (provider readiness)",
+    "/health/providers/test": "Config (provider connectivity test)",
     "/health/postgres": (
         "unsurfaced: backend health detail, low user value "
         "(surfaced indirectly via providers/status)"
@@ -44,14 +45,19 @@ ENDPOINT_SURFACES: dict[str, str] = {
     "/query/count": "Overview (chunk count)",
     "/query/history": "Queries (history list)",
     "/query/history/{qid}": "Queries (drawer detail)",
+    "/query/stats": "Queries (analytics panel)",
     # --- index data ops (nested under /index/ on the project server) ---
     "/index/": "Folders (add / reset index)",
     "/index/add": "Folders (add)",
     "/index/folders/": "Folders (list / remove)",
     "/index/cache": "Cache",
     "/index/cache/": "Cache (clear)",
+    "/index/cache/history": "Cache (hit-rate trend)",
+    "/index/cache/economics": "Cache (cost estimate)",
     "/index/jobs/": "Jobs (list)",
     "/index/jobs/{job_id}": "Jobs (detail / cancel)",
+    "/index/documents": "Documents (file browser)",
+    "/index/documents/chunks": "Documents (chunk drawer)",
     "/index/fingerprint": (
         "unsurfaced: read-only index identity consumed by the Config save "
         "data-compatibility guard, not a standalone control"
@@ -62,8 +68,13 @@ ENDPOINT_SURFACES: dict[str, str] = {
     ),
     # --- graph ---
     "/git/reindex": "Graph (rebuild)",
+    "/graph/nodes": "Graph (browser search)",
+    "/graph/neighbors": "Graph (browser expand)",
     # --- sessions ---
     "/sessions/reindex": "Sessions (re-index)",
+    "/sessions/archive": "Sessions (archive browser)",
+    "/sessions/decisions": "Sessions (decision browser)",
+    "/sessions/timeline": "Sessions (decision timeline)",
     "/sessions/extract": (
         "unsurfaced: written by AI-session hooks, not a dashboard action"
     ),

@@ -7,6 +7,7 @@ import { Sidebar } from "./components/Sidebar";
 import { InstanceActions } from "./components/InstanceActions";
 import { UpdateBanner } from "./components/UpdateBanner";
 import { ToastProvider } from "./components/Toast";
+import { CommandPalette } from "./components/CommandPalette";
 import {
   SelectedInstanceProvider,
   useSelectedInstance,
@@ -150,6 +151,7 @@ function ShellInner({ children }: { children: ReactNode }) {
         </div>
         <main className="min-w-0 flex-1 overflow-y-auto p-6">{children}</main>
       </div>
+      <CommandPalette onNavigate={(path) => navigate({ to: path as "/" })} />
     </div>
   );
 }

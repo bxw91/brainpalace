@@ -5,15 +5,26 @@ import {
   type ConfigValues,
   type EffectiveConfig,
   type FoldersPayload,
+  type DocumentsPayload,
+  type DocumentChunksPayload,
   type JobsPayload,
   type JobDetail,
   type CachePayload,
+  type CacheHistoryPayload,
+  type CacheEconomics,
   type MemoriesPayload,
+  type SessionArchivePayload,
+  type DecisionNode,
+  type TimelineRow,
   type QueryRow,
   type QueryDetail,
+  type QueryStats,
   type ReplayResponse,
   type LogsPayload,
   type UnsetResult,
+  type GraphNodeHit,
+  type GraphSubgraph,
+  type ProviderTestResult,
 } from "./types";
 
 const BASE = "/dashboard/api";
@@ -294,8 +305,54 @@ export const getJobDetail = (id: string, jobId: string) =>
   getData<JobDetail>(`/instances/${id}/jobs/${jobId}`);
 export const getCache = (id: string) =>
   getData<CachePayload>(`/instances/${id}/cache`);
+export const getCacheHistory = (id: string, since?: number) => {
+  const p = since != null ? `?since=${since}` : "";
+  return getData<CacheHistoryPayload>(`/instances/${id}/cache/history${p}`);
+};
+export const getCacheEconomics = (id: string) =>
+  getData<CacheEconomics>(`/instances/${id}/cache/economics`);
 export const getMemories = (id: string) =>
   getData<MemoriesPayload>(`/instances/${id}/memories`);
+
+export const getSessionArchive = (id: string) =>
+  getData<SessionArchivePayload>(`/instances/${id}/sessions/archive`);
+
+export const getDecisions = (id: string, contains?: string, limit = 50) => {
+  const p = new URLSearchParams({ limit: String(limit) });
+  if (contains) p.set("contains", contains);
+  return getData<{ decisions: DecisionNode[] }>(
+    `/instances/${id}/sessions/decisions?${p.toString()}`,
+  );
+};
+
+export const getDecisionTimeline = (id: string, entity: string) =>
+  getData<{ entity: string; timeline: TimelineRow[] }>(
+    `/instances/${id}/sessions/timeline?${new URLSearchParams({ entity })}`,
+  );
+
+export function getDocuments(
+  id: string,
+  q: { folder: string; contains?: string; limit?: number; offset?: number },
+): Promise<DocumentsPayload> {
+  const p = new URLSearchParams(
+    Object.entries(q)
+      .filter(([, v]) => v != null && v !== "")
+      .map(([k, v]) => [k, String(v)]),
+  );
+  return getData<DocumentsPayload>(`/instances/${id}/documents?${p.toString()}`);
+}
+
+export const getDocumentChunks = (
+  id: string,
+  folder: string,
+  path: string,
+  limit = 50,
+): Promise<DocumentChunksPayload> => {
+  const p = new URLSearchParams({ folder, path, limit: String(limit) });
+  return getData<DocumentChunksPayload>(
+    `/instances/${id}/documents/chunks?${p.toString()}`,
+  );
+};
 
 export function getQueries(
   id: string,
@@ -311,6 +368,18 @@ export function getQueries(
 
 export const getQueryDetail = (id: string, qid: string) =>
   getData<QueryDetail>(`/instances/${id}/queries/${qid}`);
+
+export function getQueryStats(
+  id: string,
+  q: { since?: number; top_n?: number } = {},
+): Promise<QueryStats> {
+  const p = new URLSearchParams(
+    Object.entries(q)
+      .filter(([, v]) => v != null)
+      .map(([k, v]) => [k, String(v)]),
+  );
+  return getData<QueryStats>(`/instances/${id}/queries/stats?${p.toString()}`);
+}
 
 export const getLogs = async (
   id: string,
@@ -341,7 +410,7 @@ export const getLogs = async (
 // ---- actions ----
 export const replayQuery = (
   id: string,
-  body: { query: string; mode: string; top_k: number },
+  body: { query: string; mode: string; top_k: number; rerank?: boolean },
 ) => actData<ReplayResponse>(`/instances/${id}/queries/replay`, "POST", body);
 
 export const clearCache = (id: string) =>
@@ -364,3 +433,25 @@ export const memoryDelete = (id: string, mid: string) =>
   actData(`/instances/${id}/memories/${mid}`, "DELETE");
 export const memoryRebuild = (id: string) =>
   actData(`/instances/${id}/memories/rebuild`, "POST");
+export const memoryCreate = (
+  id: string,
+  body: { text: string; section?: string; tags?: string[] },
+) => actData(`/instances/${id}/memories`, "POST", body);
+
+// ---------------------------------------------------------------------------
+// Graph browse (Task 4 — sigma/graphology viz).
+// Endpoints: GET /graph/nodes?q=&limit=  · GET /graph/neighbors?node=&limit=
+// ---------------------------------------------------------------------------
+
+export const searchGraphNodes = (id: string, q: string, limit = 20) =>
+  getData<{ nodes: GraphNodeHit[] }>(
+    `/instances/${id}/graph/nodes?${new URLSearchParams({ q, limit: String(limit) })}`,
+  );
+
+export const getGraphNeighbors = (id: string, node: string, limit = 200) =>
+  getData<GraphSubgraph>(
+    `/instances/${id}/graph/neighbors?${new URLSearchParams({ node, limit: String(limit) })}`,
+  );
+
+export const testProviders = (id: string) =>
+  actData<ProviderTestResult>(`/instances/${id}/providers/test`, "POST");

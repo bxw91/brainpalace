@@ -59,6 +59,19 @@ beforeEach(() => {
   vi.mocked(client.memoryDelete).mockResolvedValue({ ok: true });
   vi.mocked(client.memoryRebuild).mockResolvedValue({ ok: true });
   vi.mocked(client.sessionsReindex).mockResolvedValue({ ok: true });
+  vi.mocked(client.getSessionArchive).mockResolvedValue({
+    sessions: [],
+    archived_sessions: 0,
+    archived_files: 0,
+    tombstoned: 0,
+    archived_bytes: 0,
+  });
+  vi.mocked(client.getDecisions).mockResolvedValue({ decisions: [] });
+  vi.mocked(client.getDecisionTimeline).mockResolvedValue({
+    entity: "",
+    timeline: [],
+  });
+  vi.mocked(client.memoryCreate).mockResolvedValue({ ok: true });
 });
 
 describe("Sessions tab", () => {
@@ -137,6 +150,14 @@ describe("Sessions tab", () => {
     const err = await screen.findByTestId("sessions-error");
     expect(within(err).getByText(/sess 500/)).toBeInTheDocument();
     expect(screen.getByTestId("sessions-error-retry")).toBeInTheDocument();
+  });
+
+  it("mounts the composer, decision timeline, and archive panels", async () => {
+    wrap(<Sessions instanceId="a" />);
+    expect(await screen.findByTestId("memory-composer")).toBeInTheDocument();
+    expect(await screen.findByTestId("decision-timeline")).toBeInTheDocument();
+    // archive panel renders once the (zeroed) archive payload resolves
+    expect(await screen.findByTestId("session-archive")).toBeInTheDocument();
   });
 
   it("shows the empty state when there are no curated memories", async () => {

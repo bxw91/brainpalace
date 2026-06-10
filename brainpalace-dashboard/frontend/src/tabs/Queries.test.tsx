@@ -72,6 +72,15 @@ beforeEach(() => {
   vi.mocked(client.getQueries).mockResolvedValue(rows);
   vi.mocked(client.getQueryDetail).mockResolvedValue(detail);
   vi.mocked(client.replayQuery).mockResolvedValue(replay);
+  vi.mocked(client.getQueryStats).mockResolvedValue({
+    total: 0,
+    zero_result_count: 0,
+    mode_distribution: {},
+    latency: { p50: 0, p95: 0, avg: 0 },
+    latency_trend: [],
+    top_queries: [],
+    zero_result_queries: [],
+  });
 });
 
 describe("Queries tab", () => {
@@ -175,5 +184,46 @@ describe("Queries tab", () => {
       }),
     );
     expect(await screen.findByTestId("run-results")).toBeInTheDocument();
+  });
+});
+
+describe("retrieval explorer", () => {
+  it("compare run fires one replay per mode and renders 4 columns", async () => {
+    vi.mocked(client.getQueries).mockResolvedValue(rows);
+    vi.mocked(client.replayQuery).mockResolvedValue(replay);
+    wrap(<Queries instanceId="a" />);
+    fireEvent.click(await screen.findByTestId("btn-new-query"));
+    fireEvent.click(screen.getByTestId("toggle-compare"));
+    fireEvent.change(screen.getByTestId("input-run-query"), {
+      target: { value: "proxy" },
+    });
+    fireEvent.click(screen.getByTestId("btn-run-query"));
+    await waitFor(() =>
+      expect(client.replayQuery).toHaveBeenCalledTimes(4),
+    );
+    const modes = vi
+      .mocked(client.replayQuery)
+      .mock.calls.map(([, body]) => body.mode)
+      .sort();
+    expect(modes).toEqual(["bm25", "graph", "hybrid", "vector"]);
+    expect(await screen.findByTestId("compare-grid")).toBeInTheDocument();
+    expect(screen.getByTestId("compare-col-bm25")).toBeInTheDocument();
+  });
+
+  it("reranker select forwards the override flag", async () => {
+    vi.mocked(client.getQueries).mockResolvedValue(rows);
+    vi.mocked(client.replayQuery).mockResolvedValue(replay);
+    wrap(<Queries instanceId="a" />);
+    fireEvent.click(await screen.findByTestId("btn-new-query"));
+    fireEvent.change(screen.getByTestId("select-rerank"), {
+      target: { value: "off" },
+    });
+    fireEvent.change(screen.getByTestId("input-run-query"), {
+      target: { value: "proxy" },
+    });
+    fireEvent.click(screen.getByTestId("btn-run-query"));
+    await waitFor(() => expect(client.replayQuery).toHaveBeenCalled());
+    const [, body] = vi.mocked(client.replayQuery).mock.calls[0];
+    expect(body.rerank).toBe(false);
   });
 });

@@ -33,6 +33,19 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(client.getCache).mockResolvedValue(cache);
   vi.mocked(client.clearCache).mockResolvedValue({ ok: true });
+  vi.mocked(client.getCacheHistory).mockResolvedValue({ snapshots: [] });
+  vi.mocked(client.getCacheEconomics).mockResolvedValue({
+    provider: "openai",
+    model: "text-embedding-3-small",
+    price_usd_per_mtok: 0.02,
+    avg_tokens_per_chunk: 400,
+    session_hits: 0,
+    session_misses: 0,
+    est_spend_usd: 0,
+    est_saved_usd: 0,
+    cached_entries: 0,
+    est_reindex_cost_usd: 0,
+  });
 });
 
 describe("Cache tab", () => {
@@ -72,6 +85,31 @@ describe("Cache tab", () => {
     expect(screen.getByTestId("tab-cache")).toBeInTheDocument();
     expect(document.querySelector(".skeleton")).toBeTruthy();
     resolve(cache);
+  });
+
+  it("renders the hit-rate trend chart and economics panel", async () => {
+    vi.mocked(client.getCacheHistory).mockResolvedValue({
+      snapshots: [
+        { ts: 1765400400, hits: 0, misses: 0, entry_count: 0, size_bytes: 0 },
+        { ts: 1765400700, hits: 3, misses: 1, entry_count: 4, size_bytes: 100 },
+        { ts: 1765401000, hits: 9, misses: 1, entry_count: 10, size_bytes: 200 },
+      ],
+    });
+    vi.mocked(client.getCacheEconomics).mockResolvedValue({
+      provider: "openai",
+      model: "text-embedding-3-small",
+      price_usd_per_mtok: 0.02,
+      avg_tokens_per_chunk: 400,
+      session_hits: 9,
+      session_misses: 1,
+      est_spend_usd: 0.01,
+      est_saved_usd: 0.07,
+      cached_entries: 10,
+      est_reindex_cost_usd: 0.08,
+    });
+    wrap(<Cache instanceId="a" />);
+    expect(await screen.findByTestId("rate-chart")).toBeInTheDocument();
+    expect(await screen.findByTestId("cache-economics")).toBeInTheDocument();
   });
 
   it("shows an error state with retry on a non-unreachable failure", async () => {
