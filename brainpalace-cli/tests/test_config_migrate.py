@@ -324,7 +324,10 @@ class TestWizardValidationIntegration:
         )
 
         runner = CliRunner()
-        # Supply all wizard prompts
+        # Supply all wizard prompts, in order. The session block
+        # (embed/archive/git/rerank/lemma) sits between graphrag and deployment;
+        # every prompt is answered explicitly so the test is deterministic and
+        # not reliant on EOF-default behavior (which differs across Click versions).
         wizard_inputs = "\n".join(
             [
                 "openai",  # embedding provider
@@ -332,6 +335,11 @@ class TestWizardValidationIntegration:
                 "anthropic",  # summarization provider
                 "claude-haiku-4-5-20251001",  # summarization model
                 "1",  # graphrag mode: disabled
+                "n",  # embed chat sessions?
+                "n",  # back up transcripts?
+                "n",  # index git history?
+                "n",  # enable reranking?
+                "n",  # use lemmatization?
                 "1",  # deployment mode: localhost
                 "8000",  # api port
                 "n",  # do NOT continue with invalid config
@@ -346,6 +354,16 @@ class TestWizardValidationIntegration:
             patch(
                 "brainpalace_cli.commands.config.validate_config_file",
                 return_value=[fake_error],
+            ),
+            # Determinism: avoid the real network port scan and pin plugin state
+            # so the wizard's wording/flow does not depend on the host env.
+            patch(
+                "brainpalace_cli.commands.config._find_available_api_port",
+                return_value=8000,
+            ),
+            patch(
+                "brainpalace_cli.commands.config.claude_plugin_installed",
+                return_value=False,
             ),
         ):
             result = runner.invoke(cli, ["config", "wizard"], input=wizard_inputs)
