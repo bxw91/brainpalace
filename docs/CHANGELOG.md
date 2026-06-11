@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-11
+last_validated: 2026-06-12
 ---
 
 # Changelog
@@ -14,6 +14,14 @@ Entries are kept short (≤ 3 sentences); see
 [DEVELOPERS_GUIDE.md → Changelog style](DEVELOPERS_GUIDE.md#changelog-style-docschangelogmd).
 
 ---
+
+## [26.6.35] - 2026-06-12
+
+### Changed
+- **Two-stage reranking is now off by default, and its local model is an opt-in extra instead of a ~2.8 GB tax on every install.** `sentence-transformers`/PyTorch moved to a `reranker-local` extra installed only when you enable the local reranker (via `init`/`config wizard`, which now default the question to no and warn about the download); a query with reranking on but the extra absent falls back to stage-1 with an actionable warning. For a torch-free reranker, set `reranker.provider=ollama` instead.
+
+### Fixed
+- **Installing/updating no longer backtracks for minutes.** The installer (`scripts/install.sh` and the plugin `brainpalace-install` commands) now pins all three packages to the target version, and the publish workflow ships the dashboard's CLI dependency as a caret instead of an exact `==`, so pip/uv/Poetry resolve in one shot. The installer fix applies immediately; the caret takes effect for releases after 26.6.34.
 
 ## [26.6.34] - 2026-06-11
 

@@ -125,7 +125,7 @@ def _pick_provider(
 def build_default_provider_config(
     bm25_language: str = "en",
     bm25_engine: str = "stem",
-    reranking: bool = True,
+    reranking: bool = False,
 ) -> dict[str, object]:
     """Build the default config.yaml provider block from detected env keys.
 
@@ -141,8 +141,10 @@ def build_default_provider_config(
             _SUMMARIZATION_PREFERENCE, _SUMMARIZATION_FALLBACK
         ),
         "reranker": {
-            # Two-stage reranking is ON by default (local cross-encoder; adds
-            # query latency, no API/token cost). Disable with --no-reranking.
+            # Two-stage reranking is OFF by default. The local cross-encoder
+            # needs the heavy `reranker-local` extra (~2.8 GB PyTorch); enable
+            # with --reranking (installs the extra) or point reranker.provider at
+            # ollama. Stage-1 search works fully without it.
             "enabled": reranking,
         },
         "graphrag": {
@@ -258,7 +260,7 @@ def write_default_provider_config(
             build_default_provider_config(
                 bm25_language=bm25_language or "en",
                 bm25_engine=bm25_engine or "stem",
-                reranking=reranking if reranking is not None else True,
+                reranking=reranking if reranking is not None else False,
             ),
             f,
             default_flow_style=False,
@@ -1238,9 +1240,11 @@ def _start_and_watch(
     default=None,
     help=(
         "Two-stage reranking: a local cross-encoder re-scores the top "
-        "candidates for finer relevance ordering. ON by default (local; adds "
-        "query latency, no API/token cost). Interactive runs confirm (default "
-        "yes); writes reranker.enabled to config.yaml."
+        "candidates for finer relevance ordering. OFF by default — the local "
+        "model needs the heavy reranker-local extra (~2.8 GB PyTorch). "
+        "--reranking installs that extra and enables it; or set "
+        "reranker.provider=ollama for a torch-free reranker. Writes "
+        "reranker.enabled to config.yaml."
     ),
 )
 @click.option(
@@ -1912,6 +1916,19 @@ def init_command(
         # honor an explicit --reranking/--no-reranking by merging just that flag.
         if not provider_config_written and enable_reranking is not None:
             _write_reranker_config(resolved_state_dir, enable_reranking)
+
+        # Explicit reranking opt-in (the --reranking flag, or the interactive D4
+        # gate set it true) pulls the heavy local cross-encoder extra (~2.8 GB
+        # PyTorch). Install it on opt-in, mirroring graphrag/lemma; a torch-free
+        # ollama provider can be configured later instead. A reranking query
+        # whose extra is absent degrades to stage-1 with a warning either way.
+        _rerank_opt_in = enable_reranking is True or (
+            _rerank_changed and bool(_rerank_val)
+        )
+        if _rerank_opt_in and not json_output:
+            from brainpalace_cli import optional_deps
+
+            optional_deps.ensure_extra("reranker-local", assume_yes=True)
         if force and not provider_config_written and not json_output:
             console.print(
                 "[dim]Preserved existing .brainpalace/config.yaml provider "

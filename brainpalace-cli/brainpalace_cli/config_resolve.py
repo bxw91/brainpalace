@@ -29,7 +29,7 @@ CODE_DEFAULTS: dict[str, Any] = {
     "embedding.model": "text-embedding-3-large",
     "summarization.provider": "anthropic",
     "summarization.model": "claude-haiku-4-5-20251001",
-    "reranker.enabled": True,
+    "reranker.enabled": False,
     "graphrag.enabled": True,
     "graphrag.store_type": "sqlite",
     "graphrag.use_code_metadata": True,

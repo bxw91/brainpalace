@@ -203,6 +203,11 @@ tasks:
     cmds:
       - task: dashboard:parity
 
+  lint:changelog:
+    desc: "Fail if an Unreleased/current-release changelog entry exceeds 3 sentences"
+    cmds:
+      - python3 scripts/check_changelog_style.py
+
   typecheck:
     desc: Type check all code with mypy
     aliases: [mypy]
@@ -238,6 +243,8 @@ tasks:
       - task: lint:yaml
       - echo "--- Checking doc freshness ---"
       - task: lint:doc-freshness
+      - echo "--- Checking changelog style ---"
+      - task: lint:changelog
       - echo "--- Checking dashboard parity ---"
       - task: lint:dashboard-parity
       - echo "--- Type checking ---"

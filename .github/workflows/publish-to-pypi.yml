@@ -250,11 +250,19 @@ jobs:
         run: |
           # In source the dashboard depends on the CLI by path (develop install
           # for the worktree). For the PyPI build, swap that path dependency for
-          # the just-published version so the wheel resolves brainpalace-cli (and
-          # its server/extra deps) from PyPI. Mirrors the server↔cli path trick
-          # used in the quality-gate job.
+          # a CARET range on the just-published version so the wheel resolves
+          # brainpalace-cli (and its server/extra deps) from PyPI. Mirrors the
+          # server↔cli path trick used in the quality-gate job.
+          #
+          # IMPORTANT: emit "^$VERSION", not a bare "$VERSION" (which Poetry reads
+          # as an EXACT ==pin). An exact pin makes every downstream resolver (pip
+          # on `brainpalace update`, and `poetry update --lock`) backtrack: cli
+          # depends on dashboard "^26.5.1", so the resolver tries dashboard
+          # candidates and each older one demands a different exact cli, forcing a
+          # wheel download + conflict + backtrack. A caret (>=$VERSION,<next-year)
+          # mirrors cli's own "^" dep on dashboard and resolves in one shot.
           VERSION="${GITHUB_REF_NAME#v}"
-          sed -i "s|brainpalace-cli = { path = \"../brainpalace-cli\", develop = true }|brainpalace-cli = \"$VERSION\"|" brainpalace-dashboard/pyproject.toml
+          sed -i "s|brainpalace-cli = { path = \"../brainpalace-cli\", develop = true }|brainpalace-cli = \"^$VERSION\"|" brainpalace-dashboard/pyproject.toml
           echo "Dashboard CLI dependency line after pin:"
           grep 'brainpalace-cli' brainpalace-dashboard/pyproject.toml
 

@@ -1077,6 +1077,21 @@ class QueryService:
 
             return reranked_results
 
+        except ModuleNotFoundError as e:
+            # The local cross-encoder reranker's deps (sentence-transformers /
+            # PyTorch) are an opt-in extra and are not bundled in the base
+            # install. Degrade to stage-1 rather than failing the query, and tell
+            # the operator exactly how to enable it (or switch to ollama).
+            rerank_time_ms = (time.time() - start_time) * 1000
+            logger.warning(
+                "Local reranker unavailable (%s) after %.2fms — returning "
+                "stage-1 results. Install it with "
+                "`pip install brainpalace-rag[reranker-local]` (~2.8 GB) or set "
+                "the reranker provider to 'ollama'.",
+                e,
+                rerank_time_ms,
+            )
+            return results[:top_k]
         except Exception as e:
             rerank_time_ms = (time.time() - start_time) * 1000
             logger.warning(

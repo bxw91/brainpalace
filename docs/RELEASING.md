@@ -93,7 +93,19 @@ The version lives in **one place per package**: `pyproject.toml`.
    [DEVELOPERS_GUIDE.md](DEVELOPERS_GUIDE.md#dashboard-parity-surface-every-feature).
    - [ ] `task before-push` green (includes `lint:dashboard-parity`) — every new
          config/CLI/endpoint is surfaced in the dashboard or allowlisted.
-8. **Gate**: `task before-push` must exit 0.
+8. **Gate**: `task before-push` must exit 0. **Necessary, not sufficient** — the
+   `publish-to-pypi.yml` workflow re-runs the gate (`task test`) in a *pristine
+   CI env* that has **no Claude Code plugin installed** and may resolve a
+   different Click version. So a test whose behavior depends on the host
+   (plugin presence, or `click.confirm`/`prompt` returning a default vs aborting
+   on exhausted stdin) can pass `before-push` locally yet **fail the release
+   workflow's gate** — which blocks the publish (see step 12's gate-vs-publish
+   distinction). Before cutting the release, sanity-run the interactive
+   wizard/init tests as CI sees them — mock `claude_plugin_installed` to `False`
+   (CI has no plugin) — and fix any test that relies on EOF-default stdin
+   behavior by answering *every* prompt explicitly. Interactive tests should mock
+   `claude_plugin_installed` and the port scan (`_find_available_api_port`) so
+   they are host-independent.
 9. **Commit on `stable`** (version bump + changelog).
 10. **Mirror to `main`** and tag. **`stable` is LOCAL-ONLY — NEVER `git push` it.**
    `main` is the only remote branch: a single squashed commit per release that
@@ -110,6 +122,17 @@ The version lives in **one place per package**: `pyproject.toml`.
    The published tree is curated *on `stable`* (e.g. `docs/superpowers` planning
    docs are untracked there), so `read-tree --reset stable` mirrors the right
    tree — do not hand-pick files.
+
+   > **`main` is a protected branch — no force-push, no rewriting a pushed
+   > commit.** The plain `git push` above is a fast-forward (new commit on top of
+   > `brainpalace/main`), which is fine. But if a release commit is already on
+   > `main` and you need to correct it (e.g. the gate-fix recovery in step 12),
+   > you **cannot** reset + `--force`: the protected-branch hook rejects it. Land
+   > the correction as a **forward commit** instead — `git checkout -B main
+   > brainpalace/main && git read-tree --reset -u stable && git commit -m
+   > "BrainPalace YY.M.N: …"` — so `main` HEAD's tree again equals `stable`, at
+   > the cost of one extra commit for that release. Then move the tag (delete +
+   > recreate) onto the new HEAD.
 11. **Create the GitHub Release — this publishes to PyPI:**
    ```bash
    gh release create vYY.M.N --repo bxw91/brainpalace \
@@ -125,8 +148,29 @@ The version lives in **one place per package**: `pyproject.toml`.
     curl -s https://pypi.org/pypi/brainpalace-cli/json | python3 -c 'import sys,json;print(json.load(sys.stdin)["info"]["version"])'
     curl -s https://pypi.org/pypi/brainpalace-dashboard/json | python3 -c 'import sys,json;print(json.load(sys.stdin)["info"]["version"])'
     ```
-    If the publish step fails, fix the cause and ship a new patch `N+1` — a PyPI
-    version can never be re-uploaded.
+    **Two distinct failure modes — do not conflate them:**
+    - **The publish *step* failed** (a wheel was already uploaded, or partially):
+      that PyPI version is burned — a version can never be re-uploaded. Fix the
+      cause and ship a new patch `N+1`.
+    - **The *gate* failed before any upload** (the workflow's `task test`/lint
+      step is red, so the publish jobs never ran): **nothing reached PyPI, so the
+      same version is reusable.** First confirm with the step-12 `curl`s that all
+      three packages are still at the *previous* version, then recover in place:
+      ```bash
+      # nothing published → reuse YY.M.N
+      gh release delete vYY.M.N --repo bxw91/brainpalace --yes --cleanup-tag
+      git tag -d vYY.M.N                       # drop the local tag too
+      # fix the cause, commit on stable, re-run before-push green
+      # re-mirror as a FORWARD commit (main is protected — see step 10):
+      git checkout -B main brainpalace/main
+      git read-tree --reset -u stable
+      git commit -m "BrainPalace YY.M.N: <gate fix>"
+      git push brainpalace main                # fast-forward, NOT --force
+      git tag -a vYY.M.N -m "BrainPalace YY.M.N" && git push brainpalace vYY.M.N
+      git checkout stable
+      gh release create vYY.M.N --repo bxw91/brainpalace \
+        --title "BrainPalace YY.M.N" --notes-file <notes>   # re-fires publish
+      ```
 13. **Refresh the cli lock** so the committed lock and local cli-from-source
     builds pull the matching server: `(cd brainpalace-cli && poetry update
     brainpalace-rag --lock)`, then commit on `stable`. The cli depends on

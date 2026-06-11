@@ -134,10 +134,15 @@ Requires Python 3.10+. If lower, tell user to upgrade first.
    ```
 
 2. Install BrainPalace with pinned version (bypass pip's index cache so a
-   just-published version isn't masked by a stale cached simple-index page):
+   just-published version isn't masked by a stale cached simple-index page).
+   Pin all three packages so pip resolves in one shot instead of backtracking
+   for minutes (the dashboard pins the CLI with an exact `==`, so unpinned
+   siblings make pip fetch+reject older candidates):
    ```bash
-   pipx install --pip-args=--no-cache-dir brainpalace-cli==$VERSION
+   pipx install --pip-args="--no-cache-dir brainpalace-rag==$VERSION brainpalace-dashboard==$VERSION" brainpalace-cli==$VERSION
    ```
+   *On Python <3.12 the dashboard isn't a dependency — drop the
+   `brainpalace-dashboard==$VERSION` pin.*
 
 3. Verify (user may need to restart terminal):
    ```bash
@@ -162,10 +167,12 @@ Requires Python 3.10+. If lower, tell user to upgrade first.
    ```
 
 2. Install BrainPalace with pinned version (bypass uv's cache for the same
-   reason):
+   reason). Pin all three so the resolver doesn't backtrack:
    ```bash
-   uv tool install --no-cache brainpalace-cli==$VERSION
+   uv tool install --no-cache brainpalace-cli==$VERSION --with brainpalace-rag==$VERSION --with brainpalace-dashboard==$VERSION
    ```
+   *On Python <3.12 the dashboard isn't a dependency — drop the
+   `--with brainpalace-dashboard==$VERSION`.*
 
 3. Verify:
    ```bash
@@ -180,10 +187,13 @@ Requires Python 3.10+. If lower, tell user to upgrade first.
    source .venv/bin/activate  # macOS/Linux
    ```
 
-2. Install packages with pinned version (bypass pip's index cache):
+2. Install packages with pinned version (bypass pip's index cache). Pin all
+   three so the resolver doesn't backtrack:
    ```bash
-   pip install --no-cache-dir brainpalace-rag==$VERSION brainpalace-cli==$VERSION
+   pip install --no-cache-dir brainpalace-rag==$VERSION brainpalace-cli==$VERSION brainpalace-dashboard==$VERSION
    ```
+   *On Python <3.12 the dashboard isn't a dependency — drop the
+   `brainpalace-dashboard==$VERSION` pin.*
 
 3. Verify:
    ```bash
@@ -200,9 +210,11 @@ Requires Python 3.10+. If lower, tell user to upgrade first.
    conda activate brainpalace
    ```
 
-2. Install packages with pinned version (bypass pip's index cache):
+2. Install packages with pinned version (bypass pip's index cache). Pin all
+   three so the resolver doesn't backtrack (the conda env is Python 3.12, so the
+   dashboard is always a dependency here):
    ```bash
-   pip install --no-cache-dir brainpalace-rag==$VERSION brainpalace-cli==$VERSION
+   pip install --no-cache-dir brainpalace-rag==$VERSION brainpalace-cli==$VERSION brainpalace-dashboard==$VERSION
    ```
 
 3. Verify:

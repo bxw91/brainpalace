@@ -89,15 +89,29 @@ if [[ -n "$LOCAL_PATH" ]]; then
     SERVER_SPEC="${LOCAL_PATH}/brainpalace-server"
     say "Installing from local checkout: ${LOCAL_PATH}"
 else
-    if [[ -n "$VERSION" ]]; then
-        CLI_SPEC="brainpalace-cli==${VERSION}"
-    else
-        CLI_SPEC="brainpalace-cli"
-    fi
     # Bypass pip's HTTP cache so a just-published release isn't masked by a
     # stale simple-index page — that cache is what makes `pipx install` resolve
     # the *previous* version in the minutes after a release.
-    PIPX_PIP_ARGS="--pip-args=--no-cache-dir"
+    if [[ -n "$VERSION" ]]; then
+        CLI_SPEC="brainpalace-cli==${VERSION}"
+        # Pin the sibling packages to the SAME version so pip installs all three
+        # exact and the resolver never explores (or re-downloads) other
+        # candidates. brainpalace-dashboard pins brainpalace-cli with an exact
+        # '==', so leaving the siblings unpinned makes pip fetch+reject older
+        # candidates — minutes of churn on every install/update. brainpalace-rag
+        # is always a CLI dependency; brainpalace-dashboard is one only on
+        # Python >=3.12 (its Requires-Python), so pin it only there — otherwise
+        # the explicit spec breaks the install on 3.10/3.11.
+        EXTRA_PINS="brainpalace-rag==${VERSION}"
+        if python3 -c 'import sys; sys.exit(0 if sys.version_info[:2] >= (3, 12) else 1)'; then
+            EXTRA_PINS="${EXTRA_PINS} brainpalace-dashboard==${VERSION}"
+        fi
+        PIPX_PIP_ARGS="--pip-args=\"--no-cache-dir ${EXTRA_PINS}\""
+    else
+        CLI_SPEC="brainpalace-cli"
+        # No target version to pin the siblings to; pip resolves latest of each.
+        PIPX_PIP_ARGS="--pip-args=--no-cache-dir"
+    fi
     say "Installing ${CLI_SPEC} from PyPI"
 fi
 

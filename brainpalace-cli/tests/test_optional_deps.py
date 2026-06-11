@@ -5,9 +5,15 @@ import pytest
 from brainpalace_cli import optional_deps as od
 
 
-def test_registry_has_three_extras():
-    assert set(od.REGISTRY) == {"graphrag", "lemma-hr", "postgres"}
+def test_registry_extras():
+    assert set(od.REGISTRY) == {
+        "graphrag",
+        "lemma-hr",
+        "postgres",
+        "reranker-local",
+    }
     assert od.REGISTRY["graphrag"].probe_module == "langextract"
+    assert od.REGISTRY["reranker-local"].probe_module == "sentence_transformers"
 
 
 @pytest.mark.parametrize(

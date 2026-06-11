@@ -46,6 +46,13 @@ REGISTRY: dict[str, OptionalExtra] = {
         "The postgres storage backend needs extra downloads (asyncpg, sqlalchemy).",
         ("asyncpg", "sqlalchemy"),
     ),
+    "reranker-local": OptionalExtra(
+        "reranker-local",
+        "sentence_transformers",
+        "The local cross-encoder reranker is a LARGE download "
+        "(sentence-transformers + PyTorch, ~2.8 GB).",
+        ("sentence-transformers", "torch"),
+    ),
 }
 
 

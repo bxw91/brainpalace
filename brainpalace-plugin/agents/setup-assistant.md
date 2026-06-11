@@ -399,7 +399,7 @@ drift. The questions are:
 
 - **Embedding** provider + model
 - **Summarizer** provider + model
-- **Reranker** (enabled — local cross-encoder; default on)
+- **Reranker** (`reranker.enabled`) — off by default; the local cross-encoder needs the heavy `reranker-local` extra (~2.8 GB), installed on opt-in, or use `reranker.provider=ollama`
 - **Embed sessions** (`session_indexing.enabled`) — embed chat transcripts so
   they're searchable. **Billable opt-in, default OFF.**
 - **Session archive** (`session_indexing.archive.enabled`) — copy raw transcripts

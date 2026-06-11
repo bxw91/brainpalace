@@ -153,6 +153,33 @@ This ensures:
 3. Unit and Integration tests pass.
 4. Test coverage is above 50%.
 
+> **The local gate is necessary, not sufficient.** CI (and the release publish
+> workflow) re-run the suite in a *pristine env with no Claude Code plugin
+> installed* and may resolve a different Click version. A test that passes
+> locally can still fail there — see "Interactive CLI tests must be
+> host-independent" below.
+
+### Interactive CLI tests must be host-independent
+Tests that drive `brainpalace init` / `config wizard` with a canned stdin string
+(`CliRunner(..., input=...)`) are a recurring source of pass-locally/fail-CI
+breaks. Two host-dependent behaviors bite:
+
+- **Claude Code plugin presence.** `claude_plugin_installed()` changes the
+  wizard/init wording and which prompts appear. A dev box running inside Claude
+  Code reports the plugin present; CI does not. **Mock it** (e.g.
+  `patch("brainpalace_cli.commands.config.claude_plugin_installed",
+  return_value=False)`) so the prompt sequence is fixed.
+- **Exhausted-stdin behavior.** When the input runs out, some Click versions
+  return each prompt's *default* (so the wizard completes) while others **abort**
+  (`SystemExit`). Never rely on this. **Answer every prompt explicitly** — count
+  the prompts in the command and supply one line each, including any sub-prompts
+  and the final `Proceed?`/continue gate. When you add a prompt, realign *all*
+  interactive tests' stdin in the same change.
+
+Also mock the network port scan (`_find_available_api_port`) so the wizard
+doesn't probe real sockets under test. A test that follows these rules behaves
+the same on every host and in CI.
+
 ### Documentation Freshness (`last_validated`)
 Audited docs carry a `last_validated: YYYY-MM-DD` frontmatter field. It means
 **"this doc was last read against the live code and confirmed accurate on that
@@ -195,6 +222,13 @@ normalized for length in a deliberate pass, but never drop a real entry, version
 header, date, or issue reference when tightening. Group entries under the standard
 Keep-a-Changelog headings (`Added`, `Changed`, `Fixed`, `Docs`, …) within each
 `[YY.M.N]` section.
+
+Enforcement is automated. `task lint:changelog` (run as part of `task
+before-push`) fails when any entry in the **`[Unreleased]`** section or the
+**most recent released** section exceeds the 3-sentence cap; older sections are
+out of scope (normalize them deliberately, never fail the build retroactively).
+The check (`scripts/check_changelog_style.py`) strips inline code, link targets,
+and CalVer dots before counting, so only real sentence terminators count.
 
 ### Test Directories
 - `brainpalace-server/tests/`: Server-specific tests.

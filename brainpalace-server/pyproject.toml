@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "brainpalace-rag"
-version = "26.6.34"
+version = "26.6.35"
 description = "BrainPalace RAG - Intelligent document indexing and semantic search server that gives AI agents long-term memory"
 authors = ["bxw91"]
 readme = "README.md"
@@ -46,7 +46,11 @@ cohere = "^5.0.0"
 google-genai = "^1.0.0"
 
 # Reranking dependencies (Feature 01 - Two-Stage Reranking)
-sentence-transformers = "^3.4.0"
+# Optional: the local cross-encoder reranker pulls PyTorch (~2.8 GB). It is
+# installed on opt-in via the `reranker-local` extra, never bundled in the base
+# install. The reranker module imports it lazily, so the server runs without it
+# (stage-2 reranking falls back to stage-1 when absent).
+sentence-transformers = {version = "^3.4.0", optional = true}
 
 # Optional GraphRAG dependencies (Feature 113)
 langextract = {version = "^1.0.0", optional = true}
@@ -67,6 +71,7 @@ simplemma = {version = "^1.2", optional = true}    # Croatian lemma tier (engine
 graphrag = ["langextract"]
 postgres = ["asyncpg", "sqlalchemy"]
 lemma-hr = ["simplemma"]
+reranker-local = ["sentence-transformers"]
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.0"

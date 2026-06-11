@@ -1,4 +1,4 @@
-"""`brainpalace init` writes reranker.enabled (ON by default; --no-reranking off)."""
+"""`brainpalace init` writes reranker.enabled (OFF by default; --reranking on)."""
 
 import yaml
 
@@ -8,9 +8,11 @@ from brainpalace_cli.commands.init import (
 )
 
 
-def test_default_provider_config_enables_reranking() -> None:
+def test_default_provider_config_disables_reranking_by_default() -> None:
+    # OFF by default: the local cross-encoder needs the heavy reranker-local
+    # extra (~2.8 GB), so reranking is opt-in.
     cfg = build_default_provider_config()
-    assert cfg["reranker"] == {"enabled": True}
+    assert cfg["reranker"] == {"enabled": False}
 
 
 def test_default_provider_config_can_disable_reranking() -> None:

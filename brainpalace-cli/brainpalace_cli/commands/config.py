@@ -299,10 +299,14 @@ def wizard(global_: bool, chat_summarizer: str) -> None:
         git_depth = click.prompt(
             "How many commits back to index? (0 = unlimited)", default=5000, type=int
         )
-    rerank_on = click.confirm(
-        "\nEnable reranking? (local cross-encoder, no API cost)", default=True
-    )
     from brainpalace_cli import optional_deps
+
+    rerank_on = click.confirm(
+        "\nEnable two-stage reranking? (sharper result ordering)\n  "
+        f"{optional_deps.REGISTRY['reranker-local'].download_note}\n  "
+        "(Skip this and set reranker.provider=ollama later for a torch-free reranker.)",
+        default=False,
+    )
 
     use_lemma = click.confirm(
         "\nUse lemmatization for BM25 keyword search? (better recall for inflected "
@@ -397,6 +401,11 @@ def wizard(global_: bool, chat_summarizer: str) -> None:
         }
     if use_lemma:
         optional_deps.ensure_extra("lemma-hr", assume_yes=True)
+    # Enabling reranking with the default local provider needs the heavy
+    # cross-encoder extra (PyTorch). Install it on opt-in; a torch-free ollama
+    # provider can be configured later instead.
+    if rerank_on:
+        optional_deps.ensure_extra("reranker-local", assume_yes=True)
 
     if embed_provider == "ollama":
         config["embedding"]["params"] = {
