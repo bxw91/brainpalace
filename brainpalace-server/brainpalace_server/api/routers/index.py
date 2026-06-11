@@ -657,13 +657,30 @@ async def list_documents(
             {
                 "path": p,
                 "chunk_count": len(rec.chunk_ids),
-                "size_bytes": rec.size_bytes,
+                "size_bytes": _display_size_bytes(p, rec.size_bytes),
                 "mtime": rec.mtime,
                 "last_embedded_at": rec.last_embedded_at,
             }
             for p, rec in page
         ],
     }
+
+
+def _display_size_bytes(path: str, recorded: int) -> int:
+    """Size for the documents view, lazily back-filled from disk when unknown.
+
+    Manifest records written before the ``size_bytes`` field existed (and
+    unchanged files retained across reindexes that never re-embedded) carry
+    ``size_bytes=0``. Stat the live file so the dashboard shows the real size
+    instead of "0 B" for a file that clearly has chunks. Missing/unreadable
+    files keep the recorded value.
+    """
+    if recorded:
+        return recorded
+    try:
+        return Path(path).stat().st_size
+    except OSError:
+        return recorded
 
 
 @router.get(

@@ -3,6 +3,7 @@ import { FileText, Boxes, FolderTree, Share2, GitCommit } from "lucide-react";
 import { getInstanceStatus, getInstanceHealth, getConfig } from "../api/client";
 import { StatCard } from "../components/StatCard";
 import { useOptionalSelectedInstance } from "../state/selectedInstance";
+import { useDisplayFormat } from "../format/datetime";
 import {
   NoInstance,
   StoppedState,
@@ -44,6 +45,7 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
 export function Status({ instanceId }: { instanceId?: string }) {
   const ctx = useOptionalSelectedInstance();
   const id = instanceId ?? ctx?.selectedId ?? null;
+  const { formatDateTime } = useDisplayFormat();
 
   const statusQ = useQuery({
     queryKey: ["status", id],
@@ -189,7 +191,7 @@ export function Status({ instanceId }: { instanceId?: string }) {
             label="Last indexed"
             value={
               s.last_indexed_at
-                ? new Date(s.last_indexed_at).toLocaleString()
+                ? formatDateTime(new Date(s.last_indexed_at))
                 : "never"
             }
           />

@@ -12,6 +12,7 @@ from pathlib import Path
 from brainpalace_server.indexing.session_loader import (
     SessionMeta,
     Turn,
+    first_user_prompt_line,
     is_subagent_path,
     load_session,
     parent_session_id_for,
@@ -33,6 +34,42 @@ def test_load_session_extracts_meta() -> None:
     assert meta.is_subagent is False
     assert meta.parent_session_id is None
     assert str(PARENT) == meta.source_path
+
+
+def test_first_user_prompt_line_returns_first_human_prompt() -> None:
+    # Skips the queue-operation line and returns the first user string prompt;
+    # the later tool_result user turn is ignored (no text block).
+    assert (
+        first_user_prompt_line(PARENT)
+        == "Add a /health endpoint to the Flask app and write a test for it."
+    )
+
+
+def test_first_user_prompt_line_first_line_only_and_capped(tmp_path) -> None:
+    f = tmp_path / "s.jsonl"
+    long_first = "Refactor the auth layer " * 20  # > 120 chars, single line
+    f.write_text(
+        '{"type":"user","message":{"role":"user","content":'
+        f'"{long_first.strip()}\\n\\nmore detail on the next line"}}}}\n'
+    )
+    title = first_user_prompt_line(f)
+    assert title is not None
+    assert "more detail" not in title  # only the first line
+    assert len(title) <= 120
+
+
+def test_first_user_prompt_line_skips_command_wrapper(tmp_path) -> None:
+    f = tmp_path / "s.jsonl"
+    f.write_text(
+        '{"type":"user","message":{"role":"user","content":'
+        '"<command-name>/clear</command-name>"}}\n'
+        '{"type":"user","message":{"role":"user","content":"Real prompt here"}}\n'
+    )
+    assert first_user_prompt_line(f) == "Real prompt here"
+
+
+def test_first_user_prompt_line_none_when_unreadable(tmp_path) -> None:
+    assert first_user_prompt_line(tmp_path / "nope.jsonl") is None
 
 
 def test_load_session_skips_noise_and_malformed() -> None:

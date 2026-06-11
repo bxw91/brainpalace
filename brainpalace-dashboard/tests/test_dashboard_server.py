@@ -2,9 +2,19 @@
 
 from __future__ import annotations
 
+import os
+
 import pytest
 
 import brainpalace_dashboard.server as srv
+
+
+@pytest.fixture(autouse=True)
+def _no_stray_dashboards(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Default: the process table has no dashboard procs, so the reaper is a
+    no-op. Tests that exercise reaping override ``list_dashboard_pids`` locally.
+    """
+    monkeypatch.setattr(srv, "list_dashboard_pids", lambda: [])
 
 
 def test_launch_writes_runtime_and_returns_url(
@@ -148,3 +158,81 @@ def test_ensure_running_launches_when_down(
     assert out["started"] is True
     assert out["base_url"] == "http://127.0.0.1:8787/dashboard/"
     assert seen["open_browser"] is True
+
+
+class TestReapOrphanDashboards:
+    """reap_orphan_dashboards SIGTERMs every dashboard except keep_pid."""
+
+    def test_reaps_all_when_keep_none(self) -> None:
+        killed: list[int] = []
+        reaped = srv.reap_orphan_dashboards(
+            keep_pid=None,
+            kill_fn=killed.append,
+            list_fn=lambda: [101, 102, 103],
+        )
+        assert killed == [101, 102, 103]
+        assert reaped == [101, 102, 103]
+
+    def test_keeps_the_tracked_pid(self) -> None:
+        killed: list[int] = []
+        reaped = srv.reap_orphan_dashboards(
+            keep_pid=102,
+            kill_fn=killed.append,
+            list_fn=lambda: [101, 102, 103],
+        )
+        assert killed == [101, 103]
+        assert 102 not in reaped
+
+    def test_never_reaps_self(self) -> None:
+        killed: list[int] = []
+        reaped = srv.reap_orphan_dashboards(
+            keep_pid=None,
+            kill_fn=killed.append,
+            list_fn=lambda: [os.getpid(), 200],
+        )
+        assert killed == [200]
+        assert os.getpid() not in reaped
+
+    def test_skips_dead_pid_without_raising(self) -> None:
+        def boom(pid: int) -> None:
+            raise ProcessLookupError
+
+        reaped = srv.reap_orphan_dashboards(
+            keep_pid=None, kill_fn=boom, list_fn=lambda: [404]
+        )
+        assert reaped == []
+
+
+def test_launch_reaps_strays_before_scan(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: object
+) -> None:
+    """With no healthy tracked dashboard, launch reaps orphans before spawning."""
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+    killed: list[int] = []
+    monkeypatch.setattr(srv, "list_dashboard_pids", lambda: [501, 502])
+    monkeypatch.setattr(srv.os, "kill", lambda pid, sig: killed.append(pid))
+
+    class FakeProc:
+        pid = 600
+
+    monkeypatch.setattr(srv.subprocess, "Popen", lambda *a, **k: FakeProc())
+    monkeypatch.setattr(srv, "_port_free", lambda host, port: True)
+    monkeypatch.setattr(srv, "_wait_healthy", lambda url, timeout=20: True)
+
+    srv.launch_dashboard(open_browser=False)
+    assert killed == [501, 502]
+
+
+def test_stop_reaps_orphans_with_no_pidfile(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: object
+) -> None:
+    """Even with a stale/absent pidfile, stop reaps live dashboard strays."""
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+    killed: list[int] = []
+    monkeypatch.setattr(srv, "list_dashboard_pids", lambda: [701, 702])
+    monkeypatch.setattr(srv.os, "kill", lambda pid, sig: killed.append(pid))
+
+    out = srv.stop_dashboard()
+    assert killed == [701, 702]
+    assert out["status"] == "stopped"
+    assert out["reaped"] == [701, 702]

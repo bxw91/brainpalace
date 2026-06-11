@@ -80,6 +80,7 @@ say "Using python3 ${PIPX_PYTHON_VERSION}"
 # Resolve install spec
 # -----------------------------------------------------------------------------
 
+PIPX_PIP_ARGS=""
 if [[ -n "$LOCAL_PATH" ]]; then
     # Resolve to an absolute path so pipx specs work regardless of CWD (we run
     # pipx from a neutral dir below to dodge name/dir collisions).
@@ -93,6 +94,10 @@ else
     else
         CLI_SPEC="brainpalace-cli"
     fi
+    # Bypass pip's HTTP cache so a just-published release isn't masked by a
+    # stale simple-index page — that cache is what makes `pipx install` resolve
+    # the *previous* version in the minutes after a release.
+    PIPX_PIP_ARGS="--pip-args=--no-cache-dir"
     say "Installing ${CLI_SPEC} from PyPI"
 fi
 
@@ -101,7 +106,7 @@ fi
 # -----------------------------------------------------------------------------
 
 say "Installing brainpalace-cli via pipx (force-replacing any existing copy)"
-run "pipx install --force '${CLI_SPEC}'"
+run "pipx install --force ${PIPX_PIP_ARGS} '${CLI_SPEC}'"
 
 if [[ -n "$LOCAL_PATH" ]]; then
     # The CLI depends on brainpalace-rag by version, so `pipx install` already

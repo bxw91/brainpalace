@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-07
+last_validated: 2026-06-11
 ---
 
 # Releasing BrainPalace
@@ -77,7 +77,8 @@ The version lives in **one place per package**: `pyproject.toml`.
    `test_version_consistency.py` guard enforces all three pyprojects **and** the
    dashboard `__version__` moved together.
 4. **Reinstall** so editable `--version` reflects the bump: `task install`.
-5. **Changelog** — add the `[YY.M.N]` section in `docs/CHANGELOG.md`.
+5. **Changelog** — add the `[YY.M.N]` section in `docs/CHANGELOG.md`. Keep each
+   entry ≤ 3 sentences (see [DEVELOPERS_GUIDE.md → Changelog style](DEVELOPERS_GUIDE.md#changelog-style-docschangelogmd)).
 6. **Refresh doc freshness** — any audited doc whose content changed this
    release must be re-read against the code and have its `last_validated` date
    bumped. List stale docs with `python scripts/check_doc_freshness.py`; after
@@ -133,8 +134,16 @@ The version lives in **one place per package**: `pyproject.toml`.
     the cli installs whatever the lock pins — without this step a cli-from-source
     dev env keeps the *previous* server release. The pin stays `^YY.M.1`; only the
     lock entry moves. Run it **after** step 12 confirms the new version is live on
-    PyPI. (Poetry caches the index — if the new version isn't picked up, clear it:
-    `rm -rf ~/.cache/pypoetry/_http && poetry update brainpalace-rag --lock`.)
+    PyPI. (Poetry caches the index — if version solving fails because it can't
+    see the new release even though it's live on PyPI's simple index, the stale
+    entry is the **repository cache**, not just `_http`. `poetry cache clear --all
+    pypi` does **not** clear it — the source key is `PyPI` (capitalized), so that
+    command reports "No cache entries for pypi" and changes nothing. Nuke the
+    whole dir: `rm -rf ~/.cache/pypoetry/cache ~/.cache/pypoetry/_http`, then
+    re-run `poetry update brainpalace-rag --lock`. The cycle that breaks: dashboard
+    `YY.M.N` pins cli `==YY.M.N`, so until cli `YY.M.N` is visible the resolver
+    discards dashboard `YY.M.N` and falls back to the previous dashboard, which
+    conflicts with the local cli at the new version.)
 
 ## Environment gotchas
 

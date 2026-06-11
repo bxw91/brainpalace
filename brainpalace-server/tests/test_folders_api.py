@@ -175,6 +175,34 @@ class TestRemoveFolder:
         assert data["folder_path"] == str(Path(record.folder_path).resolve())
         assert "Successfully removed" in data["message"]
 
+    def test_delete_folder_retains_chunks_shared_with_another_folder(self) -> None:
+        """Removing a nested folder must not evict chunks another folder owns.
+
+        /repo and /repo/sub overlap: both reference shared1/shared2. Removing
+        /repo/sub deletes only its unique chunks (a, b); the shared ones survive
+        because /repo still references them.
+        """
+        removed = _make_record(
+            folder_path="/repo/sub", chunk_ids=["a", "b", "shared1", "shared2"]
+        )
+        kept = _make_record(folder_path="/repo", chunk_ids=["shared1", "shared2", "c"])
+        app = _create_app(folder_records=[removed, kept])
+        app.state.folder_manager.get_folder = AsyncMock(return_value=removed)
+        app.state.folder_manager.list_folders = AsyncMock(return_value=[removed, kept])
+        delete_by_ids = AsyncMock(return_value=2)
+        app.state.storage_backend.delete_by_ids = delete_by_ids
+        client = TestClient(app)
+
+        response = client.request(
+            "DELETE",
+            "/index/folders/",
+            json={"folder_path": str(Path("/repo/sub").resolve())},
+        )
+
+        assert response.status_code == 200
+        # Only the chunks unique to /repo/sub are deleted; shared ones retained.
+        delete_by_ids.assert_awaited_once_with(["a", "b"])
+
     def test_delete_folder_success_fallback_metadata(self) -> None:
         """DELETE uses metadata fallback when no chunk_ids stored."""
         record = _make_record(chunk_ids=[])

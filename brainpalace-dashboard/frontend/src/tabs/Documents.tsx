@@ -55,7 +55,7 @@ export function Documents({ instanceId }: { instanceId?: string }) {
       key: "path",
       header: "File",
       cell: (r) => (
-        <span className="block max-w-xl truncate font-mono text-xs" title={r.path}>
+        <span className="block break-all font-mono text-xs" title={r.path}>
           {r.path}
         </span>
       ),
@@ -115,7 +115,7 @@ export function Documents({ instanceId }: { instanceId?: string }) {
   return (
     <div data-testid="tab-documents" className="flex flex-col gap-4">
       <div>
-        <p className="eyebrow">Documents</p>
+        <p className="eyebrow">Files</p>
         <h2 className="mt-0.5 font-display text-base font-semibold tracking-tight">
           Browse what's actually indexed, file by file
         </h2>

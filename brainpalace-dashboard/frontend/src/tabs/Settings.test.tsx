@@ -26,6 +26,8 @@ beforeEach(() => {
     port: 8787,
     poll_s: 5,
     autostart: true,
+    time_format: "24h",
+    date_format: "dd.mm.yyyy",
     token_set: false,
     token: "",
     version: "26.6.25",

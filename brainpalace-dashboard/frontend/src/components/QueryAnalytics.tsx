@@ -25,10 +25,13 @@ export function QueryAnalytics({
   instanceId,
   since,
   windowKey,
+  onSelectQuery,
 }: {
   instanceId: string;
   since: number;
   windowKey: string;
+  /** Open a query's detail drawer (same view as a history-table row click). */
+  onSelectQuery?: (qid: string) => void;
 }) {
   const statsQ = useQuery({
     queryKey: ["query-stats", instanceId, windowKey],
@@ -101,13 +104,21 @@ export function QueryAnalytics({
           ) : (
             <ul className="flex flex-col gap-1.5">
               {s.top_queries.map((t) => (
-                <li key={t.query} className="flex items-center gap-3 text-sm">
-                  <span className="flex-1 truncate" title={t.query}>
-                    {t.query}
-                  </span>
-                  <span className="font-mono text-xs text-fg-muted">
-                    ×{t.count} · {Math.round(t.avg_latency_ms)} ms
-                  </span>
+                <li key={t.query}>
+                  <button
+                    type="button"
+                    data-testid={`top-query-${t.query}`}
+                    onClick={() => onSelectQuery?.(t.last_id)}
+                    disabled={!onSelectQuery}
+                    className="flex w-full items-center gap-3 rounded text-left text-sm enabled:hover:text-accent disabled:cursor-default"
+                  >
+                    <span className="flex-1 truncate" title={t.query}>
+                      {t.query}
+                    </span>
+                    <span className="font-mono text-xs text-fg-muted">
+                      ×{t.count} · {Math.round(t.avg_latency_ms)} ms
+                    </span>
+                  </button>
                 </li>
               ))}
             </ul>

@@ -389,6 +389,15 @@ def launch_server(
     }
     write_runtime(state_dir, runtime)
     update_registry(project_root, state_dir)
+    # Record in the durable known-projects store so the project stays listed
+    # (and Start-able) in the dashboard fleet after it stops — "every project
+    # ever started" persists until its directory is deleted from disk.
+    try:
+        from brainpalace_cli import known_projects
+
+        known_projects.remember(project_root, state_dir, project_root.name)
+    except OSError:
+        pass  # never fail a server launch over the known-projects bookkeeping
 
     start_time = time.time()
     while time.time() - start_time < timeout:

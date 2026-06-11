@@ -10,338 +10,144 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 Versioning is **CalVer** `YY.M.N` — 2-digit year · month · Nth release that
 month (the counter resets monthly). It looks like SemVer but is not.
 
+Entries are kept short (≤ 3 sentences); see
+[DEVELOPERS_GUIDE.md → Changelog style](DEVELOPERS_GUIDE.md#changelog-style-docschangelogmd).
+
 ---
 
-## [Unreleased]
+## [26.6.34] - 2026-06-11
+
+### Added
+- **Dashboard time/date display preferences.** The Settings tab gained a clock-format (24-hour default / 12-hour) and a display date-format (`dd.mm.yyyy` default / `mm.dd.yyyy` / `yyyy-mm-dd`) selector, stored in the `dashboard:` block (`time_format`/`date_format`) and applied everywhere the SPA renders an absolute time or date. Requires the reshipped `static/assets` bundle. (dashboard #9)
+- **`config wizard --global` asks for the web-dashboard settings.** It now prompts for `dashboard.autostart` (default ON — whether `brainpalace start` also launches the dashboard) and `dashboard.port` (default 8787), writing them to the `dashboard:` block; `dashboard` is now a recognised top-level config key. Per-project `init` does not ask these. (dashboard #5)
+- **Dashboard fleet lists every project ever started, and self-prunes deleted ones.** `brainpalace start` records each project in a shared durable store (`known_projects.json`), so a project stays listed and Start-able after its server stops; reads prune any project whose directory was deleted. The same store backs the guided `uninstall` teardown, replacing the dashboard's private `dashboard_known.json`. (dashboard #3)
+- **Dashboard session archive shows a readable title.** `/sessions/archive` rows carry a `title` (the first line of the session's first user prompt), rendered as the Session label with the id beneath. Only that first line is exposed — full transcript content is still never returned. (#2)
+- **Git-history indexing is now a visible queue job.** It previously ran outside the job queue, so its chunks never appeared in `brainpalace jobs`. Git indexing now enqueues a `job_type="git_history"` job (repo-scoped dedupe collapses boot + on-demand into one; a no-new-commits reindex marks DONE); document indexing is unchanged. (#15)
+- **Install/init question parity + opt-in optional-dep installs.** `bp install` (`config wizard`) and `bp init` now ask the same project-config-backed set, with `init` re-asking the per-project reranker behind an inherited-override gate. A feature whose "yes" needs an optional server extra (GraphRAG → `langextract`, BM25 lemma → `simplemma`) installs it on yes only; deps are never auto-installed just because a feature is default-ON, and `brainpalace doctor` reports extra status for enabled features. (#10/#12/#13/#14/#16)
+
+### Fixed
+- **Dashboard latency p50/p95 tooltip showed many decimals.** Hovering the "Latency p50 / p95" chart now rounds each value to a whole number and appends `ms`, matching the stat cards above it. (dashboard #8)
+- **Dashboard Documents tab showed "0 B" for files that have chunks.** Records predating the `size_bytes` field (and unchanged files never re-embedded) carry `size_bytes=0`; `GET /index/documents` now back-fills the size by stat-ing the live file when stored size is 0. The tab also stops truncating the file path mid-string — it now wraps. (#1)
+- **Removing a folder could evict chunks another folder still owned.** Removal deleted *every* chunk_id of the removed folder, dropping chunks a nested/overlapping folder still referenced. It now deletes only chunks unique to the removed folder; shared chunks survive and true orphans are reaped by startup reconcile.
+- **`brainpalace init` leaked server INFO logs and trailing boilerplate.** The in-process estimate/preflight emitted raw server-module logs; those now run under a `brainpalace_server` logger set to WARNING. The trailing "Next steps:" block is dropped on a fully-successful run (it appears only when a real action remains).
+- **CLI commands could silently target a *different* project's server.** When discovery couldn't validate the owning project's live server, `get_server_url` fell through to a default `:8000` — often another project's server. It now raises `ServerNotReachableError` instead of guessing (with `doctor` opting out so it still diagnoses a down server).
+- **Dashboard "remove folder" failed with a 422.** The frontend sent `{"path": …}` but the server expects `{"folder_path": …}`. Fixed the frontend call and hardened the dashboard proxy to normalize `path` → `folder_path`, so an older bundled asset also works.
+- **Install/update could fetch the *previous* version right after a release.** `setup.sh` invoked `install.sh` unpinned, and every path resolved "latest" through a stale package-manager index cache. Now setup.sh passes the detected version and all install/upgrade paths bypass the cache (mirrored in the plugin `brainpalace-install` command).
+- **Dashboard instances accumulated and survived `update`.** A lost/overwritten pidfile let the next launch port-walk and spawn a second dashboard, and `stop`/`update` only killed the one tracked pid. The dashboard now reaps orphans by process scan; `update` reaps stray servers and dashboards across install surfaces before restarting.
+
+### Changed
+- **Sessions tab: the reconcile-sweep status moved to the Session archive card.** The "Watcher" row (the periodic `session_reconciler` sweep) drives the archive copy, so it now reads "Copy sweep: running/idle" under Session archive; the index card is renamed "Session summarization & indexing" and keeps only chunk + memory counts. (dashboard #10)
+- **Config tab: the "Provider connectivity" check now sits below all provider settings** (previously above the form), so it validates the values shown above it. (dashboard #4)
+- **Queries: top-query rows are now clickable** and open the same per-query detail drawer as a history row. `GET .../queries/stats` `top_queries` entries gained a `last_id` (the query's most recent occurrence) for the drawer. (dashboard #6)
+- **The per-instance "Documents" tab is renamed "Files"** (nav label + heading); the route path is unchanged. (dashboard #7)
+- **Dashboard config UI: inheritance is now legible.** The inherited/default value renders below the control as a high-contrast chip; inherited boolean toggles render muted (still clickable, flipping promotes to a local override); and the reranker section's help explains the two-stage retrieval mechanism. Requires the reshipped `static/assets` bundle.
+- **`brainpalace init` estimates token cost *before* the final gate, and flags a missing plugin on the summarize question.** After writing the sparse config it asks "Estimate token usage first?", runs the git-aware estimate (`proceed / change options / cancel`), then shows the `init will: …` summary as the last confirmation. The "Summarize chat sessions?" prompt warns in yellow when the Claude Code plugin is absent.
+- **`brainpalace update` is now stop-all → upgrade → restart-and-verify.** One consent prompt names every live instance; on confirm all are stopped, the upgrade runs, then each is restarted with a ✓/✗ health check — removing the silent-stale-version trap. A failed upgrade tells the user loudly that nothing is running; `--no-restart` keeps the upgrade-only path.
+
+### Docs
+- **Setup-surface parity: plugin + MCP docs mirror the unified init/install question set + opt-in optional-dep rule.** The plugin setup/config/install commands, the `setup-assistant` agent, the `configuring-brainpalace` skill, and `docs/MCP_SETUP.md` now describe the shared questions, the inherited-override gate, and the rule that enabling an optional-dep feature installs the extra rather than auto-installing for a merely default-ON feature.
 
 ## [26.6.33] - 2026-06-11
 
 ### Added
-- Dashboard Retrieval Explorer: the Queries composer can run one query across
-  bm25/vector/hybrid/graph side-by-side with per-result score chips and shared-chunk
-  highlighting, plus a per-request reranker on/off override (`QueryRequest.rerank`).
-- Dashboard query analytics: the Queries tab now aggregates the query log —
-  top queries, latency p50/p95 trend, mode distribution, and zero-result
-  queries — via the new `GET /query/stats` endpoint.
-- Dashboard Documents tab: browse indexed files per folder with chunk counts
-  and open any file's chunks (text + source_type/language metadata) via the new
-  read-only `GET /index/documents` and `GET /index/documents/chunks` endpoints.
-- Dashboard Cache tab: embedding-cache hit-rate trend (persisted snapshots via
-  `GET /index/cache/history`) and an estimated spend/savings panel
-  (`GET /index/cache/economics`, static price table — estimates only).
-- Dashboard session-memory browser: archived-session inventory
-  (`GET /sessions/archive` — metadata only, transcripts never exposed),
-  Decision browser with temporal supersession timeline
-  (`GET /sessions/decisions`, `GET /sessions/timeline`), and curated-memory
-  creation from the Sessions tab.
-- Dashboard graph browser: search seed entities and explore the knowledge graph
-  on a WebGL canvas (sigma.js, lazy-loaded) with click-to-expand neighbors, via
-  the new `GET /graph/nodes` and `GET /graph/neighbors` endpoints.
-- Dashboard polish: one-click provider connectivity test
-  (`POST /health/providers/test` — live 1-token embed on explicit click),
-  log alerts strip (errors / self-heal / auth events), Cmd/Ctrl+K command
-  palette, and cross-instance effective-config diff.
+- **Dashboard Retrieval Explorer.** The Queries composer can run one query across bm25/vector/hybrid/graph side-by-side with per-result score chips and shared-chunk highlighting, plus a per-request reranker override (`QueryRequest.rerank`).
+- **Dashboard query analytics.** The Queries tab aggregates the query log (top queries, latency p50/p95 trend, mode distribution, zero-result queries) via the new `GET /query/stats`.
+- **Dashboard Documents tab.** Browse indexed files per folder with chunk counts and open any file's chunks (text + metadata) via the read-only `GET /index/documents` and `GET /index/documents/chunks`.
+- **Dashboard Cache tab.** Embedding-cache hit-rate trend (`GET /index/cache/history`) and an estimated spend/savings panel (`GET /index/cache/economics`, static price table — estimates only).
+- **Dashboard session-memory browser.** Archived-session inventory (`GET /sessions/archive`, metadata only), a Decision browser with temporal supersession timeline (`GET /sessions/decisions`, `GET /sessions/timeline`), and curated-memory creation.
+- **Dashboard graph browser.** Search seed entities and explore the knowledge graph on a WebGL canvas (sigma.js, lazy-loaded) with click-to-expand neighbors, via `GET /graph/nodes` and `GET /graph/neighbors`.
+- **Dashboard polish.** One-click provider connectivity test (`POST /health/providers/test`), a log alerts strip, a Cmd/Ctrl+K command palette, and a cross-instance effective-config diff.
 
 ### Changed
-- feat(hooks): the SessionStart reminder (plugin hook + `install-session-hooks`
-  template) now includes the `query --json` result schema — per-result keys
-  `text`/`source`/`score`/`chunk_id` (no `file_path`, no line numbers), the
-  `{"error": …}`-without-`results` failure shape, and a "never append
-  `2>/dev/null`" rule — so AI agents parse query output correctly without
-  reading `--help`. Existing installs pick it up via `brainpalace
-  install-session-hooks` (plugin users get it with the plugin update). Both
-  hook copies updated in lockstep (setup-surface parity).
-- feat(skill): `using-brainpalace` skill gains a "Parsing `--json` Output"
-  section (result keys, error shape, canonical parse snippet, `2>/dev/null`
-  ban). This is the push channel for non-Claude runtimes — `brainpalace
-  install-agent` converts the skill into Codex/Gemini/opencode context files.
-- feat(query): the `--json` server-error payload now includes a `hint` field
-  teaching the success schema (`text`/`source`/`score`/`chunk_id`, no
-  `results` key on failure, non-zero exit) — failure time is the only contact
-  point for raw CLI consumers that never read `--help`. Connection errors
-  already carried a `hint`.
+- **SessionStart reminder now documents the `query --json` schema.** The plugin hook + `install-session-hooks` template include the per-result keys (`text`/`source`/`score`/`chunk_id`), the failure shape, and the "never append `2>/dev/null`" rule, so agents parse output correctly. Both hook copies updated in lockstep.
+- **`using-brainpalace` skill gains a "Parsing `--json` Output" section** (result keys, error shape, canonical parse snippet, `2>/dev/null` ban) — the push channel for non-Claude runtimes via `brainpalace install-agent`.
+- **`--json` server-error payload now includes a `hint` field** teaching the success schema, since failure time is the only contact point for raw CLI consumers that never read `--help`.
 
 ## [26.6.32] - 2026-06-10
 
 ### Added
-- feat(config): **layered config resolution — `code < global < project`.** The
-  server now resolves each config key by merging the global XDG `config.yaml`
-  under the project `config.yaml` (`load_merged_config_dict` / `load_raw_config`),
-  with code (pydantic) defaults beneath both; environment overrides still win
-  (`env > project > global > code`). Project config is **sparse** — `brainpalace
-  init` writes only values that diverge from what would be inherited; interactive
-  prompts default to the global value (flagged "from global") and accepting the
-  default leaves the project untouched so it keeps inheriting. New `brainpalace
-  config unset <dotpath>` removes a project key so it inherits from global/code,
-  reporting the new effective source. The dashboard config form shows a
-  provenance badge per field and an **unset** control (with the inherited target)
-  backed by `POST /config/unset`; `effective()` now returns the inherited
-  fallback for project-set keys. `--host`/`--language`/`--bm25-engine` flip to
-  inherit-by-default (`default=None`).
-- feat(indexing): per-job embedding token budget guard (`indexing.max_embed_tokens_per_job`, default 300k). Jobs that would embed more tokens than the budget are blocked with a clear error surfaced to the CLI. `force_budget: true` on `IndexRequest` bypasses the guard. `limit=0` disables it. Applied in the document pipeline, git-history index service, and session index service.
-- feat(folders): record + log folder-add provenance (trigger source).
-- feat(estimate): server-less in-process token estimate (`brainpalace_server.services.estimate.estimate_tokens_local`) so `brainpalace init` can show the cost estimate before starting a server or writing any index data.
+- **Layered config resolution — `code < global < project`.** The server merges the global XDG config under the project config per key (env still wins on top), and the project file is sparse — `init` writes only values that diverge from the inherited one. New `brainpalace config unset <dotpath>` removes a project key so it inherits again, surfaced in the dashboard config form as a provenance badge + unset control (`POST /config/unset`).
+- **Per-job embedding token budget guard** (`indexing.max_embed_tokens_per_job`, default 300k). Jobs over budget are blocked with a clear CLI error; `force_budget: true` bypasses and `limit=0` disables it. Applied in the document, git-history, and session index pipelines.
+- **Folder-add provenance** (trigger source) is recorded and logged.
+- **Server-less in-process token estimate** (`estimate_tokens_local`) so `init` can show the cost estimate before starting a server or writing index data.
 
 ### Fixed
-- fix(query): reranking no longer returns HTTP 500 for ordinary `top_k`. With reranking enabled, the stage-1 over-fetch (`top_k × RERANKER_TOP_K_MULTIPLIER`, capped at `RERANKER_MAX_CANDIDATES`=100) rebuilt a public `QueryRequest`, tripping its `top_k ≤ 50` validator and surfacing as `Server Error (500): Query failed: … top_k Input should be less than or equal to 50` whenever `top_k × multiplier > 50` (default multiplier 10 → any `top_k ≥ 6`). Stage-1 now uses `request.model_copy(update={"top_k": stage1_top_k})`, bypassing the public-input ceiling for the internal over-fetch while staying bounded by `RERANKER_MAX_CANDIDATES`.
-- docs(cli): `brainpalace query --help` now documents the `--json` output schema — per-result keys are `text`/`source`/`score`/`chunk_id` (not `content`/`file_path`), and on failure `--json` emits `{"error": …}` (no `results` key) **and** exits non-zero, so consumers must check the exit code rather than only the presence of `results`.
-- fix(lifecycle): reap orphan server processes — `brainpalace stop --all` and `brainpalace doctor --reap` kill running `brainpalace_server.api.main` processes that no live registry entry references (leaked servers from a different install surface that hold ports and make `auto_port` climb). `start` now also reuses a project's live registry server (`find_reusable_server`) instead of spawning a duplicate on a climbed port when the project's own `runtime.json` is missing/stale.
-- fix(init): run the pre-index token estimate **before** writing index data; cancelling at the estimate rolls back the `.brainpalace` created this run (never an existing one). A pre-existing `.brainpalace` now prompts delete / keep (resume) / cancel up front instead of silently rebuilding. Index data dirs are created only after the estimate is accepted; the estimate is asked exactly once, up front (removed the duplicate prompt inside the start/watch step).
-- fix(estimate): include git-history and session embedding in the pre-index token estimate.
-- fix(folders): prune folder records for deleted paths on startup; add `brainpalace folders prune`.
-- fix(git): scope git-history indexing to the project subdir in monorepos (was embedding the entire monorepo history).
-- Job "Files" metric showed `0 / 0` for code-only index jobs (most real jobs).
-  The 26.6.31 fix threaded real file counts only through the doc-chunker
-  callback; the code-chunker progress callback is commented-out/unused, so
-  code-only runs never set `files_total`. Now the real document count is reported
-  on the existing 10% "Chunking documents" progress tick (which clears the
-  persist-threshold), so `files_total` is set for every run regardless of
-  doc/code mix. Verified live: a watcher re-index now shows e.g. `13 / 13`.
-- `brainpalace update` now prints the dashboard URL panel after restarting the
-  dashboard (parity with `start` / `dashboard start`) — it restarts with
-  `dashboard start --no-open --json` and renders the same `render_dashboard_url`
-  box. Previously the restart was silent about the URL.
+- **Reranking no longer returns HTTP 500 for ordinary `top_k`.** The stage-1 over-fetch rebuilt a public `QueryRequest`, tripping its `top_k ≤ 50` validator (any `top_k ≥ 6` at the default multiplier). Stage-1 now uses `model_copy`, bypassing the public ceiling while staying bounded by `RERANKER_MAX_CANDIDATES`.
+- **`brainpalace query --help` documents the `--json` output schema** — keys are `text`/`source`/`score`/`chunk_id`, and on failure `--json` emits `{"error": …}` (no `results`) and exits non-zero, so consumers must check the exit code.
+- **Reap orphan server processes.** `brainpalace stop --all` and `doctor --reap` kill running server processes no live registry entry references; `start` reuses a project's live registry server instead of spawning a duplicate on a climbed port.
+- **`init` runs the token estimate before writing index data;** cancelling rolls back the `.brainpalace` created this run. A pre-existing `.brainpalace` prompts delete / keep / cancel up front, and the estimate is asked exactly once.
+- **Include git-history and session embedding in the pre-index token estimate.**
+- **Prune folder records for deleted paths on startup;** add `brainpalace folders prune`.
+- **Scope git-history indexing to the project subdir in monorepos** (was embedding the entire monorepo history).
+- **Job "Files" metric showed `0 / 0` for code-only jobs.** The real document count is now reported on the 10% "Chunking documents" tick, so `files_total` is set for every run regardless of doc/code mix.
+- **`brainpalace update` now prints the dashboard URL panel after restarting** (parity with `start` / `dashboard start`); previously the restart was silent about the URL.
 
 ---
 
 ## [26.6.31] - 2026-06-09
 
 ### Added
-- Pre-index embedding-token estimate: `brainpalace index <path> --estimate`
-  prints an approximate embedding-token count (files, code/doc split, tokenizer)
-  **without** indexing, using the exact same file-selection rules as a real index
-  (.gitignore, default excludes, nested-project exclusion, include/exclude
-  patterns, file types). New server endpoint `POST /index/estimate`
-  (`IndexingService.estimate_tokens`, tiktoken for OpenAI / chars-4 heuristic
-  otherwise, chunk-overlap inflation). `brainpalace init` asks (opt-in, default
-  no, interactive only) whether to show the estimate before the first index;
-  after it, you can proceed, **toggle code/docs scope and re-estimate**, or skip
-  indexing. New `brainpalace init --include-code/--no-code` (default on) threads
-  the code/docs choice through **both** the estimate and the first index, so the
-  estimate matches what is actually indexed (was previously hardcoded to include
-  code).
-- Dashboard instance detail header now carries inline Start / Stop / Restart
-  (+ Open) controls for the selected instance, so bouncing the instance you're
-  viewing no longer requires detouring through Server → Instances.
-- Per-job chunk deltas: indexing jobs now record `chunks_added` / `chunks_removed`
-  (server `JobSummary` + `JobDetailResponse`). The Jobs table gains **+Chunks** /
-  **−Chunks** columns and a computed **Duration** column (right of Started); the
-  job-detail drawer shows "Chunks added" / "Chunks removed" plus a distinct
-  "Index total".
+- **Pre-index embedding-token estimate.** `brainpalace index <path> --estimate` prints an approximate embedding-token count without indexing, using the exact file-selection rules of a real index (new `POST /index/estimate`). `init` offers it before the first index, where you can proceed, toggle code/docs scope and re-estimate, or skip; new `--include-code/--no-code` threads that choice through both the estimate and the index.
+- **Dashboard instance detail header gains inline Start / Stop / Restart (+ Open)** for the selected instance, so bouncing the instance you're viewing no longer detours through Server → Instances.
+- **Per-job chunk deltas.** Jobs now record `chunks_added` / `chunks_removed`; the Jobs table gains **+Chunks** / **−Chunks** and a computed **Duration** column, and the job-detail drawer shows added/removed plus a distinct "Index total".
 
 ### Changed
-- Jobs table merges the old separate **Status** and **Progress** columns into one:
-  the status badge always, with an inline progress bar shown only while a job is
-  active (the standalone progress column was dead weight for finished jobs).
+- **Jobs table merges Status and Progress into one column** — the badge always, with an inline progress bar only while a job is active.
 
 ### Fixed
-- Job "Files" count no longer always reads `100 / 100`. `JobProgress` now stores
-  the pipeline's phase-weighted percent in a dedicated `percent` field, decoupled
-  from `files_processed` / `files_total`, which now carry real document counts.
-- Job detail no longer shows the same number for "Chunks" and "Chunks created":
-  the per-job insert delta (`chunks_added`) is computed from the store count
-  before/after plus eviction, distinct from the index-wide `total_chunks`.
-- Dashboard "update available" banner no longer goes stale after an upgrade.
-  `update_check` now caches only the PyPI `latest` (6h TTL) and reads the
-  *installed* version live on every poll, so the banner self-clears the moment
-  an in-place upgrade makes installed ≥ latest — even if the dashboard process
-  was never restarted (previously the whole payload was cached, so a stale
-  "26.6.x available" notice could linger for up to the TTL).
+- **Job "Files" count no longer always reads `100 / 100`.** `JobProgress` stores the phase-weighted percent in a dedicated `percent` field, decoupled from `files_processed` / `files_total`, which now carry real document counts.
+- **Job detail no longer shows the same number for "Chunks" and "Chunks created"** — the per-job insert delta is computed from the store count before/after plus eviction, distinct from index-wide `total_chunks`.
+- **Dashboard "update available" banner no longer goes stale after an upgrade.** `update_check` caches only the PyPI `latest` (6h TTL) and reads the installed version live each poll, so the banner self-clears the moment installed ≥ latest.
 
 ### Changed
-- `brainpalace update` now prints a pre-flight notice listing the running
-  servers / control-plane dashboard *before* the upgrade runs (they keep
-  serving old code until restarted). The restart itself still happens after the
-  upgrade, on confirmation — stopping instances first would needlessly kill the
-  dashboard mid-upgrade.
+- **`brainpalace update` prints a pre-flight notice** listing the running servers / dashboard before the upgrade (they keep serving old code until restarted, which still happens after the upgrade on confirmation).
 
 ---
 
 ## [26.6.30] - 2026-06-08
 
 ### Added
-- Server self-registration: a running server now writes its own `runtime.json` and
-  global `registry.json` entry (learned from the bound socket) regardless of how it
-  was launched, and re-asserts every 180s — fixing servers (orphaned, raw-uvicorn,
-  IDE-launched) being invisible to the dashboard.
-- Server-side self-heal heartbeat: restarts a dead file watcher or job worker,
-  rebuilds a corrupt vector index (crash-safe file-only check), and relaunches the
-  web dashboard if it is down (locked, single-launch).
-- Dashboard config save now guards against data-incompatible changes: editing the
-  embedding provider/model, storage backend, or graph store type while data is
-  indexed is blocked with an explanation and a "Save & reindex now" action
-  (server exposes a read-only `GET /index/fingerprint`).
-- Per-field help across Storage, GraphRAG, Git Indexing, Reranker, and Session
-  Extraction, plus per-section descriptions distinguishing Session Extraction
-  (curated summary) from Session Indexing (raw transcript archive/embedding).
+- **Server self-registration.** A running server writes its own `runtime.json` and global `registry.json` entry (learned from the bound socket) regardless of launch path and re-asserts every 180s — fixing servers being invisible to the dashboard.
+- **Server-side self-heal heartbeat.** Restarts a dead file watcher or job worker, rebuilds a corrupt vector index (crash-safe file-only check), and relaunches the dashboard if down.
+- **Dashboard config save guards against data-incompatible changes.** Editing the embedding provider/model, storage backend, or graph store type while data is indexed is blocked with a "Save & reindex now" action (new read-only `GET /index/fingerprint`).
+- **Per-field help across Storage, GraphRAG, Git Indexing, Reranker, and Session Extraction,** plus section descriptions distinguishing Session Extraction (curated summary) from Session Indexing (archive/embedding).
 
 ### Changed
-- Single locked writer for `registry.json` (server `registry.py`); CLI
-  `update_registry` now delegates to it (no more lockless writes).
-- One `build_server_command` builds the uvicorn argv for all CLI/MCP launch paths;
-  foreground + MCP no longer hand-copy the spawn block.
-- One `render_dashboard_url` renders the hot_pink dashboard box for
-  `init`/`start`/`dashboard`.
+- **Single locked writer for `registry.json`** (server `registry.py`); CLI `update_registry` delegates to it (no more lockless writes).
+- **One `build_server_command`** builds the uvicorn argv for all CLI/MCP launch paths.
+- **One `render_dashboard_url`** renders the dashboard box for `init`/`start`/`dashboard`.
 
 ### Fixed
-- `brainpalace config` wizard now defaults graphrag `store_type` to `sqlite`
-  (persistent, temporal) instead of the ephemeral `simple`, matching the server
-  default and the dashboard.
+- **`config` wizard now defaults graphrag `store_type` to `sqlite`** (persistent, temporal) instead of ephemeral `simple`, matching the server and dashboard defaults.
 
 ## [26.6.29] - 2026-06-08
 
 ### Added
-- **`brainpalace update` restarts running servers + the dashboard.** After a
-  successful upgrade, update now detects every running per-project server (from
-  the global registry) and the control-plane dashboard, and offers to restart
-  them so they load the new code — prompt defaults to **yes**; `--yes`
-  auto-confirms; `--no-restart` keeps the old manual-hint behavior. Each project
-  server is bounced with `--no-dashboard` so the dashboard restarts exactly once.
+- **`brainpalace update` restarts running servers + the dashboard.** After a successful upgrade it detects every running per-project server and the dashboard and offers to restart them (default yes; `--yes` auto-confirms; `--no-restart` keeps the old behavior). Each server is bounced with `--no-dashboard` so the dashboard restarts exactly once.
 
 ## [26.6.28] - 2026-06-07
 
 ### Added
-- **Dashboard update notification.** The control plane now shows a top-of-app
-  banner when a newer `brainpalace-cli` is published on PyPI — *"BrainPalace X is
-  available … run `brainpalace update`"*. New best-effort endpoint
-  `GET /dashboard/api/settings/update-check` (6h in-process TTL; degrades silently
-  to `update_available: false` on any network/parse failure) backed by
-  `services/update_check.py`. No new config; the banner is informational only and
-  performs no automatic upgrade.
-- **Dashboard job detail.** Jobs-tab rows are now clickable and open a drawer
-  showing what each job did — documents/chunks indexed, duration, files
-  processed, and the manifest eviction (added/changed/deleted) breakdown — via
-  the existing `/index/jobs/{job_id}` endpoint (previously unused by the SPA).
+- **Dashboard update notification.** A top-of-app banner appears when a newer `brainpalace-cli` is on PyPI, via the best-effort `GET /dashboard/api/settings/update-check` (6h TTL, degrades silently). Informational only — no automatic upgrade.
+- **Dashboard job detail.** Jobs-tab rows are now clickable and open a drawer showing documents/chunks indexed, duration, files processed, and the eviction breakdown, via the existing `/index/jobs/{job_id}`.
 
 ### Changed
-- **`brainpalace init` surfaces the dashboard URL.** `init --start` ran the
-  server start as a `start --json` subprocess, which suppressed both the browser
-  open and the URL print. Init now extracts the dashboard URL from that step and
-  shows it in a pink-bordered panel (opening a browser when interactive).
-- **`brainpalace init` prompt defaults.** Enter-defaults are now: summarize chat
-  sessions = **N**, index git commit history = **Y**, commits-back-to-index =
-  **5000**.
-- **Dashboard config pages load again.** `ui_schema` had `visible_when.equals`
-  as a boolean for `bm25.detect`; the SPA schema requires a string, which broke
-  `/dashboard/config` and `/dashboard/global-config` with a zod `invalid_type`.
-- **Dashboard queries default window** is now **24h** (was 7d).
+- **`brainpalace init` surfaces the dashboard URL.** Init now extracts the URL from its `start --json` step and shows it in a pink panel (opening a browser when interactive), instead of suppressing it.
+- **`brainpalace init` prompt defaults** are now: summarize chat sessions = N, index git commit history = Y, commits-back-to-index = 5000.
+- **Dashboard config pages load again.** `ui_schema` had `visible_when.equals` as a boolean for `bm25.detect`; the SPA requires a string, which broke `/dashboard/config` and `/dashboard/global-config`.
+- **Dashboard queries default window is now 24h** (was 7d).
 
 ## [26.6.27] - 2026-06-07
 
 ### Changed
-- **Config validation hardening (Phase 5).** The shared `validate_config_dict`
-  (CLI `config validate` + dashboard save) now enforces numeric **ranges**, not
-  just types — so bad values are rejected inline at save instead of failing later
-  at server startup/first API call. New `_RANGE_RULES`: ports (`api.port`,
-  `server.port`, `storage.postgres.port`) must be 1–65535;
-  `bm25.detect_min_confidence` 0.0–1.0; and the count/duration fields
-  (`*.retain_days`, `session_indexing.window/stride/watch_debounce_ms`,
-  `git_indexing.depth/max_files`, `session_extraction.quiescence_seconds`, and
-  the new `indexing.*`) must be ≥ 0. The range pass skips non-numeric values so a
-  type error isn't double-reported. (The config.json runtime bind already
-  validated port ordering `start ≤ end` + non-empty host since Phase 2.
-  Deliberately omitted as false-positive-prone: hard provider/model-list
-  compatibility — recommended lists are non-exhaustive and "Custom…" is allowed —
-  and required-`base_url`, since `grok`/`ollama` carry `needs_base_url` yet have
-  working defaults.)
-- **Dashboard perf + clearer labels (Phase 4).**
-  - Dropped `backdrop-blur` from the base `.panel` surface and the sidebar — it
-    was active on every panel + the rail simultaneously, causing repaint storms
-    and high CPU on scroll (especially Firefox). Solid translucent backgrounds
-    (bumped opacity) replace it; transient overlay blurs (dialogs/drawers) stay.
-  - Honor `prefers-reduced-motion`: the forever-running pulse/spin animations
-    (StatusDot, JobProgress, Jobs) are neutralized for users who opt out.
-  - `memo`'d the recharts components (`VolumeChart`/`LatencyChart`/`ChunkBarChart`
-    /`HitRateGauge`) so the dashboard's interval polling no longer re-runs their
-    expensive measure/animation passes when the data is referentially unchanged.
-    (Charts already lazy-mount — each lives behind its own route.)
-  - Bumped the vitest `testTimeout` to 15s — the 5s default was flaky under load.
-  - Relabels: reranker (and all) toggles now show a high-contrast
-    **Enabled/Disabled** state text beside the switch (#9); `bm25.detect` →
-    **"Auto-detect language (per document)"** with `bm25.language` reframed as
-    **"Default / fallback language"** and `detect_min_confidence` shown only when
-    auto-detect is on (#12, kept both valid — relabel only);
-    `session_indexing.sessions_dir` → **"Transcript source dir (override)"** to
-    distinguish it from the archive directory (#13).
+- **Config validation hardening (Phase 5).** The shared `validate_config_dict` now enforces numeric ranges, not just types, so bad values are rejected at save instead of at server start — ports 1–65535, `bm25.detect_min_confidence` 0.0–1.0, and count/duration fields ≥ 0. Deliberately omitted as false-positive-prone: hard provider/model compatibility and required-`base_url`.
+- **Dashboard perf + clearer labels (Phase 4).** Dropped repaint-storming `backdrop-blur` from the base panel/sidebar, honored `prefers-reduced-motion`, and memo'd the recharts components so interval polling stops re-running expensive passes. Relabels: high-contrast Enabled/Disabled toggle text (#9), `bm25.detect` → "Auto-detect language (per document)" with `bm25.language` reframed as the default/fallback (#12), and `session_indexing.sessions_dir` → "Transcript source dir (override)" (#13).
 
 ### Added
-- **Large-file re-embed guard (anti-churn).** A large, frequently-changing file
-  (minified bundles, build artifacts, logs, data dumps) used to be fully
-  re-embedded on every change → runaway embedding cost (a 871 KB SPA bundle =
-  1,425 chunks re-embedded 12× in one day). Path-agnostic systemic fix:
-  - **Per-file re-embed cooldown for LARGE files** in
-    `ChunkEvictionService._compute_incremental_diff`. A changed file that is
-    *large* (prior chunk-count ≥ `big_file_chunks` **or** byte size ≥
-    `max_file_bytes_throttle`) and was embedded within `reembed_cooldown_seconds`
-    is **deferred**: its existing chunks are kept, it is not re-embedded, and its
-    prior `FileRecord` is preserved verbatim so it re-checks the cooldown next
-    run — bounding cost to ≤ 1 re-embed per cooldown window (coalesces churn,
-    serves the latest content when the window elapses). First index and
-    `--force` always embed; small files are never throttled. New
-    `EvictionSummary.files_deferred`; `FileRecord` gains `last_embedded_at` +
-    `size_bytes` (legacy manifests default both to 0 = "embed once").
-  - **Skip-minified heuristic** in `DocumentLoader` (`skip_minified`, default
-    on): `*.min.js`/`*.min.css`, a single line > 50 000 chars, or very low
-    newline density on a large file are dropped at load time (zero embed cost).
-  - **New `indexing:` config block** (auto-renders in the dashboard form via
-    `config_schema`): `reembed_cooldown_seconds` (3600, 0 = off),
-    `big_file_chunks` (200), `max_file_bytes_throttle` (262144),
-    `skip_minified` (true). Env overrides: `REEMBED_COOLDOWN_SECONDS`,
-    `INDEX_BIG_FILE_CHUNKS`, `INDEX_MAX_FILE_BYTES`, `INDEX_SKIP_MINIFIED`.
-  - Observability: deferred count surfaced in the index-job result
-    (`files_deferred`) and in the manifest-diff / job-worker log lines; the
-    per-file deferral logs a WARNING naming the file. (Rejected by design: a
-    per-run circuit breaker — it can starve a legitimately-large file.)
-- **Provider-driven config forms + one canonical model map.** New
-  `brainpalace-cli/brainpalace_cli/providers.py` is the single source of truth
-  per kind (embedding/summarization/reranker) and provider:
-  `{models (first = recommended), needs_base_url, default_api_key_env}`. Model
-  IDs are sourced from the repo's current authoritative lists (README provider
-  tables + server provider modules + the CLI wizard); the env-var conventions
-  mirror `brainpalace_server.config.provider_config`.
-  - The dashboard `GET /schema` now includes the `providers` descriptor. In the
-    embedding/summarization/reranker sections the frontend reshapes the form
-    when the selected provider changes: `model` presets follow the provider,
-    `base_url` shows only when `needs_base_url`, and `api_key_env`'s placeholder
-    is the provider's conventional env var (data-driven, no per-provider JSX).
-  - Reused everywhere: the stale dashboard model presets (`claude-3-5-haiku-latest`,
-    `claude-sonnet-4-6`, `gpt-4o-mini`) are replaced with descriptor-sourced
-    presets; the CLI `config wizard` model suggestions derive from `providers.py`;
-    the README provider tables mirror it (and a new Reranker table was added).
-  - Added per-field help on provider/model/base_url/api_key/api_key_env and the
-    reranker enabled/provider/model/base_url fields.
-- **Dashboard: all three config scopes are now editable, clearly separated.**
-  - **Global config** (machine-wide `~/.config/brainpalace/config.yaml`) gets a
-    dedicated tab on the **Server** (control-plane) page, alongside the existing
-    **Dashboard settings** tab. New dashboard API `GET/PATCH
-    /dashboard/api/global-config` (masked read, 422 `{errors}`, secret-merge +
-    atomic write — same machinery as the per-project config path, via new
-    `ConfigService.read_global()` / `write_global()`).
-  - **Per-project runtime bind** (`<project>/.brainpalace/config.json`:
-    `bind_host` / `port_range_start` / `port_range_end` / `auto_port`) gets a
-    per-instance **Runtime** tab. New dashboard API `GET/PATCH
-    /dashboard/api/instances/{id}/runtime-config` (validates port 1–65535,
-    start ≤ end, non-empty host; bind changes need a restart — response carries
-    `restart_required`, and the UI offers Save + Restart).
-  - **Previously-hidden per-project fields surfaced:** `embedding/summarization/
-    reranker.params` (new key/value **dict** editor), `git_indexing.path_filter`
-    (new **string-list** editor), and `session_indexing.archive`
-    (`enabled`/`dir`/`retain_days`/`reconcile_seconds`) expanded as a nested
-    group. `server.*`/`api.*` stay hidden in the YAML form (no-op there) — they
-    are edited via the new Runtime panel instead.
-- **`brainpalace start` now brings up the web dashboard and prints its URL.** On
-  Python 3.12+ (where the dashboard ships with the CLI), starting a project
-  server also ensures the singleton control-plane dashboard is running and prints
-  a clickable `Dashboard:` URL — opening a browser **only** when it actually
-  launches the dashboard (never on repeat starts, never under `--json` or in a
-  non-TTY/CI). `--json` adds a `"dashboard": {base_url, started}` object. Opt out
-  per-run with `brainpalace start --no-dashboard`, or persistently with
-  `dashboard.autostart: false` (new key in the `dashboard:` block of the XDG
-  config, surfaced as a toggle in the dashboard **Settings** tab). On Python
-  3.10/3.11 (dashboard not installed) `start` is unchanged — it silently skips.
-  The dashboard launch is best-effort: a failure never fails `brainpalace start`.
-  New dashboard API `brainpalace_dashboard.server.ensure_running()` (idempotent:
-  returns the running dashboard untouched, else launches it).
+- **Large-file re-embed guard (anti-churn).** A large, frequently-changing file (minified bundles, build artifacts) used to be fully re-embedded on every change, causing runaway cost. A per-file re-embed cooldown defers large changed files within `reembed_cooldown_seconds` (keeping their chunks), a `skip_minified` heuristic drops minified files at load time, and a new `indexing:` config block exposes the knobs (`reembed_cooldown_seconds`, `big_file_chunks`, `max_file_bytes_throttle`, `skip_minified`) with env overrides.
+- **Provider-driven config forms + one canonical model map.** New `providers.py` is the single source of truth per kind/provider (`models`, `needs_base_url`, `default_api_key_env`); `GET /schema` exposes it so the dashboard reshapes embedding/summarization/reranker forms when the provider changes. The CLI wizard suggestions and README provider tables now derive from it, and per-field help was added.
+- **Dashboard: all three config scopes are now editable, clearly separated.** Global config gets a dedicated tab on the Server page (`GET/PATCH /dashboard/api/global-config`); the per-project runtime bind (`config.json`: host/port-range/auto_port) gets a per-instance Runtime tab (`GET/PATCH .../runtime-config`, restart-aware). Previously-hidden per-project fields (`*.params`, `git_indexing.path_filter`, `session_indexing.archive`) are now surfaced.
+- **`brainpalace start` brings up the web dashboard and prints its URL.** On Python 3.12+ it ensures the singleton dashboard is running and prints a clickable URL, opening a browser only when it actually launches it (never under `--json`/CI). Opt out per-run with `--no-dashboard` or persistently with `dashboard.autostart: false`; the launch is best-effort and never fails `start`.
 
 ## [26.6.26] - 2026-06-07
 
@@ -350,911 +156,269 @@ BrainPalace project server — published to PyPI and **included with the CLI
 automatically on Python 3.12+**.
 
 ### Packaging
-- **`brainpalace-dashboard` is now published to PyPI and bundled with the CLI.**
-  The control-plane dashboard is a third lockstep package (with `brainpalace-rag`
-  and `brainpalace-cli`, same CalVer). It is a **regular CLI dependency carrying a
-  `python >= 3.12` marker** — so `pipx install brainpalace` pulls it in
-  automatically on Python 3.12+, and on Python 3.10/3.11 it's simply skipped (the
-  CLI still installs). It is **not** an opt-in extra. The release workflow gained
-  a `publish-dashboard` job (published after the cli via its own OIDC Trusted
-  Publisher) and the tag/version guard now covers all three `pyproject.toml`
-  versions. The dashboard's source-only `brainpalace-cli` path dependency is
-  swapped to the released version at build time.
+- **`brainpalace-dashboard` is now published to PyPI and bundled with the CLI.** It is a third lockstep package carried as a regular CLI dependency with a `python >= 3.12` marker, so `pipx install brainpalace` pulls it in on 3.12+ and skips it on 3.10/3.11 (not an opt-in extra). The release workflow gained a `publish-dashboard` job and the version guard now covers all three `pyproject.toml` versions.
 
 ### Changed
-- **Reranking is now ON by default and config-controllable.** Two-stage
-  reranking (a local cross-encoder that re-scores the top candidates for finer
-  relevance) is enabled by default. It's **local — no API/token cost**; it adds
-  a little query latency and a one-time model download. New config key
-  `reranker.enabled` (default `true`) is the per-project switch — `brainpalace
-  init` writes it and accepts `--reranking/--no-reranking`; the dashboard Config
-  tab shows a toggle. The `ENABLE_RERANKING` env var still overrides config.
-  Previously reranking was OFF and enableable only via that env var. Disable
-  with `reranker.enabled: false`, `brainpalace init --no-reranking`, or
-  `ENABLE_RERANKING=false`.
+- **Reranking is now ON by default and config-controllable.** The local cross-encoder re-scores top candidates for finer relevance — no API/token cost, a little latency and a one-time model download. New `reranker.enabled` (default `true`) is the per-project switch (`init` writes it, `--reranking/--no-reranking`, dashboard toggle); `ENABLE_RERANKING` still overrides.
 
 ### Added
-- **Dashboard: config defaults are surfaced.** Every config control shows its
-  effective default next to the label (e.g. `default: 30000`), so a setting
-  omitted from a project's `config.yaml` no longer looks broken/empty. Unset int
-  steppers show the default value (not `0`); the default enum option is marked
-  when nothing is selected (e.g. storage backend → `chroma default`); free-text
-  fields use the default as a placeholder. Applies to instance config and the
-  control-plane Settings tab. The all-hidden, runtime-managed sections
-  (API/Server/Project) are no longer rendered as empty section headers.
-- **Dashboard: Server and Instance are now separate pages.** The left rail has a
-  **Server** (control-plane) entry above the instance list; selecting it shows
-  only the server tabs (Overview/Instances/Settings), while selecting an instance
-  shows only that instance's tabs (Status/Config/Folders/…). The two tab sets no
-  longer mix.
-- **Dashboard: Status tab now mirrors `brainpalace status` in full** — server
-  version, documents/chunks (code+doc), indexing state, indexed folder paths,
-  last indexed, file watcher, session archive/memory/summarization, embedding
-  cache (entries + hit rate + hits/misses), graph index (store + entities/rels),
-  LSP, git index, and BM25 language/engine. (Adds a `GET
-  /dashboard/api/instances/{id}/health` proxy for the server version.)
-- **Dashboard: control-plane "Settings" tab.** A fleet-scoped Settings tab edits
-  the dashboard's **own** config (`host`/`port`/`poll_s`/`token` in the
-  `dashboard:` block of the XDG `config.yaml`) — separate from the per-instance
-  Config tab. The token is write-only (never echoed); `host`/`port`/`token` apply
-  on the next `brainpalace dashboard` restart, `poll_s` on reload. New
-  control-plane endpoints `GET`/`PATCH /dashboard/api/settings`.
-- **Dashboard: per-instance "Status" tab + grouped tabs.** A new instance-scoped
-  Status tab shows the full `brainpalace status` view for the selected instance
-  (documents/chunks/folders/languages/graph/git/cache/watcher). The tab bar now
-  visually separates **Fleet** tabs (Overview, Instances) from the
-  **per-instance** group (labeled with the selected instance).
-- **Dashboard: confirmation on every mutating action.** Config Save / Save +
-  Restart, instance Start, and "mark memory obsolete" now prompt for confirmation
-  (joining the already-confirmed Stop/Restart/Remove/Clear/Reset/Delete/Cancel/
-  Re-index actions).
+- **Dashboard: config defaults are surfaced.** Every control shows its effective default next to the label, so an omitted setting no longer looks broken; the all-hidden runtime sections (API/Server/Project) are no longer rendered as empty headers.
+- **Dashboard: Server and Instance are now separate pages.** The rail has a Server (control-plane) entry above the instance list; selecting Server shows only server tabs and selecting an instance shows only its tabs.
+- **Dashboard: Status tab mirrors `brainpalace status` in full** — version, code+doc documents/chunks, indexing state, folders, watcher, sessions, cache, graph, LSP, git, and BM25 language/engine (adds a `/health` proxy for the version).
+- **Dashboard: control-plane "Settings" tab.** Edits the dashboard's own config (`host`/`port`/`poll_s`/`token` in the `dashboard:` block) — the token is write-only — via `GET`/`PATCH /dashboard/api/settings`.
+- **Dashboard: per-instance "Status" tab + grouped tabs.** A new instance-scoped Status view, with the tab bar visually separating Fleet tabs from the per-instance group.
+- **Dashboard: confirmation on every mutating action.** Config Save / Save+Restart, instance Start, and "mark memory obsolete" now prompt, joining the already-confirmed actions.
 
 ### Fixed
-- **`brainpalace dashboard start` now backgrounds properly.** It detached the
-  uvicorn child but left it attached to the terminal's stdin/stdout/stderr and
-  process group, so the shell looked "locked" and logs spammed it. The child now
-  starts in its own session with output redirected to `<XDG_STATE>/dashboard.log`
-  — the prompt returns immediately. Use `--foreground` to run attached.
-- **Dashboard: Graph/Sessions/Overview no longer error on real instances.** The
-  status schema typed `indexed_folders` as a number, but the server returns the
-  folder **list** — the Zod parse threw (`Expected number, received array`),
-  breaking every status-backed tab. It now accepts the list (and derives the
-  count from it).
-- **Dashboard: Logs tab degrades gracefully.** When a project server predates
-  the `/health/logs` endpoint (or has no log file yet) the tab shows a clear
-  "log tailing unavailable" note instead of a hard "Not Found" error.
-
-- **`brainpalace dashboard` command + web control plane.** A standalone
-  FastAPI/React dashboard manages every project server from one browser tab
-  (instances, config, stats, jobs, cache, graph, sessions, logs, query
-  history). `brainpalace dashboard start|stop|status` launches/stops/inspects
-  it via its own port scan (8787→8887) and runtime pidfile (`dashboard.json`
-  under XDG state), opening a browser by default (`--no-open`/`--foreground`).
-  Config lives under the `dashboard:` section of `config.yaml`
-  (host/port/poll_s/token); an optional bearer token
-  (`BRAINPALACE_DASHBOARD_TOKEN` or `dashboard.token`) guards
-  `/dashboard/api/**` for shared machines (localhost is unguarded by default).
-  Included with the CLI automatically on Python 3.12+ (regular dependency with a
-  `python >= 3.12` marker, skipped on 3.10/3.11); imported lazily with a friendly
-  install hint when absent. The dashboard is CLI-launched, not an MCP surface.
-  See [DASHBOARD](DASHBOARD.md).
-- **Server query history (SQLite) + dashboard Queries tab.** Every successful
-  query is recorded (with truncated results) to a per-project SQLite log at
-  `.brainpalace/query_log.db`, with a new `query_log.{enabled,retention_days}`
-  config section (ON by default, 7-day retention; `QUERY_LOG_ENABLED=false`
-  kill switch). New server endpoints `GET /query/history`,
-  `GET /query/history/{qid}` and `GET /health/logs` (tails
-  `.brainpalace/server.log`); the control-plane dashboard proxies history,
-  detail and live replay.
-
-- **Dashboard parity gate.** New `task lint:dashboard-parity` (wired into
-  `task before-push`) fails when a config option, CLI command, or project-server
-  endpoint is added without being surfaced in the control-plane dashboard or
-  explicitly allowlisted with a reason. The gate imports the live
-  `config_schema`, the live Click command group, and the live FastAPI app and
-  diffs them against checked-in coverage maps
-  (`brainpalace-dashboard/brainpalace_dashboard/coverage_maps.py`:
-  `CLI_DASHBOARD_COVERAGE`, `ENDPOINT_SURFACES`; `ui_schema.DASHBOARD_HIDDEN_FIELDS`
-  for config). Governance rule added to `CLAUDE.md`,
-  `docs/DEVELOPERS_GUIDE.md`, and the release checklist in `docs/RELEASING.md`.
-
-- **Dashboard E2E + polish.** Playwright end-to-end suite for the dashboard
-  (`e2e/dashboard/`, `task test:e2e-dashboard`) drives the full lifecycle
-  (start → add folder + index job → run a query → edit config + Save+Restart →
-  stop) and an `@axe-core/playwright` accessibility check against a real control
-  plane + throwaway project server. Every tab gained loading / empty / error
-  (with Retry) states; a new Queries "New query" composer runs a live query
-  inline and logs it to history. Accessibility fixes: WCAG-AA contrast for
-  faint text, `role="img"` on status dots, and a focus-trap in `ConfirmDialog`.
-  Performance: fleet liveness rides a single SSE stream (no per-tab `/instances`
-  polling), per-tab `staleTime` is 3–5 s, and no refresh interval is faster than
-  1.5 s — documented in `docs/DASHBOARD.md` → Performance.
-
-### Fixed
-- **Config validation + dashboard Config save on real projects.** `config_schema`
-  now recognizes the `bm25`, `git_indexing`, `session_indexing`, and
-  `session_extraction` sections that real `config.yaml` files already carry (the
-  validator only modeled a subset). Previously the dashboard's `ConfigService`,
-  which validates the merged whole config all-or-nothing, failed on every project
-  with these sections — breaking the Config tab in production. Completing the
-  validator for these already-existing sections fixes it (no plugin/MCP behavior
-  change). The dashboard editor is now also tolerant of unknown top-level
-  sections / unknown subfields: it never blocks a save on them (genuine enum/type
-  errors still block) and preserves them verbatim, so legacy fields and
-  other-tool config sections survive a save. The dashboard editor now blocks a
-  save only on validation errors in fields the save actually **changes**, so a
-  pre-existing value the user never touched (e.g. a newly-valid enum the
-  validator hasn't caught up to) can no longer make the Config tab unusable.
-  `config_schema` also recognizes `graphrag.store_type: sqlite` (the current
-  default backend), which it previously rejected.
+- **`brainpalace dashboard start` now backgrounds properly.** The child now starts in its own session with output redirected to `<XDG_STATE>/dashboard.log`, so the prompt returns immediately (`--foreground` runs attached).
+- **Graph/Sessions/Overview no longer error on real instances.** The status schema typed `indexed_folders` as a number, but the server returns the list; it now accepts the list and derives the count.
+- **Logs tab degrades gracefully** when a server predates `/health/logs` or has no log file — a clear note instead of a hard "Not Found".
+- **`brainpalace dashboard` command + web control plane.** A standalone FastAPI/React dashboard manages every project server from one browser tab (instances, config, stats, jobs, cache, graph, sessions, logs, history) via its own port scan (8787→8887) and pidfile. An optional bearer token (`dashboard.token`) guards `/dashboard/api/**`; see [DASHBOARD](DASHBOARD.md).
+- **Server query history (SQLite) + dashboard Queries tab.** Every successful query is recorded to `.brainpalace/query_log.db` (ON by default, 7-day retention, `QUERY_LOG_ENABLED=false` kill switch), with new `GET /query/history`, `/query/history/{qid}`, and `/health/logs` endpoints proxied by the dashboard.
+- **Dashboard parity gate.** New `task lint:dashboard-parity` (in `task before-push`) fails when a config option, CLI command, or endpoint is added without being surfaced in the dashboard or allowlisted; it imports the live schema/Click group/FastAPI app and diffs against checked-in coverage maps.
+- **Dashboard E2E + polish.** A Playwright suite drives the full lifecycle plus an axe-core accessibility check; every tab gained loading/empty/error states, a Queries "New query" composer, and accessibility fixes. Fleet liveness rides a single SSE stream with bounded refresh intervals (documented in `docs/DASHBOARD.md`).
+- **Config validation + dashboard Config save on real projects.** `config_schema` now recognizes the `bm25`, `git_indexing`, `session_indexing`, `session_extraction` sections (and `graphrag.store_type: sqlite`) that real configs carry, fixing the Config tab failing on every project with these sections. The editor is also tolerant of unknown sections and blocks a save only on errors in fields it actually changes.
 
 ## [26.6.25] - 2026-06-07
 
 ### Changed
-- **Git history indexing now indexes the full history by default.** The
-  `git_indexing.depth` default changed from `1000` to `0` (no cap) — a silent
-  1000-commit cap surprised users (status stuck at "1,000 commits" on larger
-  repos and dropped the oldest history). Set a positive `depth` to bound the
-  first full pass on very large repos (each commit is an embedded chunk, so an
-  unbounded first index of a huge repo costs more time/embeddings).
-- **`brainpalace init` now asks how many commits back to index** when you opt
-  into git history (default `0` = unlimited), writing `git_indexing.depth`.
+- **Git history indexing now indexes the full history by default.** `git_indexing.depth` changed from `1000` to `0` (no cap) — the silent 1000-commit cap surprised users on larger repos. Set a positive `depth` to bound the first pass on very large repos.
+- **`brainpalace init` now asks how many commits back to index** when you opt into git history (default `0` = unlimited), writing `git_indexing.depth`.
 
 ## [26.6.24] - 2026-06-06
 
 ### Fixed
-- **Git history index never indexed any commits (`status` showed `0 commits`).**
-  The git commit chunker stored the list of changed files as a metadata
-  **list**, which ChromaDB rejects (`Expected metadata value to be a
-  str/int/float/bool, got [...]`), failing the entire git boot-index upsert.
-  The changed paths are now stored as a newline-joined string plus a scalar
-  `files_changed_count`; the full list still appears in the commit chunk text.
-- **Vector (semantic) search returned almost nothing.** Long-lived collections
-  could be stuck on ChromaDB's `l2` distance default while the query layer
-  scores similarity as `1 - distance` (cosine) — l2 distances exceed 1, map to
-  negative similarity, and get filtered out, so vector-only mode silently
-  returned ~0 results (hybrid/bm25 masked it). The vector self-heal now also
-  detects a non-cosine index **behaviorally** (ChromaDB's persisted space
-  metadata is unreliable) and rebuilds it onto cosine from SQLite — no
-  re-embedding. New collections were already cosine; this repairs legacy ones.
-- **Self-heal left the old vector segment dir on disk.** Rebuilding recreates
-  the collection; ChromaDB drops the `segments` row but not the folder, leaking
-  a multi-hundred-MB stale index. The heal now sweeps orphaned segment
-  directories (unreferenced UUID dirs containing an HNSW `header.bin`) after a
-  rebuild.
-- **Server segfaulted on startup against a bloated/corrupt vector index
-  (crash-loop, no traceback).** A long-lived or previously duplicate-written
-  HNSW index accumulates orphaned element slots (soft-deletes never shrink the
-  graph); the next indexing upsert triggers a native HNSW resize that
-  **segfaults the whole process** with no Python traceback, so it could not be
-  caught and the server died on every start — surfacing downstream as
-  `brainpalace status` reporting the server down (discovery falls back to the
-  default port when no live server is found). `VectorStoreManager` now
-  **self-heals before any write**: at startup it reads the segment's element
-  counter from disk (crash-safe — never loads the HNSW graph) and, when the
-  physical slot count dwarfs the live count, rebuilds a compact index from
-  ChromaDB's intact SQLite — **no re-embedding, no manual `reset`/rebuild**.
-  Rebuilding resets the counter, so a healed index does not re-trigger and the
-  server stops crash-looping. Applies to both the code and memory collections.
-- **`install.sh --local` failed or silently ran the PyPI server.** Run from
-  inside the repo, `pipx inject brainpalace-cli …` aborted with "'brainpalace-cli'
-  looks like a path" (the package name collided with the `./brainpalace-cli`
-  dir); run from outside, the inject was skipped without `--force`, so the CLI
-  kept the PyPI `brainpalace-rag` instead of the local checkout. The injector
-  now runs from a neutral CWD with `--force` and resolves `--local` to an
-  absolute path, so the local server is reliably installed either way.
-- **Duplicate server for the same project (double/quadruple-counted index).**
-  `brainpalace start` could spawn a *second* server on the next free port while
-  the first was still alive — both watchers then re-indexed the shared
-  `.brainpalace/data/`, inflating chunk/document counts. Two root causes fixed:
-  (1) a live-but-busy server that missed a single `/health` probe was wrongly
-  treated as stale, its `runtime.json`/lock wiped, and replaced by a duplicate —
-  `start` now retries the health check and **refuses** (non-zero exit, "run
-  `brainpalace restart`") rather than launching a twin over a live process; and
-  (2) the CLI no longer unlinks `brainpalace.lock` during stale cleanup (the
-  running server holds an `flock` on that inode — deleting it defeated the OS
-  single-instance guard). As defense-in-depth, `launch_server` now probes the
-  port range for a healthy server already serving the same `project_root`
-  (new `project_root` field on `/health/`) and reports it instead of spawning a
-  duplicate, even when `runtime.json` is missing or stale.
-- **Folder `chunk_count` grew forever and never self-healed.** The folder-level
-  chunk-id set was a blind union of old + new ids on every re-index, so it never
-  dropped chunks for changed/deleted files — the persisted count (and `folders
-  list`) climbed without bound and diverged far above the real store. It is now
-  derived from the authoritative per-file manifest (retains unchanged files,
-  drops deleted ones), so the count **shrinks on delete** and converges on every
-  incremental re-index.
-- **Server now self-heals manifest/store drift on every start.** A startup
-  reconcile sweep recomputes each folder's `chunk_count` from the authoritative
-  per-file manifest and purges store chunks the manifest no longer references —
-  orphans left by past corruption such as the duplicate-server incident. It runs
-  automatically in the server lifespan (no flag, no reindex, no re-embed: pure
-  bookkeeping + targeted deletes), is a no-op when a folder is already
-  consistent, and never blocks startup on failure. Just start the server and the
-  counts converge to filesystem truth.
+- **Git history index never indexed any commits (`status` showed `0 commits`).** The chunker stored changed files as a metadata list, which ChromaDB rejects, failing the whole boot-index upsert. Paths are now a newline-joined string plus a scalar `files_changed_count`.
+- **Vector (semantic) search returned almost nothing.** Long-lived collections could be stuck on ChromaDB's `l2` default while the query layer scores cosine, mapping distances to negative similarity that gets filtered out. The self-heal now detects a non-cosine index behaviorally and rebuilds it onto cosine from SQLite — no re-embedding.
+- **Self-heal left the old vector segment dir on disk.** Rebuilding drops the segments row but not the folder, leaking a stale index; the heal now sweeps orphaned segment directories after a rebuild.
+- **Server segfaulted on startup against a bloated/corrupt vector index.** An accumulated HNSW index triggered a native resize segfault with no traceback, crash-looping the server. `VectorStoreManager` now self-heals before any write — a crash-safe disk read of the element counter rebuilds a compact index from intact SQLite, no re-embedding.
+- **`install.sh --local` failed or silently ran the PyPI server.** The `pipx inject` collided with the `./brainpalace-cli` dir or was skipped without `--force`. The injector now runs from a neutral CWD with `--force` and an absolute `--local` path.
+- **Duplicate server for the same project (double-counted index).** A live-but-busy server missing one `/health` probe was treated as stale and replaced by a twin; `start` now retries the probe and refuses rather than launching over a live process, no longer unlinks the held `flock`, and `launch_server` probes the port range for a healthy same-`project_root` server.
+- **Folder `chunk_count` grew forever and never self-healed.** The chunk-id set was a blind union of old + new ids; it is now derived from the authoritative per-file manifest, so the count shrinks on delete and converges on every incremental re-index.
+- **Server now self-heals manifest/store drift on every start.** A startup reconcile recomputes each folder's `chunk_count` from the manifest and purges store chunks the manifest no longer references — pure bookkeeping, no reindex/re-embed, never blocks startup.
 
 ---
 
 ## [26.6.23] - 2026-06-06
 
 ### Added
-- **Nested BrainPalace projects are auto-excluded from the outer index.** Any
-  subfolder that contains its own `.brainpalace/` is treated as a separately
-  indexed project and pruned (whole subtree) from the outer project's file
-  discovery and file watching — avoiding double-indexing. Checked **live** on
-  every walk/event (never written to a permanent exclude), so deleting the
-  nested `.brainpalace/` lets the outer index pick the subtree back up.
-- **`brainpalace init --migrate-graph-store / --no-migrate-graph-store`** + an
-  interactive prompt (default yes) to upgrade an already-initialized project from
-  the legacy `simple` graph store to `sqlite`. The existing graph replays into
-  sqlite on next start (JSON kept for rollback); non-interactive runs migrate
-  only with the flag (or `--yes`).
+- **Nested BrainPalace projects are auto-excluded from the outer index.** Any subfolder with its own `.brainpalace/` is pruned (whole subtree) from the outer project's discovery and watching, checked live on every walk so deleting the nested `.brainpalace/` re-includes it.
+- **`brainpalace init --migrate-graph-store / --no-migrate-graph-store`** plus an interactive prompt (default yes) to upgrade an initialized project from the legacy `simple` graph store to `sqlite` (the graph replays on next start; JSON kept for rollback).
 
 ### Fixed
-- **Graph status reported `0 entities` at cold start.** The lazy-initialized
-  graph store now hydrates `entity_count`/`relationship_count` from the persisted
-  `graph_metadata.json` sidecar, so `brainpalace status` reflects the on-disk
-  graph size immediately after boot (data was never lost).
-- **Re-init dropped interactive answers.** On an already-initialized project,
-  answering the git-history / summarize / embed prompts (or passing the flags)
-  is now persisted — previously the existing-project branch ignored them, so
-  `Git Index` stayed off and the banner wrongly claimed summaries were
-  `configured (subagent)`. The result banner now reads the true session state
-  from `config.yaml`.
+- **Graph status reported `0 entities` at cold start.** The lazy graph store now hydrates entity/relationship counts from the persisted `graph_metadata.json`, so `status` reflects the on-disk size immediately after boot.
+- **Re-init dropped interactive answers.** On an already-initialized project the git-history/summarize/embed answers are now persisted (previously ignored), and the result banner reads the true session state from `config.yaml`.
 
 ### Changed
-- **`brainpalace init` prompt order:** the graph-store upgrade is now asked with
-  the other questions and shown as a row in the `init will:` preview before
-  `Proceed?` (declining now also cancels the upgrade). Mono-repo-root refusal
-  happens before any prompt. Blank line restored before `init will:`.
+- **`brainpalace init` prompt order:** the graph-store upgrade is asked with the other questions and shown in the `init will:` preview; mono-repo-root refusal happens before any prompt.
 
 ## [26.6.22] - 2026-06-06
 
 ### Added
-- **`brainpalace init --git-history / --no-git-history`** + an interactive prompt (default
-  **no**) to opt into indexing git commit history (message + changed-file list) as searchable
-  chunks. Privacy-first: written to `git_indexing.enabled` only when enabled.
-- **`git_indexing.path_filter`** config — limit git-history indexing to commits touching
-  specific repo-relative paths (`git log -- <paths>`); empty = all commits. For mono-repos
-  where one `.git/` serves several projects.
-- **`brainpalace init --migrate-graph-store / --no-migrate-graph-store`** + an interactive
-  prompt (default **yes**) to upgrade an already-initialized project from the legacy `simple`
-  graph store to `sqlite`. The existing graph is replayed into sqlite on next start (JSON kept
-  for rollback); non-interactive runs only migrate with the explicit flag (or `--yes`).
-- **`brainpalace status` rows:** LSP (enabled languages / disabled), Git Index (on + commit
-  count / off), and the graph store type with a temporal-availability note
-  (`sqlite, temporal` vs `simple — no temporal validity`).
+- **`brainpalace init --git-history / --no-git-history`** plus an interactive prompt (default no) to index git commit history as searchable chunks; written to `git_indexing.enabled` only when enabled.
+- **`git_indexing.path_filter`** config — limit git-history indexing to commits touching specific repo-relative paths (`git log -- <paths>`), for mono-repos where one `.git/` serves several projects.
+- **`brainpalace init --migrate-graph-store / --no-migrate-graph-store`** plus an interactive prompt (default yes) to upgrade an initialized project from `simple` to `sqlite`.
+- **`brainpalace status` rows:** LSP (enabled/disabled languages), Git Index (on + commit count / off), and the graph store type with a temporal-availability note.
 
 ### Changed
-- **GraphRAG defaults flipped to on + persistent.** `ENABLE_GRAPH_INDEX` now defaults to
-  `true` and `GRAPH_STORE_TYPE` to `sqlite` (was `false`/`simple`) in `settings.py`;
-  `brainpalace init` writes `graphrag.store_type: sqlite`. Existing projects keep their
-  configured `store_type` until they opt into the migration above.
-- **Gemini removed from CLI embedding providers.** `VALID_EMBEDDING_PROVIDERS` and the wizard
-  texts no longer offer `gemini` for embeddings (the server has no Gemini embedding provider);
-  Gemini remains a summarization provider.
+- **GraphRAG defaults flipped to on + persistent.** `ENABLE_GRAPH_INDEX` now defaults `true` and `GRAPH_STORE_TYPE` to `sqlite`; `init` writes `graphrag.store_type: sqlite`. Existing projects keep their configured `store_type` until they opt into the migration.
+- **Gemini removed from CLI embedding providers** (the server has no Gemini embedding provider); Gemini remains a summarization provider.
 
 ### Documentation
-- **Graph defaults corrected across all docs.** `ENABLE_GRAPH_INDEX` default updated to
-  `true`; `GRAPH_STORE_TYPE` default updated to `sqlite` in `GRAPHRAG_GUIDE.md`,
-  `CONFIGURATION.md`, and the configuring-brainpalace plugin skill. `brainpalace init`
-  also writes `graphrag.enabled: true` by default.
-- **`git_indexing.path_filter` documented.** New config key limits git-history indexing to
-  specific repo-relative paths (runs `git log -- <paths>`), useful in mono-repos where one
-  `.git/` serves multiple sub-projects. Documented in `CONFIGURATION.md` and `GIT_HISTORY.md`.
-- **Temporal/simple warning added.** Explicit `⚠️` callout in `GRAPHRAG_GUIDE.md` that
-  `store_type: simple` makes temporal validity **unavailable** — no `valid_from`/`valid_until`,
-  no invalidation, no `as_of` queries, no decision supersession. `sqlite` is now the default
-  so these features work out of the box.
-- **"Agent Brain" rename.** `GIT_HISTORY.md` updated to use the correct product name
-  BrainPalace throughout.
-- **Embedding provider tables corrected.** `brainpalace-embeddings.md` command and
-  configuring-brainpalace skill now list only the real embedding providers: OpenAI, Cohere,
-  Ollama. Gemini, Grok, and sentence-transformers removed from embedding provider lists
-  (they are not embedding providers; Gemini/Grok remain in summarization lists).
-- **`kuzu` backend scrubbed from all docs.** The embedded-DB Kuzu backend was removed from
-  the codebase; references replaced with `sqlite`/`SQLitePropertyGraphStore` across the README,
-  server README, plugin commands (config/graph/setup), skills, reference guides, and the
-  `docs/design/*` architecture diagrams + their `.puml`/`.mmd` sources. (Server code retains a
-  graceful `store_type: kuzu` → `simple` downgrade so old configs never crash.)
-- **`GRAPH_EXTRACTION_MODEL` standardized to short form** `claude-haiku-4-5` (was
-  `claude-haiku-4-5-20251001`) in GRAPHRAG_GUIDE.md defaults table and YAML examples.
-- **Gemini model IDs updated to the current generation.** The superseded `gemini-2.0`/
-  `1.5` (and stale `gemini-3-*`) names were swept across code defaults, docs, and skills to
-  the live IDs: default `gemini-3.1-flash-lite` (cheapest, stable), premium `gemini-3.5-flash`,
-  pro `gemini-3.1-pro-preview`. Gemini removed from CLI embedding providers (server has no
-  Gemini embedding).
+- **Graph defaults corrected across all docs** (`ENABLE_GRAPH_INDEX: true`, `GRAPH_STORE_TYPE: sqlite`) in GRAPHRAG_GUIDE, CONFIGURATION, and the configuring-brainpalace skill.
+- **`git_indexing.path_filter` documented** in CONFIGURATION.md and GIT_HISTORY.md.
+- **Temporal/simple warning added** to GRAPHRAG_GUIDE.md — `store_type: simple` makes temporal validity unavailable; `sqlite` is now the default.
+- **"Agent Brain" rename** — GIT_HISTORY.md uses the correct product name BrainPalace throughout.
+- **Embedding provider tables corrected** to list only the real providers (OpenAI, Cohere, Ollama).
+- **`kuzu` backend scrubbed from all docs,** replaced with `sqlite`/`SQLitePropertyGraphStore` (server retains a graceful `kuzu` → `simple` downgrade so old configs never crash).
+- **`GRAPH_EXTRACTION_MODEL` standardized to short form** `claude-haiku-4-5`.
+- **Gemini model IDs updated to the current generation** (default `gemini-3.1-flash-lite`, premium `gemini-3.5-flash`, pro `gemini-3.1-pro-preview`).
 
 ---
 
 ## [26.6.21] - 2026-06-05
 
 ### Fixed
-- **CI quality gate: `TestSentenceTransformerWarmUp` tests no longer hit the network.**
-  `test_warm_up_success` mocks `_ensure_model_loaded` so no HuggingFace download is attempted
-  in CI; `test_availability_caching` mocks `hf_hub_download`. The v26.6.20 publish failed
-  because these tests required a cached model only present on the developer machine.
+- **CI quality gate: `TestSentenceTransformerWarmUp` tests no longer hit the network.** They now mock `_ensure_model_loaded` / `hf_hub_download`, fixing the v26.6.20 publish failure (the tests required a cached model only present on the developer machine).
 
 ---
 
 ## [26.6.20] - 2026-06-05
 
 ### Fixed
-- **Fresh-folder `watch=auto` is now persisted at the start of indexing**, not only on clean
-  completion. The folder record was written `watch=off` mid-job (before the rebuildable
-  BM25/graph tail) and only upgraded to `auto` at clean completion, so a first index killed
-  mid-tail left a brand-new folder unwatched. An explicit `--watch` flag now always wins (upgrade
-  `off→auto` or downgrade, new folder or re-index); a flagless re-index still preserves the
-  folder's existing setting.
-- **Indexing now honours `.git/info/exclude` and the global `core.excludesFile`** in addition to
-  `.gitignore`, matching Git's ignore precedence — local-only excludes (including potential
-  secrets) are no longer indexed. `info/exclude` is located via `--git-common-dir` so linked
-  worktrees resolve correctly. Falls back to `.gitignore`-only when git is unavailable or the
-  directory is not a repo.
-- **Indexing progress now advances through the whole pipeline** instead of sitting at one value
-  and then jumping to 100%. Progress persistence is throttled by percent-of-total (so the
-  store / BM25 / graph phase markers surface), the percent bands are rebalanced to give the
-  embedding and graph phases proportional width, and the graph-build phase reports per-document
-  progress (it was previously a silent no-op).
+- **Fresh-folder `watch=auto` is now persisted at the start of indexing,** not only on clean completion, so a first index killed mid-tail no longer leaves a new folder unwatched. An explicit `--watch` flag always wins; a flagless re-index preserves the existing setting.
+- **Indexing now honours `.git/info/exclude` and the global `core.excludesFile`** in addition to `.gitignore`, matching Git's precedence, so local-only excludes are no longer indexed (located via `--git-common-dir` for worktrees).
+- **Indexing progress now advances through the whole pipeline** instead of sitting then jumping to 100% — persistence is throttled by percent-of-total, the bands are rebalanced, and the graph-build phase reports per-document progress.
 - **`langextract not installed` is logged once per process** instead of once per document.
-- **Project discovery now ignores an uninitialized `.brainpalace/` scaffold.** In a monorepo, a
-  stray `.brainpalace/` inside a sub-package (no `config.json`/`config.yaml`/`runtime.json`) was
-  mistaken for a project root, shadowing the real repo root for files beneath it (phantom nested
-  project, double-indexing). Discovery and project-root resolution now require an initialized
-  `.brainpalace/` and otherwise keep walking up to the real project / git root.
+- **Project discovery now ignores an uninitialized `.brainpalace/` scaffold.** A stray `.brainpalace/` with no config/runtime files no longer shadows the real repo root; discovery requires an initialized `.brainpalace/` and otherwise walks up.
 
 ### Changed
-- **`brainpalace status` splits documents and chunks into code vs doc counts**
-  (`N (X code · Y docs)`). The split is derived durably — documents from the persisted manifests
-  (by file extension), chunks from the vector store's `source_type` filter — so it survives a
-  server restart without a reindex.
-- **`brainpalace status` always shows session summarization as its own row.** Summarization
-  (free, distillation) is independent of session embedding (`Session Memory`, billable) and raw
-  archive (`Session Archive`); the `Session Summarization` row was previously hidden when off,
-  obscuring the separation. It now renders in every state (`off` / coverage %).
+- **`brainpalace status` splits documents and chunks into code vs doc counts** (`N (X code · Y docs)`), derived durably from manifests + the store's `source_type` filter so it survives a restart.
+- **`brainpalace status` always shows session summarization as its own row** (`off` / coverage %), making clear it is independent of session embedding and raw archive.
 
 ### Deprecated
-- **`BRAINPALACE_CHECKPOINT_INTERVAL` / `progress_checkpoint_interval` no longer affect
-  indexing-progress cadence.** Progress persistence is now percent-based (`PROGRESS_MIN_PERCENT`);
-  the legacy file-count checkpoint setting is still accepted for backward-compatible construction
-  but is ignored.
+- **`BRAINPALACE_CHECKPOINT_INTERVAL` / `progress_checkpoint_interval` no longer affect progress cadence** — progress persistence is now percent-based (`PROGRESS_MIN_PERCENT`); the setting is accepted but ignored.
 
 ---
 
 ## [26.6.19] - 2026-06-05
 
 ### Changed
-- **`brainpalace init` now asks before embedding/summarizing chat sessions, and embedding is
-  opt-in.** An interactive init prompts *Summarize chat sessions? [Y/n]* (free — Claude Code Haiku
-  subagent) then *Embed chat sessions too? [y/N]* (billable — sends transcript content to your
-  embedding provider, named in the prompt), with plain-language explanations and the embedding
-  prompt referencing the summaries. **Session embedding no longer happens by default**: a bare
-  `init` and `--yes` keep it off (archive + summarize only); use `--sessions` to opt in,
-  `--no-extract` to skip summarization. Each prompt is skipped when its capability is set by an
-  explicit flag.
-- **`brainpalace init` second-part output now reflects real state.** The chat-summaries line
-  branches on the resolved engine + plugin presence — it warns (and points to
-  `brainpalace install-agent`) when the Claude Code plugin is absent, since the free Haiku
-  subagent can't run without it, and shows "off" when extraction is disabled. The Done block
-  surfaces the real **session-embedding** cost with its provider (e.g.
-  `Chat-session embedding enqueued → OpenAI text-embedding-3-large`) — clarifying that session
-  *embedding* (billable, server-side) is independent of session *summarization* (free subagent).
-- **`brainpalace init` preview names the real provider per action.** The abstract
-  `→ billable / free` lines are gone; each data-out step is tagged with its destination —
-  e.g. `embed chat sessions → OpenAI text-embedding-3-large`,
-  `summarize chat sessions → Claude Code Haiku (subscription)` (or `<Provider> <model> (API usage)`
-  in provider mode). "transcripts" → "chat sessions"; model-id date suffixes are trimmed; and
-  the summarize line is omitted when the Claude Code plugin is absent (no subagent to run it).
+- **`brainpalace init` asks before embedding/summarizing chat sessions, and embedding is opt-in.** Interactive init prompts to summarize (free Haiku subagent) then to embed (billable) with plain-language explanations; a bare `init` and `--yes` keep embedding off (archive + summarize only). Use `--sessions` to opt in, `--no-extract` to skip summarization.
+- **`brainpalace init` second-part output reflects real state.** The chat-summaries line branches on the resolved engine + plugin presence (warning and pointing to `install-agent` when absent), and the Done block names the real session-embedding cost with its provider — clarifying that billable embedding is independent of free summarization.
+- **`brainpalace init` preview names the real provider per action.** Each data-out step is tagged with its destination (e.g. `embed chat sessions → OpenAI text-embedding-3-large`) instead of abstract billable/free; the summarize line is omitted when the plugin is absent.
 
 ### Fixed
-- **A Claude Code *marketplace* clone no longer counts as an installed plugin.** The
-  registry-missing detection fallback globbed `~/.claude/plugins/cache/*/brainpalace`, which
-  matches a marketplace clone (`cache/<name>-marketplace/brainpalace`) — a false positive that
-  made BrainPalace treat "marketplace added" as "plugin installed". The fallback now consults
-  explicit install dirs only; the authoritative `installed_plugins.json` registry check is
-  unchanged. Mirrored in the CLI and server detectors.
-- **An interactive init embed/summarize answer now wins over an XDG-inherited
-  `session_indexing` block.** A prompt answer is treated as an explicit choice (like
-  `--sessions`/`--no-sessions`), so declining embedding writes `session_indexing.enabled: false`
-  even when a global `~/.config/brainpalace/config.yaml` sets it true.
+- **A Claude Code marketplace clone no longer counts as an installed plugin.** The registry-missing fallback globbed a path that matched a marketplace clone; it now consults explicit install dirs only (mirrored in CLI and server).
+- **An interactive init embed/summarize answer now wins over an XDG-inherited `session_indexing` block** — a prompt answer is treated as explicit, so declining writes `session_indexing.enabled: false` even when global sets it true.
 
 ---
 
 ## [26.6.18] - 2026-06-04
 
 ### Added
-- **Opt-in time-driven session summarization (subagent path).** New
-  `brainpalace drain-tick` + `/brainpalace-drain` let you opt into idle-time queue
-  draining via a dedicated `claude --model haiku` + `/loop 5m /brainpalace-drain`
-  babysitter. Mode-gated, single-drainer locked, and self-terminating after 3 empty
-  drains so it never silently holds the Claude Code 5-hour usage window. No automatic
-  trigger is added; default session behavior is unchanged. Install-time + docs now state
-  how/when chat summarization runs (after your first prompt, batches of up to 8 sessions,
-  5-minute cool-down).
+- **Opt-in time-driven session summarization (subagent path).** New `brainpalace drain-tick` + `/brainpalace-drain` let you opt into idle-time queue draining via a dedicated `claude --model haiku` + `/loop 5m` babysitter — mode-gated, single-drainer locked, self-terminating after 3 empty drains. No automatic trigger; default session behavior is unchanged.
 
 ### Changed
-- **Archive copy is now a periodic sweep, and quiescence is configurable.** Sessions are
-  copied into the archive every `session_archive.reconcile_seconds` (default 600 s) by a
-  periodic reconciler instead of per-transcript-change — a growing session is re-copied at
-  most once per interval, the final tail is still captured before summarization, and
-  unchanged files are never re-copied or re-summarized. The summarization idle gate is now
-  `session_extraction.quiescence_seconds` (default 1800 s = 30 min, up from a hardcoded
-  300 s), honored by both the subagent drain and the provider distiller. Env overrides:
-  `SESSION_ARCHIVE_RECONCILE_SECONDS`, `SESSION_QUIESCENCE_SECONDS`. The per-event
-  `SessionWatcher` is retired from the lifespan (replaced by `SessionReconciler`).
-- **Session summarization is now archive-driven.** The free subagent path summarizes
-  archived sessions that are new, resumed-and-grown, or late-copied (gap = archive minus
-  fresh `.done` markers), reading the archived file (not `~/.claude`), gated by quiescence
-  (see configurable idle gate above). Resumed sessions are re-summarized in full. The SessionEnd `extract-queue`
-  is retired (`sessionend-hook.sh` is now a no-op), and a new `brainpalace session-path`
-  resolves a session's archived transcript.
-- **`brainpalace uninstall` now groups every optional/manual leftover at the
-  very end.** The Claude-Code-managed marketplace plugin notice previously
-  printed mid-teardown (right after the plugin-dir step), so it scrolled past
-  before the run finished. It now appears in the final "Remaining steps
-  (optional / manual)" block alongside the package-uninstall and shell-rc API
-  key reminders — one place that tells the user exactly what's left to do by
-  hand after the guided steps complete. (`brainpalace-cli`)
+- **Archive copy is now a periodic sweep, and quiescence is configurable.** Sessions are copied every `session_archive.reconcile_seconds` (default 600s) by a reconciler instead of per-change, and the summarization idle gate is `session_extraction.quiescence_seconds` (default 1800s). Env overrides: `SESSION_ARCHIVE_RECONCILE_SECONDS`, `SESSION_QUIESCENCE_SECONDS`.
+- **Session summarization is now archive-driven.** The free subagent path summarizes archived sessions that are new, grown, or late-copied (reading the archive, not `~/.claude`), gated by quiescence; the SessionEnd `extract-queue` is retired and a new `brainpalace session-path` resolves an archived transcript.
+- **`brainpalace uninstall` groups every optional/manual leftover at the very end.** The marketplace-plugin notice now appears in the final "Remaining steps (optional / manual)" block alongside the package-uninstall and API-key reminders, instead of scrolling past mid-teardown.
 
 ---
 
 ## [26.6.17] - 2026-06-04
 
 ### Fixed
-- **An interrupted index no longer leaves orphan chunks with a 0-document
-  status.** The folder record + manifest were written only at the very end of the
-  pipeline, *after* the slow, rebuildable BM25 and graph steps. If the job was
-  killed during that tail (e.g. the timeout-wedge above, or a crash), the chunks
-  were already in the store but no manifest mapped them — so `total_documents`
-  read 0, the file watcher had no folder to watch, and the graph was lost. The
-  folder record + manifest are now persisted **immediately after the chunk
-  upsert**, before BM25/graph, so an interrupt leaves the store and manifest
-  consistent (document count + watcher intact, next run diffs incrementally) and
-  only the derived graph needs a rebuild. (`brainpalace-server`)
-- **`sentence_transformers` (and its heavy ML stack) is no longer imported at
-  module load.** The CrossEncoder reranker did a module-top
-  `from sentence_transformers import CrossEncoder`, so importing the reranker
-  package — and therefore the whole `services` package and test collection —
-  hard-failed in any environment without the dependency installed. The import is
-  now deferred into the model-load path (it was already lazily *loaded*), so the
-  module imports cleanly and the dependency is only required when a reranker is
-  actually used. (`brainpalace-server`)
-- **OpenAI-SDK provider clients now use a bounded request timeout, so a dropped
-  connection can no longer wedge an index job.** Every `AsyncOpenAI(...)` client
-  (OpenAI + Ollama embedding, OpenAI + Grok + Ollama summarization) was built
-  without an explicit `timeout`, inheriting the SDK's **600s read timeout × 2
-  retries**. On a flaky link a half-dead connection left the indexing worker
-  blocked inside `await ...create(...)` for up to ~30 min — and because job
-  cancellation is cooperative (checked *between* chunks), the job became
-  **uninterruptible**: `--cancel` was ignored and graceful shutdown timed out,
-  forcing a SIGKILL. Clients now default to a **60s** request timeout for cloud
-  providers (OpenAI, Grok) and **120s** for local Ollama, both overridable via
-  `config.params` (`timeout`, `max_retries`). (`brainpalace-server`)
+- **An interrupted index no longer leaves orphan chunks with a 0-document status.** The folder record + manifest are now persisted immediately after the chunk upsert (before the rebuildable BM25/graph tail), so an interrupt leaves the store and manifest consistent and only the derived graph needs a rebuild.
+- **`sentence_transformers` is no longer imported at module load.** The CrossEncoder import is deferred into the model-load path, so the reranker module (and test collection) imports cleanly without the heavy ML stack installed.
+- **OpenAI-SDK provider clients now use a bounded request timeout.** Every client was built without an explicit `timeout`, inheriting the SDK's 600s×2 default, which could wedge an index job uninterruptibly on a flaky link. Clients now default to 60s (cloud) / 120s (Ollama), overridable via `config.params`.
 
 ---
 
 ## [26.6.16] - 2026-06-04
 
 ### Changed
-- **Setup wizard now distinguishes CODE vs CHAT summarization and is
-  plugin-aware.** The summarization provider does two jobs — it always summarizes
-  **code** during indexing, and is the **fallback** for **chat/session** summaries
-  only when the Claude Code plugin is absent. The wizard now explains this and
-  rewords the prompt: with the plugin it asks for the *code* summarization
-  provider (chat is FREE on the Claude Code subscription); without it, it notes
-  chat summarization is **OFF by default** (the server-side provider distiller is
-  doubly opt-in — `mode: provider`/`auto` **and** `SESSION_DISTILL_ENABLED=true`)
-  and tips installing the plugin. New wording-only
-  `brainpalace config wizard --chat-summarizer [plugin|provider|auto]` flag
-  (default `auto` self-detects the plugin) — it does **not** change the written
-  config or the session engine (`auto`, resolved at runtime). `scripts/setup.sh`
-  now decides the plugin **before** the provider wizard (was last) and passes the
-  flag through; new `brainpalace plugin status --json` is the single detection
-  source the shell reuses. Plugin docs synced. (`brainpalace-cli`,
-  `scripts/setup.sh`, `brainpalace-plugin`)
+- **Setup wizard distinguishes CODE vs CHAT summarization and is plugin-aware.** The summarization provider always summarizes code during indexing and is only the chat fallback when the plugin is absent; the wizard explains this and reflects that chat summarization is OFF by default without the plugin (doubly opt-in). New wording-only `config wizard --chat-summarizer [plugin|provider|auto]` flag (default `auto`) — it doesn't change the written config; `setup.sh` decides the plugin before the wizard and passes it through.
 
 ### Fixed
-- **Stuck-job recovery no longer loops forever on a poison job.** When an
-  indexing job crashed the server at the process level (e.g. a native segfault
-  in the vector store while indexing a corrupt index), the D14 auto-reindex
-  recovery re-enqueued *every* stale job on restart — including jobs already
-  marked permanently `FAILED` after exhausting their retry budget. Each
-  re-enqueue minted a fresh `retry_count=0` job, defeating the retry cap and
-  turning a single crash into an infinite crash-loop (server starts → re-runs
-  the same job → crashes → repeats, leaving a stale lock each time). Recovery
-  now excludes permanently-FAILED jobs via `select_reenqueue_candidates`; only
-  jobs reset to `PENDING` (still under the retry cap) are re-enqueued, so a
-  deterministically-crashing job fails cleanly instead of looping.
-  (`api/main.py`, `job_queue/job_store.py`)
-- **ChromaDB PostHog telemetry no longer spams `ERROR` logs.** chromadb 0.5.x
-  calls `posthog.capture()` with positional arguments that posthog ≥ 3 rejects
-  (`capture() takes 1 positional argument but 3 were given`), logging a spurious
-  `ERROR` for every telemetry event on startup and indexing. The documented
-  off-switches (`anonymized_telemetry=False`, the `ANONYMIZED_TELEMETRY` env
-  var) are not honored in 0.5.23, so the server now neutralizes the telemetry
-  client directly (no-op `capture`) and raises the telemetry loggers above
-  `ERROR`. No telemetry was ever sent; this removes the noise. (`api/main.py`)
+- **Stuck-job recovery no longer loops forever on a poison job.** D14 auto-reindex re-enqueued every stale job on restart, including permanently-FAILED ones, minting fresh `retry_count=0` jobs and defeating the cap. Recovery now excludes permanently-FAILED jobs via `select_reenqueue_candidates`.
+- **ChromaDB PostHog telemetry no longer spams `ERROR` logs.** chromadb 0.5.x calls `posthog.capture()` with positional args that posthog ≥ 3 rejects, and the documented off-switches aren't honored in 0.5.23; the server now neutralizes the telemetry client directly. No telemetry was ever sent.
 
 ## [26.6.15] - 2026-06-04
 
 ### Added
-- **Multi-language BM25 tokenization.** BrainPalace now tokenizes each document
-  with its own natural-language analyzer (normalize → tokenize → stopwords →
-  stem/lemmatize) rather than a language-agnostic tokenizer. Supported out of
-  the box: ~27 Snowball/PyStemmer languages (`en`, `de`, `fr`, `es`, `ru`, `it`,
-  `pt`, `nl`, `sv`, `fi`, `hu`, `ro`, `tr`, `ar`, and more — see `SNOWBALL` table
-  in `snowball.py`) plus a vendored Croatian (`hr`) stemmer. Stopwords via
-  `stopwordsiso`. Unknown codes fall back to English tokenization.
-
-  **New `bm25:` config block** in `.brainpalace/config.yaml`:
-  ```yaml
-  bm25:
-    language: en               # ISO 639-1 project default (default: en)
-    engine: stem               # stem (default) | lemma
-    detect: false              # opt-in per-document language detection (py3langid)
-    detect_min_confidence: 0.6
-  ```
-
-  **CLI:** `brainpalace init --language <iso> --bm25-engine <stem|lemma>`;
-  `brainpalace folders add <path> --language <iso>` (sets project default);
-  `brainpalace query "…" --language <iso>` (per-query override);
-  `brainpalace status` shows active language and engine.
-
-  **MCP:** the `query` tool accepts an optional `language` parameter
-  for per-call override.
-
-  **Croatian lemma tier:** `pip install 'brainpalace[lemma-hr]'` enables the
-  high-accuracy `simplemma`-backed lemmatizer (`engine: lemma`, Serbo-Croatian
-  `hbs` data).
-
-- **`bm25s` scoring engine.** The BM25 backend is now `bm25s` (used directly),
-  replacing the former LlamaIndex `BM25Retriever` wrapper. **Existing indexes
-  auto-migrate:** on the first server start after upgrade, BrainPalace rebuilds
-  the BM25 index from the stored corpus — no manual action required. Retrieval
-  quality and API are unchanged.
-
-  The analyzer fingerprint (language + engine) is persisted; if you later
-  reconfigure `language` or `engine`, the index auto-rebuilds from the stored
-  corpus on the next server start to stay in sync.
+- **Multi-language BM25 tokenization.** Each document is tokenized with its own language analyzer (normalize → tokenize → stopwords → stem/lemmatize): ~27 Snowball languages plus a vendored Croatian stemmer, stopwords via `stopwordsiso`, unknown codes falling back to English. New `bm25:` config block (`language`, `engine`, `detect`, `detect_min_confidence`) with `init`/`folders add`/`query` flags and a `[lemma-hr]` extra for the high-accuracy Croatian lemmatizer.
+- **`bm25s` scoring engine.** The BM25 backend is now `bm25s` directly, replacing the LlamaIndex wrapper; existing indexes auto-migrate by rebuilding from the stored corpus on first start (quality and API unchanged). The analyzer fingerprint is persisted, so changing `language`/`engine` triggers an auto-rebuild to stay in sync.
 
 ## [26.6.14] - 2026-06-04
 
 ### Changed
-- **Session summarization default is now `subagent` (Claude-Code-only).**
-  `session_extraction.mode` defaults to `subagent` instead of `auto`, in both the
-  CLI (`brainpalace init`) and the server's built-in default (absent/invalid
-  block). Summarization now happens **only inside Claude Code** (the plugin, free
-  on your subscription); the server never falls back to a paid provider on its
-  own — so there is **no surprise API bill**. If Claude Code didn't summarize a
-  session, it stays un-summarized by design. The `provider` and `auto` engines
-  (server-side, possibly metered, with the 24h safety net) remain available as an
-  explicit opt-in via `mode: provider` / `mode: auto`. **Upgrade note:** existing
-  projects on the implicit `auto` default lose the automatic server-side
-  fallback; set `mode: auto` or `mode: provider` by hand to restore it. The
-  `backfill-sessions` mode resolver now also defaults to `subagent` (was
-  `provider`) for a missing/unparseable config, so a config-less backfill can
-  never target the billable server engine.
-- **Provider distiller is now disabled by default (`SESSION_DISTILL_ENABLED`).**
-  The mode-independent kill switch flipped from default-**on** to default-**off**:
-  the server-side (billable) summarizer never runs unless `SESSION_DISTILL_ENABLED`
-  is explicitly truthy (`1`/`true`/`yes`/`on`). Server-side summarization now
-  requires **two** locks lifted — `session_extraction.mode: provider`/`auto` **and**
-  `SESSION_DISTILL_ENABLED=true`. Because this switch is independent of `mode`, it
-  also stops any pre-existing `mode: auto` config from billing until you opt in.
-  (`SESSION_INDEXING_ENABLED` and `SESSION_ARCHIVE_ENABLED` are unchanged —
-  still default-on.)
-- **Clarified "free" session summarization wording.** The plugin/subagent engine
-  is described as "free **on your Claude Code subscription**" (no separate API
-  bill — it draws on your subscription's usage limits), not unqualified "free",
-  across README, INSTALL, SESSION_INDEXING, the setup wizard, and `init`. Ollama
-  (provider mode) remains the only truly-$0 (fully local) option.
+- **Session summarization default is now `subagent` (Claude-Code-only).** `session_extraction.mode` defaults to `subagent` in both CLI and server, so summarization happens only inside the plugin (free) and the server never falls back to a paid provider on its own — no surprise API bill. `provider`/`auto` remain an explicit opt-in; existing implicit-`auto` projects lose the server-side fallback until they set it by hand.
+- **Provider distiller is now disabled by default (`SESSION_DISTILL_ENABLED`).** The kill switch flipped from default-on to default-off, so server-side (billable) summarization needs two locks lifted — `mode: provider`/`auto` and `SESSION_DISTILL_ENABLED=true`. (`SESSION_INDEXING_ENABLED`/`SESSION_ARCHIVE_ENABLED` are unchanged.)
+- **Clarified "free" session summarization wording** — the plugin engine is "free on your Claude Code subscription" (draws on subscription limits), not unqualified "free", across docs and the wizard. Ollama remains the only truly-$0 option.
 
 ## [26.6.13] - 2026-06-03
 
 ### Added
-- **Plugin-first engine with `auto` reconciliation.** `session_extraction.mode`
-  defaults to `auto`: the server summarizes only when the Claude Code plugin is
-  NOT installed, and steps aside (with a 24h safety net) when it is — so
-  installing/uninstalling the plugin flips the engine live, no re-init, no
-  double-run. The plugin now owns all 3 session hooks (SessionStart reminder +
-  SessionEnd + UserPromptSubmit); `install-session-hooks` installs only the
-  SessionStart reminder and prunes the old extraction hooks. Plugin presence is
-  detected via a registry-first contract (`installed_plugins.json`, dir-glob
-  fallback) mirrored in server + CLI. A unified `.done` marker (written by both
-  the subagent submit and the provider distil) means engine flips never
-  re-summarize an already-extracted session. The CLI installer offers the plugin
-  first when Claude Code is present.
-- **Throttled, cooldown-paced queue drain (`brainpalace drain-queue`).** The
-  plugin's UserPromptSubmit drain no longer dumps the whole backlog into one
-  turn: it releases a bounded batch (FIFO under a **1 MB** byte budget + **8**
-  count cap; an oversized session drains alone — no starvation, no skip) and
-  paces repeated prompts with a **5-min cooldown**, so a big historical backfill
-  trickles out over active working time. Knobs: `drain_budget_bytes` /
-  `drain_max_count` / `drain_cooldown_seconds` (config or `SESSION_DRAIN_*` env).
-- **`brainpalace status` shows session-summarization coverage** — percent of
-  archived sessions with a durable extraction marker (e.g. `78% summarized
-  (361/463 sessions, mode: auto)`), engine-agnostic.
-- **Automatic session summarization — on by default, guaranteed.**
-  `brainpalace init` enables session distillation (`session_extraction.mode:
-  auto`): the **subagent** engine (the Claude Code plugin's
-  `chat-session-extractor`, drained after the first user turn, pinned to Haiku)
-  when the plugin is installed, else the **provider** engine (the server
-  summarizes with the configured AI; Ollama free / cloud metered). `--no-extract`
-  opts out (`off`). THE GUARANTEE: no code path silently skips a session —
-  large/malformed/failed/restarted/old transcripts are retried via the provider
-  **catch-up sweep** and the durable subagent **queue**; only `mode: off` or
-  `SESSION_DISTILL_ENABLED=false` stop it.
-- **`brainpalace backfill-sessions`** summarizes a project's pre-existing chats
-  in the resolved engine (`auto` resolves by plugin presence; subagent → durable
-  queue; provider → `POST /sessions/distill`, with `--force` to re-distil).
-- CLI-only (provider) users are *informed* the plugin is cheaper; recommend
-  Ollama for transcripts (which can hold secrets). Informational only.
+- **Plugin-first engine with `auto` reconciliation.** `session_extraction.mode` defaults to `auto`: the server summarizes only when the plugin is absent and steps aside (24h safety net) when present, so installing/uninstalling flips the engine live. The plugin owns all 3 session hooks; a unified `.done` marker prevents re-summarizing on engine flips.
+- **Throttled, cooldown-paced queue drain (`brainpalace drain-queue`).** The UserPromptSubmit drain releases a bounded batch (1 MB byte budget + 8 count cap; oversized sessions drain alone) and paces repeats with a 5-min cooldown. Knobs: `drain_budget_bytes` / `drain_max_count` / `drain_cooldown_seconds` (or `SESSION_DRAIN_*`).
+- **`brainpalace status` shows session-summarization coverage** — percent of archived sessions with a durable extraction marker, engine-agnostic.
+- **Automatic session summarization — on by default, guaranteed.** `init` enables distillation (`mode: auto`): subagent engine when the plugin is installed, else the provider engine. No code path silently skips a session (provider catch-up sweep + durable subagent queue); only `mode: off` or `SESSION_DISTILL_ENABLED=false` stop it.
+- **`brainpalace backfill-sessions`** summarizes a project's pre-existing chats in the resolved engine (subagent → durable queue; provider → `POST /sessions/distill`, `--force` to re-distil).
+- **CLI-only (provider) users are informed the plugin is cheaper** and that Ollama is recommended for transcripts (which can hold secrets). Informational only.
 
 ### Changed
-- **Guided `setup.sh` banner shows the version to be installed.** The intro now
-  prints "Version to install: X (latest on PyPI)" up front, so users see what
-  they're about to get before any step — fresh installs included (previously the
-  version only appeared on the reinstall prompt).
-- **Uninstall now flags a Claude Code marketplace plugin install.** Both
-  `brainpalace uninstall` (guided) and `scripts/uninstall.sh` detect a plugin
-  installed via the Claude Code marketplace
-  (`~/.claude/plugins/cache/<marketplace>/brainpalace`) and print how to remove
-  it from Claude Code (`/plugin` → uninstall "brainpalace") instead of deleting
-  the cache by hand, which would desync Claude Code's plugin registry. The
-  manual-teardown docs note the same.
+- **Guided `setup.sh` banner shows the version to be installed** ("Version to install: X (latest on PyPI)") up front, including fresh installs.
+- **Uninstall now flags a Claude Code marketplace plugin install.** Both `brainpalace uninstall` and `scripts/uninstall.sh` detect a marketplace install and print how to remove it via `/plugin` instead of deleting the cache (which would desync Claude Code's registry).
 
 ## [26.6.12] - 2026-06-02
 
 ### Changed
-- **Plugin `/brainpalace-setup` is now global-first.** It writes the provider
-  config to the XDG global `~/.config/brainpalace/config.yaml` — the **same file
-  the CLI and `brainpalace init` use** — instead of the deprecated legacy
-  `~/.brainpalace/config.yaml`. Adds an optional MCP-client wiring step (user
-  scope) and makes project init the optional last step. Config-location docs
-  (`/brainpalace-config`, the setup-assistant agent, and the
-  configuring-brainpalace references) were corrected to the XDG-canonical search
-  order and the non-existent `brainpalace config set` examples removed.
-- **README install order:** "Install as a CLI or MCP server" now appears above
-  "Install as a Claude Code plugin", and its commands are each in their own
-  copy-paste code block.
-- **Guided `setup.sh` UX polish:** the detected provider API key is now shown as
-  a green "✓ detected" tag next to the matching provider in the selection menu
-  (instead of a separate line); the MCP-client step lists only auto-detected
-  clients by default with an "other — show all" escape hatch; declining the
-  optional project step no longer duplicates the next-steps text (shown once
-  after Verify); the trailing "Docs:" list was removed from the summary.
-- **`config wizard` prompts:** the summarization provider now defaults to the
-  embedding provider when it can summarize (openai/ollama), else to whichever
-  summarization API key is already set (else anthropic) — no longer hard-coded to
-  anthropic; the GraphRAG and Deployment-mode questions render the choice prompt
-  on its own line below the options, and the GraphRAG options were reworded to
-  neutral trade-offs (no scare wording). Mirrored in the plugin setup wizard.
-- **Guided setup prompts are spaced out:** a blank line now precedes every
-  question (CLI `config wizard` prompts and `setup.sh`'s own `ask`/`confirm`
-  prompts), so consecutive questions in a step are visually separated.
+- **Plugin `/brainpalace-setup` is now global-first.** It writes provider config to the XDG global `config.yaml` (the same file the CLI uses) instead of the legacy `~/.brainpalace/`, adds an optional MCP-client wiring step, and makes project init the optional last step. Config-location docs were corrected to the XDG search order.
+- **README install order:** "Install as a CLI or MCP server" now appears above the plugin section, with each command in its own code block.
+- **Guided `setup.sh` UX polish:** detected API key shown as a green "✓ detected" tag, the MCP step lists auto-detected clients with an "other" escape hatch, declining the project step no longer duplicates next-steps, and the trailing "Docs:" list was removed.
+- **`config wizard` prompts:** the summarization provider defaults to the embedding provider when it can summarize, else to whichever summarization key is set; the GraphRAG/Deployment prompts render the choice on its own line with neutral wording.
+- **Guided setup prompts are spaced out** — a blank line precedes every question.
 
 ## [26.6.11] - 2026-06-02
 
 ### Changed
-- Guided `setup.sh`: the "install from a local checkout" prompt now appears
-  only when a source checkout is actually detected — network (`curl | bash`)
-  users no longer see a dev-only question. Setup also warns up front that the
-  first pipx install pulls a large RAG/ML stack and can take a few minutes.
-- Guided `setup.sh`: when brainpalace is already installed, setup now fetches
-  the latest version from PyPI and shows it alongside the installed one —
-  "update available" (prompt defaults to yes) or "you're up to date" — instead
-  of asking to reinstall with no idea whether a newer version exists.
-- **Guided `setup.sh` is now global-first.** It installs brainpalace, configures
-  the provider/API **globally** (`brainpalace config wizard --global` →
-  `~/.config/brainpalace/config.yaml`), and wires MCP at user scope first.
-  Setting up and indexing a project is now the **last, optional** step — declining
-  prints a copy-paste `brainpalace init` example. New: `brainpalace config wizard
-  --global` writes the global config that every project inherits. The mid-flow
-  "Next steps" block printed by `install.sh` is suppressed during guided setup
-  (the script gives simpler end-of-run guidance).
+- **Guided `setup.sh`: the "install from a local checkout" prompt appears only when a checkout is detected,** so network (`curl | bash`) users no longer see a dev-only question; setup also warns the first pipx install pulls a large stack.
+- **Guided `setup.sh`: when already installed, setup fetches the latest PyPI version** and shows it alongside the installed one ("update available" / "up to date") instead of a blind reinstall prompt.
+- **Guided `setup.sh` is now global-first.** It installs, configures the provider globally (`config wizard --global`), and wires MCP at user scope first; setting up and indexing a project is the last, optional step (declining prints a copy-paste `init` example).
 
 ## [26.6.10] - 2026-06-02
 
 ### Added
-- **`brainpalace init` is full setup by default.** A bare `init` now writes
-  config, starts the server, indexes the project (`watch=auto`), archives
-  transcripts, and embeds transcripts. Interactive runs show the resolved plan
-  and confirm once (the two embedding steps are billable); declining falls back
-  to config-only. New flags: `--yes` / `-y` (skip the prompt, apply the full
-  plan — for scripts/CI), `--no-start`, and `--no-watch`, alongside the existing
-  `--no-sessions` / `--no-archive`. Non-interactive / `--json` runs stay
-  config-only unless `--yes` is passed, so existing automation is unaffected.
+- **`brainpalace init` is full setup by default.** A bare `init` writes config, starts the server, indexes the project (`watch=auto`), and archives + embeds transcripts; interactive runs show the plan and confirm once (declining falls back to config-only). New `--yes`/`-y`, `--no-start`, `--no-watch`; non-interactive / `--json` runs stay config-only unless `--yes`.
 
 ### Fixed
-- **Uninstall no longer misreads a pipx/uv install as bare pip.**
-  `detect_install_manager` classified the `~/.local/bin` shim path verbatim;
-  pipx/uv install a *symlink* there with no `/pipx/` or `/uv/tools/` segment, so
-  `brainpalace uninstall` printed a `pip uninstall` line that fails PEP 668
-  (`externally-managed-environment`) on Debian/Ubuntu system Python — and
-  `brainpalace update` ran the wrong upgrade. It now classifies the resolved
-  symlink target and the shebang. The guided `scripts/uninstall.sh` also retries
-  with `--break-system-packages` for genuine system-pip installs.
-- **`init` start/watch work without a `brainpalace` binary on PATH.** The nested
-  start and `folders add` steps spawned `["brainpalace", ...]`, which raised
-  `FileNotFoundError` when the console script was not installed on PATH (running
-  from source / as a module / uninstalled dev checkout). They now fall back to
-  `python -m brainpalace_cli` with the current interpreter.
+- **Uninstall no longer misreads a pipx/uv install as bare pip.** `detect_install_manager` classified the shim path verbatim; it now classifies the resolved symlink target and shebang, and the guided script retries with `--break-system-packages` for genuine system-pip installs.
+- **`init` start/watch work without a `brainpalace` binary on PATH.** The nested `start` / `folders add` steps now fall back to `python -m brainpalace_cli` instead of raising `FileNotFoundError`.
 
 ### Changed
-- **`init` output distinguishes status from actions.** After the confirmation,
-  init prints why it pauses (server cold-boot, not transcript work) and that
-  indexing is enqueued in the background. The post-init summary now splits
-  completed actions under `Done:` from genuine follow-ups under `Next steps:`.
-- Docs (INSTALL.md, README, USER_GUIDE) updated for the new `init` default and
-  the `--no-*` / `--yes` opt-outs. Internal: the MCP none-arguments handshake
-  test is now environment-independent (no longer assumes no server is running).
+- **`init` output distinguishes status from actions** — it explains the cold-boot pause and background indexing, and splits completed actions under `Done:` from follow-ups under `Next steps:`.
+- **Docs (INSTALL, README, USER_GUIDE) updated** for the new `init` default and the `--no-*` / `--yes` opt-outs.
 
 ## [26.6.9] - 2026-06-02
 
 ### Fixed
-- **`init` no longer hardcodes the Anthropic summarizer.** The default
-  `config.yaml` now picks providers from the API keys present in the
-  environment: summarization prefers `anthropic` → `openai` → `gemini` →
-  `grok`, embedding prefers `openai` → `cohere`, each falling through to the
-  next whose key is set. An OpenAI-only environment gets a working config with
-  no edit — previously `init --start` failed the provider preflight on the
-  missing `ANTHROPIC_API_KEY` and left the user editing config on a fresh
-  project. The user's global XDG `config.yaml` still wins when present.
-- **`brainpalace start` / `stop` now resolve the project root correctly in a
-  mono-repo.** Both commands carried byte-identical resolvers that tried the
-  git top-level *first*, so a sub-project whose only `.git` lives at the
-  workspace root resolved to the workspace root and reported "Project not
-  initialized" — even with a local `.brainpalace/`. They now import the
-  canonical `config.resolve_project_root`, which checks the nearest
-  `.brainpalace/` before git (matching `whoami`/`doctor`/`index`/`query`/
-  `status`).
-- **`test_reset_index_success` is no longer order-dependent.** The reset route
-  gates on `app.state.job_service` queue stats and calls
-  `app.state.indexing_service.reset()`; the test patched an unrelated
-  `get_indexing_service` symbol, so leaked job state from a prior test could
-  flip it to a 409. The reset tests now override the symbols the route actually
-  reads, and the conflict test forces the 409 path authoritatively.
+- **`init` no longer hardcodes the Anthropic summarizer.** The default config picks providers from the API keys present (summarization `anthropic → openai → gemini → grok`, embedding `openai → cohere`), so an OpenAI-only environment gets a working config with no edit; the global XDG config still wins.
+- **`brainpalace start` / `stop` resolve the project root correctly in a mono-repo.** Both now import the canonical `config.resolve_project_root` (nearest `.brainpalace/` before git), instead of resolving a sub-project to the workspace root and reporting "Project not initialized".
+- **`test_reset_index_success` is no longer order-dependent** — the reset tests override the symbols the route actually reads, and the conflict test forces the 409 path authoritatively.
 
 ## [26.6.8] - 2026-06-02
 
 ### Added
-- **`brainpalace update`** — one-command upgrade. Auto-detects how the CLI was
-  installed (pipx / uv / pip) and runs the matching upgrade, then reminds you to
-  restart the server. `--yes` skips the confirm.
-- **`brainpalace uninstall` is now a guided teardown** when run with no flags:
-  confirms each step (stop servers, remove plugin dirs across runtimes/scopes,
-  surgically strip the `brainpalace` entry from MCP client configs while keeping
-  your other servers, delete selected per-project state, delete global state),
-  then prints the leftover manual steps. For pipx/uv it offers to run the
-  package uninstall as its final act; for pip it prints the command (a process
-  can't delete its own running env). The shell-rc API key is always left to you.
-  `--yes` / `--json` keep the previous non-interactive behaviour (global data +
-  server stop only).
+- **`brainpalace update`** — one-command upgrade that auto-detects pipx / uv / pip and runs the matching upgrade, then reminds you to restart the server (`--yes` skips the confirm).
+- **`brainpalace uninstall` is now a guided teardown** with no flags: confirms each step (stop servers, remove plugin dirs, strip the `brainpalace` MCP entry while keeping others, delete selected state) and prints leftover manual steps. For pipx/uv it offers to run the package uninstall; `--yes`/`--json` keep the non-interactive behaviour.
 
 ## [26.6.7] - 2026-06-02
 
 ### Added
-- **Guided uninstall — `scripts/uninstall.sh`.** Interactive teardown mirroring
-  `setup.sh`: stops servers, removes plugin dirs (all runtimes, both scopes),
-  surgically strips the `brainpalace` entry from MCP client configs (keeping
-  your other servers), uninstalls the package (auto-detected pipx/uv/pip), then
-  offers multi-select per-project and global-state deletion. Shell rc is left
-  to the user (an exported API key may be shared with other tools).
-- **"Full uninstall (teardown)" docs** in `docs/INSTALL.md` and both skill
-  installation guides, with a guided-uninstall curl one-liner.
+- **Guided uninstall — `scripts/uninstall.sh`.** Interactive teardown mirroring `setup.sh`: stops servers, removes plugin dirs, surgically strips the `brainpalace` MCP entry, uninstalls the package (auto-detected pipx/uv/pip), then offers per-project and global-state deletion. Shell rc is left to the user.
+- **"Full uninstall (teardown)" docs** in `docs/INSTALL.md` and both skill installation guides, with a guided-uninstall curl one-liner.
 
 ### Fixed
-- **Broken install URLs pointing at the local-only `stable` branch.** The
-  README `setup.sh` one-liner and the `PLUGIN_GUIDE.md` CI `pip install`
-  examples fetched `…/stable/…` / `@stable`, which 404 on GitHub (only `main`
-  is published). Now `main`.
-- **Documented a CLI command that does not exist.** `brainpalace uninstall
-  --agent <runtime>` was referenced across the docs, but `uninstall` removes
-  global data (no `--agent`) and `install-agent` only installs — there is no
-  CLI to remove a plugin. Replaced with direct `rm -rf` of the plugin dirs.
-  Also fixed `install-agent --scope global` → `--global` (wrong flag).
+- **Broken install URLs pointing at the local-only `stable` branch.** The README `setup.sh` one-liner and PLUGIN_GUIDE CI examples fetched `…/stable/…`, which 404s on GitHub; now `main`.
+- **Documented a CLI command that does not exist.** `brainpalace uninstall --agent <runtime>` was referenced but never existed; replaced with direct `rm -rf` of the plugin dirs, and fixed `install-agent --scope global` → `--global`.
 
 ## [26.6.6] - 2026-06-02
 
 ### Changed
-- **Session archiving is now independent of indexing and always-on by default.**
-  Archive (copy raw transcripts into `.brainpalace/`, free) and index (embed
-  them, billable) are two separate capabilities, each gated by the presence of
-  its config/flag. **Existing projects with no `session_indexing` block now
-  archive ON / index OFF** — transcripts are backed up (Claude Code prunes
-  originals after ~30 days) without any surprise embedding cost. `brainpalace
-  init` writes both ON; `--no-sessions` and `--no-archive` disable each
-  independently. New kill-switch `SESSION_ARCHIVE_ENABLED=false` (alongside the
-  existing `SESSION_INDEXING_ENABLED=false`).
-- **`retain_days <= 0` now means keep forever** (no age cutoff) for both index
-  and the new independent `archive.retain_days`. Defaults are `0` (forever).
-  Previously `0` would have skipped everything. ⚠️ First-run forever-indexing of
-  a large transcript history can be a big embedding bill (no 90-day cap now);
-  set a positive `retain_days` to cap it.
-- **Tool-tagged archive folders.** Archive date folders are now
-  `YYYY-MM-DD-<tool>` (e.g. `2026-06-01-claude-code`) so same-day sessions from
-  different tools sort adjacently and future multi-tool support slots in
-  cleanly. Manifest entries gain a structured `tool` field (the source of
-  truth — consumers must not parse paths). No migration: existing local archives
-  may be wiped (rebuildable from `~/.claude` within its 30-day window).
-- **`brainpalace status`** now shows session **archive** and **index** on
-  separate rows, covering all four on/off states.
+- **Session archiving is now independent of indexing and always-on by default.** Archive (free) and index (billable) are separate capabilities, each gated by its config/flag; existing projects with no `session_indexing` block now archive ON / index OFF. `init` writes both ON; `--no-sessions` / `--no-archive` disable each, with a new `SESSION_ARCHIVE_ENABLED=false` kill switch.
+- **`retain_days <= 0` now means keep forever** (no age cutoff) for both index and the new `archive.retain_days`; defaults are `0`. ⚠️ First-run forever-indexing of a large transcript history can be a big embedding bill — set a positive `retain_days` to cap it.
+- **Tool-tagged archive folders** are now `YYYY-MM-DD-<tool>` with a structured `tool` manifest field (the source of truth — don't parse paths). No migration; existing archives may be wiped (rebuildable from `~/.claude` within 30 days).
+- **`brainpalace status`** now shows session archive and index on separate rows, covering all four on/off states.
 
 ### Fixed
-- **Doc-freshness gate no longer false-positives on frontmatter-introduction.**
-  `scripts/check_doc_freshness.py` treated the commit that *adds* a doc's
-  `last_validated` frontmatter block as a content change (it only ignored the
-  `last_validated:` line, not the surrounding `---` fences / blank line), so
-  five correctly-stamped docs were wrongly flagged stale. Frontmatter fence and
-  blank lines are now recognised as metadata too.
+- **Doc-freshness gate no longer false-positives on frontmatter-introduction.** `check_doc_freshness.py` treated the commit that adds a doc's `last_validated` block as a content change; frontmatter fences and blank lines are now recognised as metadata.
 
 ## [26.6.5] - 2026-06-02
 
 ### Fixed
-- **Server no longer fails to start when the summarization provider's API key is
-  absent.** `EmbeddingGenerator` built the summarization provider in its
-  constructor, so a missing key (e.g. the shipped default
-  `summarization: anthropic` on a machine that only has `OPENAI_API_KEY`) raised
-  `AuthenticationError` during startup and the whole server failed to boot —
-  even though embeddings, document indexing, and session memory only need the
-  embedding provider. The summarization provider is now built lazily on first
-  summary; code-summary generation already degrades to docstring extraction on
-  error, so a missing summarization key falls back gracefully instead of
-  crashing. (`brainpalace start` has no provider pre-flight, unlike
-  `init --start`, so this previously surfaced as a raw traceback.)
+- **Server no longer fails to start when the summarization provider's API key is absent.** `EmbeddingGenerator` built the summarization provider in its constructor, so a missing key crashed startup even though indexing only needs the embedding provider. The summarization provider is now built lazily on first summary (degrading to docstring extraction on error).
 
 ## [26.6.4] - 2026-06-01
 
 ### Fixed
-- **File watcher / reindex now prunes deleted files.** A pure delete left the
-  chunk queryable and the document count stuck. Three coupled defects: the job
-  verifier treated a net-negative chunk delta (eviction) as failure and marked
-  the watcher job failed; the indexing pipeline's empty-docs early-return
-  skipped the BM25 rebuild, so `delete_by_ids` (vector store only) left the
-  chunk in BM25; and that path carried over the entire prior manifest including
-  the deleted file. Eviction-only runs now pass verification, rebuild BM25 from
-  the surviving chunks, and the manifest keeps only the unchanged entries.
-- **`reset` and `folders remove` no longer leave stale manifests.** They
-  cleared the chroma/bm25/graph stores but kept `.brainpalace/manifests/*.json`,
-  so the next `folders add` / `index` saw every file as unchanged and indexed
-  0 chunks into an empty store. `ManifestTracker.delete_all()` is now called on
-  `reset`, and `remove_folder` deletes the folder's manifest.
+- **File watcher / reindex now prunes deleted files.** Three coupled defects left a deleted file's chunk queryable and the document count stuck: the verifier failed eviction-only runs, the empty-docs early-return skipped the BM25 rebuild, and the manifest carried the deleted file over. Eviction-only runs now pass, rebuild BM25 from survivors, and keep only unchanged manifest entries.
+- **`reset` and `folders remove` no longer leave stale manifests.** They kept `.brainpalace/manifests/*.json`, so the next `add`/`index` saw every file as unchanged and indexed 0 chunks into an empty store; `reset` now calls `delete_all()` and `remove_folder` deletes the folder's manifest.
 
 ### Changed
-- **Session memory is ON by default for newly `init`-ed projects.**
-  `brainpalace init` writes `session_indexing.enabled: true` by default
-  (interactive runs confirm with a default of yes; non-interactive / `--json`
-  runs enable it). Pass `brainpalace init --no-sessions` to opt out. The
-  default applies only to a freshly written `config.yaml` — re-init over an
-  existing config is left untouched. Projects with no `session_indexing` block
-  (existing projects) stay off; this is not retroactive. Only assistant/tool
-  turns are indexed; user turns remain separately opt-in.
+- **Session memory is ON by default for newly `init`-ed projects.** `init` writes `session_indexing.enabled: true` (interactive default yes); `--no-sessions` opts out. Applies only to a freshly written config — re-init and existing projects with no block stay off; only assistant/tool turns are indexed.
 
 ### Internal
-- Hardening: a zero-change indexing run whose store is empty but whose manifest
-  claims indexed files now fails loudly instead of silently reporting done at
-  0% (surfaces a stale-manifest desync for re-index with force).
+- **Hardening:** a zero-change run whose store is empty but whose manifest claims indexed files now fails loudly instead of reporting done at 0%, surfacing a stale-manifest desync.
 
 ## [26.6.3] - 2026-06-01
 
 ### Changed
-- **Session live-watcher debounce default raised 2s → 30s**
-  (`session_indexing.watch_debounce_ms`). AI transcripts are written
-  per-message in bursts (quiet during generation, then a burst of lines), so
-  the old 2s window fired redundant re-index passes mid-turn on an in-progress
-  transcript. 30s batches a whole turn; freshness is low-value here (recall
-  targets *past* sessions, not the live one). Tunable per project; the archive
-  deletion watcher stays at 1s.
+- **Session live-watcher debounce default raised 2s → 30s** (`session_indexing.watch_debounce_ms`). AI transcripts are written in per-message bursts, so the old window fired redundant re-index passes mid-turn; 30s batches a whole turn (the archive-deletion watcher stays at 1s).
 
 ### Internal
-- **CI: GitHub Actions Node 20 → Node 24.** Bumped `actions/checkout@v6`,
-  `setup-python@v6`, `cache@v5`, `upload-artifact@v7`, `codecov-action@v5`, and
-  set `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true` to carry the remaining Node 20
-  actions (`arduino/setup-task`, codecov's internal `github-script`) onto
-  Node 24 ahead of the 2026-06-16 default flip and 2026-09-16 removal.
-- **Docs:** README usage examples (codebase / docs / graph / session memory),
-  a Session Memory badge, and clarified that automatic session capture is
-  Claude Code-transcript-specific (works from CLI or plugin install).
+- **CI: GitHub Actions Node 20 → Node 24.** Bumped checkout/setup-python/cache/upload-artifact/codecov and set `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true` ahead of the 2026 default flip/removal.
+- **Docs:** README usage examples, a Session Memory badge, and a note that automatic session capture is Claude-Code-transcript-specific (CLI or plugin).
 
 ## [26.6.2] - 2026-06-01
 
@@ -1262,29 +426,15 @@ Durable, user-curatable session archive: session indexing now reads from a
 local archive copy instead of the live `~/.claude` transcripts.
 
 ### Added
-- **Session archive.** On a transcript change the raw `.jsonl` is copied
-  verbatim into `.brainpalace/session_archive/<YYYY-MM-DD>/`, and indexing runs
-  off the archive copy. `~/.claude` is treated as read-only. Sessions survive
-  Claude Code removal / auto-delete. Opt-out via `session_indexing.archive.enabled`.
-- **Curation by deletion.** Deleting an archived transcript (or a dated folder)
-  purges that session's index chunks and writes a tombstone, so the live source
-  is never re-synced (no resurrection).
-- **Provenance.** Chunks record `origin_path` (the live source) alongside
-  `source_path` (the archive copy).
-- **Status.** `brainpalace status` / `/status` report `archived_sessions`,
-  `archived_files`, `archived_bytes`, and `tombstoned`.
-- **`brainpalace reset --include-sessions`** also deletes the archive; a plain
-  reset preserves it.
+- **Session archive.** On a transcript change the raw `.jsonl` is copied verbatim into `.brainpalace/session_archive/<YYYY-MM-DD>/` and indexing runs off the copy (`~/.claude` is read-only), so sessions survive Claude Code removal/auto-delete. Opt-out via `session_indexing.archive.enabled`.
+- **Curation by deletion.** Deleting an archived transcript (or a dated folder) purges that session's chunks and writes a tombstone, so the live source is never re-synced.
+- **Provenance.** Chunks record `origin_path` (live source) alongside `source_path` (archive copy).
+- **Status.** `brainpalace status` / `/status` report `archived_sessions`, `archived_files`, `archived_bytes`, and `tombstoned`.
+- **`brainpalace reset --include-sessions`** also deletes the archive; a plain reset preserves it.
 
 ### Fixed
-- Chunk purge used a flat multi-key ChromaDB `where` filter that ChromaDB
-  rejects ("expected exactly one operator"); deletions never purged chunks.
-  Wrapped in `$and`.
-- Subagent transcripts carry the parent's `sessionId`, so a `session_id`-keyed
-  manifest collided each parent with its subagents (undercount, broken mtime
-  no-op, and a data-loss path where deleting one subagent purged the parent's
-  chunks). Manifest is now keyed per file; a session is purged only when all of
-  its files are gone.
+- **Chunk purge never worked** — a flat multi-key ChromaDB `where` filter that ChromaDB rejects; now wrapped in `$and`.
+- **Subagent transcripts collided with their parent** under a `session_id`-keyed manifest (undercount + a data-loss path where deleting one subagent purged the parent). The manifest is now keyed per file; a session is purged only when all its files are gone.
 
 ## [26.6.1] - 2026-06-01
 
@@ -1292,76 +442,32 @@ Second release: watcher/session-memory/status fixes plus first-run UX and
 correctness fixes found during integration testing.
 
 ### Added
-
-- **`index --watch` / `--watch-debounce`** — mark a folder live-watched (or
-  `--watch off`); the server's `FileWatcherService` re-indexes on change with a
-  tunable debounce.
-- **`init --sessions` session memory** — opt-in, privacy-first indexing of this
-  project's AI chat transcripts (assistant + tool turns). Default off; `init`
-  prompts on a TTY, stays off non-interactively.
-- **`status` per-feature view** — document indexing, file watcher (with a clear
-  "0 folders — none marked watch=auto" state), session memory (on/off,
-  watching/idle, session-chunk + curated-memory counts), and graph index.
-- **`init --start` provider pre-flight** — validates embedding + summarization
-  providers before launching, failing fast with the missing env var instead of
-  crashing mid-index.
+- **`index --watch` / `--watch-debounce`** — mark a folder live-watched (or `--watch off`); the `FileWatcherService` re-indexes on change with a tunable debounce.
+- **`init --sessions` session memory** — opt-in, privacy-first indexing of this project's AI chat transcripts (assistant + tool turns), default off.
+- **`status` per-feature view** — document indexing, file watcher (with a "0 folders" state), session memory, and graph index.
+- **`init --start` provider pre-flight** — validates embedding + summarization providers before launching, failing fast with the missing env var.
 
 ### Fixed
-
-- **Session chunks upsert to Chroma** — the session chunker stored list
-  (`role_mix`, `tools_used`, `files_touched`) and `None` metadata values that
-  Chroma rejects ("Expected metadata value to be a str, int, float or bool"),
-  crashing session indexing at boot on every project. Lists are now comma-joined
-  and unset optional keys dropped.
-- **`folders add` watch default** — bare `folders add .` now defaults to
-  `--watch auto` (was `off`), matching the documented behaviour so the file
-  watcher isn't left at "0 folders".
-- **Summarization `api_key_env` ignored the provider** — an OpenAI-only user who
-  set `summarization.provider: openai` but no `api_key_env` got
-  "Set ANTHROPIC_API_KEY" and a startup crash. The conventional env var is now
-  derived from the selected provider when unset (openai→`OPENAI_API_KEY`,
-  cohere→`COHERE_API_KEY`, gemini→`GEMINI_API_KEY`, grok→`XAI_API_KEY`); error
-  messages name the correct var.
-- **`init --start` re-run** — re-running after a first run that aborted at the
-  provider pre-flight now starts the server idempotently instead of hitting the
-  already-initialized no-op.
-- **`init --force`** — no longer overwrites a user-edited `.brainpalace/
-  config.yaml` (provider/embedding/summarization/storage/graphrag settings are
-  preserved; use `brainpalace config` to change providers).
-- **`status` `total_documents`** — derived from persisted folder manifests, so
-  it's correct even when indexing ran in the job worker. Folder `chunk_count` is
-  cumulative.
+- **Session chunks upsert to Chroma** — the chunker stored list/`None` metadata that Chroma rejects, crashing session indexing at boot; lists are now comma-joined and unset keys dropped.
+- **`folders add` watch default** — bare `folders add .` now defaults to `--watch auto` (was `off`), matching the docs.
+- **Summarization `api_key_env` ignored the provider** — the conventional env var is now derived from the selected provider when unset, and error messages name the correct one.
+- **`init --start` re-run** — re-running after a pre-flight abort now starts the server idempotently instead of hitting the already-initialized no-op.
+- **`init --force`** — no longer overwrites a user-edited `config.yaml` (provider/storage/graphrag settings are preserved).
+- **`status` `total_documents`** — derived from persisted manifests, so it's correct even when indexing ran in the job worker.
 
 ### Docs
-
-- Documented the session-memory embedding cost (50% sliding-window overlap at
-  `window=4`/`stride=2`; `stride: 4` ~halves it) in `SESSION_INDEXING.md` and
-  `CLAUDE.md`.
+- **Documented the session-memory embedding cost** (50% sliding-window overlap at `window=4`/`stride=2`; `stride: 4` ~halves it) in SESSION_INDEXING.md and CLAUDE.md.
 
 ## [26.5.1] - 2026-05-30
 
 First public release of BrainPalace.
 
 ### Highlights
-
-- **Hybrid retrieval** — BM25 + vector + GraphRAG, fused (`hybrid`/`multi`) or
-  selectable per call (`bm25`/`vector`/`graph`).
-- **Session intelligence** — curated memory (`remember`/`recall`,
-  markdown-truth) + session-start context injection; session indexing/extraction
-  into searchable summaries, decisions, and a typed knowledge graph;
-  cross-session linking that supersedes stale decisions and promotes durable
-  ones into memory.
-- **Persistent SQLite graph backend** with temporal validity (per-edge validity
-  windows, `invalidate`, `timeline`).
-- **Time-decay ranking**, **git-history indexing** (commit messages + diff
-  stats), and an opt-in **LSP cross-reference** symbol graph.
-- **AST-aware code chunking** (Python, TypeScript, JavaScript, Java, Kotlin, C,
-  C++, C#, Go, Rust, Swift), optional **LLM code summaries**, opt-in
-  **cross-encoder reranking**.
-- **Multi-instance** (one server per project, auto port allocation +
-  `.brainpalace/runtime.json` discovery), **file watcher**, **incremental
-  indexing**, **embedding cache**.
-- **Interfaces** — CLI (`brainpalace` / `bp`), opt-in **MCP server**, and a
-  **Claude Code plugin** (30 slash commands, 3 agents, 2 skills).
-- **Pluggable providers** — embeddings (OpenAI · Cohere · Ollama), summarisation
-  (Anthropic · OpenAI · Gemini · Grok · Ollama); fully-local via Ollama.
+- **Hybrid retrieval** — BM25 + vector + GraphRAG, fused (`hybrid`/`multi`) or selectable per call (`bm25`/`vector`/`graph`).
+- **Session intelligence** — curated memory (`remember`/`recall`) + session-start context injection; session indexing into searchable summaries, decisions, and a typed knowledge graph with cross-session supersession.
+- **Persistent SQLite graph backend** with temporal validity (per-edge validity windows, `invalidate`, `timeline`).
+- **Time-decay ranking**, **git-history indexing**, and an opt-in **LSP cross-reference** symbol graph.
+- **AST-aware code chunking** (Python, TS/JS, Java, Kotlin, C/C++, C#, Go, Rust, Swift), optional **LLM code summaries**, opt-in **cross-encoder reranking**.
+- **Multi-instance** (one server per project, auto port allocation + `runtime.json` discovery), **file watcher**, **incremental indexing**, **embedding cache**.
+- **Interfaces** — CLI (`brainpalace` / `bp`), opt-in **MCP server**, and a **Claude Code plugin** (30 slash commands, 3 agents, 2 skills).
+- **Pluggable providers** — embeddings (OpenAI · Cohere · Ollama), summarisation (Anthropic · OpenAI · Gemini · Grok · Ollama); fully-local via Ollama.

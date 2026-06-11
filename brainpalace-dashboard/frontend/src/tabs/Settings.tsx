@@ -1,7 +1,12 @@
 import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ServerCog, RotateCcw } from "lucide-react";
-import { getSettings, patchSettings } from "../api/client";
+import {
+  getSettings,
+  patchSettings,
+  type DateFormat,
+  type TimeFormat,
+} from "../api/client";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { ToggleField } from "../components/SchemaForm/widgets/ToggleField";
 import { useToast } from "../components/Toast";
@@ -12,6 +17,8 @@ type Draft = {
   poll_s: number;
   token: string;
   autostart: boolean;
+  time_format: TimeFormat;
+  date_format: DateFormat;
 };
 
 /**
@@ -38,6 +45,8 @@ export function Settings() {
         poll_s: settingsQ.data.poll_s,
         token: settingsQ.data.token, // "********" when set, "" when unset
         autostart: settingsQ.data.autostart,
+        time_format: settingsQ.data.time_format,
+        date_format: settingsQ.data.date_format,
       });
     }
   }, [settingsQ.data, draft]);
@@ -50,6 +59,8 @@ export function Settings() {
         poll_s: d.poll_s,
         token: d.token,
         autostart: d.autostart,
+        time_format: d.time_format,
+        date_format: d.date_format,
       }),
     onSuccess: (res) => {
       setErrors({});
@@ -114,7 +125,48 @@ export function Settings() {
     poll_s: "5",
     token: "none",
     autostart: "on",
+    time_format: "24h",
+    date_format: "dd.mm.yyyy",
   };
+
+  const TIME_FORMAT_OPTIONS: { value: TimeFormat; label: string }[] = [
+    { value: "24h", label: "24-hour (14:30)" },
+    { value: "12h", label: "12-hour (2:30 PM)" },
+  ];
+  const DATE_FORMAT_OPTIONS: { value: DateFormat; label: string }[] = [
+    { value: "dd.mm.yyyy", label: "dd.mm.yyyy (31.12.2026)" },
+    { value: "mm.dd.yyyy", label: "mm.dd.yyyy (12.31.2026)" },
+    { value: "yyyy-mm-dd", label: "yyyy-mm-dd (2026-12-31)" },
+  ];
+
+  const select = <T extends string>(
+    key: "time_format" | "date_format",
+    label: string,
+    hint: string,
+    options: { value: T; label: string }[],
+  ) => (
+    <label className="flex flex-col gap-1" data-testid={`field-${key}`}>
+      <span className="text-sm font-medium text-fg">
+        {label}
+        <span className="ml-2 font-normal text-xs text-fg-faint">
+          default: {DEFAULTS[key]}
+        </span>
+      </span>
+      <select
+        data-testid={`input-${key}`}
+        value={draft[key]}
+        onChange={(e) => setDraft({ ...draft, [key]: e.target.value as T })}
+        className="rounded-lg border border-line bg-ink-700/50 px-3 py-2 text-sm text-fg focus:border-accent/60 focus:outline-none focus:ring-2 focus:ring-accent/30"
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+      <span className="text-xs text-fg-faint">{hint}</span>
+    </label>
+  );
 
   const field = (
     key: "host" | "port" | "poll_s" | "token",
@@ -206,6 +258,18 @@ export function Settings() {
             label="Auto-start dashboard on brainpalace start"
           />
         </div>
+        {select<TimeFormat>(
+          "time_format",
+          "Clock format",
+          "How times are shown across the dashboard. Applies on reload.",
+          TIME_FORMAT_OPTIONS,
+        )}
+        {select<DateFormat>(
+          "date_format",
+          "Date format",
+          "How display dates are formatted across the dashboard. Applies on reload.",
+          DATE_FORMAT_OPTIONS,
+        )}
       </div>
 
       <div className="flex justify-end">

@@ -143,6 +143,9 @@ class TestGetServerUrl:
             # Hermetic: ignore any live server the dev machine may be running
             # (CWD-based discovery would otherwise leak its real port in).
             patch("brainpalace_cli.config.discover_server_url", return_value=None),
+            # No initialized project owns the CWD; otherwise get_server_url raises
+            # ServerNotReachableError rather than guessing another project's URL.
+            patch("brainpalace_cli.config.discover_project_dir", return_value=None),
         ):
             url = get_server_url()
             assert url == "http://127.0.0.1:8000"

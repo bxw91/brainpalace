@@ -282,6 +282,35 @@ def wizard(global_: bool, chat_summarizer: str) -> None:
         default="3",
     )
 
+    embed_sessions = click.confirm(
+        "\nEmbed chat sessions for semantic recall? (billable opt-in)",
+        default=False,
+    )
+    archive_sessions = click.confirm(
+        "\nBack up chat transcripts locally? (free; stores full raw transcripts "
+        "incl. secrets)",
+        default=True,
+    )
+    index_git = click.confirm(
+        "\nIndex git commit history? (commits may contain secrets)", default=False
+    )
+    git_depth = 5000
+    if index_git:
+        git_depth = click.prompt(
+            "How many commits back to index? (0 = unlimited)", default=5000, type=int
+        )
+    rerank_on = click.confirm(
+        "\nEnable reranking? (local cross-encoder, no API cost)", default=True
+    )
+    from brainpalace_cli import optional_deps
+
+    use_lemma = click.confirm(
+        "\nUse lemmatization for BM25 keyword search? (better recall for inflected "
+        "languages)\n  "
+        f"{optional_deps.REGISTRY['lemma-hr'].download_note}",
+        default=False,
+    )
+
     suggested_port = _find_available_api_port(8000, 8300)
     click.echo(f"\nDiscovered available API port in 8000-8300 range: {suggested_port}")
 
@@ -313,6 +342,23 @@ def wizard(global_: bool, chat_summarizer: str) -> None:
         default=suggested_port,
     )
 
+    # Dashboard (control-plane) settings are global — they govern the dashboard
+    # process itself, not a single project — so only ask + write them for the
+    # global config. The /dashboard/settings tab edits the same `dashboard:`
+    # block later.
+    dashboard_autostart = True
+    dashboard_port = 8787
+    if global_:
+        dashboard_autostart = click.confirm(
+            "\nAuto-start the web dashboard when you run 'brainpalace start'?",
+            default=True,
+        )
+        dashboard_port = click.prompt(
+            "Dashboard port",
+            type=click.IntRange(min=1, max=65535),
+            default=8787,
+        )
+
     config: dict[str, Any] = {
         "embedding": {
             "provider": embed_provider,
@@ -325,11 +371,32 @@ def wizard(global_: bool, chat_summarizer: str) -> None:
         "graphrag": {
             "enabled": False,
         },
+        "session_indexing": {
+            "enabled": embed_sessions,
+            "archive": {"enabled": archive_sessions},
+        },
+        "git_indexing": {
+            "enabled": index_git,
+            "depth": git_depth,
+        },
+        "reranker": {
+            "enabled": rerank_on,
+        },
+        "bm25": {
+            "engine": "lemma" if use_lemma else "stem",
+        },
         "api": {
             "host": api_host,
             "port": api_port,
         },
     }
+    if global_:
+        config["dashboard"] = {
+            "autostart": dashboard_autostart,
+            "port": dashboard_port,
+        }
+    if use_lemma:
+        optional_deps.ensure_extra("lemma-hr", assume_yes=True)
 
     if embed_provider == "ollama":
         config["embedding"]["params"] = {
@@ -344,6 +411,9 @@ def wizard(global_: bool, chat_summarizer: str) -> None:
             "use_code_metadata": True,
             "doc_extractor": "langextract",
         }
+        from brainpalace_cli import optional_deps
+
+        optional_deps.ensure_extra("graphrag", assume_yes=True)
     elif graphrag_mode == "3":
         config["graphrag"] = {
             "enabled": True,

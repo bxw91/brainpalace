@@ -9,6 +9,7 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { isJobActive } from "../components/JobProgress";
 import { useToast } from "../components/Toast";
 import { useOptionalSelectedInstance } from "../state/selectedInstance";
+import { useDisplayFormat } from "../format/datetime";
 import {
   NoInstance,
   StoppedState,
@@ -26,10 +27,10 @@ const STATUS_TONE: Record<string, string> = {
   cancelled: "bg-ink-600 text-fg-muted",
 };
 
-function fmtTime(iso: string | null): string {
+function fmtTime(iso: string | null, formatTime: (d: Date) => string): string {
   if (!iso) return "—";
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleTimeString();
+  return Number.isNaN(d.getTime()) ? iso : formatTime(d);
 }
 
 /** Elapsed ms between started/finished (live to now while still running). */
@@ -58,6 +59,7 @@ export function Jobs({ instanceId }: { instanceId?: string }) {
   const qc = useQueryClient();
   const [cancelTarget, setCancelTarget] = useState<string | null>(null);
   const [openJobId, setOpenJobId] = useState<string | null>(null);
+  const { formatTime } = useDisplayFormat();
 
   const jobsQ = useQuery({
     queryKey: ["jobs", id],
@@ -182,7 +184,9 @@ export function Jobs({ instanceId }: { instanceId?: string }) {
     {
       key: "started",
       header: "Started",
-      cell: (j) => <span className="text-xs text-fg-muted">{fmtTime(j.started_at)}</span>,
+      cell: (j) => (
+        <span className="text-xs text-fg-muted">{fmtTime(j.started_at, formatTime)}</span>
+      ),
       sortValue: (j) => j.started_at ?? "",
     },
     {

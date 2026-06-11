@@ -163,8 +163,10 @@ OVERRIDES: dict[str, dict[str, Any]] = {
     },
     "reranker.enabled": {
         "label": "Enabled",
-        "help": "Two-stage reranking with a local cross-encoder (no API cost; "
-        "adds a little query latency). Default: on.",
+        "help": "Two-stage retrieval: after the first stage (bm25/vector/hybrid) "
+        "returns candidates, a local cross-encoder rescores each (query, chunk) "
+        "pair and reorders by relevance. No API cost (local model); adds a little "
+        "query latency. Default: on.",
     },
     "reranker.provider": {
         "help": "sentence-transformers = local cross-encoder, no API cost, no base "

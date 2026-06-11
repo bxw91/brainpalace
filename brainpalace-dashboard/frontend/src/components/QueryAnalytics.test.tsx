@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { QueryAnalytics } from "./QueryAnalytics";
@@ -17,16 +17,28 @@ const stats: QueryStats = {
     { bucket: "2026-06-10 10:00", count: 22, p50: 28, p95: 120 },
   ],
   top_queries: [
-    { query: "proxy service", count: 9, avg_latency_ms: 21, zero_results: 0, last_ts: 1 },
+    {
+      query: "proxy service",
+      count: 9,
+      avg_latency_ms: 21,
+      zero_results: 0,
+      last_ts: 1,
+      last_id: "q-proxy-latest",
+    },
   ],
   zero_result_queries: [{ query: "ghost feature", count: 3, last_ts: 2 }],
 };
 
-function mount() {
+function mount(onSelectQuery?: (qid: string) => void) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <QueryAnalytics instanceId="i1" since={0} windowKey="24h" />
+      <QueryAnalytics
+        instanceId="i1"
+        since={0}
+        windowKey="24h"
+        onSelectQuery={onSelectQuery}
+      />
     </QueryClientProvider>,
   );
 }
@@ -40,5 +52,14 @@ describe("QueryAnalytics", () => {
     expect(screen.getByTestId("mode-dist-hybrid")).toHaveTextContent("30");
     expect(screen.getByText("proxy service")).toBeInTheDocument();
     expect(screen.getByText("ghost feature")).toBeInTheDocument();
+  });
+
+  it("opens the query detail (via last_id) when a top query is clicked", async () => {
+    vi.mocked(client.getQueryStats).mockResolvedValue(stats);
+    const onSelect = vi.fn();
+    mount(onSelect);
+    const row = await screen.findByTestId("top-query-proxy service");
+    fireEvent.click(row);
+    expect(onSelect).toHaveBeenCalledWith("q-proxy-latest");
   });
 });

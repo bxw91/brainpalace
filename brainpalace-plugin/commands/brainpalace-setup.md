@@ -6,7 +6,7 @@ context: brainpalace
 agent: setup-assistant
 skills:
   - configuring-brainpalace
-last_validated: 2026-06-05
+last_validated: 2026-06-11
 ---
 
 # Complete BrainPalace Setup
@@ -524,6 +524,28 @@ The provider is configured globally — new projects inherit it.
 > **Note:** If the storage backend chosen in Step 4 is `postgres`, run the
 > PostgreSQL sub-flow below (Step 10a) BEFORE `brainpalace init` so the server
 > can connect on first start.
+
+> **Same question set as the wizard.** `brainpalace init` (sparse PROJECT config)
+> asks the **same project-config-backed questions** as the `config wizard` /
+> `install` GLOBAL flow above: embedding, summarizer, **reranker**,
+> **embed-sessions** (`session_indexing.enabled` — billable opt-in, default OFF),
+> **session-archive** (`session_indexing.archive.enabled` — free local backup of
+> full raw transcripts incl. secrets, default ON), **git-history**, and **GraphRAG
+> document extraction** (`graphrag.doc_extractor` = `langextract` | `none`). `init`
+> re-asks the per-project-overridable **reranker** (`reranker.enabled`)
+> behind an *"inherited from global — change for this project? [y/N]"* gate,
+> writing a sparse override only when changed; embedding/summarizer are not
+> re-asked via that gate (they resolve via env-detection / global inheritance).
+
+> **Opt-in optional-dep rule.** Enabling a feature whose "yes" needs an optional
+> server extra triggers a download — **auto-installed on yes** (auto-detecting
+> pipx → uv → pip), or the **exact install command is printed** if no manager is
+> detected. Declining writes the disabling value (e.g. `graphrag.doc_extractor:
+> none`) so the server's "not installed" warning never fires; optional deps are
+> never auto-installed just because a feature is default-ON in code. Extras:
+> GraphRAG doc-extraction → `langextract`; BM25 `lemma` engine → `simplemma`;
+> postgres backend → `asyncpg` + `sqlalchemy`. `brainpalace doctor` reports
+> optional-extra status for enabled features.
 
 > **Session summarization:** `brainpalace init` enables it by default and writes
 > `mode: subagent` — sessions are summarized **only inside Claude Code**. Since

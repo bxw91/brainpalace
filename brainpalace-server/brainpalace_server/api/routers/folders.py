@@ -121,14 +121,35 @@ async def remove_folder(
             detail=f"Folder not found in index: {normalized_path}",
         )
 
-    # Delete chunks from storage backend
+    # Delete chunks from storage backend.
+    #
+    # Only delete chunks UNIQUE to this folder. Overlapping/nested folders (e.g.
+    # /repo and /repo/sub both indexing /repo/sub/*) share chunk IDs; deleting
+    # every chunk_id of the removed folder would evict chunks another registered
+    # folder still references. Subtract the IDs owned by all OTHER folders so
+    # shared chunks survive. Truly-orphaned chunks (referenced by no remaining
+    # folder) are reaped by the startup reconcile pass
+    # (services.startup_reconcile.reconcile_folders).
     chunks_deleted = 0
     try:
         if record.chunk_ids:
+            other_records = await folder_manager.list_folders()
+            shared_ids: set[str] = set()
+            for other in other_records:
+                if str(Path(other.folder_path).resolve()) == normalized_path:
+                    continue
+                shared_ids.update(other.chunk_ids or [])
+            unique_ids = [cid for cid in record.chunk_ids if cid not in shared_ids]
+            retained = len(record.chunk_ids) - len(unique_ids)
             # Delete by chunk IDs (preferred — targeted, no accidental over-deletion)
-            chunks_deleted = await storage_backend.delete_by_ids(record.chunk_ids)
+            if unique_ids:
+                chunks_deleted = await storage_backend.delete_by_ids(unique_ids)
             logger.info(
-                f"Deleted {chunks_deleted} chunks by IDs for folder: {normalized_path}"
+                "Deleted %d chunks by IDs for folder %s "
+                "(%d shared with another folder retained)",
+                chunks_deleted,
+                normalized_path,
+                retained,
             )
         else:
             # Fallback: delete by metadata source path prefix

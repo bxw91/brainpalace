@@ -307,6 +307,8 @@ export type MemoriesPayload = {
 /** Archived-session metadata (server `/sessions/archive`). */
 export type ArchivedSession = {
   session_id: string;
+  /** First line of the first user prompt, for display; null when unavailable. */
+  title: string | null;
   archive_path: string;
   mtime: number;
   size_bytes: number;
@@ -369,6 +371,8 @@ export type QueryStats = {
     avg_latency_ms: number;
     zero_results: number;
     last_ts: number;
+    /** Id of the most recent occurrence — opens that query's detail drawer. */
+    last_id: string;
   }>;
   zero_result_queries: Array<{ query: string; count: number; last_ts: number }>;
 };

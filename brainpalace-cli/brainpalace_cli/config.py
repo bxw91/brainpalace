@@ -10,10 +10,11 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import click
 import yaml
 from pydantic import BaseModel, Field
 
-from brainpalace_cli.discovery import discover_server_url
+from brainpalace_cli.discovery import discover_project_dir, discover_server_url
 from brainpalace_cli.xdg_paths import get_xdg_config_dir, is_initialized_state_dir
 
 logger = logging.getLogger(__name__)
@@ -21,6 +22,26 @@ logger = logging.getLogger(__name__)
 # Default state directory name within project root
 STATE_DIR_NAME = ".brainpalace"
 LEGACY_STATE_DIR_NAME = ".claude/brainpalace"
+
+
+class ServerNotReachableError(click.ClickException):
+    """The current project's own server isn't reachable.
+
+    Raised by :func:`get_server_url` when an *initialized* project owns the CWD
+    but its recorded server can't be validated as live. We deliberately do NOT
+    fall back to ``config.server.url`` / the default port in that case: that URL
+    is global and frequently points at a *different* project's server (e.g.
+    whatever is bound to ``:8000``), so a command would silently report another
+    project's data. Failing loudly is correct — the fix for the wrong-server bug.
+    """
+
+    def __init__(self, project: Path) -> None:
+        super().__init__(
+            f"BrainPalace server for this project isn't reachable: {project}\n"
+            "It may still be starting up, or it's stopped. "
+            "Start it with: brainpalace start"
+        )
+        self.project = project
 
 
 class ServerConfig(BaseModel):
@@ -422,7 +443,9 @@ def get_state_dir(
     return project_root / STATE_DIR_NAME
 
 
-def get_server_url(config: BrainPalaceConfig | None = None) -> str:
+def get_server_url(
+    config: BrainPalaceConfig | None = None, *, raise_on_unreachable: bool = True
+) -> str:
     """Get the server URL.
 
     Resolution order:
@@ -432,16 +455,27 @@ def get_server_url(config: BrainPalaceConfig | None = None) -> str:
        the server is live — see
        :func:`brainpalace_cli.discovery.discover_server_url`. This correctly
        handles mono-repos, where the git root is not the project root.
-    3. config.server.url from the config file
-    4. Default: http://127.0.0.1:8000
+    3. If an initialized project owns the CWD but no live server validates,
+       raise :class:`ServerNotReachableError` instead of falling through — never
+       silently target an unrelated server (the global default frequently points
+       at a *different* project's server).
+    4. config.server.url from the config file (only when no owning project)
+    5. Default: http://127.0.0.1:8000
 
     Args:
         config: Optional pre-loaded config.
+        raise_on_unreachable: When True (default), raise if an owning project is
+            found but no live server validates. Pass False for diagnostics
+            (``doctor``) that must still compute a would-be URL for a down server.
 
     Returns:
         Server URL string.
+
+    Raises:
+        ServerNotReachableError: An owning project was found but its server is
+            not reachable (only when ``raise_on_unreachable`` is True).
     """
-    # Environment variable takes precedence
+    # Environment variable takes precedence (explicit override wins)
     env_url = os.getenv("BRAINPALACE_URL")
     if env_url:
         return env_url
@@ -451,7 +485,17 @@ def get_server_url(config: BrainPalaceConfig | None = None) -> str:
     if discovered:
         return discovered
 
-    # Load config if not provided
+    # No live owning server. If an initialized project still owns the CWD, the
+    # global config/default URL would point somewhere else entirely (commonly a
+    # different project's server on :8000), so a command would report the wrong
+    # project's data. Fail loudly rather than guess. (Fix for the wrong-server
+    # bug — affects every command that resolves a URL this way.)
+    project = discover_project_dir()
+    if project is not None and raise_on_unreachable:
+        raise ServerNotReachableError(project)
+
+    # No owning project (or caller opted out, e.g. `doctor` which must still
+    # report a would-be URL for a down server) — use the configured/default URL.
     if config is None:
         config = load_config()
 

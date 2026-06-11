@@ -181,7 +181,10 @@ export const PercentileChart = memo(function PercentileChart({
             tickLine={false}
             width={36}
           />
-          <Tooltip contentStyle={TOOLTIP_STYLE} />
+          <Tooltip
+            contentStyle={TOOLTIP_STYLE}
+            formatter={(v: number | string) => `${Math.round(Number(v))} ms`}
+          />
           <Line dataKey="p50" stroke="#2dd4bf" dot={false} strokeWidth={2} />
           <Line dataKey="p95" stroke="#f59e0b" dot={false} strokeWidth={2} />
         </LineChart>

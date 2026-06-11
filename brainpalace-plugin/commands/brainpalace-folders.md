@@ -14,7 +14,7 @@ parameters:
     default: false
 skills:
   - using-brainpalace
-last_validated: 2026-06-04
+last_validated: 2026-06-11
 ---
 
 # Manage Indexed Folders
@@ -94,10 +94,13 @@ brainpalace folders add <path> --language fr --include-type docs
 
 Note: `folders add` is an alias for `index` — re-adding an already-indexed folder triggers incremental re-indexing (only changed files processed).
 
-### Remove Folder (deletes all chunks)
+### Remove Folder (deletes the folder's unique chunks)
 
-Remove all indexed chunks for the folder. Requires confirmation unless
-`--yes` is passed:
+Remove the folder from the index, deleting the chunks unique to it. Chunks also
+referenced by another registered folder (e.g. an overlapping/nested folder) are
+retained so the other folder keeps working; truly-orphaned chunks are swept by
+the server's startup reconcile pass. Requires confirmation unless `--yes` is
+passed:
 
 ```bash
 brainpalace folders remove <path> --yes

@@ -2,15 +2,15 @@ import { useQuery } from "@tanstack/react-query";
 import { getSessionArchive } from "../api/client";
 import type { ArchivedSession } from "../api/types";
 import { DataTable, type Column } from "./DataTable";
+import { useDisplayFormat } from "../format/datetime";
 
 const fmtBytes = (n: number) =>
   n >= 1024 * 1024 ? `${(n / (1024 * 1024)).toFixed(1)} MB` : `${(n / 1024).toFixed(1)} KB`;
 
-const fmtWhen = (ts: number) => new Date(ts * 1000).toLocaleString();
-
 /** Archived-session metadata list. Transcript content is never shown
  *  (raw archives can contain secrets) — this is an inventory, not a reader. */
 export function SessionArchivePanel({ instanceId }: { instanceId: string }) {
+  const { formatDateTime } = useDisplayFormat();
   const archiveQ = useQuery({
     queryKey: ["session-archive", instanceId],
     queryFn: () => getSessionArchive(instanceId),
@@ -24,16 +24,21 @@ export function SessionArchivePanel({ instanceId }: { instanceId: string }) {
       key: "session_id",
       header: "Session",
       cell: (r) => (
-        <span className="font-mono text-xs" title={r.archive_path}>
-          {r.session_id}
+        <span className="flex flex-col" title={r.archive_path}>
+          <span className="text-xs text-fg">{r.title ?? "(untitled session)"}</span>
+          <span className="font-mono text-[10px] text-fg-faint">{r.session_id}</span>
         </span>
       ),
-      sortValue: (r) => r.session_id,
+      sortValue: (r) => r.title ?? r.session_id,
     },
     {
       key: "mtime",
       header: "Last activity",
-      cell: (r) => <span className="text-xs text-fg-muted">{fmtWhen(r.mtime)}</span>,
+      cell: (r) => (
+        <span className="text-xs text-fg-muted">
+          {formatDateTime(new Date(r.mtime * 1000))}
+        </span>
+      ),
       sortValue: (r) => r.mtime,
     },
     {

@@ -21,6 +21,19 @@ def runner() -> CliRunner:
     return CliRunner()
 
 
+@pytest.fixture(autouse=True)
+def _hermetic_reapers(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep restart tests from touching real processes: the orphan reaper and
+    the process-scan default to no-ops. Tests that assert reaping override them.
+    """
+    monkeypatch.setattr(
+        "brainpalace_cli.commands.update._reap_orphan_servers", lambda: None
+    )
+    monkeypatch.setattr(
+        "brainpalace_cli.commands.update._dashboard_orphan_pids", lambda: []
+    )
+
+
 class TestDetectInstallManager:
     """detect_install_manager classifies the binary location."""
 
@@ -74,10 +87,21 @@ class TestUpgradeArgv:
     """upgrade_argv maps a manager to its upgrade command."""
 
     def test_pipx(self) -> None:
-        assert upgrade_argv("pipx") == ["pipx", "upgrade", "brainpalace-cli"]
+        assert upgrade_argv("pipx") == [
+            "pipx",
+            "upgrade",
+            "brainpalace-cli",
+            "--pip-args=--no-cache-dir",
+        ]
 
     def test_uv(self) -> None:
-        assert upgrade_argv("uv") == ["uv", "tool", "upgrade", "brainpalace-cli"]
+        assert upgrade_argv("uv") == [
+            "uv",
+            "tool",
+            "upgrade",
+            "--no-cache",
+            "brainpalace-cli",
+        ]
 
     def test_pip(self) -> None:
         assert upgrade_argv("pip") == [
@@ -86,6 +110,7 @@ class TestUpgradeArgv:
             "pip",
             "install",
             "--upgrade",
+            "--no-cache-dir",
             "brainpalace-rag",
             "brainpalace-cli",
         ]
@@ -122,7 +147,12 @@ class TestUpdateCommand:
             result = runner.invoke(update_command, ["--yes"])
 
         assert result.exit_code == 0
-        assert ["pipx", "upgrade", "brainpalace-cli"] in calls
+        assert [
+            "pipx",
+            "upgrade",
+            "brainpalace-cli",
+            "--pip-args=--no-cache-dir",
+        ] in calls
         assert "upgrade complete" in result.output.lower()
 
     def test_unknown_manager_exits_nonzero_with_guidance(
@@ -279,8 +309,10 @@ class TestRestartAfterUpgrade:
         assert not any("stop" in s or "start" in s for s in subcmds)
         assert "restart" in result.output.lower()
 
-    def test_decline_restart_prompt_skips(self, runner: CliRunner) -> None:
-        """Without --yes, answering 'n' to the restart prompt restarts nothing."""
+    def test_decline_prompt_aborts_without_stopping_or_upgrading(
+        self, runner: CliRunner
+    ) -> None:
+        """One combined consent. Declining it stops nothing and upgrades nothing."""
         calls: list[list[str]] = []
         p_mgr, p_run = self._patches("pipx", calls)
         with (
@@ -295,26 +327,86 @@ class TestRestartAfterUpgrade:
                 return_value=False,
             ),
         ):
-            # First 'y' confirms the upgrade, then 'n' declines the restart.
-            result = runner.invoke(update_command, input="y\nn\n")
+            result = runner.invoke(update_command, input="n\n")
+
+        assert result.exit_code == 0
+        # Nothing ran at all — no stop, no upgrade.
+        assert calls == []
+        assert "aborted" in result.output.lower()
+
+    def test_orphan_dashboards_trigger_cleanup_restart(self, runner: CliRunner) -> None:
+        """No registry servers and a stale pidfile, but a stray dashboard is
+        live (process scan) — the upgrade still bounces the dashboard so the
+        orphan is reaped via `dashboard stop`."""
+        calls: list[list[str]] = []
+        p_mgr, p_run = self._patches("pipx", calls)
+        with (
+            p_mgr,
+            p_run,
+            patch("brainpalace_cli.commands.update.running_servers", return_value=[]),
+            patch(
+                "brainpalace_cli.commands.update.dashboard_running",
+                return_value=False,
+            ),
+            # A leaked dashboard the pidfile no longer tracks.
+            patch(
+                "brainpalace_cli.commands.update._dashboard_orphan_pids",
+                return_value=[8123],
+            ),
+        ):
+            result = runner.invoke(update_command, ["--yes"])
 
         assert result.exit_code == 0
         subcmds = [c[1:] for c in calls]
-        assert ["stop", "--path", "/proj/a", "--json"] not in subcmds
+        assert ["dashboard", "stop"] in subcmds
+        assert ["dashboard", "start", "--no-open", "--json"] in subcmds
+
+    def test_reaps_orphan_servers_before_restart(self, runner: CliRunner) -> None:
+        """The upgrade reaps non-registry server duplicates before restarting."""
+        calls: list[list[str]] = []
+        reaped: list[bool] = []
+        p_mgr, p_run = self._patches("pipx", calls)
+        with (
+            p_mgr,
+            p_run,
+            patch(
+                "brainpalace_cli.commands.update.running_servers",
+                return_value=["/proj/a"],
+            ),
+            patch(
+                "brainpalace_cli.commands.update.dashboard_running",
+                return_value=False,
+            ),
+            patch(
+                "brainpalace_cli.commands.update._reap_orphan_servers",
+                side_effect=lambda: reaped.append(True),
+            ),
+        ):
+            result = runner.invoke(update_command, ["--yes"])
+
+        assert result.exit_code == 0
+        assert reaped == [True]
 
 
-class TestPreflightNotice:
-    """Before the upgrade runs, warn what's live (without stopping it)."""
+class TestUpdateOrdering:
+    """Default flow stops everything *before* the upgrade; --no-restart doesn't."""
 
-    def test_warns_about_running_instances_before_upgrade(
-        self, runner: CliRunner
-    ) -> None:
-        """A pre-flight line names the live servers/dashboard; nothing is
-        stopped before the upgrade subprocess runs."""
+    @staticmethod
+    def _classify(argv: list[str]) -> str:
+        if "upgrade" in argv and "brainpalace-cli" in argv:
+            return "upgrade"
+        if "stop" in argv or ("dashboard" in argv and "stop" in argv):
+            return "stop"
+        if "start" in argv:
+            return "start"
+        return "other"
+
+    def test_default_stops_all_before_upgrade(self, runner: CliRunner) -> None:
+        """A stop for the live server + dashboard precedes the upgrade subprocess."""
         order: list[str] = []
 
         def fake_run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess:
-            order.append("upgrade" if "upgrade" in argv else "other")
+            order.append(self._classify(argv))
             return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
 
         with (
@@ -327,20 +419,76 @@ class TestPreflightNotice:
                 return_value=["/proj/a"],
             ),
             patch(
-                "brainpalace_cli.commands.update.dashboard_running",
-                return_value=True,
+                "brainpalace_cli.commands.update.dashboard_running", return_value=True
+            ),
+            patch("subprocess.run", side_effect=fake_run),
+        ):
+            result = runner.invoke(update_command, ["--yes"])
+
+        assert result.exit_code == 0
+        # Every stop happens before the upgrade; every start happens after it.
+        up = order.index("upgrade")
+        assert "stop" in order[:up]
+        assert all(order.index(x) > up for x in order if x == "start")
+
+    def test_upgrade_failure_after_stop_warns_loudly(self, runner: CliRunner) -> None:
+        """If the upgrade fails after everything was stopped, the user is told
+        loudly that nothing runs and they are NOT on the new version."""
+
+        def fake_run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess:
+            rc = 1 if ("upgrade" in argv and "brainpalace-cli" in argv) else 0
+            return subprocess.CompletedProcess(argv, rc, stdout="", stderr="boom")
+
+        with (
+            patch(
+                "brainpalace_cli.commands.update.detect_install_manager",
+                return_value="pipx",
+            ),
+            patch(
+                "brainpalace_cli.commands.update.running_servers",
+                return_value=["/proj/a"],
+            ),
+            patch(
+                "brainpalace_cli.commands.update.dashboard_running", return_value=True
+            ),
+            patch("subprocess.run", side_effect=fake_run),
+        ):
+            result = runner.invoke(update_command, ["--yes"])
+
+        assert result.exit_code != 0
+        out = result.output.lower()
+        assert "not on the new version" in out
+        assert "brainpalace start" in out
+
+    def test_no_restart_does_not_stop_and_warns_old_code(
+        self, runner: CliRunner
+    ) -> None:
+        """--no-restart upgrades only; instances keep running old code (warned)."""
+        order: list[str] = []
+
+        def fake_run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess:
+            order.append(self._classify(argv))
+            return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+
+        with (
+            patch(
+                "brainpalace_cli.commands.update.detect_install_manager",
+                return_value="pipx",
+            ),
+            patch(
+                "brainpalace_cli.commands.update.running_servers",
+                return_value=["/proj/a"],
+            ),
+            patch(
+                "brainpalace_cli.commands.update.dashboard_running", return_value=True
             ),
             patch("subprocess.run", side_effect=fake_run),
         ):
             result = runner.invoke(update_command, ["--yes", "--no-restart"])
 
         assert result.exit_code == 0
-        out = result.output.lower()
-        assert "heads up" in out
-        assert "server" in out and "dashboard" in out
-        # --no-restart means the only subprocess is the upgrade itself: the
-        # pre-flight is informational, it never stops anything early.
-        assert order == ["upgrade"]
+        assert order == ["upgrade"]  # nothing stopped or started
+        assert "old code" in result.output.lower()
 
     def test_silent_when_nothing_running(self, runner: CliRunner) -> None:
         with (

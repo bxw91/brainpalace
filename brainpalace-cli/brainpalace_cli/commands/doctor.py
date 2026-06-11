@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
 import click
 from rich.console import Console
@@ -14,11 +15,43 @@ from brainpalace_cli.diagnostics import (
     SEVERITY_OK,
     SEVERITY_WARN,
     apply_safe_fixes,
+    load_project_config_dict,
     report_to_json,
     run_doctor,
 )
 
 console = Console()
+
+
+def extras_status_lines(config: dict[str, Any]) -> list[str]:
+    """One status line per ENABLED dep-bearing feature whose extra is checked.
+
+    Enabled but missing -> a 'missing' line with the fix command. Declined
+    features (doc_extractor=none, engine=stem, backend!=postgres) are omitted
+    (D2: a declined feature must not nag).
+    """
+    from brainpalace_cli import optional_deps as od
+
+    def _section(name: str) -> dict[str, Any]:
+        block = config.get(name)
+        return block if isinstance(block, dict) else {}
+
+    enabled: list[str] = []
+    if _section("graphrag").get("doc_extractor") == "langextract":
+        enabled.append("graphrag")
+    if _section("bm25").get("engine") == "lemma":
+        enabled.append("lemma-hr")
+    if _section("storage").get("backend") == "postgres":
+        enabled.append("postgres")
+
+    lines: list[str] = []
+    for extra in enabled:
+        if od.is_installed(extra):
+            lines.append(f"  extra '{extra}': installed")
+        else:
+            hint = od.manual_install_hint(extra)
+            lines.append(f"  extra '{extra}': MISSING — install: {hint}")
+    return lines
 
 
 _STATUS_STYLE = {
@@ -127,6 +160,14 @@ def doctor_command(
         table.add_row(check.name, f"[{style}]{label}[/]", body)
 
     console.print(table)
+
+    from pathlib import Path
+
+    extras_lines = extras_status_lines(load_project_config_dict(Path(report.state_dir)))
+    if extras_lines:
+        console.print("\n[cyan]Optional extras:[/]")
+        for line in extras_lines:
+            console.print(line)
 
     if apply_fixes:
         if fix_actions:

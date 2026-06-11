@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-10
+last_validated: 2026-06-11
 ---
 
 # BrainPalace Developer Guide
@@ -179,6 +179,22 @@ python scripts/add_audit_metadata.py         # stamp today's date into frontmatt
 ```
 Do **not** run `add_audit_metadata.py` to silence the check without re-reading
 the doc — the date asserts a human (or you) verified it against the code.
+
+### Changelog style (`docs/CHANGELOG.md`)
+Changelog entries are for **readers deciding whether a change affects them**, not
+for explaining how it was built. Keep each entry **short**:
+
+> **Each entry is ≤ 3 sentences.** A bold lead naming what changed, one sentence
+> of user-facing impact, and at most one clause for the key default/gotcha or the
+> cross-surface parity pointer. Reference the issue/PR (`(#NN)`) and let the
+> **commit message** carry the root-cause / file-level detail — don't duplicate it
+> here.
+
+The cap applies to **every** entry, old and new — released sections may be
+normalized for length in a deliberate pass, but never drop a real entry, version
+header, date, or issue reference when tightening. Group entries under the standard
+Keep-a-Changelog headings (`Added`, `Changed`, `Fixed`, `Docs`, …) within each
+`[YY.M.N]` section.
 
 ### Test Directories
 - `brainpalace-server/tests/`: Server-specific tests.

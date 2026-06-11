@@ -186,10 +186,15 @@ class QueryLogService:
             lat_rows = c.execute(
                 f"SELECT ts, latency_ms FROM queries{where} ORDER BY ts", params
             ).fetchall()
+            # ``id AS last_id`` is a *bare* column alongside a single max()
+            # aggregate (max(ts)): per the SQLite "bare column" rule, it takes
+            # its value from the same row that holds max(ts) — i.e. the id of the
+            # most recent occurrence of each query. That id lets the dashboard
+            # open the per-query detail drawer from a top-queries row.
             top_rows = c.execute(
                 "SELECT query, count(*) AS n, avg(latency_ms) AS avg_latency_ms, "
                 "sum(CASE WHEN result_count = 0 THEN 1 ELSE 0 END) AS zero_results, "
-                f"max(ts) AS last_ts FROM queries{where} "
+                f"max(ts) AS last_ts, id AS last_id FROM queries{where} "
                 "GROUP BY query ORDER BY n DESC, last_ts DESC LIMIT ?",
                 [*params, top_n],
             ).fetchall()
@@ -234,6 +239,7 @@ class QueryLogService:
                     "avg_latency_ms": float(r["avg_latency_ms"] or 0.0),
                     "zero_results": int(r["zero_results"] or 0),
                     "last_ts": float(r["last_ts"]),
+                    "last_id": r["last_id"],
                 }
                 for r in top_rows
             ],

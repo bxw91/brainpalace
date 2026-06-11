@@ -64,8 +64,8 @@ def test_cancel_returns_none():
         assert _estimate_and_confirm_local(Path("/p"), Path("/p/c.yaml"), True) is None
 
 
-def test_toggle_then_proceed_flips_scope_and_reestimates():
-    prompts = iter(["toggle", "proceed"])
+def test_change_then_proceed_flips_scope_and_reestimates():
+    prompts = iter(["change", "proceed"])
     with (
         patch(
             "brainpalace_server.services.estimate.estimate_tokens_local",
@@ -77,8 +77,8 @@ def test_toggle_then_proceed_flips_scope_and_reestimates():
         ),
     ):
         out = _estimate_and_confirm_local(Path("/p"), Path("/p/c.yaml"), True)
-    assert out is False  # toggled off code
-    assert es.call_count == 2  # re-estimated after toggle
+    assert out is False  # changed scope → code off
+    assert es.call_count == 2  # re-estimated after change
     include_flags = [c.kwargs["include_code"] for c in es.call_args_list]
     assert include_flags == [True, False]
 

@@ -316,7 +316,14 @@ def _guided_uninstall() -> None:
     """Interactive teardown: confirm each step, then print what's left."""
     console.print("[bold]Guided BrainPalace uninstall[/] — every step is confirmed.\n")
     registry = _read_registry(get_registry_path())
-    projects = [Path(p) for p in registry]
+    # Cover every project ever started (durable known-projects store, pruned of
+    # deleted dirs), not just those currently registered/running, so plugin and
+    # MCP-config teardown reaches projects whose server is stopped.
+    from brainpalace_cli import known_projects
+
+    roots = {str(Path(p).resolve()) for p in registry}
+    roots.update(known_projects.load_existing())
+    projects = [Path(p) for p in sorted(roots)]
 
     # 1. Stop servers.
     if registry:

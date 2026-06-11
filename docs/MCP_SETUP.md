@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-07
+last_validated: 2026-06-11
 ---
 
 # MCP setup — connecting AI clients to BrainPalace
@@ -60,7 +60,20 @@ handshake never hangs.
 ### Initialising for CLI-only / MCP installs
 
 Because the MCP shim never auto-runs `brainpalace init`, run it yourself once per
-project. Two `init` defaults worth knowing:
+project. `brainpalace init` (sparse PROJECT config) asks the **same question set**
+as `brainpalace install` / `brainpalace config wizard` (GLOBAL config): embedding,
+summarizer, reranker, embed-sessions, session-archive, git-history, and GraphRAG
+doc-extraction. The GLOBAL path additionally asks the web-dashboard control-plane
+settings (`dashboard.autostart`, default ON; `dashboard.port`, default 8787),
+written to the `dashboard:` block — these are global-only and not asked by per-project
+`init`. `init` also re-asks the per-project-overridable **reranker**
+(`reranker.enabled`) behind an *"inherited from global — change for
+this project? [y/N]"* gate, writing a sparse override only when changed;
+embedding/summarizer are not re-asked via that gate (they resolve via
+env-detection / global inheritance). Without a
+TTY (MCP/CI installs) every question is skipped and the **default** applies.
+
+Defaults worth knowing for MCP/CLI-only installs:
 
 - **Graph store defaults to `sqlite`.** New projects get GraphRAG enabled with
   `graphrag.store_type: sqlite` (persistent, incrementally-writable, temporal
@@ -74,6 +87,22 @@ project. Two `init` defaults worth knowing:
   `brainpalace init --git-history`, or set `git_indexing.enabled: true` in the
   project `.brainpalace/config.yaml`. Without a TTY (MCP/CI installs), the
   question is skipped and the default (off) applies — use the flag to enable.
+- **Session archive ON / embed-sessions OFF by default.** `session_indexing.archive.enabled`
+  copies raw transcripts to `.brainpalace/` (free local backup — ⚠️ holds full
+  transcripts incl. secrets); `session_indexing.enabled` embeds them (billable),
+  opt-in and off by default.
+- **GraphRAG doc-extraction (`graphrag.doc_extractor`).** `langextract` (richer
+  prose-doc entity extraction) or `none`.
+
+**Opt-in optional-dep rule.** Enabling a feature whose "yes" needs an optional
+server extra triggers a download — **auto-installed on yes** (auto-detecting
+pipx → uv → pip), or the **exact install command is printed** if no manager is
+detected. Declining writes the disabling value (e.g. `graphrag.doc_extractor: none`)
+so the server's "not installed" warning never fires; optional deps are never
+auto-installed just because a feature is default-ON in code. Extras: GraphRAG
+doc-extraction → `langextract`; BM25 `lemma` engine → `simplemma`; postgres
+backend → `asyncpg` + `sqlalchemy`. `brainpalace doctor` reports optional-extra
+status for enabled features.
 
 ---
 

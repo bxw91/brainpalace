@@ -10,6 +10,7 @@ import { CompareGrid, type CompareRun } from "../components/CompareGrid";
 import { QueryAnalytics } from "../components/QueryAnalytics";
 import { useOptionalSelectedInstance } from "../state/selectedInstance";
 import { useToast } from "../components/Toast";
+import { useDisplayFormat } from "../format/datetime";
 import {
   NoInstance,
   StoppedState,
@@ -54,7 +55,12 @@ function relTime(ts: number): string {
 }
 
 /** Bucket rows into hourly (<=2d) or daily (>2d) buckets for the charts. */
-function bucketize(rows: QueryRow[], days: number): {
+function bucketize(
+  rows: QueryRow[],
+  days: number,
+  fmtDay: (d: Date) => string,
+  fmtHour: (d: Date) => string,
+): {
   volume: TimeSeriesDatum[];
   latency: TimeSeriesDatum[];
 } {
@@ -62,9 +68,7 @@ function bucketize(rows: QueryRow[], days: number): {
   const daily = days > 2;
   const fmt = (ts: number) => {
     const d = new Date(ts * 1000);
-    return daily
-      ? `${d.getMonth() + 1}/${d.getDate()}`
-      : `${d.getHours()}:00`;
+    return daily ? fmtDay(d) : fmtHour(d);
   };
   const order: string[] = [];
   const counts = new Map<string, number>();
@@ -165,8 +169,12 @@ export function Queries({ instanceId }: { instanceId?: string }) {
       toast(e instanceof Error ? e.message : "Query failed.", "error"),
   });
 
+  const { formatShortDate, formatHour } = useDisplayFormat();
   const rows = queriesQ.data ?? [];
-  const charts = useMemo(() => bucketize(rows, days), [rows, days]);
+  const charts = useMemo(
+    () => bucketize(rows, days, formatShortDate, formatHour),
+    [rows, days, formatShortDate, formatHour],
+  );
 
   const columns: Column<QueryRow>[] = [
     {
@@ -406,7 +414,12 @@ export function Queries({ instanceId }: { instanceId?: string }) {
         </div>
       </div>
 
-      <QueryAnalytics instanceId={id} since={since} windowKey={range} />
+      <QueryAnalytics
+        instanceId={id}
+        since={since}
+        windowKey={range}
+        onSelectQuery={setOpenQid}
+      />
 
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-1.5">

@@ -56,9 +56,14 @@ type ArchiveInfo = {
 };
 type MemoryInfo = {
   enabled?: boolean;
-  watcher_running?: boolean;
   session_chunks?: number;
   curated_memories?: number;
+};
+type ReconcilerInfo = {
+  // The periodic reconcile sweep (server `session_memory.watcher_running`). It
+  // copies live transcripts into the archive — so its running state belongs in
+  // the archive card, not the index card.
+  watcher_running?: boolean;
 };
 
 function Pill({ on }: { on: boolean }) {
@@ -188,6 +193,9 @@ export function Sessions({ instanceId }: { instanceId?: string }) {
   const features = (statusQ.data.features ?? {}) as Record<string, unknown>;
   const archive = (features.session_archive ?? {}) as ArchiveInfo;
   const mem = (features.session_memory ?? {}) as MemoryInfo;
+  // The reconcile sweep's running state is reported under session_memory for
+  // back-compat, but it primarily drives the archive copy — surface it there.
+  const reconciler = (features.session_memory ?? {}) as ReconcilerInfo;
   const memories = memoriesQ.data?.memories ?? [];
 
   const columns: Column<MemoryRow>[] = [
@@ -229,6 +237,10 @@ export function Sessions({ instanceId }: { instanceId?: string }) {
             </span>
             <Pill on={!!archive.enabled} />
           </div>
+          <Row
+            label="Copy sweep"
+            value={reconciler.watcher_running ? "running" : "idle"}
+          />
           <Row label="Archived files" value={fmt(archive.archived_files ?? 0)} />
           <Row label="Archived sessions" value={fmt(archive.archived_sessions ?? 0)} />
           <Row label="On-disk size" value={fmtBytes(archive.archived_bytes ?? 0)} />
@@ -247,15 +259,11 @@ export function Sessions({ instanceId }: { instanceId?: string }) {
             <span className="flex items-center gap-2">
               <Brain className="h-4 w-4 text-accent" aria-hidden="true" />
               <span className="font-display text-sm font-semibold tracking-tight">
-                Session memory / index
+                Session summarization &amp; indexing
               </span>
             </span>
             <Pill on={!!mem.enabled} />
           </div>
-          <Row
-            label="Watcher"
-            value={mem.watcher_running ? "watching" : "idle"}
-          />
           <Row label="Session chunks" value={fmt(mem.session_chunks ?? 0)} />
           <Row label="Curated memories" value={fmt(mem.curated_memories ?? memories.length)} />
         </div>

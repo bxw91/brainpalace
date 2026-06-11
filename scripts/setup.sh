@@ -238,7 +238,14 @@ if [[ "$DO_INSTALL" -eq 1 ]]; then
     else
         INSTALL_URL="${REPO_URL%.git}"
         INSTALL_URL="${INSTALL_URL/github.com/raw.githubusercontent.com}/${REF}/scripts/install.sh"
-        curl -sSL "$INSTALL_URL" | bash >/dev/tty
+        # Pin the exact version we just detected on PyPI so install.sh installs
+        # *that* release — not whatever pip's stale index cache resolves as
+        # "latest", which can be the previous version right after a release.
+        if [[ -n "$LATEST_CLI" ]]; then
+            curl -sSL "$INSTALL_URL" | bash -s -- --version "$LATEST_CLI" >/dev/tty
+        else
+            curl -sSL "$INSTALL_URL" | bash >/dev/tty
+        fi
     fi
 
     command -v brainpalace >/dev/null 2>&1 \

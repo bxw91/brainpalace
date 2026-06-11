@@ -208,7 +208,6 @@ export function Config({ instanceId }: { instanceId?: string }) {
 
   return (
     <div data-testid="tab-config" className="flex flex-col gap-4">
-      <ProviderTest instanceId={id} />
       <SchemaForm
         schema={schemaQ.data}
         values={configQ.data}
@@ -218,6 +217,9 @@ export function Config({ instanceId }: { instanceId?: string }) {
         onSave={(values, restart) => setPendingSave({ values, restart })}
         onUnset={(dotpath) => unsetMutation.mutate(dotpath)}
       />
+      {/* Provider connectivity check sits under all provider settings so it
+          validates the values shown above. */}
+      <ProviderTest instanceId={id} />
       <ConfirmDialog
         open={!!pendingSave}
         tone={pendingSave?.restart ? "danger" : "default"}

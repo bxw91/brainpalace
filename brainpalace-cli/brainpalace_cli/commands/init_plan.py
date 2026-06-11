@@ -8,6 +8,9 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from typing import Any
+
+from brainpalace_cli.config_resolve import resolve as _resolve_cfg
 
 
 @dataclass(frozen=True)
@@ -195,3 +198,33 @@ def format_init_plan(
         else:
             lines.append(f"  · {action}")
     return "\n".join(lines)
+
+
+def inherited_change_gate(
+    label: str,
+    dotpath: str,
+    gcfg: dict[str, Any],
+) -> tuple[Any, bool]:
+    """Per-project override gate (D4).
+
+    Shows the value inherited from global and asks whether to override it for
+    THIS project. Declining returns (inherited_value, changed=False) so the
+    caller writes NOTHING (sparse-config invariant). Accepting prompts for the
+    new value and returns (value, changed=True). Booleans are handled here;
+    other scalar keys fall back to a free-text prompt.
+    """
+    import click
+
+    inherited, _src = _resolve_cfg(dotpath, {}, gcfg)
+    click.echo(f"\n{label}: inherited '{inherited}' from global.")
+    if not click.confirm(f"Change {label.lower()} for this project?", default=False):
+        return inherited, False
+    if isinstance(inherited, bool) or inherited in ("true", "false"):
+        new = click.prompt(
+            f"{label} enabled?",
+            type=click.Choice(["true", "false"]),
+            default=str(inherited).lower(),
+        )
+        return new == "true", True
+    new = click.prompt(f"{label}", default=str(inherited))
+    return new, True

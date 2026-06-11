@@ -56,3 +56,43 @@ def test_autostart_reads_and_roundtrips_false(
     # Saving autostart back True persists and reloads.
     cfgmod.save_dashboard_config({"autostart": True})
     assert cfgmod.load_dashboard_config().autostart is True
+
+
+def test_display_format_defaults(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: object
+) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    cfg = cfgmod.load_dashboard_config()
+    assert cfg.time_format == "24h"
+    assert cfg.date_format == "dd.mm.yyyy"
+
+
+def test_display_format_reads_and_roundtrips(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: object
+) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    cfgmod.save_dashboard_config({"time_format": "12h", "date_format": "yyyy-mm-dd"})
+    cfg = cfgmod.load_dashboard_config()
+    assert cfg.time_format == "12h"
+    assert cfg.date_format == "yyyy-mm-dd"
+
+
+def test_display_format_rejects_invalid(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: object
+) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    with pytest.raises(cfgmod.DashboardConfigError):
+        cfgmod.save_dashboard_config({"time_format": "36h"})
+    with pytest.raises(cfgmod.DashboardConfigError):
+        cfgmod.save_dashboard_config({"date_format": "ddmmyy"})
+
+
+def test_display_format_invalid_yaml_falls_back_to_default(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: object
+) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    d = tmp_path / "brainpalace"  # type: ignore[operator]
+    d.mkdir(parents=True)
+    (d / "config.yaml").write_text("dashboard:\n  time_format: bogus\n")
+    # A garbage on-disk value must not crash the loader; defaults win.
+    assert cfgmod.load_dashboard_config().time_format == "24h"

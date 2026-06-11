@@ -64,6 +64,31 @@ def test_stats_top_and_zero_queries(tmp_path):
     ]
 
 
+def test_top_query_last_id_points_to_latest_occurrence(tmp_path):
+    """Each top-query row carries the id of its most recent occurrence so the
+    dashboard can open that query's detail drawer."""
+    svc = QueryLogService(tmp_path / "query_log.db")
+    svc.record(
+        query="alpha",
+        mode="hybrid",
+        top_k=5,
+        latency_ms=10.0,
+        results=[{"score": 1, "path": "a.py", "snippet": "x"}],
+        ts=1000.0,
+    )
+    latest_alpha = svc.record(
+        query="alpha",
+        mode="hybrid",
+        top_k=5,
+        latency_ms=20.0,
+        results=[{"score": 1, "path": "a.py", "snippet": "x"}],
+        ts=1100.0,
+    )
+    s = svc.stats(top_n=5)
+    top = next(t for t in s["top_queries"] if t["query"] == "alpha")
+    assert top["last_id"] == latest_alpha
+
+
 def test_stats_since_filters(tmp_path):
     svc = QueryLogService(tmp_path / "query_log.db")
     _seed(svc)

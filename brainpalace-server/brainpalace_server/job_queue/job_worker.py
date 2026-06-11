@@ -13,8 +13,12 @@ from brainpalace_server.models.job import JobProgress, JobRecord, JobStatus
 from brainpalace_server.services.indexing_service import IndexingService
 
 if TYPE_CHECKING:
+    from brainpalace_server.config.git_config import GitIndexingConfig
     from brainpalace_server.services.file_watcher_service import FileWatcherService
     from brainpalace_server.services.folder_manager import FolderManager
+    from brainpalace_server.services.git_history_index_service import (
+        GitHistoryIndexService,
+    )
     from brainpalace_server.services.query_cache import QueryCacheService
 
 logger = logging.getLogger(__name__)
@@ -100,6 +104,11 @@ class JobWorker:
         # Optional query cache for invalidation on job completion (Phase 17)
         self._query_cache: QueryCacheService | None = None
 
+        # Git-history indexing deps (Issue #15) — injected via set_git_service
+        self._git_index_service: GitHistoryIndexService | None = None
+        self._git_indexing_config: GitIndexingConfig | None = None
+        self._git_project_root: str | None = None
+
         # Internal state
         self._running = False
         self._task: asyncio.Task[None] | None = None
@@ -132,6 +141,27 @@ class JobWorker:
             cache: QueryCacheService instance or None.
         """
         self._query_cache = cache
+
+    def set_git_service(
+        self,
+        service: GitHistoryIndexService | None,
+        config: GitIndexingConfig | None,
+        project_root: str | None,
+    ) -> None:
+        """Inject git-history indexing dependencies (Issue #15).
+
+        Called by the lifespan after both JobWorker and GitHistoryIndexService
+        are initialized. Keeps __init__ signature stable (two constructions in
+        main.py stay unchanged).
+
+        Args:
+            service: GitHistoryIndexService instance or None.
+            config: GitIndexingConfig instance or None.
+            project_root: Resolved project root path string or None.
+        """
+        self._git_index_service = service
+        self._git_indexing_config = config
+        self._git_project_root = project_root
 
     @property
     def is_running(self) -> bool:
@@ -241,6 +271,13 @@ class JobWorker:
         self._current_job = job
 
         try:
+            # -- git_history jobs bypass the entire doc pipeline -------------
+            if job.job_type == "git_history":
+                await self._process_git_job(job)
+                return
+
+            # -- documents job (unchanged below) -----------------------------
+
             # Mark job as RUNNING
             job.status = JobStatus.RUNNING
             job.started_at = datetime.now(timezone.utc)
@@ -517,6 +554,114 @@ class JobWorker:
 
         finally:
             self._current_job = None
+
+    async def _process_git_job(self, job: JobRecord) -> None:
+        """Process a git-history indexing job.
+
+        Self-contained path — does NOT touch _run_indexing_pipeline or
+        _verify_collection_delta. Marks DONE even on 0-delta (incremental
+        reindex with no new commits is a success, not a failure).
+
+        Args:
+            job: The git_history JobRecord to process.
+        """
+        # NOTE: git jobs deliberately do NOT update IndexingService._state (which
+        # represents DOCUMENT indexing state); git-job visibility is via the job
+        # queue and GET /jobs/{job_id} — this is intentional, not an omission.
+
+        # Mark RUNNING
+        job.status = JobStatus.RUNNING
+        job.started_at = datetime.now(timezone.utc)
+        job.progress = JobProgress(
+            files_processed=0,
+            files_total=0,
+            chunks_created=0,
+            current_file="",
+            percent=0.0,
+            updated_at=datetime.now(timezone.utc),
+        )
+        await self._job_store.update_job(job)
+
+        # Guarded count_before — mirror doc path's guarded reads
+        count_before = 0
+        try:
+            storage = self._indexing_service.storage_backend
+            if storage.is_initialized:
+                count_before = await storage.get_count()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Git job %s: could not get count_before: %s", job.id, exc)
+
+        # Guard: all three git deps must be injected
+        if (
+            self._git_index_service is None
+            or self._git_indexing_config is None
+            or self._git_project_root is None
+        ):
+            job.status = JobStatus.FAILED
+            job.error = "Git index service not configured"
+            job.finished_at = datetime.now(timezone.utc)
+            await self._job_store.update_job(job)
+            logger.error("Git job %s: git_index_service not set — FAILED", job.id)
+            return
+
+        # Execute git ingest
+        try:
+            await self._git_index_service.index_repo(
+                self._git_project_root, self._git_indexing_config
+            )
+        except Exception as exc:  # noqa: BLE001
+            job.status = JobStatus.FAILED
+            job.error = str(exc)
+            job.finished_at = datetime.now(timezone.utc)
+            await self._job_store.update_job(job)
+            logger.error("Git job %s failed: %s", job.id, exc, exc_info=True)
+            return
+
+        # Guarded count_after
+        count_after = count_before
+        try:
+            storage = self._indexing_service.storage_backend
+            if storage.is_initialized:
+                count_after = await storage.get_count()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Git job %s: could not get count_after: %s", job.id, exc)
+
+        job.chunks_added = max(0, count_after - count_before)
+
+        # Store-wide totals
+        try:
+            status_info = await self._indexing_service.get_status()
+            job.total_chunks = status_info.get("total_chunks", 0)
+            job.total_documents = status_info.get("total_documents", 0)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Git job %s: could not get status totals: %s", job.id, exc)
+
+        # Mark DONE — 0-delta is success (no new commits since last run)
+        job.status = JobStatus.DONE
+        job.finished_at = datetime.now(timezone.utc)
+        job.progress = JobProgress(
+            files_processed=0,
+            files_total=0,
+            chunks_created=job.chunks_added,
+            current_file="Complete",
+            percent=100.0,
+            updated_at=datetime.now(timezone.utc),
+        )
+        await self._job_store.update_job(job)
+
+        logger.info(
+            "Git job %s DONE: chunks_added=%d total_chunks=%d",
+            job.id,
+            job.chunks_added,
+            job.total_chunks,
+        )
+
+        # Best-effort query cache invalidation
+        if self._query_cache is not None:
+            try:
+                await self._query_cache.invalidate_all()
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("Git job %s: cache invalidate failed: %s", job.id, exc)
 
     async def _apply_watch_config(self, job: JobRecord) -> None:
         """Update folder watch config and notify FileWatcherService.

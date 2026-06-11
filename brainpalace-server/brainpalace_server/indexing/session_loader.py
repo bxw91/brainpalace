@@ -94,6 +94,67 @@ def parent_session_id_for(path: str | Path) -> str | None:
     return parts[idx - 1]
 
 
+#: Wrapper tags Claude Code wraps slash-command / local-command turns in; these
+#: are machinery, not the human's prompt, so they are skipped when picking a title.
+_TITLE_SKIP_PREFIXES = ("<command-", "<local-command", "<bash-", "Caveat:")
+#: Max characters for a derived session title (first prompt line).
+TITLE_MAX_CHARS = 120
+
+
+def first_user_prompt_line(
+    path: str | Path, max_chars: int = TITLE_MAX_CHARS
+) -> str | None:
+    """Return the first *line* of the first real user prompt, for a session title.
+
+    Reads the raw transcript and finds the first ``type == "user"`` turn that
+    carries human text (a string ``content`` or a ``text`` block), then returns
+    that text's first non-empty line, trimmed to ``max_chars``. Tool-result user
+    turns and slash-command wrapper turns are skipped. Returns ``None`` when no
+    such line exists (unreadable file, no text prompt).
+
+    Unlike :func:`load_session`, this preserves the original first line (it does
+    not collapse newlines), so a multi-line prompt yields its leading line as a
+    clean title rather than the whole flattened blob.
+    """
+    p = Path(path)
+    try:
+        raw_lines = p.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return None
+
+    for raw in raw_lines:
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            obj = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(obj, dict) or obj.get("type") != "user":
+            continue
+        message = obj.get("message") or {}
+        content = message.get("content")
+        text: str | None = None
+        if isinstance(content, str):
+            text = content
+        elif isinstance(content, list):
+            for block in content:
+                if (
+                    isinstance(block, dict)
+                    and block.get("type") == "text"
+                    and str(block.get("text", "")).strip()
+                ):
+                    text = str(block["text"])
+                    break
+        if not text:
+            continue
+        first = next((ln.strip() for ln in text.splitlines() if ln.strip()), "")
+        if not first or first.startswith(_TITLE_SKIP_PREFIXES):
+            continue
+        return first if len(first) <= max_chars else first[: max_chars - 1] + "…"
+    return None
+
+
 def _short(value: Any, limit: int) -> str:
     text = " ".join(str(value).split())
     return text if len(text) <= limit else text[:limit] + " …"

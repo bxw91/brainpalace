@@ -29,8 +29,9 @@ def test_init_cancel_after_estimate_removes_created_brainpalace(tmp_path, monkey
     proj.mkdir()
     (proj / "a.py").write_text("x = 1\n")
     monkeypatch.setattr("brainpalace_cli.commands.init._stdin_is_tty", lambda: True)
-    # Per-capability prompts suppressed by flags ⇒ only the plan "Proceed?" confirm
-    # (y) then the estimate prompt (cancel). Estimate cancel ⇒ rollback.
+    # Per-capability prompts suppressed by flags ⇒ reranker gate (n = keep
+    # inherited), lemma (n), then the estimate gate (y = run it), then the estimate
+    # prompt (cancel). Estimate cancel ⇒ rollback before the final Proceed.
     result = CliRunner().invoke(
         init_command,
         [
@@ -39,8 +40,10 @@ def test_init_cancel_after_estimate_removes_created_brainpalace(tmp_path, monkey
             "--no-git-history",
             "--no-sessions",
             "--no-extract",
+            "--no-graphrag-extract",
+            "--no-archive",
         ],
-        input="y\ncancel\n",
+        input="n\nn\ny\ncancel\n",
     )
     assert result.exit_code == 0, result.output
     assert not (proj / ".brainpalace").exists()
@@ -67,17 +70,46 @@ def test_init_default_no_git_history(tmp_path, monkeypatch):
     assert "git_indexing" not in data  # default off = not written
 
 
+def test_init_git_history_prompt_defaults_off_with_no_global(tmp_path, monkeypatch):
+    """Fresh interactive init (no global config) pre-selects NO for git history.
+
+    Parity with the wizard + server schema, which both default git indexing OFF
+    (commit diffs can carry secrets). Pressing enter at the git prompt must keep
+    it off, so git_indexing is never written. Regression for the `_global_default`
+    fallback that was wrongly True.
+    """
+    monkeypatch.setenv("OPENAI_API_KEY", "x")
+    monkeypatch.setattr(
+        "brainpalace_cli.commands.init.claude_plugin_installed", lambda **k: True
+    )
+    monkeypatch.setattr("brainpalace_cli.commands.init._stdin_is_tty", lambda: True)
+    # summarize=N, embed=N, archive=enter(Y), git-history=enter(default),
+    # graphrag-extract=N, reranker-change=N, lemma=N, proceed=Y
+    r = CliRunner().invoke(
+        init_command,
+        ["--path", str(tmp_path), "--no-start"],
+        input="n\nn\n\n\nn\nn\nn\ny\n",
+    )
+    assert r.exit_code == 0, r.output
+    assert "Index git commit history?" in r.output
+    # default declined → no depth prompt, git_indexing not written (inherits off)
+    assert "How many commits back to index?" not in r.output
+    data = yaml.safe_load((tmp_path / ".brainpalace" / "config.yaml").read_text())
+    assert "git_indexing" not in data
+
+
 def test_init_git_history_prompt_shown_interactively(tmp_path, monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "x")
     monkeypatch.setattr(
         "brainpalace_cli.commands.init.claude_plugin_installed", lambda **k: True
     )
     monkeypatch.setattr("brainpalace_cli.commands.init._stdin_is_tty", lambda: True)
-    # summarize=Y, embed=N, git-history=Y, depth=0 (unlimited), proceed=Y
+    # summarize=Y, embed=N, archive=Y, git-history=Y, depth=0 (unlimited),
+    # graphrag-extract=N, reranker-change=N, lemma=N, proceed=Y
     r = CliRunner().invoke(
         init_command,
         ["--path", str(tmp_path), "--no-start"],
-        input="y\nn\ny\n0\ny\n",
+        input="y\nn\ny\ny\n0\nn\nn\nn\ny\n",
     )
     assert r.exit_code == 0, r.output
     assert "Index git commit history?" in r.output
@@ -94,11 +126,12 @@ def test_init_git_history_depth_cap_persisted(tmp_path, monkeypatch):
         "brainpalace_cli.commands.init.claude_plugin_installed", lambda **k: True
     )
     monkeypatch.setattr("brainpalace_cli.commands.init._stdin_is_tty", lambda: True)
-    # summarize=Y, embed=N, git-history=Y, depth=500, proceed=Y
+    # summarize=Y, embed=N, archive=Y, git-history=Y, depth=500,
+    # graphrag-extract=N, reranker-change=N, lemma=N, proceed=Y
     r = CliRunner().invoke(
         init_command,
         ["--path", str(tmp_path), "--no-start"],
-        input="y\nn\ny\n500\ny\n",
+        input="y\nn\ny\ny\n500\nn\nn\nn\ny\n",
     )
     assert r.exit_code == 0, r.output
     data = yaml.safe_load((tmp_path / ".brainpalace" / "config.yaml").read_text())
@@ -164,12 +197,14 @@ def test_init_migrate_prompt_shown_interactively(tmp_path, monkeypatch):
     monkeypatch.setattr("brainpalace_cli.commands.init._stdin_is_tty", lambda: True)
     sd = _existing_simple_project(tmp_path)
     # Pre-existing .brainpalace ⇒ keep/delete/cancel first (keep), then prompt
-    # order: summarize, embed, git-history, upgrade-store, Proceed.
-    # keep, summarize=Y, embed=N, git-history=N, upgrade-store=Y, proceed=Y
+    # order: summarize, embed, archive, git-history, graphrag-extract,
+    # reranker-change, lemma, upgrade-store, Proceed.
+    # keep, summarize=Y, embed=N, archive=Y, git-history=N, graphrag-extract=N,
+    # reranker-change=N, lemma=N, upgrade-store=Y, proceed=Y
     r = CliRunner().invoke(
         init_command,
         ["--path", str(tmp_path), "--no-start"],
-        input="keep\ny\nn\nn\ny\ny\n",
+        input="keep\ny\nn\ny\nn\nn\nn\nn\ny\ny\n",
     )
     assert r.exit_code == 0, r.output
     assert "Upgrade graph store to sqlite?" in r.output
@@ -217,9 +252,12 @@ def test_init_reinit_honors_no_summarize_no_embed(tmp_path, monkeypatch):
     )
     sd = _existing_sqlite_project(tmp_path)
     # Pre-existing .brainpalace ⇒ keep first. store=sqlite ⇒ no upgrade prompt.
-    # keep, summarize=N, embed=N, git=N, proceed=Y.
+    # keep, summarize=N, embed=N, archive=N, git=N, graphrag-extract=N,
+    # reranker-change=N, lemma=N, proceed=Y.
     r = CliRunner().invoke(
-        init_command, ["--path", str(tmp_path)], input="keep\nn\nn\nn\ny\n"
+        init_command,
+        ["--path", str(tmp_path)],
+        input="keep\nn\nn\nn\nn\nn\nn\nn\ny\n",
     )
     assert r.exit_code == 0, r.output
     data = yaml.safe_load((sd / "config.yaml").read_text())
@@ -250,12 +288,14 @@ def test_init_existing_project_git_history_prompt_persists(tmp_path, monkeypatch
     monkeypatch.setattr("brainpalace_cli.commands.init._stdin_is_tty", lambda: True)
     sd = _existing_simple_project(tmp_path)
     # Pre-existing .brainpalace ⇒ keep first. Prompt order: summarize, embed,
-    # git-history, depth, upgrade-store, Proceed.
-    # keep, summarize=Y, embed=N, git-history=Y, depth=0, upgrade-store=N, proceed=Y
+    # archive, git-history, depth, graphrag-extract, reranker-change, lemma,
+    # upgrade-store, Proceed.
+    # keep, summarize=Y, embed=N, archive=Y, git-history=Y, depth=0,
+    # graphrag-extract=N, reranker-change=N, lemma=N, upgrade-store=N, proceed=Y
     r = CliRunner().invoke(
         init_command,
         ["--path", str(tmp_path), "--no-start"],
-        input="keep\ny\nn\ny\n0\nn\ny\n",
+        input="keep\ny\nn\ny\ny\n0\nn\nn\nn\nn\ny\n",
     )
     assert r.exit_code == 0, r.output
     data = yaml.safe_load((sd / "config.yaml").read_text())

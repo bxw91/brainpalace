@@ -61,6 +61,31 @@ def test_documents_lists_files_with_chunk_counts():
     assert by_path["/proj/b.md"]["size_bytes"] == 20
 
 
+def test_documents_size_bytes_lazy_filled_when_zero(tmp_path):
+    """A manifest record with size_bytes=0 (pre-Phase-L / never re-embedded)
+    is back-filled from the live file on disk for display."""
+    real = tmp_path / "real.py"
+    real.write_text("x" * 123)
+    manifest = FolderManifest(
+        folder_path=str(tmp_path),
+        files={
+            str(real): FileRecord(
+                checksum="x", mtime=1.0, chunk_ids=["c1"], size_bytes=0
+            ),
+            # A record whose file is gone stays 0 (nothing to stat).
+            str(tmp_path / "missing.py"): FileRecord(
+                checksum="y", mtime=1.0, chunk_ids=["c2"], size_bytes=0
+            ),
+        },
+    )
+    c = TestClient(_app(manifest))
+    r = c.get("/index/documents", params={"folder": str(tmp_path)})
+    assert r.status_code == 200
+    by_path = {f["path"]: f for f in r.json()["files"]}
+    assert by_path[str(real)]["size_bytes"] == 123
+    assert by_path[str(tmp_path / "missing.py")]["size_bytes"] == 0
+
+
 def test_documents_contains_filter_and_paging():
     c = TestClient(_app(_manifest()))
     r = c.get("/index/documents", params={"folder": "/proj", "contains": ".py"})

@@ -6,7 +6,7 @@ context: brainpalace
 agent: setup-assistant
 skills:
   - configuring-brainpalace
-last_validated: 2026-06-05
+last_validated: 2026-06-11
 ---
 
 # Configure BrainPalace
@@ -24,6 +24,26 @@ Guides users through configuring all aspects of BrainPalace across 12 wizard ste
 8. **Chunking and search tuning** - Chunk size, overlap, top-k, and similarity threshold
 9. **Server and deployment** - Host, port, instance mode, and multi-project setup
 10. **BM25 language** - Project default natural language for BM25 tokenization (`bm25.language`, `bm25.engine`)
+11. **Web dashboard (global only)** - When run with `--global`, asks whether `brainpalace start` should auto-start the web dashboard (`dashboard.autostart`, default ON) and the dashboard port (`dashboard.port`, default 8787). These are control-plane settings written to the `dashboard:` block of the global XDG config; the dashboard's own Settings tab edits the same block.
+
+> **Unified question set.** This wizard and `brainpalace init` share the same
+> project-config-backed questions, so the front-ends never drift: embedding,
+> summarizer, **reranker**, **embed-sessions** (`session_indexing.enabled` —
+> billable opt-in, default OFF), **session-archive**
+> (`session_indexing.archive.enabled` — free local backup of full raw transcripts
+> incl. secrets, default ON), **git-history** (`git_indexing.enabled` + `depth`,
+> default OFF), and **GraphRAG document extraction** (`graphrag.doc_extractor` =
+> `langextract` | `none`). When run by `brainpalace init`, the per-project
+> **reranker** (`reranker.enabled`) is re-asked behind an *"inherited from
+> global — change for this project? [y/N]"* gate, writing a sparse override only
+> when changed; embedding/summarizer are not re-asked via that gate (they resolve
+> via env-detection / global inheritance).
+>
+> **Global-only:** `config wizard --global` additionally asks the web-dashboard
+> control-plane settings — **autostart** (`dashboard.autostart`, default ON) and
+> **dashboard port** (`dashboard.port`, default 8787) — written to the
+> `dashboard:` block of the XDG config. These are NOT asked per-project (they
+> govern the fleet-wide dashboard process, not a single project).
 
 ## Usage
 
@@ -657,6 +677,17 @@ graphrag:
 ```bash
 brainpalace reset --yes && brainpalace index ./your-docs
 ```
+
+> **Opt-in optional-dep rule.** Choosing a `doc_extractor: langextract` option
+> needs the optional server extra `langextract`. When the user enables it, the
+> extra is **auto-installed** (auto-detecting pipx → uv → pip); if no manager is
+> detected, the **exact install command is printed** instead. Choosing an
+> AST-only / `doc_extractor: none` option writes the disabling value so the
+> server's "not installed" warning never fires — optional deps are never
+> auto-installed just because a feature is default-ON in code. The same rule
+> applies to the BM25 `lemma` engine (`simplemma`) and the postgres backend
+> (`asyncpg` + `sqlalchemy`). `brainpalace doctor` reports optional-extra status
+> for enabled features.
 
 ### If Option 2 or 3: AskUserQuestion: GraphRAG Tuning (Optional)
 

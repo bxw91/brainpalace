@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 
 from brainpalace_server.config.session_config import load_session_indexing_config
+from brainpalace_server.indexing.session_loader import first_user_prompt_line
 from brainpalace_server.models.session_extract import (
     SessionExtraction,
     SessionExtractResult,
@@ -168,9 +169,15 @@ async def list_archive(request: Request) -> dict[str, Any]:
             size_bytes = path.stat().st_size
         except OSError:
             size_bytes = 0
+        # Derive a human-readable title from the first prompt line so the
+        # dashboard shows what the session was about instead of an opaque id.
+        # (Only the first line of the first user turn — not full transcript
+        # content, which the archive deliberately never exposes.)
+        title = first_user_prompt_line(path)
         sessions.append(
             {
                 "session_id": sid,
+                "title": title,
                 "archive_path": str(path),
                 "mtime": mtime,
                 "size_bytes": size_bytes,

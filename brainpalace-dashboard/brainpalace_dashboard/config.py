@@ -18,6 +18,10 @@ from brainpalace_cli.xdg_paths import get_xdg_config_dir
 #: Returned/accepted in place of a real token so it is never exposed to the SPA.
 TOKEN_MASK = "********"
 
+#: Allowed values for the display-format preferences (validated on write).
+TIME_FORMATS = ("24h", "12h")
+DATE_FORMATS = ("dd.mm.yyyy", "mm.dd.yyyy", "yyyy-mm-dd")
+
 
 class DashboardConfigError(Exception):
     """Raised when a control-plane settings write fails validation."""
@@ -38,6 +42,9 @@ class DashboardConfig:
         token: Optional bearer token guarding ``/dashboard/api/**``.
         autostart: Whether ``brainpalace start`` should also bring up the
             dashboard (and open a browser when it launches one). Default True.
+        time_format: Clock display format — ``"24h"`` (default) or ``"12h"``.
+        date_format: Display date format — ``"dd.mm.yyyy"`` (default),
+            ``"mm.dd.yyyy"``, or ``"yyyy-mm-dd"``.
     """
 
     host: str = "127.0.0.1"
@@ -45,6 +52,8 @@ class DashboardConfig:
     poll_s: int = 5
     token: str | None = None
     autostart: bool = True
+    time_format: str = "24h"
+    date_format: str = "dd.mm.yyyy"
 
 
 def load_dashboard_config() -> DashboardConfig:
@@ -64,6 +73,10 @@ def load_dashboard_config() -> DashboardConfig:
         token = data.get("token", cfg.token)
         cfg.token = None if token is None else str(token)
         cfg.autostart = bool(data.get("autostart", cfg.autostart))
+        tf = str(data.get("time_format", cfg.time_format))
+        cfg.time_format = tf if tf in TIME_FORMATS else cfg.time_format
+        df = str(data.get("date_format", cfg.date_format))
+        cfg.date_format = df if df in DATE_FORMATS else cfg.date_format
     return cfg
 
 
@@ -85,6 +98,20 @@ def _validate_updates(values: dict[str, Any]) -> list[dict[str, str]]:
             errors.append({"field": "poll_s", "message": "poll_s must be ≥ 1"})
     if "host" in values and not str(values.get("host") or "").strip():
         errors.append({"field": "host", "message": "host cannot be empty"})
+    if "time_format" in values and values["time_format"] not in TIME_FORMATS:
+        errors.append(
+            {
+                "field": "time_format",
+                "message": f"time_format must be one of {TIME_FORMATS}",
+            }
+        )
+    if "date_format" in values and values["date_format"] not in DATE_FORMATS:
+        errors.append(
+            {
+                "field": "date_format",
+                "message": f"date_format must be one of {DATE_FORMATS}",
+            }
+        )
     return errors
 
 
@@ -122,6 +149,9 @@ def save_dashboard_config(values: dict[str, Any]) -> None:
             block["token"] = str(token)
     if "autostart" in values and values["autostart"] is not None:
         block["autostart"] = bool(values["autostart"])
+    for key in ("time_format", "date_format"):
+        if key in values and values[key] is not None:
+            block[key] = str(values[key])
 
     full["dashboard"] = block
     tmp = path.with_suffix(".yaml.tmp")

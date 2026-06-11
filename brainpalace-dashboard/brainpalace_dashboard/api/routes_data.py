@@ -195,6 +195,11 @@ async def add_folder(id_: str, body: Annotated[dict[str, Any], Body(...)]) -> An
 
 @router.delete("/folders")
 async def remove_folder(id_: str, body: Annotated[dict[str, Any], Body(...)]) -> Any:
+    # The server contract is {"folder_path": ...}; older frontend builds sent
+    # {"path": ...}, which the server rejects with a 422. Normalize so either
+    # key works regardless of the bundled frontend asset version.
+    if "folder_path" not in body and "path" in body:
+        body = {**body, "folder_path": body["path"]}
     return await _call(id_, "DELETE", "/index/folders/", json=body)
 
 

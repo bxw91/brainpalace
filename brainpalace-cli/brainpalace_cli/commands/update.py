@@ -57,11 +57,17 @@ def detect_install_manager(bin_path: str | Path | None = None) -> str | None:
 
 
 def upgrade_argv(manager: str) -> list[str]:
-    """Return the upgrade command for a given install manager."""
+    """Return the upgrade command for a given install manager.
+
+    Each path bypasses the package manager's HTTP/index cache
+    (``--no-cache-dir`` / ``--no-cache``) so an upgrade run minutes after a
+    release sees the new version instead of a stale cached simple-index page
+    that still resolves to the previous one.
+    """
     if manager == "pipx":
-        return ["pipx", "upgrade", "brainpalace-cli"]
+        return ["pipx", "upgrade", "brainpalace-cli", "--pip-args=--no-cache-dir"]
     if manager == "uv":
-        return ["uv", "tool", "upgrade", "brainpalace-cli"]
+        return ["uv", "tool", "upgrade", "--no-cache", "brainpalace-cli"]
     if manager == "pip":
         return [
             sys.executable,
@@ -69,6 +75,7 @@ def upgrade_argv(manager: str) -> list[str]:
             "pip",
             "install",
             "--upgrade",
+            "--no-cache-dir",
             "brainpalace-rag",
             "brainpalace-cli",
         ]
@@ -120,29 +127,15 @@ def _running_instances() -> tuple[list[str], bool]:
     return running_servers(), dashboard_running()
 
 
-def _preflight_notice() -> None:
-    """Warn, before the upgrade runs, what's live and will be bounced after.
-
-    Front-loads the disclosure so the user knows the upgrade touches running
-    instances; the actual restart still happens *after* the upgrade (stopping
-    them first would kill the dashboard the user may be reading and serves no
-    purpose). Silent when nothing is running.
-    """
-    servers, dash = _running_instances()
-    if not servers and not dash:
-        return
+def _live_summary(servers: list[str], dashboard: bool) -> str:
+    """Human phrase for the live instances (e.g. '2 servers and the dashboard')."""
     parts: list[str] = []
     if servers:
         plural = "s" if len(servers) != 1 else ""
-        parts.append(f"{len(servers)} running server{plural}")
-    if dash:
+        parts.append(f"{len(servers)} server{plural}")
+    if dashboard:
         parts.append("the control-plane dashboard")
-    what = " and ".join(parts)
-    console.print(
-        f"[yellow]Heads up:[/] {what} currently running — they keep serving the "
-        "OLD code until restarted. You'll be offered a restart right after the "
-        "upgrade (or use --no-restart to do it yourself later)."
-    )
+    return " and ".join(parts)
 
 
 def dashboard_running() -> bool:
@@ -159,80 +152,102 @@ def dashboard_running() -> bool:
         return False
 
 
-def _restart_after_upgrade(*, assume_yes: bool) -> None:
-    """Restart running per-project servers + the dashboard so they load new code.
+def _dashboard_orphan_pids() -> list[int]:
+    """Live dashboard PIDs found by process scan (empty if pkg absent / off Linux).
 
-    Prompts (default yes) when not ``assume_yes``. Each project server is
-    restarted with ``--no-dashboard`` so the dashboard is bounced exactly once,
-    at the end. Best-effort: a single failure is reported but doesn't abort the
-    rest.
+    The dashboard pidfile tracks only one process; leaked duplicates on climbed
+    ports (or from another install surface) show up only in the process table.
     """
-    servers = running_servers()
-    dash = dashboard_running()
-    if not servers and not dash:
-        return
-
-    parts: list[str] = []
-    if servers:
-        plural = "s" if len(servers) != 1 else ""
-        parts.append(f"{len(servers)} running server{plural}")
-    if dash:
-        parts.append("the dashboard")
-    what = " and ".join(parts)
-
-    if not assume_yes and not click.confirm(
-        f"Restart {what} to load the new version?", default=True
-    ):
-        console.print(
-            "[dim]Skipped. Restart later: "
-            "[bold]brainpalace stop && brainpalace start[/].[/]"
+    try:
+        from brainpalace_dashboard.server import (  # noqa: PLC0415
+            list_dashboard_pids,
         )
-        return
+    except ImportError:
+        return []
+    try:
+        pids: list[int] = list_dashboard_pids()
+        return pids
+    except Exception:
+        return []
 
-    argv = _brainpalace_argv()
-    home = str(Path.home())
 
-    def _run(cmd: list[str], label: str) -> None:
-        res = subprocess.run(cmd, cwd=home, capture_output=True, text=True)
-        if res.returncode != 0:
-            console.print(f"  [yellow]![/] {label} failed: {res.stderr.strip()}")
+def _reap_orphan_servers() -> None:
+    """SIGTERM RAG-server processes not referenced by a live registry entry."""
+    try:
+        from brainpalace_cli.commands.reap import reap_orphans  # noqa: PLC0415
 
+        reap_orphans()
+    except Exception:
+        pass
+
+
+def _run_cmd(cmd: list[str], home: str) -> subprocess.CompletedProcess[str]:
+    """Run a brainpalace subcommand from ``home``, capturing output."""
+    return subprocess.run(cmd, cwd=home, capture_output=True, text=True)
+
+
+def _stop_all_instances(servers: list[str], *, argv: list[str], home: str) -> None:
+    """Stop EVERY running instance before the upgrade.
+
+    Registry servers are stopped by path; orphan servers (another install
+    surface) and every dashboard (tracked + climbed-port strays) are reaped via
+    the process-scan reapers. After this returns nothing BrainPalace is running,
+    so the upgrade can't silently leave old code serving.
+    """
     for project_root in servers:
-        console.print(f"[dim]Restarting server:[/] {project_root}")
-        _run([*argv, "stop", "--path", project_root, "--json"], "stop")
-        _run(
-            [*argv, "start", "--path", project_root, "--no-dashboard", "--json"],
-            "start",
-        )
+        console.print(f"  [dim]stopping server[/] {project_root}")
+        _run_cmd([*argv, "stop", "--path", project_root, "--json"], home)
+    _reap_orphan_servers()
+    console.print("  [dim]stopping dashboard[/]")
+    # `dashboard stop` reaps every dashboard (tracked + strays).
+    _run_cmd([*argv, "dashboard", "stop"], home)
 
-    if dash:
-        console.print("[dim]Restarting dashboard…[/]")
-        _run([*argv, "dashboard", "stop"], "dashboard stop")
-        # Use --json to capture the base_url, then render the standard panel so
-        # `update` shows the dashboard URL box just like `start`/`dashboard start`.
-        res = subprocess.run(
-            [*argv, "dashboard", "start", "--no-open", "--json"],
-            cwd=home,
-            capture_output=True,
-            text=True,
+
+def _restart_and_verify(
+    servers: list[str], *, dashboard: bool, argv: list[str], home: str
+) -> bool:
+    """Restart the snapshot of instances one by one, verifying each.
+
+    ``brainpalace start`` / ``dashboard start`` health-wait before exiting 0, so
+    a zero exit IS the verification. Prints a per-instance ✓/✗ status line.
+    Returns True only when every instance came back healthy.
+    """
+    all_ok = True
+    for project_root in servers:
+        res = _run_cmd(
+            [*argv, "start", "--path", project_root, "--no-dashboard", "--json"],
+            home,
         )
-        if res.returncode != 0:
-            console.print(
-                f"  [yellow]![/] dashboard start failed: {res.stderr.strip()}"
-            )
+        if res.returncode == 0:
+            console.print(f"  [green]✓[/] server [bold]{project_root}[/] — healthy")
         else:
+            all_ok = False
+            console.print(
+                f"  [red]✗[/] server [bold]{project_root}[/] failed: "
+                f"{res.stderr.strip() or 'see logs'}"
+            )
+
+    if dashboard:
+        res = _run_cmd([*argv, "dashboard", "start", "--no-open", "--json"], home)
+        if res.returncode == 0:
             from brainpalace_cli.commands._dashboard_url import render_dashboard_url
 
             try:
                 data = json.loads(res.stdout or "{}")
             except ValueError:
                 data = {}
+            console.print("  [green]✓[/] dashboard — healthy")
             render_dashboard_url(
                 {"base_url": data.get("base_url"), "started": True},
                 console=console,
             )
+        else:
+            all_ok = False
+            console.print(
+                f"  [red]✗[/] dashboard failed: {res.stderr.strip() or 'see logs'}"
+            )
 
-    console.print("[green]Restart complete.[/]")
+    return all_ok
 
 
 @click.command("update")
@@ -240,15 +255,18 @@ def _restart_after_upgrade(*, assume_yes: bool) -> None:
 @click.option(
     "--no-restart",
     is_flag=True,
-    help="Don't restart running servers/dashboard after the upgrade",
+    help="Upgrade only — leave running instances untouched (they keep serving "
+    "OLD code until you restart them yourself).",
 )
 def update_command(yes: bool, no_restart: bool) -> None:
-    """Upgrade BrainPalace (CLI + server) to the latest published version.
+    """Upgrade BrainPalace (CLI + server + dashboard) to the latest version.
 
-    Auto-detects pipx / uv / pip and runs the matching upgrade. Before running
-    it, warns which servers/dashboard are live (they keep serving old code until
-    restarted); after it finishes, offers to restart any running per-project
-    servers and the dashboard so they load the new code (skip with --no-restart).
+    Auto-detects pipx / uv / pip. Default flow is **stop-all → upgrade →
+    restart-and-verify**: every running instance is stopped first (so the upgrade
+    can never silently leave old code serving), then the same set is restarted
+    one by one with a per-instance health check. If the upgrade fails, you are
+    told loudly that nothing is running and you are NOT on the new version. Use
+    ``--no-restart`` to upgrade without touching running instances.
     """
     manager = detect_install_manager()
     if manager is None:
@@ -263,25 +281,83 @@ def update_command(yes: bool, no_restart: bool) -> None:
     console.print(f"[dim]Detected install via [bold]{manager}[/].[/]")
     console.print(f"Will run: [bold]{' '.join(argv)}[/]")
 
-    _preflight_notice()
+    # Snapshot what is running BEFORE we touch anything, so we restore exactly
+    # this set afterwards. Dashboard counts as live if tracked OR an orphan
+    # (climbed-port stray) exists — both get reaped on stop.
+    servers, dash = _running_instances()
+    dashboard_live = dash or bool(_dashboard_orphan_pids())
+    home = str(Path.home())
+    bp = _brainpalace_argv()
 
-    if not yes and not click.confirm("Upgrade now?", default=True):
-        console.print("[dim]Aborted.[/]")
+    # --- escape hatch: upgrade without disrupting anything ---------------------
+    if no_restart:
+        if (servers or dashboard_live) and not yes:
+            console.print(
+                f"[yellow]Note:[/] {_live_summary(servers, dashboard_live)} will "
+                "keep serving the OLD code until you restart them."
+            )
+        if not yes and not click.confirm("Upgrade now (no restart)?", default=True):
+            console.print("[dim]Aborted.[/]")
+            return
+        result = subprocess.run(argv, cwd=home)
+        if result.returncode != 0:
+            console.print("[red]Upgrade failed.[/] See the output above.")
+            raise SystemExit(result.returncode)
+        console.print("\n[green]Upgrade complete.[/]")
+        if servers or dashboard_live:
+            console.print(
+                "[yellow]Running instances still serve the OLD code.[/] Restart "
+                "them: [bold]brainpalace stop && brainpalace start[/] "
+                "(and [bold]brainpalace dashboard start[/])."
+            )
         return
+
+    # --- default: stop-all -> upgrade -> restart-and-verify --------------------
+    if servers or dashboard_live:
+        what = _live_summary(servers, dashboard_live)
+        console.print(
+            f"[yellow]This will stop {what}[/], upgrade, then restart and verify "
+            "each one."
+        )
+        prompt = f"Stop {what}, upgrade, and restart?"
+    else:
+        prompt = "Upgrade now?"
+    if not yes and not click.confirm(prompt, default=True):
+        console.print("[dim]Aborted — nothing stopped.[/]")
+        return
+
+    if servers or dashboard_live:
+        console.print("[bold]Stopping all instances…[/]")
+        _stop_all_instances(servers, argv=bp, home=home)
 
     # Run from $HOME so pipx doesn't mistake 'brainpalace-cli' for a local path
     # when the cwd happens to contain a matching subdirectory.
-    result = subprocess.run(argv, cwd=str(Path.home()))
+    result = subprocess.run(argv, cwd=home)
     if result.returncode != 0:
-        console.print("[red]Upgrade failed.[/] See the output above.")
+        if servers or dashboard_live:
+            console.print(
+                "\n[red bold]Upgrade FAILED — all instances were stopped first.[/]\n"
+                "[red]Nothing is running and you are NOT on the new version.[/]\n"
+                "Restore the previous version's services:\n"
+                "  [bold]brainpalace start[/] (per project)\n"
+                "  [bold]brainpalace dashboard start[/]"
+            )
+        else:
+            console.print("[red]Upgrade failed.[/] See the output above.")
         raise SystemExit(result.returncode)
 
     console.print("\n[green]Upgrade complete.[/]")
 
-    if no_restart:
-        console.print(
-            "[dim]Restart running servers to load the new version: "
-            "[bold]brainpalace stop && brainpalace start[/].[/]"
-        )
+    if not servers and not dashboard_live:
         return
-    _restart_after_upgrade(assume_yes=yes)
+
+    console.print("[bold]Restarting instances…[/]")
+    ok = _restart_and_verify(servers, dashboard=dashboard_live, argv=bp, home=home)
+    if ok:
+        console.print("[green]Restart complete — all instances healthy.[/]")
+    else:
+        console.print(
+            "[red bold]Some instances did not come back.[/] Check the ✗ lines "
+            "above and retry with [bold]brainpalace start[/]."
+        )
+        raise SystemExit(1)

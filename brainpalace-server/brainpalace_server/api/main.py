@@ -947,20 +947,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                     state_dir=state_dir,
                 )
                 app.state.git_index_service = git_svc
-
-                async def _boot_git_index() -> None:
-                    try:
-                        summary = await git_svc.index_repo(
-                            app.state.project_root, git_cfg
-                        )
-                        logger.info(
-                            "Git boot-index: %d new commit(s)",
-                            summary.get("commits_new", 0),
-                        )
-                    except Exception as exc:  # noqa: BLE001
-                        logger.warning("Git boot-index failed: %s", exc)
-
-                asyncio.create_task(_boot_git_index())
                 logger.info("Git indexing enabled: %s", app.state.project_root)
         except Exception as exc:  # noqa: BLE001 — never block startup on git
             logger.warning("Git indexing setup failed: %s", exc)
@@ -1134,6 +1120,27 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             _job_worker.set_folder_manager(folder_manager)
             # Wire JobWorker to QueryCacheService (Phase 17)
             _job_worker.set_query_cache(query_cache)
+
+        # Wire JobWorker git deps + enqueue boot git-history job (Issue #15).
+        # Runs after both the state-dir and no-state-dir branches have started
+        # the worker, so _job_worker and job_service are always set by here.
+        if _job_worker is not None:
+            _job_worker.set_git_service(
+                app.state.git_index_service,
+                app.state.git_indexing_config,
+                app.state.project_root or None,
+            )
+
+        if app.state.git_index_service is not None and app.state.project_root:
+            try:
+                resp = await job_service.enqueue_git_history_job(app.state.project_root)
+                logger.info(
+                    "Git boot-index enqueued: job_id=%s dedupe_hit=%s",
+                    resp.job_id,
+                    resp.dedupe_hit,
+                )
+            except Exception as exc:  # noqa: BLE001 — never block startup on git
+                logger.warning("Git boot-index enqueue failed: %s", exc)
 
         # Set multi-instance metadata on app.state for health endpoint
         app.state.mode = mode

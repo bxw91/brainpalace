@@ -32,6 +32,7 @@ VALID_TOP_LEVEL_KEYS = {
     "session_indexing",
     "session_extraction",
     "indexing",
+    "dashboard",
 }
 
 VALID_EMBEDDING_PROVIDERS = {"openai", "ollama", "cohere"}
@@ -104,6 +105,17 @@ API_KNOWN_FIELDS = {"host", "port"}
 SERVER_KNOWN_FIELDS = {"url", "host", "port", "auto_port"}
 PROJECT_KNOWN_FIELDS = {"state_dir", "project_root"}
 QUERY_LOG_KNOWN_FIELDS = {"enabled", "retention_days"}
+# Control-plane (dashboard process) settings — global only. Mirrors
+# brainpalace_dashboard.config.DashboardConfig.
+DASHBOARD_KNOWN_FIELDS = {
+    "host",
+    "port",
+    "poll_s",
+    "token",
+    "autostart",
+    "time_format",
+    "date_format",
+}
 BM25_KNOWN_FIELDS = {"language", "engine", "detect", "detect_min_confidence"}
 GIT_INDEXING_KNOWN_FIELDS = {
     "enabled",
@@ -309,6 +321,15 @@ _SECTION_SCHEMA: dict[str, dict[str, Any]] = {
         "type_fields": {
             "enabled": (bool, "query_log.enabled must be a boolean (true/false)"),
             "retention_days": (int, "query_log.retention_days must be an integer"),
+        },
+    },
+    "dashboard": {
+        "known_fields": DASHBOARD_KNOWN_FIELDS,
+        "enum_fields": {},
+        "type_fields": {
+            "port": (int, "dashboard.port must be an integer"),
+            "poll_s": (int, "dashboard.poll_s must be an integer"),
+            "autostart": (bool, "dashboard.autostart must be a boolean (true/false)"),
         },
     },
     "bm25": {

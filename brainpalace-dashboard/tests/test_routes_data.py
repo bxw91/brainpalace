@@ -57,6 +57,33 @@ def test_folders_proxy(monkeypatch):
     assert any(c[:2] == ("GET", "/index/folders/") for c in fp.calls)
 
 
+def test_remove_folder_normalizes_path_key(monkeypatch):
+    # Older frontend builds sent {"path": ...}; the server contract is
+    # {"folder_path": ...}. The proxy must forward folder_path so removal
+    # doesn't 422 regardless of the bundled asset version.
+    fp = FakeProxy()
+    monkeypatch.setattr(rd, "proxy", fp)
+    client = TestClient(create_app())
+    resp = client.request(
+        "DELETE", "/dashboard/api/instances/abc/folders", json={"path": "/p"}
+    )
+    assert resp.status_code == 200
+    call = next(c for c in fp.calls if c[0] == "DELETE" and c[1] == "/index/folders/")
+    assert call[2].get("folder_path") == "/p"
+
+
+def test_remove_folder_passes_folder_path_through(monkeypatch):
+    fp = FakeProxy()
+    monkeypatch.setattr(rd, "proxy", fp)
+    client = TestClient(create_app())
+    resp = client.request(
+        "DELETE", "/dashboard/api/instances/abc/folders", json={"folder_path": "/p"}
+    )
+    assert resp.status_code == 200
+    call = next(c for c in fp.calls if c[0] == "DELETE" and c[1] == "/index/folders/")
+    assert call[2].get("folder_path") == "/p"
+
+
 def test_jobs_proxy(monkeypatch):
     fp = FakeProxy()
     monkeypatch.setattr(rd, "proxy", fp)

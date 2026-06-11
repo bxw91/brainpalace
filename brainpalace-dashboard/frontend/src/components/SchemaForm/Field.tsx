@@ -166,6 +166,7 @@ export function Field({
           dotpath={field.dotpath}
           label={field.label}
           value={Boolean(setLocally ? raw : effValue)}
+          inherited={!setLocally}
           onChange={(v) => setValue(field.dotpath, v)}
         />
       );
@@ -230,68 +231,75 @@ export function Field({
     <div
       data-testid={`field-${field.dotpath}`}
       data-field={field.dotpath}
-      className={
-        inline
-          ? "flex items-center justify-between gap-4 py-1"
-          : "flex flex-col gap-2 py-1"
-      }
+      className="flex flex-col gap-2 py-1"
     >
-      <div className={inline ? "" : ""}>
-        <label
-          htmlFor={`input-${field.dotpath}`}
-          className="block text-sm font-medium text-fg"
-        >
-          {field.label}
-          {eff?.source && (
-            <span
-              data-testid={`field-source-${field.dotpath}`}
-              title={`Value source: ${eff.source}`}
-              className={`ml-2 rounded px-1.5 py-0.5 align-middle text-[10px] font-semibold uppercase tracking-wide ${
-                eff.source === "project"
-                  ? "bg-accent/15 text-accent"
-                  : "bg-fg-faint/10 text-fg-faint"
-              }`}
-            >
-              {eff.source === "default" ? "code" : eff.source}
-            </span>
+      <div
+        className={
+          inline
+            ? "flex items-center justify-between gap-4"
+            : "flex flex-col gap-2"
+        }
+      >
+        <div>
+          <label
+            htmlFor={`input-${field.dotpath}`}
+            className="block text-sm font-medium text-fg"
+          >
+            {field.label}
+            {eff?.source && (
+              <span
+                data-testid={`field-source-${field.dotpath}`}
+                title={`Value source: ${eff.source}`}
+                className={`ml-2 rounded px-1.5 py-0.5 align-middle text-[10px] font-semibold uppercase tracking-wide ${
+                  eff.source === "project"
+                    ? "bg-accent/15 text-accent"
+                    : "bg-fg-faint/10 text-fg-faint"
+                }`}
+              >
+                {eff.source === "default" ? "code" : eff.source}
+              </span>
+            )}
+            {/* Unset = inherit. Only when the value is set at the project layer. */}
+            {eff?.source === "project" && onUnset && (
+              <button
+                type="button"
+                data-testid={`field-unset-${field.dotpath}`}
+                onClick={() => onUnset(field.dotpath)}
+                title={
+                  inheritedLabel(eff.inherited)
+                    ? `Unset — will use ${inheritedLabel(eff.inherited)}`
+                    : "Remove this project override"
+                }
+                className="ml-2 align-middle text-xs font-normal text-accent hover:underline"
+              >
+                unset
+                {inheritedLabel(eff.inherited) && (
+                  <span className="ml-1 text-fg-faint">
+                    (→ {inheritedLabel(eff.inherited)})
+                  </span>
+                )}
+              </button>
+            )}
+          </label>
+          {field.help && (
+            <p className="mt-0.5 max-w-prose text-xs leading-relaxed text-fg-faint">
+              {field.help}
+            </p>
           )}
-          {hint && (
-            <span
-              data-testid={`field-default-${field.dotpath}`}
-              className="ml-2 font-normal text-xs text-fg-faint"
-            >
-              {hint}
-            </span>
-          )}
-          {/* Unset = inherit. Only when the value is set at the project layer. */}
-          {eff?.source === "project" && onUnset && (
-            <button
-              type="button"
-              data-testid={`field-unset-${field.dotpath}`}
-              onClick={() => onUnset(field.dotpath)}
-              title={
-                inheritedLabel(eff.inherited)
-                  ? `Unset — will use ${inheritedLabel(eff.inherited)}`
-                  : "Remove this project override"
-              }
-              className="ml-2 align-middle text-xs font-normal text-accent hover:underline"
-            >
-              unset
-              {inheritedLabel(eff.inherited) && (
-                <span className="ml-1 text-fg-faint">
-                  (→ {inheritedLabel(eff.inherited)})
-                </span>
-              )}
-            </button>
-          )}
-        </label>
-        {field.help && (
-          <p className="mt-0.5 max-w-prose text-xs leading-relaxed text-fg-faint">
-            {field.help}
-          </p>
-        )}
+        </div>
+        {control}
       </div>
-      {control}
+      {/* Provenance line (#7) — rendered BELOW the control as a distinct,
+          high-contrast chip (light-on-dark) instead of a faint label suffix,
+          so the inherited / code-default value is legible for every field. */}
+      {hint && (
+        <span
+          data-testid={`field-default-${field.dotpath}`}
+          className="inline-block w-fit rounded bg-fg px-1.5 py-0.5 text-[11px] font-medium text-ink-900"
+        >
+          {hint}
+        </span>
+      )}
       {error && (
         <p
           role="alert"

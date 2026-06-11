@@ -1,6 +1,7 @@
 """Integration tests for brainpalace config wizard command."""
 
 from pathlib import Path
+from unittest.mock import patch
 
 import yaml
 from click.testing import CliRunner
@@ -27,6 +28,7 @@ class TestConfigWizard:
                     "anthropic\n"
                     "claude-haiku-4-5-20251001\n"
                     "1\n"
+                    "n\nn\nn\ny\nn\n"
                     "1\n"
                     "\n"
                 ),
@@ -55,6 +57,7 @@ class TestConfigWizard:
                         "anthropic\n"
                         "claude-haiku-4-5-20251001\n"
                         "1\n"
+                        "n\nn\nn\ny\nn\n"
                         "1\n"
                         "\n"
                     ),
@@ -79,12 +82,71 @@ class TestConfigWizard:
                     "anthropic\n"
                     "claude-haiku-4-5-20251001\n"
                     "1\n"
+                    "n\nn\nn\ny\nn\n"
                     "1\n"
                     "\n"
                 ),
             )
             assert result.exit_code == 0, result.output
             assert "is not one of" in result.output.lower()
+
+    def test_wizard_global_asks_and_writes_dashboard_settings(
+        self, tmp_path: Path
+    ) -> None:
+        """--global prompts for dashboard autostart + port and writes the
+        `dashboard:` block to the global config.yaml."""
+        runner = CliRunner()
+        xdg = tmp_path / "xdg"
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            with patch.object(
+                config_command_module, "get_xdg_config_dir", return_value=xdg
+            ):
+                result = runner.invoke(
+                    config_group,
+                    ["wizard", "--global"],
+                    input=(
+                        "openai\n"
+                        "text-embedding-3-small\n"
+                        "anthropic\n"
+                        "claude-haiku-4-5-20251001\n"
+                        "1\n"  # graphrag mode
+                        "n\nn\nn\nn\nn\n"  # sessions, archive, git, rerank, lemma
+                        "1\n"  # deployment: localhost
+                        "\n"  # api port: default
+                        "n\n"  # dashboard autostart? -> no
+                        "9999\n"  # dashboard port
+                    ),
+                )
+            assert result.exit_code == 0, result.output
+            assert "Auto-start the web dashboard" in result.output
+            cfg = yaml.safe_load((xdg / "config.yaml").read_text(encoding="utf-8"))
+            assert cfg["dashboard"] == {"autostart": False, "port": 9999}
+
+    def test_wizard_non_global_omits_dashboard_block(self, tmp_path: Path) -> None:
+        """A per-project (non-global) wizard run does not ask for or write
+        dashboard settings (those are global control-plane settings)."""
+        runner = CliRunner()
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            result = runner.invoke(
+                config_group,
+                ["wizard"],
+                input=(
+                    "openai\n"
+                    "text-embedding-3-small\n"
+                    "anthropic\n"
+                    "claude-haiku-4-5-20251001\n"
+                    "1\n"
+                    "n\nn\nn\nn\nn\n"
+                    "1\n"
+                    "\n"
+                ),
+            )
+            assert result.exit_code == 0, result.output
+            assert "Auto-start the web dashboard" not in result.output
+            cfg = yaml.safe_load(
+                (Path(".brainpalace") / "config.yaml").read_text(encoding="utf-8")
+            )
+            assert "dashboard" not in cfg
 
     def test_wizard_rejects_negative_request_delay(self, tmp_path: Path) -> None:
         """Wizard rejects negative request_delay_ms values."""
@@ -102,6 +164,7 @@ class TestConfigWizard:
                     "anthropic\n"
                     "claude-haiku-4-5-20251001\n"
                     "1\n"
+                    "n\nn\nn\ny\nn\n"
                     "1\n"
                     "\n"
                 ),
@@ -127,20 +190,22 @@ class TestConfigWizard:
         )
 
         with runner.isolated_filesystem(temp_dir=tmp_path):
-            result = runner.invoke(
-                config_group,
-                ["wizard"],
-                input=(
-                    "openai\n"
-                    "text-embedding-3-large\n"
-                    "anthropic\n"
-                    "claude-haiku-4-5-20251001\n"
-                    "2\n"
-                    "2\n"
-                    "1\n"
-                    "\n"
-                ),
-            )
+            with patch("brainpalace_cli.optional_deps.ensure_extra"):
+                result = runner.invoke(
+                    config_group,
+                    ["wizard"],
+                    input=(
+                        "openai\n"
+                        "text-embedding-3-large\n"
+                        "anthropic\n"
+                        "claude-haiku-4-5-20251001\n"
+                        "2\n"
+                        "n\nn\nn\ny\nn\n"
+                        "2\n"
+                        "1\n"
+                        "\n"
+                    ),
+                )
 
             assert result.exit_code == 0, result.output
             assert "On, code + docs" in result.output
@@ -174,6 +239,7 @@ class TestConfigWizard:
                     "anthropic\n"
                     "claude-haiku-4-5-20251001\n"
                     "1\n"
+                    "n\nn\nn\ny\nn\n"
                     "1\n"
                     "\n"
                 ),

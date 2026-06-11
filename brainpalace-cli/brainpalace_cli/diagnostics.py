@@ -619,12 +619,11 @@ def _check_optional_dep(provider: str, module_name: str, extra: str) -> CheckRes
     )
 
 
-def _read_graphrag_block(state_dir: Path) -> dict[str, Any] | None:
-    """Read the ``graphrag`` block from the project's config.yaml, if any.
+def load_project_config_dict(state_dir: Path) -> dict[str, Any]:
+    """Read the project's config.yaml as a raw dict (empty on any failure).
 
-    The CLI's Pydantic ``BrainPalaceConfig`` doesn't model graphrag (it's a
-    server concern), so this peeks directly at the YAML. Returns None when
-    no graphrag block is present.
+    The CLI's Pydantic ``BrainPalaceConfig`` doesn't model every server-side
+    block (e.g. graphrag), so callers that need those peek at the YAML directly.
     """
     import yaml  # local import to avoid a hard dep at module load
 
@@ -633,13 +632,12 @@ def _read_graphrag_block(state_dir: Path) -> dict[str, Any] | None:
         if not path.exists():
             continue
         try:
-            data = yaml.safe_load(path.read_text()) or {}
+            data = yaml.safe_load(path.read_text())
         except (OSError, yaml.YAMLError):
             continue
-        block = data.get("graphrag")
-        if isinstance(block, dict):
-            return block
-    return None
+        if isinstance(data, dict):
+            return data
+    return {}
 
 
 def _check_gitignore(project_root: Path) -> CheckResult:
@@ -684,7 +682,9 @@ def run_doctor(server_url_override: str | None = None) -> DoctorReport:
         legacy = project_root / LEGACY_STATE_DIR_NAME
         runtime_file = legacy / "runtime.json" if legacy.exists() else None
 
-    server_url = server_url_override or get_server_url()
+    # doctor must keep diagnosing even when the project's own server is down, so
+    # opt out of the wrong-server guard and use the would-be URL for its checks.
+    server_url = server_url_override or get_server_url(raise_on_unreachable=False)
 
     checks: list[CheckResult] = []
     checks.append(_check_python())
@@ -701,14 +701,10 @@ def run_doctor(server_url_override: str | None = None) -> DoctorReport:
     if cfg and cfg.embedding.provider.lower() == "cohere":
         checks.append(_check_optional_dep("cohere", "cohere", "cohere"))
 
-    # Issue #146 check #8 — surface graphrag's langextract dependency. The CLI
-    # config model doesn't carry the graphrag block (server concern), so read
-    # it straight from the project's config.yaml.
-    graphrag_block = _read_graphrag_block(state_dir)
-    if graphrag_block and graphrag_block.get("enabled"):
-        checks.append(
-            _check_optional_dep("graphrag (langextract)", "langextract", "graphrag")
-        )
+    # langextract is surfaced by the doctor's "Optional extras" section, gated on
+    # graphrag.doc_extractor == "langextract" (the precise signal for that dep).
+    # No standalone graphrag.enabled-gated langextract row here — it would double-
+    # report the same dependency.
 
     checks.append(_check_gitignore(project_root))
 

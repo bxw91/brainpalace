@@ -14,8 +14,9 @@ def test_wizard_global_writes_to_xdg(tmp_path: Path, monkeypatch) -> None:
         "brainpalace_cli.commands.config.get_xdg_config_dir", lambda: xdg
     )
 
-    # Accept every prompt default (openai/anthropic/graphrag=3/localhost/port).
-    result = CliRunner().invoke(config_group, ["wizard", "--global"], input="\n" * 12)
+    # Accept every prompt default (openai/anthropic/graphrag=3/localhost/port,
+    # plus the two global-only dashboard prompts: autostart + port).
+    result = CliRunner().invoke(config_group, ["wizard", "--global"], input="\n" * 14)
 
     assert result.exit_code == 0, result.output
     written = xdg / "config.yaml"

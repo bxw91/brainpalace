@@ -41,6 +41,27 @@ def test_archive_lists_sessions_newest_first(tmp_path):
     assert body["archived_files"] == 3
     # Missing files report size 0 instead of erroring.
     assert body["sessions"][0]["size_bytes"] == 0
+    # Unreadable/missing transcripts yield a null title (no crash).
+    assert body["sessions"][0]["title"] is None
+
+
+def test_archive_includes_first_prompt_title(tmp_path):
+    f = tmp_path / "real.jsonl"
+    f.write_text(
+        '{"type":"user","message":{"role":"user","content":'
+        '"Wire up the billing webhook"}}\n'
+    )
+
+    class OneReal:
+        def iter_sessions(self):
+            yield "sid-x", f, 100.0
+
+        def stats(self):
+            return {"archived_sessions": 1}
+
+    c = TestClient(_app(OneReal()))
+    body = c.get("/sessions/archive").json()
+    assert body["sessions"][0]["title"] == "Wire up the billing webhook"
 
 
 def test_archive_503_when_disabled():

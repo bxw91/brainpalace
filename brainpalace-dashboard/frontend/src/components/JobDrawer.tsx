@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { X } from "lucide-react";
 import { getJobDetail } from "../api/client";
 import type { JobDetail } from "../api/types";
+import { useDisplayFormat } from "../format/datetime";
 
 const STATUS_TONE: Record<string, string> = {
   running: "bg-accent/15 text-accent",
@@ -14,10 +15,13 @@ const STATUS_TONE: Record<string, string> = {
   cancelled: "bg-ink-600 text-fg-muted",
 };
 
-function fmtTime(iso: string | null): string {
+function fmtTime(
+  iso: string | null,
+  formatDateTime: (d: Date) => string,
+): string {
   if (!iso) return "—";
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
+  return Number.isNaN(d.getTime()) ? iso : formatDateTime(d);
 }
 
 function fmtDuration(ms: number | null): string {
@@ -65,6 +69,7 @@ export function JobDrawer({
   jobId: string | null;
   onClose: () => void;
 }) {
+  const { formatDateTime } = useDisplayFormat();
   const detailQ = useQuery({
     queryKey: ["job-detail", instanceId, jobId],
     queryFn: () => getJobDetail(instanceId, jobId!),
@@ -197,9 +202,9 @@ export function JobDrawer({
               <p className="eyebrow mb-1 mt-5">Details</p>
               <div className="rounded-lg border border-line/60 bg-ink-700/20 px-3">
                 <MetaRow label="Folder" value={d.folder_path} />
-                <MetaRow label="Enqueued" value={fmtTime(d.enqueued_at)} />
-                <MetaRow label="Started" value={fmtTime(d.started_at)} />
-                <MetaRow label="Finished" value={fmtTime(d.finished_at)} />
+                <MetaRow label="Enqueued" value={fmtTime(d.enqueued_at, formatDateTime)} />
+                <MetaRow label="Started" value={fmtTime(d.started_at, formatDateTime)} />
+                <MetaRow label="Finished" value={fmtTime(d.finished_at, formatDateTime)} />
                 {d.retry_count > 0 && (
                   <MetaRow label="Retries" value={String(d.retry_count)} />
                 )}

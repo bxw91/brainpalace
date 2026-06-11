@@ -186,11 +186,16 @@ export async function patchRuntimeConfig(
 // per-instance config. (`dashboard:` block in the XDG config.yaml.)
 // ---------------------------------------------------------------------------
 
+export type TimeFormat = "24h" | "12h";
+export type DateFormat = "dd.mm.yyyy" | "mm.dd.yyyy" | "yyyy-mm-dd";
+
 export type DashboardSettings = {
   host: string;
   port: number;
   poll_s: number;
   autostart: boolean;
+  time_format: TimeFormat;
+  date_format: DateFormat;
   token_set: boolean;
   token: string;
   version: string;
@@ -218,6 +223,8 @@ export async function patchSettings(values: {
   poll_s?: number;
   token?: string;
   autostart?: boolean;
+  time_format?: TimeFormat;
+  date_format?: DateFormat;
 }): Promise<{ ok: boolean; restart_required: string[] }> {
   const r = await fetch(`${BASE}/settings`, {
     method: "PATCH",
@@ -420,7 +427,7 @@ export const resetIndex = (id: string) =>
 export const addFolder = (id: string, body: object) =>
   actData(`/instances/${id}/index`, "POST", body);
 export const removeFolder = (id: string, path: string) =>
-  actData(`/instances/${id}/folders`, "DELETE", { path });
+  actData(`/instances/${id}/folders`, "DELETE", { folder_path: path });
 export const cancelJob = (id: string, jobId: string) =>
   actData(`/instances/${id}/jobs/${jobId}`, "DELETE");
 export const gitReindex = (id: string) =>

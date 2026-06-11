@@ -2,10 +2,13 @@
 
 import asyncio
 import json
+import logging
 import os
 import shutil
 import subprocess
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import click
@@ -27,6 +30,27 @@ from brainpalace_cli.migration import migrate_state_dir
 from brainpalace_cli.xdg_paths import get_xdg_config_dir, migrate_legacy_paths
 
 console = Console()
+
+
+@contextmanager
+def _quiet_server_logs() -> Iterator[None]:
+    """Silence bundled-server INFO chatter during in-process calls.
+
+    ``init`` runs the server's estimator and provider preflight in-process; their
+    module loggers ("Loading provider config", "Active embedding provider",
+    "Loaded N documents from …", …) are server internals, not init UX, and would
+    otherwise leak raw log lines into the terminal. Raise the ``brainpalace_server``
+    logger to WARNING for the duration and restore the prior level after, so real
+    warnings/errors still surface.
+    """
+    srv = logging.getLogger("brainpalace_server")
+    prev = srv.level
+    srv.setLevel(logging.WARNING)
+    try:
+        yield
+    finally:
+        srv.setLevel(prev)
+
 
 # Default configuration values for config.json (project settings only)
 # Provider settings (embedding/summarization) go in config.yaml
@@ -356,9 +380,10 @@ def _preflight_providers(state_dir: Path, json_output: bool) -> None:
     prev = os.environ.get("BRAINPALACE_CONFIG")
     os.environ["BRAINPALACE_CONFIG"] = str(state_dir / "config.yaml")
     try:
-        clear_settings_cache()
-        errors = validate_provider_config(load_provider_settings())
-        critical = has_critical_errors(errors)
+        with _quiet_server_logs():
+            clear_settings_cache()
+            errors = validate_provider_config(load_provider_settings())
+            critical = has_critical_errors(errors)
     except Exception:  # noqa: BLE001 — never block init on the check itself
         return
     finally:
@@ -489,6 +514,49 @@ def write_git_config(
     data["git_indexing"] = block
     with open(config_path, "w", encoding="utf-8") as f:
         yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
+
+
+def write_reranker_enabled(state_dir: Path, *, enabled: bool) -> None:
+    """Persist ``reranker.enabled`` (deep-merge; preserve other reranker keys)."""
+    config_path = state_dir / "config.yaml"
+    data: dict[str, object] = {}
+    if config_path.exists():
+        loaded = yaml.safe_load(config_path.read_text()) or {}
+        if isinstance(loaded, dict):
+            data = loaded
+    rer = data.get("reranker")
+    if not isinstance(rer, dict):
+        rer = {}
+    rer["enabled"] = enabled
+    data["reranker"] = rer
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(
+        yaml.safe_dump(data, default_flow_style=False, sort_keys=False)
+    )
+
+
+def write_graphrag_doc_extractor(state_dir: Path, *, doc_extractor: str) -> None:
+    """Persist ``graphrag.doc_extractor`` (``langextract`` | ``none``).
+
+    Deep-merges into config.yaml so other graphrag keys (enabled/store_type)
+    survive. ``none`` is the explicit disable that suppresses the server's
+    'langextract not installed' warning for a deliberately-declined feature (D2).
+    """
+    config_path = state_dir / "config.yaml"
+    data: dict[str, object] = {}
+    if config_path.exists():
+        loaded = yaml.safe_load(config_path.read_text()) or {}
+        if isinstance(loaded, dict):
+            data = loaded
+    graph = data.get("graphrag")
+    if not isinstance(graph, dict):
+        graph = {}
+    graph["doc_extractor"] = doc_extractor
+    data["graphrag"] = graph
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(
+        yaml.safe_dump(data, default_flow_style=False, sort_keys=False)
+    )
 
 
 def read_graphrag_store_type(state_dir: Path) -> str | None:
@@ -865,18 +933,13 @@ def _emit_init_result(
             "Install it: [bold]brainpalace install-agent[/]"
         )
 
-    console.print("\n[dim]Next steps:[/]")
-    for item in todo:
-        console.print(f"  • {item}")
-    if started_ok and watched_ok:
-        # Indexing runs in the background job worker — point the user at it.
-        console.print(
-            "  • Indexing runs in the background. Watch it: "
-            "[bold]brainpalace status[/] (jobs: [bold]brainpalace jobs[/])"
-        )
-        console.print('  • Then query: [bold]brainpalace query "your question"[/]')
-    elif not todo:
-        console.print("  • Check health: [bold]brainpalace status[/]")
+    # Only surface "Next steps" when a real action is left for the user (e.g.
+    # start the server / add a folder). A fully-successful init ends on the
+    # "Done:" summary above — no background-indexing / query boilerplate.
+    if todo:
+        console.print("\n[dim]Next steps:[/]")
+        for item in todo:
+            console.print(f"  • {item}")
 
 
 def _estimate_and_confirm_local(
@@ -899,13 +962,14 @@ def _estimate_and_confirm_local(
 
     while True:
         try:
-            est = asyncio.run(
-                estimate_tokens_local(
-                    str(project_root),
-                    include_code=include_code,
-                    config_path=str(config_yaml),
+            with _quiet_server_logs():
+                est = asyncio.run(
+                    estimate_tokens_local(
+                        str(project_root),
+                        include_code=include_code,
+                        config_path=str(config_yaml),
+                    )
                 )
-            )
             print_token_estimate(console, est)
         except Exception as exc:  # noqa: BLE001 - advisory only, never block init
             console.print(f"[yellow]Estimate unavailable ({exc}); continuing.[/]")
@@ -914,12 +978,12 @@ def _estimate_and_confirm_local(
             f"[dim]Scope: {'code + docs' if include_code else 'docs only'}.[/]"
         )
         action = click.prompt(
-            "Proceed with indexing, toggle code/docs scope and re-estimate, "
+            "Proceed with indexing, change scope (code/docs) and re-estimate, "
             "or cancel?",
-            type=click.Choice(["proceed", "toggle", "cancel"]),
+            type=click.Choice(["proceed", "change", "cancel"]),
             default="proceed",
         )
-        if action == "toggle":
+        if action == "change":
             include_code = not include_code
             continue
         if action == "cancel":
@@ -1138,6 +1202,15 @@ def _start_and_watch(
     ),
 )
 @click.option(
+    "--graphrag-extract/--no-graphrag-extract",
+    "enable_graphrag_extract",
+    default=None,
+    help=(
+        "Extract a knowledge graph from document text "
+        "(installs the optional langextract dep on enable)."
+    ),
+)
+@click.option(
     "--migrate-graph-store/--no-migrate-graph-store",
     "enable_graph_migrate",
     default=None,
@@ -1210,6 +1283,7 @@ def init_command(
     enable_archive: bool | None,
     enable_extract: bool | None,
     enable_git_history: bool | None,
+    enable_graphrag_extract: bool | None,
     enable_graph_migrate: bool | None,
     enable_reranking: bool | None,
     bm25_language: str | None,
@@ -1363,6 +1437,29 @@ def init_command(
         # default (0 = entire history); an interactive opt-in may set a cap.
         git_depth: int | None = None
 
+        # graphrag_extract_ans is set in the consent block when interactive, or
+        # left None for non-interactive / --json runs (flag path uses
+        # enable_graphrag_extract directly at write time).
+        graphrag_extract_ans: bool | None = None
+
+        # archive_ans is set in the consent block when interactive (no flag),
+        # or left None for non-interactive / --json runs (flag path uses
+        # enable_archive directly at write time).
+        archive_ans: bool | None = None
+
+        # _rerank_changed / _rerank_val track the D4 inherited-override gate
+        # for reranker.enabled. Initialized here so both the re-init and the
+        # fresh-init persistence paths can reference them even on non-interactive
+        # runs (where they stay False / None → nothing written, sparse invariant).
+        _rerank_changed: bool = False
+        _rerank_val: bool | None = None
+
+        # lemma_ans is set in the consent block when interactive and no explicit
+        # --bm25-engine flag was passed; left None otherwise (flag path uses
+        # bm25_engine directly). A bare "no" stays None → nothing written (sparse
+        # invariant); only an active "yes" persists bm25.engine=lemma + installs.
+        lemma_ans: bool | None = None
+
         if plan.confirm:
             embedding = _preview_embedding(project_root)
             plugin_present = claude_plugin_installed(project=project_root)
@@ -1406,6 +1503,16 @@ def init_command(
                 )
                 if _gmode_from == "global":
                     _from_global_note()
+                if not plugin_present:
+                    # Summarization runs ONLY on the Claude Code plugin's Haiku
+                    # subagent. Flag its absence in a distinct colour so the user
+                    # knows a "yes" here won't summarize anything until installed.
+                    console.print(
+                        "  [yellow]⚠ Claude Code plugin not installed[/] — a "
+                        "[bold]yes[/] configures summaries, but nothing is "
+                        "summarized until you install it: "
+                        "[bold]brainpalace install-agent[/]"
+                    )
                 extract_ans = click.confirm(
                     "Summarize chat sessions?", default=_extract_default
                 )
@@ -1438,9 +1545,28 @@ def init_command(
                 )
                 sessions_chosen = True  # prompt answer is an explicit choice
 
+            if enable_archive is None:
+                _arch_default, _arch_from = _global_default(
+                    "session_indexing.archive.enabled", True
+                )
+                console.print(
+                    "\n[bold]Back up chat transcripts?[/] "
+                    "(free, local copy — no embeddings, no API cost)\n"
+                    "  [yellow]⚠ Stores FULL raw transcripts incl. your prompts "
+                    "and any secrets[/] under .brainpalace/. Disable later: "
+                    "--no-archive."
+                )
+                if _arch_from:
+                    _from_global_note()
+                archive_ans = click.confirm(
+                    "Back up chat transcripts?", default=_arch_default
+                )
+            else:
+                archive_ans = enable_archive
+
             git_history_ans: bool = bool(plan.git_history)
             if enable_git_history is None:
-                _git_default, _git_from = _global_default("git_indexing.enabled", True)
+                _git_default, _git_from = _global_default("git_indexing.enabled", False)
                 console.print(
                     "\n[bold]Index git commit history?[/] "
                     "(make past commits searchable: message + changed-file list)\n"
@@ -1465,6 +1591,68 @@ def init_command(
                         type=int,
                     )
 
+            # GraphRAG document extraction (#10/#14). doc_extractor=langextract
+            # mines entities/relationships from DOC text; needs the optional
+            # `langextract` dep. D2: a "no" writes doc_extractor=none (explicit
+            # disable, no runtime warning); "yes" installs the extra after consent.
+            if enable_graphrag_extract is None:
+                from brainpalace_cli import optional_deps
+
+                _gval, _gsrc = _resolve_cfg("graphrag.doc_extractor", {}, _gcfg)
+                _ge_default = (
+                    (str(_gval) == "langextract") if _gsrc == "global" else False
+                )
+                console.print(
+                    "\n[bold]Extract a knowledge graph from document text?[/] "
+                    "(entities + relationships mined from your docs)\n"
+                    f"  [yellow]{optional_deps.REGISTRY['graphrag'].download_note}[/]\n"
+                    "  Disable later: config graphrag.doc_extractor=none."
+                )
+                if _gsrc == "global":
+                    _from_global_note()
+                graphrag_extract_ans = click.confirm(
+                    "Extract a knowledge graph from document text?",
+                    default=_ge_default,
+                )
+            else:
+                graphrag_extract_ans = enable_graphrag_extract
+
+            # Reranker (#9/#16) — project-overridable; re-ask via the D4 gate.
+            # Only a changed answer is persisted (sparse invariant). The gate is
+            # skipped when --reranking/--no-reranking was passed explicitly (the
+            # flag already decided the value; write_reranker_enabled is called
+            # further below on the explicit-flag path).
+            if enable_reranking is None:
+                from brainpalace_cli.commands.init_plan import inherited_change_gate
+
+                _rerank_val, _rerank_changed = inherited_change_gate(
+                    "Reranker", "reranker.enabled", _gcfg
+                )
+
+            # BM25 lemma engine (#14) — opt-in that installs the optional
+            # `simplemma` dep on yes. Only asked when no explicit --bm25-engine
+            # flag decided it. Default to the inherited/global engine when it is
+            # `lemma`, else stem (no). D2-style: a "no" writes nothing new (the
+            # sparse invariant keeps the project inheriting stem); a "yes" writes
+            # bm25.engine=lemma and installs the extra after consent.
+            if bm25_engine is None:
+                from brainpalace_cli import optional_deps
+
+                _leng, _lsrc = _resolve_cfg("bm25.engine", {}, _gcfg)
+                _lemma_default = (str(_leng) == "lemma") if _lsrc == "global" else False
+                console.print(
+                    "\n[bold]Use lemmatization for BM25 keyword search?[/] "
+                    "(better recall for inflected languages)\n"
+                    f"  [yellow]{optional_deps.REGISTRY['lemma-hr'].download_note}[/]\n"
+                    "  Disable later: config bm25.engine=stem."
+                )
+                if _lsrc == "global":
+                    _from_global_note()
+                lemma_ans = click.confirm(
+                    "Use lemmatization for BM25 keyword search?",
+                    default=_lemma_default,
+                )
+
             # Graph-store upgrade — asked here (with the other questions) so it
             # appears in the "init will:" preview below and is gated by Proceed.
             if existing_simple_store and enable_graph_migrate is None:
@@ -1485,7 +1673,7 @@ def init_command(
                 watch=watch,
                 no_watch=no_watch,
                 sessions=sessions_ans,
-                archive=enable_archive,
+                archive=archive_ans,
                 extract=extract_ans,
                 git_history=git_history_ans,
                 yes=yes,
@@ -1494,18 +1682,25 @@ def init_command(
             summarize: tuple[str, ...] | None = (
                 ("subagent",) if plan.extract and plugin_present else None
             )
-            console.print(
-                "\n"
-                + format_init_plan(
-                    plan,
-                    embedding=embedding,
-                    summarize=summarize,
-                    graph_migrate=graph_migrate,
+            # A fresh/force interactive run that will start DEFERS the "init will:"
+            # summary + Proceed until AFTER the pre-index estimate (#3), so the
+            # estimated cost informs the final decision. Re-init runs (which return
+            # before the estimate) and --no-start runs keep the single inline
+            # confirmation here.
+            _defer_proceed = plan.start and not (config_path.exists() and not force)
+            if not _defer_proceed:
+                console.print(
+                    "\n"
+                    + format_init_plan(
+                        plan,
+                        embedding=embedding,
+                        summarize=summarize,
+                        graph_migrate=graph_migrate,
+                    )
                 )
-            )
-            if not click.confirm("Proceed?", default=True):
-                plan = downgrade_to_config_only(plan)
-                graph_migrate = False  # declining the plan cancels the upgrade too
+                if not click.confirm("Proceed?", default=True):
+                    plan = downgrade_to_config_only(plan)
+                    graph_migrate = False  # declining the plan cancels the upgrade
 
         # Idempotent: re-running init on an initialized project is a no-op (B5),
         # EXCEPT when --start is passed — then skip the config write but still
@@ -1539,6 +1734,66 @@ def init_command(
                 )
             elif plan.git_history:
                 write_git_config(resolved_state_dir, enabled=True, depth=git_depth)
+
+            # Persist graphrag doc-extractor choice for an EXISTING project.
+            _reinit_graphrag_ans = (
+                enable_graphrag_extract
+                if enable_graphrag_extract is not None
+                else graphrag_extract_ans
+            )
+            if _reinit_graphrag_ans is not None:
+                _doc_ext = "langextract" if _reinit_graphrag_ans else "none"
+                write_graphrag_doc_extractor(resolved_state_dir, doc_extractor=_doc_ext)
+                if _reinit_graphrag_ans:
+                    from brainpalace_cli import optional_deps
+
+                    optional_deps.ensure_extra("graphrag", assume_yes=True)
+
+            # Persist the BM25 lemma opt-in for an EXISTING project too (#14).
+            # The fresh-write path below isn't taken on a re-init, so without this
+            # the interactive answer would be silently dropped. Explicit flag wins
+            # (write below via set_project_bm25); here we handle the interactive
+            # answer. Sparse: write engine only for an active "yes", or when the
+            # answer diverges from the inherited engine (lemma→stem).
+            if bm25_engine is not None:
+                from brainpalace_cli.commands.bm25_project import set_project_bm25
+
+                set_project_bm25(resolved_state_dir, engine=bm25_engine)
+                if bm25_engine == "lemma":
+                    from brainpalace_cli import optional_deps
+
+                    optional_deps.ensure_extra("lemma-hr", assume_yes=True)
+            elif lemma_ans is not None:
+                from brainpalace_cli.commands.bm25_project import set_project_bm25
+                from brainpalace_cli.config_resolve import inherited as _inherited_re
+                from brainpalace_cli.config_resolve import read_yaml as _read_yaml_re
+
+                _glob_re = _read_yaml_re(get_xdg_config_dir() / "config.yaml")
+                _inh_eng = _inherited_re("bm25.engine", _glob_re)[0]
+                _new_eng = "lemma" if lemma_ans else "stem"
+                if lemma_ans or _new_eng != (_inh_eng or "stem"):
+                    set_project_bm25(resolved_state_dir, engine=_new_eng)
+                if lemma_ans:
+                    from brainpalace_cli import optional_deps
+
+                    optional_deps.ensure_extra("lemma-hr", assume_yes=True)
+
+            # Persist the archive choice for an EXISTING project too. The
+            # plan.start branch below writes it for starts, but a --no-start
+            # re-init returns before that — without this the prompted/flagged
+            # answer is silently dropped. Explicit flag wins; otherwise the
+            # interactive answer applies. (None = bare re-init, leave untouched.)
+            _reinit_archive_ans = (
+                enable_archive if enable_archive is not None else archive_ans
+            )
+            if _reinit_archive_ans is not None:
+                write_session_config(resolved_state_dir, archive=_reinit_archive_ans)
+
+            # Persist reranker override for an EXISTING project (re-init path).
+            # Explicit flag wins (already handled by write_default_provider_config /
+            # _write_reranker_config above); only the gate answer is handled here.
+            if _rerank_changed:
+                write_reranker_enabled(resolved_state_dir, enabled=bool(_rerank_val))
 
             if plan.start:
                 try:
@@ -1679,6 +1934,7 @@ def init_command(
         _has_global = _xdg_global_path.is_file()
         _glob = _read_yaml_cfg(_xdg_global_path)
         _inh_sessions = _inherited("session_indexing.enabled", _glob)[0]
+        _inh_archive = _inherited("session_indexing.archive.enabled", _glob)[0]
         _inh_git = _inherited("git_indexing.enabled", _glob)[0]
 
         sess: bool | None
@@ -1703,7 +1959,14 @@ def init_command(
                 sess = plan.sessions
             else:
                 sess = None
-            arch = enable_archive  # archive is flag-only (no interactive prompt)
+            # archive: explicit flag wins; interactive answer persisted when it
+            # diverges from the inherited global value; bare run inherits.
+            if enable_archive is not None:
+                arch = enable_archive
+            elif archive_ans is not None and bool(archive_ans) != bool(_inh_archive):
+                arch = archive_ans
+            else:
+                arch = None
             if enable_git_history is not None:
                 git_choice = enable_git_history
             elif plan.confirm and bool(plan.git_history) != bool(_inh_git):
@@ -1712,6 +1975,54 @@ def init_command(
                 git_choice = None
         write_session_config(resolved_state_dir, index=sess, archive=arch)
         write_git_config(resolved_state_dir, enabled=git_choice, depth=git_depth)
+
+        # Persist graphrag doc-extractor choice on the fresh-init path.
+        # graphrag_extract_ans is set by the consent block (interactive) or
+        # via else-branch when enable_graphrag_extract flag was passed. For
+        # non-interactive / --json runs (plan.confirm is False) the variable is
+        # still None unless the flag was passed explicitly; None = no write
+        # (server default applies, no dep installed).
+        _fresh_graphrag_ans = (
+            enable_graphrag_extract
+            if enable_graphrag_extract is not None
+            else (graphrag_extract_ans if plan.confirm else None)
+        )
+        if _fresh_graphrag_ans is not None:
+            _fresh_doc_ext = "langextract" if _fresh_graphrag_ans else "none"
+            write_graphrag_doc_extractor(
+                resolved_state_dir, doc_extractor=_fresh_doc_ext
+            )
+            if _fresh_graphrag_ans:
+                from brainpalace_cli import optional_deps
+
+                optional_deps.ensure_extra("graphrag", assume_yes=True)
+
+        # Persist the BM25 lemma opt-in on the fresh-init path (#14). The explicit
+        # --bm25-engine flag is already written by write_default_provider_config
+        # above; here we handle only the interactive answer. Sparse invariant:
+        # write bm25.engine only for an active "yes" (lemma), or when the
+        # interactive answer DIVERGES from an inherited lemma (lemma→stem). A bare
+        # "no" against an inherited stem writes nothing and keeps inheriting.
+        if bm25_engine is None and lemma_ans is not None:
+            from brainpalace_cli.commands.bm25_project import set_project_bm25
+
+            _inh_engine = _inherited("bm25.engine", _glob)[0]
+            _new_engine = "lemma" if lemma_ans else "stem"
+            if lemma_ans or _new_engine != (_inh_engine or "stem"):
+                # engine-only write (language stays None → inherited; sparse).
+                set_project_bm25(resolved_state_dir, engine=_new_engine)
+            if lemma_ans:
+                from brainpalace_cli import optional_deps
+
+                optional_deps.ensure_extra("lemma-hr", assume_yes=True)
+
+        # Persist reranker override on the fresh-init path (D4 gate or explicit flag).
+        # The gate answer (_rerank_changed) takes effect only when enable_reranking was
+        # not passed (flag path is already handled by write_default_provider_config /
+        # _write_reranker_config above). On non-interactive runs _rerank_changed is
+        # False → nothing written → sparse invariant holds.
+        if _rerank_changed:
+            write_reranker_enabled(resolved_state_dir, enabled=bool(_rerank_val))
 
         # Resolve + persist the session-summarization mode (subagent), and
         # reconcile the Claude Code hooks by plugin presence. Apply on a fresh
@@ -1732,21 +2043,42 @@ def init_command(
 
         # Pre-index token estimate BEFORE writing any index data or starting the
         # server, so a surprising cost can be cancelled with a clean rollback.
-        # Only on an interactive run that will actually start + index; the config
-        # is already fully written, so the estimate honours the resolved
-        # provider/git/session choices.
+        # The config is already fully written, so the estimate honours the
+        # resolved provider/git/session choices.
+        #
+        # Interactive order (#3): ask whether to estimate → estimate
+        # (proceed/change/cancel) → show the "init will:" summary → final Proceed.
+        # A --yes run keeps a single estimate prompt and no extra confirmation.
         if is_tty and plan.start:
-            chosen = _estimate_and_confirm_local(
-                project_root, resolved_state_dir / "config.yaml", include_code
-            )
-            if chosen is None:
-                if created_brainpalace:
-                    shutil.rmtree(resolved_state_dir, ignore_errors=True)
-                    console.print("[dim]Cancelled — removed .brainpalace.[/]")
-                else:
-                    console.print("[dim]Cancelled — kept existing .brainpalace.[/]")
-                return
-            include_code = chosen
+            interactive_gate = plan.confirm  # non --yes run → offer skip + Proceed
+            do_estimate = True
+            if interactive_gate:
+                do_estimate = click.confirm("Estimate token usage first?", default=True)
+            if do_estimate:
+                chosen = _estimate_and_confirm_local(
+                    project_root, resolved_state_dir / "config.yaml", include_code
+                )
+                if chosen is None:
+                    if created_brainpalace:
+                        shutil.rmtree(resolved_state_dir, ignore_errors=True)
+                        console.print("[dim]Cancelled — removed .brainpalace.[/]")
+                    else:
+                        console.print("[dim]Cancelled — kept existing .brainpalace.[/]")
+                    return
+                include_code = chosen
+            if interactive_gate:
+                # Final gate: the resolved plan, then confirm before starting.
+                console.print(
+                    "\n"
+                    + format_init_plan(
+                        plan,
+                        embedding=embedding,
+                        summarize=summarize,
+                        graph_migrate=graph_migrate,
+                    )
+                )
+                if not click.confirm("Proceed?", default=True):
+                    plan = downgrade_to_config_only(plan)
 
         # Index DATA dirs are created only now — after the estimate was accepted
         # (or skipped for a non-interactive run) — so a cancel above leaves no

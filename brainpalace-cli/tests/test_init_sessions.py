@@ -135,9 +135,12 @@ def test_embed_prompt_no_wins_over_xdg_enabled_block(tmp_path, monkeypatch):
         "brainpalace_cli.commands.init.claude_plugin_installed", lambda **k: False
     )
     monkeypatch.setattr("brainpalace_cli.commands.init._stdin_is_tty", lambda: True)
-    # summarize=n, embed=n, git-history=n, proceed=y  (--no-start ⇒ no server).
+    # summarize=n, embed=n, archive=y, git-history=n, graphrag-extract=n,
+    # reranker-change=n, lemma=n, proceed=y  (--no-start ⇒ no server).
     r = CliRunner().invoke(
-        init_command, ["--path", str(tmp_path), "--no-start"], input="n\nn\nn\ny\n"
+        init_command,
+        ["--path", str(tmp_path), "--no-start"],
+        input="n\nn\ny\nn\nn\nn\nn\ny\n",
     )
     assert r.exit_code == 0, r.output
     assert _cfg(tmp_path)["session_indexing"]["enabled"] is False
@@ -170,9 +173,13 @@ def test_init_interactive_accepting_global_default_inherits(tmp_path, monkeypatc
     monkeypatch.setattr(
         "brainpalace_cli.commands.init.claude_plugin_installed", lambda **k: False
     )
-    # summarize=enter, embed=enter, git=enter(accept global yes), depth=enter, proceed=y
+    # summarize=enter, embed=enter, archive=enter, git=enter(accept global yes),
+    # depth=enter, graphrag-extract=enter, reranker-change=enter(=N, keep
+    # inherited), lemma=enter, proceed=y
     r = CliRunner().invoke(
-        init_command, ["--path", str(tmp_path), "--no-start"], input="\n\n\n\ny\n"
+        init_command,
+        ["--path", str(tmp_path), "--no-start"],
+        input="\n\n\n\n\n\n\n\ny\n",
     )
     assert r.exit_code == 0, r.output
     assert "(default taken from your global config)" in r.output

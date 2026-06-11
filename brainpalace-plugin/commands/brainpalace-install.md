@@ -6,7 +6,7 @@ context: brainpalace
 agent: setup-assistant
 skills:
   - configuring-brainpalace
-last_validated: 2026-05-30
+last_validated: 2026-06-11
 ---
 
 # Install BrainPalace Packages
@@ -133,9 +133,10 @@ Requires Python 3.10+. If lower, tell user to upgrade first.
    pipx --version 2>/dev/null || python -m pip install --user pipx && python -m pipx ensurepath
    ```
 
-2. Install BrainPalace with pinned version:
+2. Install BrainPalace with pinned version (bypass pip's index cache so a
+   just-published version isn't masked by a stale cached simple-index page):
    ```bash
-   pipx install brainpalace-cli==$VERSION
+   pipx install --pip-args=--no-cache-dir brainpalace-cli==$VERSION
    ```
 
 3. Verify (user may need to restart terminal):
@@ -160,9 +161,10 @@ Requires Python 3.10+. If lower, tell user to upgrade first.
    fi
    ```
 
-2. Install BrainPalace with pinned version:
+2. Install BrainPalace with pinned version (bypass uv's cache for the same
+   reason):
    ```bash
-   uv tool install brainpalace-cli==$VERSION
+   uv tool install --no-cache brainpalace-cli==$VERSION
    ```
 
 3. Verify:
@@ -178,9 +180,9 @@ Requires Python 3.10+. If lower, tell user to upgrade first.
    source .venv/bin/activate  # macOS/Linux
    ```
 
-2. Install packages with pinned version:
+2. Install packages with pinned version (bypass pip's index cache):
    ```bash
-   pip install brainpalace-rag==$VERSION brainpalace-cli==$VERSION
+   pip install --no-cache-dir brainpalace-rag==$VERSION brainpalace-cli==$VERSION
    ```
 
 3. Verify:
@@ -198,9 +200,9 @@ Requires Python 3.10+. If lower, tell user to upgrade first.
    conda activate brainpalace
    ```
 
-2. Install packages with pinned version:
+2. Install packages with pinned version (bypass pip's index cache):
    ```bash
-   pip install brainpalace-rag==$VERSION brainpalace-cli==$VERSION
+   pip install --no-cache-dir brainpalace-rag==$VERSION brainpalace-cli==$VERSION
    ```
 
 3. Verify:
@@ -229,6 +231,28 @@ Next steps:
   2. Initialize: /brainpalace:brainpalace-init
   3. Start server: /brainpalace:brainpalace-start
 ```
+
+> **What the config / init questions cover.** Both the GLOBAL `config wizard`
+> (and `brainpalace install`'s own prompts) and the per-project `brainpalace init`
+> ask the **same project-config-backed question set**: embedding, summarizer,
+> **reranker**, **embed-sessions** (`session_indexing.enabled` — billable opt-in,
+> default OFF), **session-archive** (`session_indexing.archive.enabled` — free
+> local backup of full raw transcripts incl. secrets, default ON), **git-history**
+> (default OFF), and **GraphRAG document extraction** (`graphrag.doc_extractor` =
+> `langextract` | `none`). `init` re-asks the per-project-overridable
+> **reranker** (`reranker.enabled`) behind an *"inherited from global — change
+> for this project? [y/N]"* gate; embedding/summarizer are not re-asked via that
+> gate (they resolve via env-detection / global inheritance).
+
+> **Opt-in optional-dep rule.** Enabling a feature whose "yes" needs an optional
+> server extra triggers a download — **auto-installed on yes** using the package
+> manager detected here (pipx → uv → pip), or the **exact install command is
+> printed** if none is detected. Declining writes the disabling value (e.g.
+> `graphrag.doc_extractor: none`) so the server's "not installed" warning never
+> fires; optional deps are never auto-installed just because a feature is
+> default-ON in code. Extras: GraphRAG doc-extraction → `langextract`; BM25
+> `lemma` engine → `simplemma`; postgres backend → `asyncpg` + `sqlalchemy`.
+> `brainpalace doctor` reports optional-extra status for enabled features.
 
 ---
 

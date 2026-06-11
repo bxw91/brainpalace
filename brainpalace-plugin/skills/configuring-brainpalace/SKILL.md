@@ -16,7 +16,7 @@ metadata:
   version: 7.0.0
   category: ai-tools
   author: bxw91
-  last_validated: 2026-06-05
+  last_validated: 2026-06-11
 ---
 
 # Configuring BrainPalace
@@ -117,6 +117,31 @@ The wizard asks the following questions in sequence:
 | 6 | Default Query Mode | Written as YAML comment: `# query.default_mode` |
 
 > **BM25 language is not a wizard step.** Set it via `brainpalace init --language <iso>` / `brainpalace folders add <path> --language <iso>`, or by editing the `bm25:` block in `config.yaml` directly — the config wizard does not ask about it.
+
+> **Unified question set (init · install · config wizard).** `brainpalace init`
+> (sparse PROJECT config) and `brainpalace install` / `brainpalace config wizard`
+> (GLOBAL config) ask the **same project-config-backed questions**, so the
+> front-ends never drift: embedding provider/model, summarizer provider/model,
+> **reranker** (enabled), **embed-sessions** (`session_indexing.enabled` — billable
+> opt-in, default OFF), **session-archive** (`session_indexing.archive.enabled` —
+> free local backup of full raw transcripts incl. secrets, default ON),
+> **git-history** (`git_indexing.enabled` + `depth`, default OFF), and **GraphRAG
+> document extraction** (`graphrag.doc_extractor` = `langextract` | `none`).
+> `init` additionally re-asks the per-project-overridable **reranker**
+> (`reranker.enabled`) behind an *"inherited from global — change for this
+> project? [y/N]"* gate, writing a **sparse override only when changed**;
+> embedding/summarizer are not re-asked via that gate (they resolve via
+> env-detection / global inheritance).
+
+> **Opt-in optional-dep rule.** Enabling a feature whose "yes" needs an optional
+> server extra triggers a download — **auto-installed on yes** (auto-detecting
+> pipx → uv → pip), or the **exact install command is printed** if no manager is
+> detected. Declining writes the disabling value (e.g. `graphrag.doc_extractor: none`)
+> so the server's "not installed" warning never fires; optional deps are never
+> auto-installed just because a feature is default-ON in code. Extras: GraphRAG
+> doc-extraction → `langextract`; BM25 `lemma` engine → `simplemma`; postgres
+> backend → `asyncpg` + `sqlalchemy`. `brainpalace doctor` reports optional-extra
+> status for enabled features.
 
 ### Embedding Provider Options
 

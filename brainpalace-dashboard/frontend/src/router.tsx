@@ -41,7 +41,7 @@ export const TABS: TabDef[] = [
   { path: "/config", label: "Config", scope: "instance" },
   { path: "/runtime", label: "Runtime", scope: "instance" },
   { path: "/folders", label: "Folders", scope: "instance" },
-  { path: "/documents", label: "Documents", scope: "instance" },
+  { path: "/documents", label: "Files", scope: "instance" },
   { path: "/queries", label: "Queries", scope: "instance" },
   { path: "/jobs", label: "Jobs", scope: "instance" },
   { path: "/cache", label: "Cache", scope: "instance" },

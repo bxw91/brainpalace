@@ -11,6 +11,7 @@ Mirrors the runtime read/write/delete + health-check + port-scan patterns from
 
 from __future__ import annotations
 
+import glob
 import json
 import os
 import signal
@@ -19,6 +20,7 @@ import subprocess
 import sys
 import time
 import webbrowser
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 from urllib.request import Request, urlopen
@@ -33,6 +35,10 @@ RUNTIME_FILE = "dashboard.json"
 #: Port scan range for the dashboard process.
 PORT_SCAN_START = 8787
 PORT_SCAN_END = 8887
+
+#: cmdline marker identifying a dashboard uvicorn process (the app factory
+#: target). Used to find orphans by process scan — the pidfile tracks only one.
+DASHBOARD_MARKER = "brainpalace_dashboard.app"
 
 
 def _dashboard_runtime_path() -> Path:
@@ -75,6 +81,63 @@ def _is_alive(pid: int) -> bool:
         return False
     except PermissionError:
         return True
+
+
+def list_dashboard_pids() -> list[int]:
+    """All running dashboard uvicorn PIDs (by ``/proc`` cmdline scan).
+
+    The pidfile tracks a single dashboard, but a lost/overwritten pidfile plus
+    the climbing port scan can leave earlier dashboards running and untracked.
+    Scanning the process table is the only surface-agnostic way to find them
+    (pipx vs source venv share the same XDG state, but a stale pidfile hides
+    the strays). Returns an empty list off Linux (no ``/proc``).
+    """
+    pids: list[int] = []
+    for cmdline_path in glob.glob("/proc/[0-9]*/cmdline"):
+        try:
+            with open(cmdline_path, "rb") as f:
+                cmd = f.read().replace(b"\x00", b" ").decode("utf-8", "replace")
+        except OSError:
+            continue
+        if DASHBOARD_MARKER in cmd:
+            try:
+                pids.append(int(cmdline_path.split("/")[2]))
+            except (IndexError, ValueError):
+                continue
+    return pids
+
+
+def reap_orphan_dashboards(
+    keep_pid: int | None = None,
+    *,
+    kill_fn: Callable[[int], None] | None = None,
+    list_fn: Callable[[], list[int]] | None = None,
+) -> list[int]:
+    """SIGTERM every dashboard process except ``keep_pid``; return reaped PIDs.
+
+    The dashboard is a singleton, so any dashboard process other than the one
+    being kept is an orphan. ``kill_fn``/``list_fn`` are injectable for tests;
+    defaults send SIGTERM and scan ``/proc`` (resolved at call time so the scan
+    stays monkeypatchable).
+    """
+    if kill_fn is None:
+
+        def kill_fn(pid: int) -> None:
+            os.kill(pid, signal.SIGTERM)
+
+    if list_fn is None:
+        list_fn = list_dashboard_pids
+
+    reaped: list[int] = []
+    for pid in list_fn():
+        if pid == keep_pid or pid == os.getpid():
+            continue
+        try:
+            kill_fn(pid)
+        except (OSError, ProcessLookupError):
+            continue
+        reaped.append(pid)
+    return reaped
 
 
 def _port_free(host: str, port: int) -> bool:
@@ -160,10 +223,18 @@ def launch_dashboard(
     """
     existing = read_dashboard_runtime()
     if existing and _is_alive(int(existing.get("pid", -1))):
+        # Tracked dashboard is healthy — reap any *other* dashboards (strays
+        # left on climbed ports by an earlier lost pidfile) and refuse to spawn.
+        reap_orphan_dashboards(keep_pid=int(existing["pid"]))
         raise RuntimeError(
             f"Dashboard already running (pid {existing['pid']}) at "
             f"{existing.get('base_url')}"
         )
+
+    # No healthy tracked dashboard. Reap any orphaned dashboards (lost pidfile /
+    # climbed-port duplicates) so the scan below reclaims the base port instead
+    # of stacking yet another instance on top of the survivors.
+    reap_orphan_dashboards(keep_pid=None)
 
     cfg = load_dashboard_config()
     host = host or cfg.host
@@ -288,28 +359,35 @@ def stop_dashboard(timeout: float = 10.0) -> dict[str, Any]:
         ``pid`` when one was signalled.
     """
     runtime = read_dashboard_runtime()
-    if not runtime:
-        return {"status": "not_running"}
+    pid = int(runtime.get("pid", -1)) if runtime else -1
 
-    pid = int(runtime.get("pid", -1))
-    if pid <= 0:
-        delete_dashboard_runtime()
-        return {"status": "not_running"}
+    stopped_pid: int | None = None
+    if pid > 0:
+        try:
+            os.kill(pid, signal.SIGTERM)
+            deadline = time.time() + timeout
+            while time.time() < deadline:
+                if not _is_alive(pid):
+                    break
+                time.sleep(0.2)
+            stopped_pid = pid
+        except ProcessLookupError:
+            pass
 
-    try:
-        os.kill(pid, signal.SIGTERM)
-    except ProcessLookupError:
-        delete_dashboard_runtime()
-        return {"status": "not_running"}
-
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        if not _is_alive(pid):
-            break
-        time.sleep(0.2)
-
+    # The dashboard is a singleton — "stop" means leave none running. Reap any
+    # other dashboard processes (climbed-port orphans, or strays from a lost
+    # pidfile) the tracked pid didn't cover.
+    reaped = [p for p in reap_orphan_dashboards(keep_pid=None) if p != stopped_pid]
     delete_dashboard_runtime()
-    return {"status": "stopped", "pid": pid}
+
+    if stopped_pid is None and not reaped:
+        return {"status": "not_running"}
+    result: dict[str, Any] = {"status": "stopped"}
+    if stopped_pid is not None:
+        result["pid"] = stopped_pid
+    if reaped:
+        result["reaped"] = reaped
+    return result
 
 
 def dashboard_status() -> dict[str, Any]:

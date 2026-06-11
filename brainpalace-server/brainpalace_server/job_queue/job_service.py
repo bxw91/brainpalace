@@ -208,6 +208,87 @@ class JobQueueService:
             dedupe_hit=False,
         )
 
+    async def enqueue_git_history_job(self, repo_root: str) -> JobEnqueueResponse:
+        """Enqueue a git-history indexing job with deduplication.
+
+        Dedicated method for git jobs — does NOT touch the existing
+        enqueue_job(request: IndexRequest, ...) doc path.
+
+        Args:
+            repo_root: Repository root path (may equal or contain project root).
+
+        Returns:
+            JobEnqueueResponse with job details, queue position, and dedupe flag.
+
+        Raises:
+            ValueError: If path validation fails.
+        """
+        # Validate and resolve path (allow_external=True: repo root may live
+        # anywhere relative to the project root)
+        resolved_path = self._validate_path(repo_root, allow_external=True)
+        folder_path_str = str(resolved_path)
+
+        # Distinct dedupe namespace — no collision with doc jobs
+        dedupe_key = JobRecord.compute_git_dedupe_key(folder_path_str)
+
+        # Dedupe: collapse if an identical git job is already PENDING/RUNNING
+        existing_job = await self._store.find_by_dedupe_key(dedupe_key)
+        if existing_job is not None:
+            queue_length = await self._store.get_queue_length()
+            pending_jobs = await self._store.get_pending_jobs()
+
+            position = 0
+            for i, job in enumerate(pending_jobs):
+                if job.id == existing_job.id:
+                    position = i
+                    break
+
+            logger.info(
+                "Git dedupe hit: returning existing job %s for repo %s",
+                existing_job.id,
+                folder_path_str,
+            )
+            return JobEnqueueResponse(
+                job_id=existing_job.id,
+                status=existing_job.status.value,
+                queue_position=position,
+                queue_length=queue_length,
+                message=f"Existing git-history job found for {folder_path_str}",
+                dedupe_hit=True,
+            )
+
+        # Create new git_history job record
+        job_id = self._generate_job_id()
+        job = JobRecord(
+            id=job_id,
+            job_type="git_history",
+            dedupe_key=dedupe_key,
+            folder_path=folder_path_str,
+            source="git",
+            operation="index",
+            status=JobStatus.PENDING,
+            enqueued_at=datetime.now(timezone.utc),
+        )
+
+        position = await self._store.append_job(job)
+        queue_length = await self._store.get_queue_length()
+
+        logger.info(
+            "Git-history job %s enqueued at position %d for repo %s",
+            job_id,
+            position,
+            folder_path_str,
+        )
+
+        return JobEnqueueResponse(
+            job_id=job_id,
+            status=JobStatus.PENDING.value,
+            queue_position=position,
+            queue_length=queue_length,
+            message=f"Git-history job queued for {folder_path_str}",
+            dedupe_hit=False,
+        )
+
     async def reenqueue_from_record(self, job: JobRecord) -> JobEnqueueResponse:
         """Re-enqueue a fresh job using parameters from a previous JobRecord.
 

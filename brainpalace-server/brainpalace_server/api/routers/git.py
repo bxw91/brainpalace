@@ -7,8 +7,6 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request, status
 
-from brainpalace_server.config.git_config import load_git_indexing_config
-
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
@@ -17,8 +15,9 @@ router = APIRouter()
 @router.post(
     "/reindex",
     summary="Re-index git history",
-    description="Ingest (or incrementally refresh) this project's git commit "
-    "history into the index. Opt-in: returns 503 unless git indexing is enabled.",
+    description="Enqueue an incremental git-history ingest job. "
+    "Returns a job_id immediately; progress visible via GET /jobs/{job_id}. "
+    "Opt-in: returns 503 unless git indexing is enabled.",
 )
 async def reindex_git(request: Request) -> dict[str, Any]:
     svc = getattr(request.app.state, "git_index_service", None)
@@ -29,15 +28,25 @@ async def reindex_git(request: Request) -> dict[str, Any]:
             "config.yaml, and GIT_INDEXING_ENABLED is not false).",
         )
 
-    cfg = getattr(request.app.state, "git_indexing_config", None)
-    if cfg is None:
-        cfg = load_git_indexing_config()
-    project_root = getattr(request.app.state, "project_root", "") or ""
+    job_service = getattr(request.app.state, "job_service", None)
+    if job_service is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Job queue service is not available.",
+        )
 
-    summary: dict[str, Any] = await svc.index_repo(project_root, cfg)
+    project_root = getattr(request.app.state, "project_root", "") or ""
+    if not project_root:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Git indexing is not available: no project root is configured.",
+        )
+
+    resp = await job_service.enqueue_git_history_job(project_root)
     logger.info(
-        "Git reindex: %d new commit(s), %d skipped",
-        summary.get("commits_new", 0),
-        summary.get("skipped", 0),
+        "Git reindex enqueued: job_id=%s dedupe_hit=%s",
+        resp.job_id,
+        resp.dedupe_hit,
     )
-    return summary
+    result: dict[str, Any] = resp.model_dump()
+    return result

@@ -93,6 +93,17 @@ class JobRecord(BaseModel):
             "Eviction summary from manifest diff " "(added/changed/deleted counts)"
         ),
     )
+    # Discriminator: "documents" (default, all legacy rows) or "git_history".
+    # Old persisted rows lacking this field deserialize to "documents" via the
+    # Field default — no migration required.
+    job_type: str = Field(
+        default="documents",
+        description=(
+            "Job type discriminator: 'documents' (default doc-indexing pipeline) "
+            "or 'git_history' (git commit ingest)."
+        ),
+    )
+
     source: str = Field(
         default="manual",
         description=(
@@ -191,6 +202,22 @@ class JobRecord(BaseModel):
         dedupe_string = "|".join(parts)
 
         return hashlib.sha256(dedupe_string.encode()).hexdigest()
+
+    @staticmethod
+    def compute_git_dedupe_key(repo_root: str) -> str:
+        """Compute a deduplication key for a git-history indexing job.
+
+        Uses a distinct namespace ("git_history|") so a git job and a doc job
+        for the same path never collide on the dedupe key.
+
+        Args:
+            repo_root: Path to the repository root (will be resolved).
+
+        Returns:
+            SHA256 hex digest of the namespaced, resolved path.
+        """
+        resolved = str(Path(repo_root).resolve())
+        return hashlib.sha256(f"git_history|{resolved}".encode()).hexdigest()
 
 
 class JobEnqueueResponse(BaseModel):

@@ -9,6 +9,7 @@ import { HitRateGauge } from "../components/HitRateGauge";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { useToast } from "../components/Toast";
 import { useOptionalSelectedInstance } from "../state/selectedInstance";
+import { useDisplayFormat } from "../format/datetime";
 import {
   NoInstance,
   StoppedState,
@@ -36,6 +37,7 @@ export function Cache({ instanceId }: { instanceId?: string }) {
   const id = instanceId ?? ctx?.selectedId ?? null;
   const { toast } = useToast();
   const qc = useQueryClient();
+  const { formatShortDate, formatTime } = useDisplayFormat();
   const [clearOpen, setClearOpen] = useState(false);
 
   // 60s polling drives the server's opportunistic stats_history snapshots
@@ -61,7 +63,7 @@ export function Cache({ instanceId }: { instanceId?: string }) {
     const total = s.hits + s.misses;
     const d = new Date(s.ts * 1000);
     return {
-      label: `${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, "0")}`,
+      label: `${formatShortDate(d)} ${formatTime(d, false)}`,
       value: total > 0 ? Math.round((s.hits / total) * 100) : 0,
     };
   });

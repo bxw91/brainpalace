@@ -2,12 +2,16 @@
 
 The running registry (``registry.json``) only contains *currently running*
 servers — ``stop`` deregisters a project. To keep stopped projects listed and
-Start-able, the dashboard maintains its own durable store of every project it
-has ever seen: ``<XDG_STATE>/brainpalace/dashboard_known.json``.
+Start-able, the fleet reads the shared, CLI-owned durable store of every
+project ever started: ``brainpalace_cli.known_projects``
+(``<XDG_STATE>/brainpalace/known_projects.json``). ``brainpalace start`` writes
+it, so projects started without the dashboard running are still listed.
 
 list() = union(running scan, known store), reconciled to a status per row.
 Stopping an instance leaves it in the known store (only the running registry
-is pruned), so it persists as status="stopped".
+is pruned), so it persists as status="stopped". ``known_projects.load_existing``
+prunes any project whose directory was deleted from disk, so a removed project
+drops off every list automatically.
 
 Reused CLI symbols (confirmed against brainpalace-cli source):
   - ``scan_instances`` / ``get_registry`` (list_cmd) — entry dicts carry
@@ -15,19 +19,19 @@ Reused CLI symbols (confirmed against brainpalace-cli source):
     NOTE: ``scan_instances()`` rows do NOT include ``state_dir`` (the registry
     entries do), so we fall back to ``<root>/.brainpalace`` when absent.
   - ``launch_server`` (start) — single spawn source of truth.
-  - ``get_xdg_state_dir`` (xdg_paths) — honors ``XDG_STATE_HOME``.
+  - ``known_projects`` — shared durable known-projects store (+ disk pruning).
 """
 
 from __future__ import annotations
 
 import hashlib
-import json
 import os
 import signal
 import time
 from pathlib import Path
 from typing import Any
 
+from brainpalace_cli import known_projects
 from brainpalace_cli.commands.list_cmd import get_registry, scan_instances
 from brainpalace_cli.commands.start import (
     check_health,
@@ -37,7 +41,6 @@ from brainpalace_cli.commands.start import (
     read_runtime,
 )
 from brainpalace_cli.commands.stop import remove_from_registry, wait_for_process_exit
-from brainpalace_cli.xdg_paths import get_xdg_state_dir
 
 __all__ = [
     "InstanceService",
@@ -59,28 +62,6 @@ def instance_id(project_root: str) -> str:
     """Stable URL-safe id derived from the project root path."""
     digest = hashlib.sha1(project_root.encode("utf-8")).hexdigest()
     return digest[:16]
-
-
-def _known_path() -> Path:
-    state_dir: Path = get_xdg_state_dir()
-    return state_dir / "dashboard_known.json"
-
-
-def _load_known() -> dict[str, dict[str, Any]]:
-    path = _known_path()
-    if not path.exists():
-        return {}
-    try:
-        result: dict[str, dict[str, Any]] = json.loads(path.read_text())
-        return result
-    except (json.JSONDecodeError, OSError):
-        return {}
-
-
-def _save_known(known: dict[str, dict[str, Any]]) -> None:
-    path = _known_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(known, indent=2))
 
 
 class InstanceNotFound(Exception):  # noqa: N818 - public API name used by routes
@@ -120,20 +101,15 @@ class InstanceService:
     """Fleet operations over the running registry + the durable known store."""
 
     def _remember(self, root: str, state_dir: str, name: str) -> None:
-        known = _load_known()
-        if root not in known or known[root].get("state_dir") != state_dir:
-            known[root] = {"state_dir": state_dir, "project_name": name}
-            _save_known(known)
+        known_projects.remember(root, state_dir, name)
 
     def forget(self, id_: str) -> dict[str, Any]:
         """Remove a project from the dashboard's list ('Remove from list' action).
 
         Does NOT touch the project on disk or its config."""
-        known = _load_known()
-        for root in list(known):
+        for root in list(known_projects.load_existing()):
             if instance_id(root) == id_:
-                del known[root]
-                _save_known(known)
+                known_projects.forget(root)
                 return {"id": id_, "forgotten": True}
         return {"id": id_, "forgotten": False}
 
@@ -164,8 +140,10 @@ class InstanceService:
                 "started_at": inst.get("started_at", ""),
             }
         # 2) Known-but-not-running projects -> status "stopped".
+        #    load_existing() prunes projects whose directory was deleted, so a
+        #    removed project drops off the fleet list automatically.
         rows = list(running.values())
-        for root, entry in _load_known().items():
+        for root, entry in known_projects.load_existing().items():
             if root in running:
                 continue
             rows.append(
@@ -192,7 +170,7 @@ class InstanceService:
         for root, entry in registry.items():
             if instance_id(root) == id_:
                 return {"project_root": root, **entry}
-        for root, entry in _load_known().items():
+        for root, entry in known_projects.load_existing().items():
             if instance_id(root) == id_:
                 return {"project_root": root, **entry}
         raise InstanceNotFound(id_)

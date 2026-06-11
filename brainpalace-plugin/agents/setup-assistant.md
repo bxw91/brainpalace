@@ -33,7 +33,7 @@ allowed_tools:
   - "Edit(~/.config/brainpalace/**)"
   - "Write(.claude/brainpalace/**)"
   - "Edit(.claude/brainpalace/**)"
-last_validated: 2026-06-06
+last_validated: 2026-06-11
 ---
 
 # Setup Assistant Agent
@@ -389,6 +389,58 @@ export RERANKER_MODEL=cross-encoder/ms-marco-MiniLM-L-6-v2
 ```
 
 ---
+
+## `brainpalace init` / `config wizard` — the unified question set
+
+`brainpalace init` (writes a **sparse PROJECT** config) and
+`brainpalace install` / `brainpalace config wizard` (write the **GLOBAL** config)
+ask the **same project-config-backed question set**, so the two front-ends never
+drift. The questions are:
+
+- **Embedding** provider + model
+- **Summarizer** provider + model
+- **Reranker** (enabled — local cross-encoder; default on)
+- **Embed sessions** (`session_indexing.enabled`) — embed chat transcripts so
+  they're searchable. **Billable opt-in, default OFF.**
+- **Session archive** (`session_indexing.archive.enabled`) — copy raw transcripts
+  to `.brainpalace/` as a free local backup. **Default ON.** ⚠️ The raw archive
+  holds **full transcripts incl. user turns / secrets.**
+- **Git history** (`git_indexing.enabled` + `depth`) — index commit history.
+  **Opt-in, default OFF** (commit messages/diffs can contain secrets).
+- **GraphRAG document extraction** (`graphrag.doc_extractor` =
+  `langextract` | `none`) — richer entity extraction from prose docs.
+
+The **GLOBAL** path (`config wizard --global` / `brainpalace install`) also asks
+the **web-dashboard control-plane settings** — **autostart**
+(`dashboard.autostart`, default ON — whether `brainpalace start` also launches the
+dashboard) and **dashboard port** (`dashboard.port`, default 8787) — written to the
+`dashboard:` block. These are **global-only** (they govern the fleet-wide dashboard
+process, not a single project), so `brainpalace init` does **not** ask them; the
+dashboard's Settings tab edits the same block.
+
+`init` additionally **re-asks the per-project-overridable reranker**
+(`reranker.enabled`) behind an *"inherited from global — change for
+this project? [y/N]"* gate, writing a **sparse override only when the answer
+diverges** from the inherited value. Decline and the project file omits the key so
+it keeps inheriting global. Embedding/summarizer are not re-asked via that gate
+(they resolve via env-detection / global inheritance).
+
+### Opt-in optional-dep rule
+
+Some "yes" answers need an optional **server extra**. When the user enables such a
+feature, the extra is **downloaded automatically** (auto-detecting pipx → uv →
+pip); if no manager is detected, the **exact install command is printed** instead.
+Declining writes the **disabling value** (e.g. `graphrag.doc_extractor: none`) so
+the server's "not installed" warning never fires. Optional deps are **never**
+auto-installed just because a feature is default-ON in code.
+
+| Feature enabled            | Extra                  |
+| -------------------------- | ---------------------- |
+| GraphRAG doc-extraction    | `langextract`          |
+| BM25 `lemma` engine        | `simplemma`            |
+| Postgres storage backend   | `asyncpg` + `sqlalchemy` |
+
+`brainpalace doctor` reports optional-extra status for the enabled features.
 
 ## `brainpalace init` Questions (Graph Store + Git History)
 
