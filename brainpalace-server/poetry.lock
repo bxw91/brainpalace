@@ -7586,4 +7586,4 @@ reranker-local = ["sentence-transformers"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.10"
-content-hash = "dbb87b0e3c76f7b21ff2303386f364074ec836bd1b6a734da83b465c719f3f15"
+content-hash = "13938b084e52a6725597a7c681da07d695a944fe1e3555c8ccb28202d0f9f730"

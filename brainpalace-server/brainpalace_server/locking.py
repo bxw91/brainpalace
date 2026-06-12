@@ -185,15 +185,46 @@ def read_pid(state_dir: Path) -> int | None:
         return None
 
 
+def _runtime_server_alive(state_dir: Path) -> bool:
+    """True iff this project's recorded server still answers ``/health``.
+
+    Best-effort probe of ``runtime.json``'s ``base_url``. A server that is
+    genuinely serving this project must never have its lock judged "stale" and
+    cleaned — even if the pidfile is missing or its pid was recycled — because
+    yanking the lock lets a SECOND server attach to the same embedded Chroma and
+    corrupt it. Never raises.
+    """
+    try:
+        from brainpalace_server.runtime import read_runtime, validate_runtime
+
+        state = read_runtime(state_dir)
+        if state is None:
+            return False
+        return validate_runtime(state)
+    except Exception:  # noqa: BLE001 — probe must never break lock handling
+        return False
+
+
 def is_stale(state_dir: Path) -> bool:
-    """Check if the lock is stale (PID no longer alive).
+    """Check if the lock is stale (no live server owns this project).
+
+    A lock is stale only when the recorded server is BOTH dead (pid gone) AND
+    unreachable (``/health`` does not answer). An alive pid, or a reachable
+    health endpoint, keeps the lock non-stale — a deliberately strict rule so an
+    eager stale-cleanup can't clear the lock out from under a running server and
+    let a duplicate in (the duplicate-server Chroma-corruption that motivated
+    this guard).
 
     Args:
         state_dir: Path to the state directory.
 
     Returns:
-        True if the lock is stale or no PID exists.
+        True if the lock is stale or no PID exists (and no server answers).
     """
+    # A server still answering /health for this project is never stale.
+    if _runtime_server_alive(state_dir):
+        return False
+
     pid = read_pid(state_dir)
     if pid is None:
         return True

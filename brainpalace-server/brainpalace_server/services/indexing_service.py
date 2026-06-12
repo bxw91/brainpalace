@@ -601,6 +601,11 @@ class IndexingService:
                     current_files=current_file_paths,
                     force=request.force,
                     indexing_config=load_indexing_config(),
+                    # Atomic add-then-swap: keep changed files' OLD chunks until
+                    # the new ones are upserted, so a crash mid-reindex can't
+                    # lose data. The deferred deletes run after the upsert loop
+                    # (or in the no-new-docs branch below).
+                    defer_changed_eviction=True,
                 )
                 files_to_index_set = set(files_to_index_list)
 
@@ -631,6 +636,22 @@ class IndexingService:
                     )
                 )
                 if not documents:
+                    # Changed files yielded no new chunks (e.g. emptied/became
+                    # unreadable), so there is nothing to swap in — flush their
+                    # deferred old-chunk evictions now, before the BM25 rebuild,
+                    # so they don't linger as orphans.
+                    deferred_ids = list(
+                        getattr(eviction_summary, "deferred_evict_ids", []) or []
+                    )
+                    if deferred_ids:
+                        flushed = await self.storage_backend.delete_by_ids(deferred_ids)
+                        eviction_summary.chunks_evicted += int(flushed or 0)
+                        eviction_summary.deferred_evict_ids = []
+                        logger.info(
+                            "Flushed %d deferred changed-chunk eviction(s) "
+                            "(no replacement chunks produced)",
+                            int(flushed or 0),
+                        )
                     evicted_only = bool(
                         eviction_summary.files_deleted
                         or eviction_summary.files_changed
@@ -958,6 +979,30 @@ class IndexingService:
                     f"Stored batch {batch_start // chroma_batch_size + 1} "
                     f"({len(batch_chunks)} chunks) in vector database"
                 )
+
+            # Atomic add-then-swap: the new chunks are now safely upserted, so it
+            # is finally safe to delete the CHANGED files' OLD chunks. A crash
+            # before this point left the old chunks intact (at worst transient
+            # duplicates, reconciled next run) instead of losing data.
+            if eviction_summary is not None:
+                deferred_id_set = set(
+                    getattr(eviction_summary, "deferred_evict_ids", []) or []
+                )
+                # CRITICAL: a changed file can re-produce byte-identical chunks
+                # whose content-hash id is unchanged — those ids were just
+                # upserted, so they must NOT be deleted. Only drop old ids that
+                # the new chunk set does not re-assert.
+                new_ids = {chunk.chunk_id for chunk in chunks}
+                to_swap = sorted(deferred_id_set - new_ids)
+                if to_swap:
+                    swapped = await self.storage_backend.delete_by_ids(to_swap)
+                    eviction_summary.chunks_evicted += int(swapped or 0)
+                    logger.info(
+                        "Atomic swap: deleted %d superseded chunk(s) after the "
+                        "new chunks were stored",
+                        int(swapped or 0),
+                    )
+                eviction_summary.deferred_evict_ids = []
 
             # Store embedding metadata for future validation
             await self.storage_backend.set_embedding_metadata(

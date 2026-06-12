@@ -233,6 +233,97 @@ async def test_incremental_changed_file_old_chunks_evicted(tmp_path: Path) -> No
     storage.delete_by_ids.assert_called_once_with(["old-c1", "old-c2"])
 
 
+@pytest.mark.asyncio
+async def test_defer_changed_eviction_holds_changed_evicts_deleted(
+    tmp_path: Path,
+) -> None:
+    """With defer on: changed-file chunks are held (returned), deleted-file
+    chunks are evicted immediately."""
+    folder_path = "/project"
+    changed = "/project/changed.py"
+    gone = "/project/gone.py"
+
+    prior = FolderManifest(
+        folder_path=folder_path,
+        files={
+            changed: make_file_record(
+                checksum="old", mtime=100.0, chunk_ids=["chg-1", "chg-2"]
+            ),
+            gone: make_file_record(checksum="g", mtime=100.0, chunk_ids=["gone-1"]),
+        },
+    )
+    tracker = await make_tracker_with_manifest(tmp_path, folder_path, prior)
+    storage = make_mock_storage(deleted_count=1)
+    service = ChunkEvictionService(manifest_tracker=tracker, storage_backend=storage)
+
+    def fake_stat(fp: str, **kwargs: object) -> object:
+        return type("FakeStat", (), {"st_mtime": 999.0})()
+
+    with (
+        patch(
+            "brainpalace_server.services.chunk_eviction_service.os.stat",
+            side_effect=fake_stat,
+        ),
+        patch(
+            "brainpalace_server.services.chunk_eviction_service.compute_file_checksum",
+            return_value="new",
+        ),
+    ):
+        summary, files_to_index = await service.compute_diff_and_evict(
+            folder_path=folder_path,
+            current_files=[changed],  # gone.py absent on disk → deleted
+            force=False,
+            defer_changed_eviction=True,
+        )
+
+    assert summary.files_changed == [changed]
+    assert summary.files_deleted == [gone]
+    # Only the DELETED file's chunk evicted now; changed file's held back.
+    storage.delete_by_ids.assert_called_once_with(["gone-1"])
+    assert sorted(summary.deferred_evict_ids) == ["chg-1", "chg-2"]
+    assert summary.chunks_evicted == 1
+
+
+@pytest.mark.asyncio
+async def test_defer_off_evicts_changed_immediately(tmp_path: Path) -> None:
+    """Default (defer off) keeps the old behavior: changed chunks evicted now."""
+    folder_path = "/project"
+    changed = "/project/changed.py"
+    prior = FolderManifest(
+        folder_path=folder_path,
+        files={
+            changed: make_file_record(
+                checksum="old", mtime=100.0, chunk_ids=["chg-1", "chg-2"]
+            ),
+        },
+    )
+    tracker = await make_tracker_with_manifest(tmp_path, folder_path, prior)
+    storage = make_mock_storage(deleted_count=2)
+    service = ChunkEvictionService(manifest_tracker=tracker, storage_backend=storage)
+
+    def fake_stat(fp: str, **kwargs: object) -> object:
+        return type("FakeStat", (), {"st_mtime": 999.0})()
+
+    with (
+        patch(
+            "brainpalace_server.services.chunk_eviction_service.os.stat",
+            side_effect=fake_stat,
+        ),
+        patch(
+            "brainpalace_server.services.chunk_eviction_service.compute_file_checksum",
+            return_value="new",
+        ),
+    ):
+        summary, _ = await service.compute_diff_and_evict(
+            folder_path=folder_path,
+            current_files=[changed],
+            force=False,
+        )
+
+    storage.delete_by_ids.assert_called_once_with(["chg-1", "chg-2"])
+    assert summary.deferred_evict_ids == []
+
+
 # ---------------------------------------------------------------------------
 # Test: force mode — all prior chunks evicted, all files returned
 # ---------------------------------------------------------------------------

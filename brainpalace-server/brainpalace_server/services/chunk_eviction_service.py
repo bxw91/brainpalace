@@ -64,6 +64,7 @@ class ChunkEvictionService:
         current_files: list[str],
         force: bool = False,
         indexing_config: IndexingConfig | None = None,
+        defer_changed_eviction: bool = False,
     ) -> tuple[EvictionSummary, list[str]]:
         """Compute manifest diff, evict stale chunks, return files to index.
 
@@ -75,6 +76,12 @@ class ChunkEvictionService:
                    cooldown — the user asked for a fresh index)
             indexing_config: Phase L re-embed-guard knobs. When None, loaded
                    from the project config. Bypassed entirely under ``force``.
+            defer_changed_eviction: Atomic add-then-swap. When True, the old
+                   chunks of CHANGED files are NOT deleted here — they are
+                   returned in ``EvictionSummary.deferred_evict_ids`` for the
+                   caller to delete only after the new chunks upsert, so a crash
+                   mid-reindex can't lose data. DELETED-file chunks are always
+                   evicted now (their source is gone — nothing to protect).
 
         Returns:
             Tuple of (EvictionSummary, files_to_index) where files_to_index
@@ -110,7 +117,11 @@ class ChunkEvictionService:
             )
 
         return await self._compute_incremental_diff(
-            folder_path, current_files, prior, indexing_config
+            folder_path,
+            current_files,
+            prior,
+            indexing_config,
+            defer_changed_eviction=defer_changed_eviction,
         )
 
     async def _handle_force(
@@ -158,6 +169,7 @@ class ChunkEvictionService:
         current_files: list[str],
         prior: object,
         indexing_config: IndexingConfig,
+        defer_changed_eviction: bool = False,
     ) -> tuple[EvictionSummary, list[str]]:
         """Compute incremental diff against prior manifest.
 
@@ -181,7 +193,6 @@ class ChunkEvictionService:
         now = time.time()
 
         files_deleted = list(prior_set - current_set)
-        files_to_evict: list[str] = list(files_deleted)
         files_unchanged: list[str] = []
         files_added: list[str] = []
         files_changed: list[str] = []
@@ -200,7 +211,6 @@ class ChunkEvictionService:
                 except OSError:
                     # File disappeared between scan and stat — treat as deleted
                     files_deleted.append(fp)
-                    files_to_evict.append(fp)
                     continue
 
                 if current_mtime == prior_rec.mtime:
@@ -223,22 +233,42 @@ class ChunkEvictionService:
                         files_deferred.append(fp)
                     else:
                         files_changed.append(fp)
-                        files_to_evict.append(fp)
                         files_to_index.append(fp)
 
-        # Bulk evict stale chunk IDs (deleted + changed files)
-        ids_to_evict: list[str] = []
-        for fp in files_to_evict:
+        # Split the stale ids by reason: DELETED-file chunks have no replacement
+        # coming, so evict them now; CHANGED-file chunks have new content about
+        # to be upserted, so (when deferring) hold their eviction until after the
+        # new chunks land — the atomic add-then-swap that prevents data loss on a
+        # crash between evict and upsert.
+        deleted_ids: list[str] = []
+        for fp in files_deleted:
             if fp in prior.files:
-                ids_to_evict.extend(prior.files[fp].chunk_ids)
+                deleted_ids.extend(prior.files[fp].chunk_ids)
+        changed_ids: list[str] = []
+        for fp in files_changed:
+            if fp in prior.files:
+                changed_ids.extend(prior.files[fp].chunk_ids)
+
+        if defer_changed_eviction:
+            ids_to_evict_now = deleted_ids
+            deferred_evict_ids = changed_ids
+        else:
+            ids_to_evict_now = deleted_ids + changed_ids
+            deferred_evict_ids = []
 
         chunks_evicted = 0
-        if ids_to_evict:
-            chunks_evicted = await self._storage.delete_by_ids(ids_to_evict)
+        if ids_to_evict_now:
+            chunks_evicted = await self._storage.delete_by_ids(ids_to_evict_now)
 
         deferred_note = (
             f" !{len(files_deferred)} deferred (re-embed cooldown)"
             if files_deferred
+            else ""
+        )
+        swap_note = (
+            f" [{len(deferred_evict_ids)} changed-chunk evictions held for "
+            "post-upsert swap]"
+            if deferred_evict_ids
             else ""
         )
         logger.info(
@@ -247,7 +277,7 @@ class ChunkEvictionService:
             f"~{len(files_changed)} changed "
             f"-{len(files_deleted)} deleted "
             f"={len(files_unchanged)} unchanged, "
-            f"{chunks_evicted} chunks evicted{deferred_note}"
+            f"{chunks_evicted} chunks evicted{deferred_note}{swap_note}"
         )
 
         return (
@@ -259,6 +289,7 @@ class ChunkEvictionService:
                 chunks_evicted=chunks_evicted,
                 chunks_to_create=len(files_to_index),
                 files_deferred=files_deferred,
+                deferred_evict_ids=deferred_evict_ids,
             ),
             files_to_index,
         )

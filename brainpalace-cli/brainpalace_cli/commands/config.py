@@ -283,12 +283,14 @@ def wizard(global_: bool, chat_summarizer: str) -> None:
     )
 
     embed_sessions = click.confirm(
-        "\nEmbed chat sessions for semantic recall? (billable opt-in)",
+        "\nEmbed chat sessions for semantic recall? (goes through your embedding "
+        "provider)\n  Independent of chat summarization.",
         default=False,
     )
     archive_sessions = click.confirm(
-        "\nBack up chat transcripts locally? (free; stores full raw transcripts "
-        "incl. secrets)",
+        "\nBack up chat sessions locally? (free; stored in .brainpalace/, never "
+        "leaves this machine)\n  Full raw transcripts, including any secrets "
+        "pasted into chat.",
         default=True,
     )
     index_git = click.confirm(

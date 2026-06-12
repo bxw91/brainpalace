@@ -124,6 +124,32 @@ class TestIsStale:
         result = is_stale(state_dir)
         assert result is True
 
+    def test_not_stale_when_runtime_server_answers(self, tmp_path, monkeypatch):
+        """A dead pid is still NOT stale if the recorded server answers /health.
+
+        Guards the duplicate-server case: an eager stale verdict must not clear
+        the lock while a server is genuinely serving this project.
+        """
+        import brainpalace_server.locking as locking
+
+        state_dir = tmp_path / "state"
+        state_dir.mkdir()
+        (state_dir / PID_FILE).write_text("99999999")  # dead pid
+        monkeypatch.setattr(locking, "_runtime_server_alive", lambda _sd: True)
+
+        assert is_stale(state_dir) is False
+
+    def test_stale_when_dead_and_endpoint_unreachable(self, tmp_path, monkeypatch):
+        """Dead pid AND no live endpoint → stale (safe to reclaim)."""
+        import brainpalace_server.locking as locking
+
+        state_dir = tmp_path / "state"
+        state_dir.mkdir()
+        (state_dir / PID_FILE).write_text("99999999")
+        monkeypatch.setattr(locking, "_runtime_server_alive", lambda _sd: False)
+
+        assert is_stale(state_dir) is True
+
 
 class TestCleanupStale:
     """Tests for cleanup_stale function."""

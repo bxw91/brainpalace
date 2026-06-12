@@ -619,7 +619,7 @@ fi
 step "Step 5/6 — Set up a project (optional)"
 
 WATCH="off"
-if confirm "Set up and index a project now?" "y"; then
+if confirm "Set up and index a project now?" "n"; then
     PROJECT="$(ask "Project root" "$PWD")"
     PROJECT="${PROJECT/#\~/$HOME}"
     [[ -d "$PROJECT" ]] || errx "Path does not exist: $PROJECT"

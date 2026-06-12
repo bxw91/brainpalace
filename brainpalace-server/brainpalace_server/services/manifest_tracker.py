@@ -70,6 +70,11 @@ class EvictionSummary:
         files_deferred: Large changed files skipped this run by the re-embed
             cooldown (Phase L). Their existing chunks are kept and their prior
             FileRecord is preserved so they re-check the cooldown next run.
+        deferred_evict_ids: Old chunk ids of CHANGED files whose eviction was
+            held back for the atomic add-then-swap reindex — the caller deletes
+            them only AFTER the new chunks are safely upserted, so a crash
+            mid-reindex leaves the old chunks intact instead of losing data.
+            Distinct from ``files_deferred`` (a re-embed-cooldown concept).
     """
 
     files_added: list[str]
@@ -79,6 +84,7 @@ class EvictionSummary:
     chunks_evicted: int
     chunks_to_create: int
     files_deferred: list[str] = field(default_factory=list)
+    deferred_evict_ids: list[str] = field(default_factory=list)
 
 
 class ManifestTracker:

@@ -18,7 +18,16 @@ from brainpalace_server.services.manifest_tracker import (
     FolderManifest,
     ManifestTracker,
 )
-from brainpalace_server.services.startup_reconcile import reconcile_folders
+from brainpalace_server.services.startup_reconcile import (
+    DeepCleanSummary,
+    deep_clean,
+    prune_missing_folders,
+    prune_orphan_git_chunks,
+    prune_orphan_session_chunks,
+    reconcile_folders,
+    reconcile_orphan_chunks,
+    reconcile_store_against_manifest,
+)
 
 
 def _storage(deleted: int = 0) -> AsyncMock:
@@ -114,3 +123,352 @@ async def test_reconcile_skips_folder_without_manifest(tmp_path):
     rec = await fm.get_folder(folder)
     assert rec.chunk_count == 2  # untouched
     assert summary.folders_healed == 0
+
+
+def _storage_existing(present_ids):
+    """Backend whose get_existing_ids reports only `present_ids` as alive."""
+    from unittest.mock import AsyncMock
+
+    s = AsyncMock()
+    s.get_existing_ids = AsyncMock(return_value=set(present_ids))
+    return s
+
+
+@pytest.mark.asyncio
+async def test_store_reconcile_drops_files_with_lost_chunks(tmp_path):
+    # Manifest claims x.py=[a,b] and y.py=[c]; the store lost c. y.py must be
+    # dropped from the manifest so it re-indexes; x.py kept.
+    folder = str(tmp_path / "repo")
+    fm, mt = await _seed(
+        tmp_path,
+        folder,
+        chunk_ids=["a", "b", "c"],
+        count=3,
+        manifest_files={f"{folder}/x.py": ["a", "b"], f"{folder}/y.py": ["c"]},
+    )
+    storage = _storage_existing({"a", "b"})  # c is gone
+
+    summary = await reconcile_store_against_manifest(fm, mt, storage)
+
+    assert summary.folders_repaired == 1
+    assert summary.files_dropped == 1
+    # Manifest pruned: only x.py survives.
+    man = await mt.load(folder)
+    assert set(man.files) == {f"{folder}/x.py"}
+    # Folder record rebuilt from survivors.
+    rec = await fm.get_folder(folder)
+    assert sorted(rec.chunk_ids) == ["a", "b"]
+    assert rec.chunk_count == 2
+    # Never deletes store chunks.
+    assert not storage.delete_by_ids.await_count
+
+
+@pytest.mark.asyncio
+async def test_store_reconcile_noop_when_all_present(tmp_path):
+    folder = str(tmp_path / "repo")
+    fm, mt = await _seed(
+        tmp_path,
+        folder,
+        chunk_ids=["a", "b", "c"],
+        count=3,
+        manifest_files={f"{folder}/x.py": ["a", "b"], f"{folder}/y.py": ["c"]},
+    )
+    storage = _storage_existing({"a", "b", "c"})
+
+    summary = await reconcile_store_against_manifest(fm, mt, storage)
+
+    assert summary.folders_repaired == 0
+    assert summary.files_dropped == 0
+    man = await mt.load(folder)
+    assert set(man.files) == {f"{folder}/x.py", f"{folder}/y.py"}
+
+
+@pytest.mark.asyncio
+async def test_store_reconcile_skips_backend_without_existence_probe(tmp_path):
+    from unittest.mock import AsyncMock
+
+    folder = str(tmp_path / "repo")
+    fm, mt = await _seed(
+        tmp_path,
+        folder,
+        chunk_ids=["a"],
+        count=1,
+        manifest_files={f"{folder}/x.py": ["a"]},
+    )
+    backend = AsyncMock(spec=[])  # no get_existing_ids attribute
+
+    summary = await reconcile_store_against_manifest(fm, mt, backend)
+
+    assert summary.folders_repaired == 0
+
+
+# ── deep-clean: missing-folder prune + manifest-orphan chunk sweep ────────────
+
+
+def _storage_ids(ids, deleted: int = 0) -> AsyncMock:
+    """Backend that enumerates `ids` for code/doc and reports `deleted` removed."""
+    s = AsyncMock()
+    s.get_ids_by_metadata = AsyncMock(return_value=set(ids))
+    s.delete_by_ids = AsyncMock(return_value=deleted)
+    return s
+
+
+@pytest.mark.asyncio
+async def test_prune_missing_folders_removes_gone_dir(tmp_path):
+    """A folder whose dir is gone → evict chunks, delete manifest, drop record."""
+    folder = str(tmp_path / "gone")  # never created on disk
+    fm, mt = await _seed(
+        tmp_path,
+        folder,
+        chunk_ids=["a", "b"],
+        count=2,
+        manifest_files={f"{folder}/x.py": ["a", "b"]},
+    )
+    storage = _storage(deleted=2)
+    summary = DeepCleanSummary()
+
+    await prune_missing_folders(fm, mt, storage, summary)
+
+    assert summary.folders_removed == 1
+    storage.delete_by_ids.assert_awaited_once()
+    assert sorted(storage.delete_by_ids.call_args[0][0]) == ["a", "b"]
+    assert await fm.get_folder(folder) is None
+    assert await mt.load(folder) is None
+
+
+@pytest.mark.asyncio
+async def test_prune_missing_folders_keeps_existing_dir(tmp_path):
+    """A folder that still exists on disk is left alone."""
+    folder = tmp_path / "live"
+    folder.mkdir()
+    fm, mt = await _seed(
+        tmp_path,
+        str(folder),
+        chunk_ids=["a"],
+        count=1,
+        manifest_files={f"{folder}/x.py": ["a"]},
+    )
+    storage = _storage()
+    summary = DeepCleanSummary()
+
+    await prune_missing_folders(fm, mt, storage, summary)
+
+    assert summary.folders_removed == 0
+    storage.delete_by_ids.assert_not_called()
+    assert await fm.get_folder(str(folder)) is not None
+
+
+@pytest.mark.asyncio
+async def test_orphan_chunks_deletes_unreferenced(tmp_path):
+    """Live code/doc chunks in no manifest are deleted; referenced ones kept."""
+    folder = tmp_path / "repo"
+    folder.mkdir()
+    fm, mt = await _seed(
+        tmp_path,
+        str(folder),
+        chunk_ids=["a", "b", "c"],
+        count=3,
+        manifest_files={f"{folder}/x.py": ["a", "b"], f"{folder}/y.py": ["c"]},
+    )
+    # Store has the 3 referenced + 1 orphan that no manifest knows about.
+    storage = _storage_ids({"a", "b", "c", "orphanZ"}, deleted=1)
+    summary = DeepCleanSummary()
+
+    await reconcile_orphan_chunks(fm, mt, storage, summary)
+
+    storage.delete_by_ids.assert_awaited_once()
+    assert storage.delete_by_ids.call_args[0][0] == ["orphanZ"]
+    assert summary.orphan_chunks_removed == 1
+
+
+@pytest.mark.asyncio
+async def test_orphan_chunks_refuses_when_no_manifest_union(tmp_path):
+    """No manifest union (not-ready) → never delete, even with store ids."""
+    folder = tmp_path / "repo"
+    folder.mkdir()
+    fm, mt = await _seed(
+        tmp_path,
+        str(folder),
+        chunk_ids=["a"],
+        count=1,
+        manifest_files=None,  # no manifest written
+    )
+    storage = _storage_ids({"a", "b", "c"})
+    summary = DeepCleanSummary()
+
+    await reconcile_orphan_chunks(fm, mt, storage, summary)
+
+    storage.delete_by_ids.assert_not_called()
+    assert summary.skipped_reason is not None
+
+
+@pytest.mark.asyncio
+async def test_orphan_chunks_skips_backend_without_enumerate(tmp_path):
+    folder = tmp_path / "repo"
+    folder.mkdir()
+    fm, mt = await _seed(
+        tmp_path,
+        str(folder),
+        chunk_ids=["a"],
+        count=1,
+        manifest_files={f"{folder}/x.py": ["a"]},
+    )
+    backend = AsyncMock(spec=["delete_by_ids"])  # no get_ids_by_metadata
+
+    summary = DeepCleanSummary()
+    await reconcile_orphan_chunks(fm, mt, backend, summary)
+
+    assert summary.orphan_chunks_removed == 0
+
+
+@pytest.mark.asyncio
+async def test_deep_clean_prunes_then_sweeps(tmp_path):
+    """deep_clean removes a missing folder, then sweeps remaining orphans."""
+    gone = str(tmp_path / "gone")
+    live = tmp_path / "live"
+    live.mkdir()
+    fm = FolderManager(state_dir=tmp_path)
+    await fm.initialize()
+    await fm.add_folder(
+        folder_path=gone, chunk_count=1, chunk_ids=["g1"], include_code=True
+    )
+    await fm.add_folder(
+        folder_path=str(live), chunk_count=1, chunk_ids=["a"], include_code=True
+    )
+    mt = ManifestTracker(manifests_dir=tmp_path / "manifests")
+    gone_man = FolderManifest(folder_path=gone)
+    gone_man.files[f"{gone}/z.py"] = FileRecord(
+        checksum="x", mtime=1.0, chunk_ids=["g1"]
+    )
+    await mt.save(gone_man)
+    live_man = FolderManifest(folder_path=str(live))
+    live_man.files[f"{live}/x.py"] = FileRecord(
+        checksum="x", mtime=1.0, chunk_ids=["a"]
+    )
+    await mt.save(live_man)
+
+    # After the missing-folder prune drops `gone`+g1, the store still lists an
+    # extra orphan the sweep should reap.
+    storage = AsyncMock()
+    storage.delete_by_ids = AsyncMock(return_value=1)
+    storage.get_ids_by_metadata = AsyncMock(return_value={"a", "leftoverOrphan"})
+
+    summary = await deep_clean(fm, mt, storage)
+
+    assert summary.folders_removed == 1
+    assert summary.orphan_chunks_removed == 1
+    assert await fm.get_folder(gone) is None
+
+
+# ── existence-based session + git chunk purge ─────────────────────────────────
+
+
+def _storage_pairs(pairs, deleted: int = 0) -> AsyncMock:
+    """Backend exposing get_id_source_pairs → (id, source) list."""
+    s = AsyncMock()
+    s.get_id_source_pairs = AsyncMock(return_value=list(pairs))
+    s.delete_by_ids = AsyncMock(return_value=deleted)
+    return s
+
+
+@pytest.mark.asyncio
+async def test_session_purge_deletes_chunks_whose_source_is_gone(tmp_path):
+    """Session chunks whose transcript file no longer exists are deleted; ones
+    whose file still exists are kept."""
+    live = tmp_path / "kept.jsonl"
+    live.write_text("{}")
+    gone = str(tmp_path / "gone.jsonl")  # never created
+    storage = _storage_pairs(
+        [
+            ("session:s1:a", str(live)),
+            ("session:s1:b", str(live)),
+            ("session:s2:c", gone),
+        ],
+        deleted=1,
+    )
+    summary = DeepCleanSummary()
+
+    await prune_orphan_session_chunks(storage, tmp_path, summary)
+
+    storage.delete_by_ids.assert_awaited_once_with(["session:s2:c"])
+    assert summary.session_chunks_removed == 1
+
+
+@pytest.mark.asyncio
+async def test_session_purge_skips_when_archive_dir_missing(tmp_path):
+    """If the archive dir itself is absent, purge nothing (can't verify)."""
+    storage = _storage_pairs([("session:s1:a", str(tmp_path / "x.jsonl"))])
+    summary = DeepCleanSummary()
+
+    await prune_orphan_session_chunks(storage, tmp_path / "no-such-archive", summary)
+
+    storage.delete_by_ids.assert_not_called()
+    assert summary.session_chunks_removed == 0
+
+
+@pytest.mark.asyncio
+async def test_session_purge_leaves_empty_source(tmp_path):
+    """A chunk with no recorded source is left alone (can't verify existence)."""
+    storage = _storage_pairs([("session:s1:a", "")])
+    summary = DeepCleanSummary()
+
+    await prune_orphan_session_chunks(storage, tmp_path, summary)
+
+    storage.delete_by_ids.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_git_purge_removes_unreachable_commits(tmp_path, monkeypatch):
+    """git_commit chunks whose sha is not in rev-list --all are deleted."""
+    import brainpalace_server.services.startup_reconcile as sr
+
+    storage = AsyncMock()
+    storage.get_ids_by_metadata = AsyncMock(
+        return_value={"git_commit:aaa", "git_commit:bbb", "git_commit:ccc"}
+    )
+    storage.delete_by_ids = AsyncMock(return_value=2)
+    # Repo currently only has 'aaa' reachable → bbb, ccc are orphaned.
+    monkeypatch.setattr(sr, "_current_git_shas", lambda _p: {"aaa"})
+    summary = DeepCleanSummary()
+
+    await prune_orphan_git_chunks(storage, str(tmp_path), summary)
+
+    storage.delete_by_ids.assert_awaited_once()
+    assert sorted(storage.delete_by_ids.call_args[0][0]) == [
+        "git_commit:bbb",
+        "git_commit:ccc",
+    ]
+    assert summary.git_chunks_removed == 2
+
+
+@pytest.mark.asyncio
+async def test_git_purge_skips_when_repo_unresolvable(tmp_path, monkeypatch):
+    """rev-list None (not a repo / git error) → never purge."""
+    import brainpalace_server.services.startup_reconcile as sr
+
+    storage = AsyncMock()
+    storage.get_ids_by_metadata = AsyncMock(return_value={"git_commit:aaa"})
+    storage.delete_by_ids = AsyncMock(return_value=0)
+    monkeypatch.setattr(sr, "_current_git_shas", lambda _p: None)
+    summary = DeepCleanSummary()
+
+    await prune_orphan_git_chunks(storage, str(tmp_path), summary)
+
+    storage.delete_by_ids.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_git_purge_empty_repo_purges_all(tmp_path, monkeypatch):
+    """An empty rev-list (history wiped) is valid → all git chunks purged."""
+    import brainpalace_server.services.startup_reconcile as sr
+
+    storage = AsyncMock()
+    storage.get_ids_by_metadata = AsyncMock(return_value={"git_commit:aaa"})
+    storage.delete_by_ids = AsyncMock(return_value=1)
+    monkeypatch.setattr(sr, "_current_git_shas", lambda _p: set())
+    summary = DeepCleanSummary()
+
+    await prune_orphan_git_chunks(storage, str(tmp_path), summary)
+
+    storage.delete_by_ids.assert_awaited_once_with(["git_commit:aaa"])
+    assert summary.git_chunks_removed == 1

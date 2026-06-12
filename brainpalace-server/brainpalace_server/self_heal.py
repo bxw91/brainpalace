@@ -110,12 +110,18 @@ def registration_middleware(
 
 MAX_WORKER_RESTARTS = 5
 
+# Run the destructive manifest-orphan deep-clean far less often than the cheap
+# heals — every Nth heartbeat (~30 min at HEARTBEAT_SECONDS=180), and only when
+# nothing is indexing.
+DEEP_CLEAN_EVERY_TICKS = 10
+
 
 class HealState:
-    """Carries cross-tick counters (worker restart budget)."""
+    """Carries cross-tick counters (worker restart budget + deep-clean cadence)."""
 
     def __init__(self) -> None:
         self.worker_restarts = 0
+        self.tick = 0
 
 
 async def _heal_watcher(app: FastAPI) -> None:
@@ -156,15 +162,21 @@ async def _heal_worker(app: FastAPI, healer: HealState) -> None:
 
 
 async def _heal_index(app: FastAPI) -> None:
-    vector = getattr(app.state, "vector_store", None)
-    if vector is None:
-        return
-    try:
-        rebuilt = await vector.heal_if_corrupt()
-        if rebuilt:
-            logger.warning("vector index heal rebuilt %d vectors", rebuilt)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("index heal failed: %s", exc)
+    # Heal both the code index and the memory shadow index; each is a cheap
+    # no-op when healthy, so running it every heartbeat catches a corruption
+    # that develops mid-session before it can crash the next upsert.
+    for attr, label in (("vector_store", "code"), ("mem_vector_store", "memory")):
+        vector = getattr(app.state, attr, None)
+        if vector is None:
+            continue
+        try:
+            rebuilt = await vector.heal_if_corrupt()
+            if rebuilt:
+                logger.warning(
+                    "%s vector index heal rebuilt %d vectors", label, rebuilt
+                )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("%s index heal failed: %s", label, exc)
 
 
 def _heal_dashboard() -> None:
@@ -204,12 +216,79 @@ async def _reassert_registration(app: FastAPI) -> None:
     )
 
 
+async def _indexing_in_progress(app: FastAPI) -> bool:
+    """True if any index work is running — the deep-clean must skip then.
+
+    A mid-index store is transiently inconsistent (chunks added before the
+    manifest is saved), so running the manifest-orphan delete during indexing
+    could reap just-written chunks.
+    """
+    svc = getattr(app.state, "indexing_service", None)
+    if svc is not None and getattr(getattr(svc, "_state", None), "is_indexing", False):
+        return True
+    job_service = getattr(app.state, "job_service", None)
+    if job_service is not None:
+        try:
+            stats = await job_service.get_queue_stats()
+            if stats.running or stats.pending:
+                return True
+        except Exception:  # noqa: BLE001 — unknown → assume busy (safer)
+            return True
+    return False
+
+
+async def _deep_clean(app: FastAPI, healer: HealState) -> None:
+    """Periodic manifest-orphan cleanup — gated on cadence + idle. Never raises."""
+    healer.tick += 1
+    if healer.tick % DEEP_CLEAN_EVERY_TICKS != 0:
+        return
+    folder_manager = getattr(app.state, "folder_manager", None)
+    manifest_tracker = getattr(app.state, "manifest_tracker", None)
+    storage_backend = getattr(app.state, "storage_backend", None)
+    if folder_manager is None or manifest_tracker is None or storage_backend is None:
+        return
+    if await _indexing_in_progress(app):
+        logger.debug("deep-clean skipped: indexing in progress")
+        return
+    try:
+        from brainpalace_server.services.startup_reconcile import deep_clean
+
+        archive_service = getattr(app.state, "session_archive_service", None)
+        archive_dir = getattr(archive_service, "archive_dir", None)
+        repo_path = getattr(app.state, "project_root", "") or None
+
+        summary = await deep_clean(
+            folder_manager,
+            manifest_tracker,
+            storage_backend,
+            archive_dir=archive_dir,
+            repo_path=repo_path,
+        )
+        if (
+            summary.folders_removed
+            or summary.orphan_chunks_removed
+            or summary.session_chunks_removed
+            or summary.git_chunks_removed
+        ):
+            logger.warning(
+                "Periodic deep-clean: removed %d missing folder(s), %d orphan "
+                "code/doc chunk(s), %d session chunk(s), %d git chunk(s)",
+                summary.folders_removed,
+                summary.orphan_chunks_removed,
+                summary.session_chunks_removed,
+                summary.git_chunks_removed,
+            )
+    except Exception as exc:  # noqa: BLE001 — never let the heartbeat die
+        logger.warning("deep-clean failed: %s", exc)
+
+
 async def heal_once(app: FastAPI, healer: HealState) -> None:
     """One heartbeat tick: re-assert registration + run all heals. Never raises."""
     await _reassert_registration(app)
     await _heal_watcher(app)
     await _heal_worker(app, healer)
     await _heal_index(app)
+    await _deep_clean(app, healer)
     await asyncio.to_thread(_heal_dashboard)
 
 

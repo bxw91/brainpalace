@@ -37,7 +37,7 @@ REGISTRY: dict[str, OptionalExtra] = {
     "lemma-hr": OptionalExtra(
         "lemma-hr",
         "simplemma",
-        "The 'lemma' BM25 engine needs an extra download (simplemma).",
+        "The 'lemma' BM25 engine needs an extra download (simplemma, ~65 MB).",
         ("simplemma",),
     ),
     "postgres": OptionalExtra(

@@ -332,6 +332,28 @@ class ChromaBackend:
                 backend="chroma",
             ) from e
 
+    async def get_ids_by_metadata(self, where: dict[str, Any]) -> set[str]:
+        """Return all chunk ids matching a metadata filter (read-only).
+
+        Used by the manifest-orphan cleanup to enumerate live ``code``/``doc``
+        chunks. Never raises — yields the empty set on any backend error.
+        """
+        try:
+            return await self.vector_store.get_ids_by_where(where=where)
+        except Exception:  # noqa: BLE001 — cleanup probe must never crash
+            return set()
+
+    async def get_id_source_pairs(self, where: dict[str, Any]) -> list[tuple[str, str]]:
+        """Return ``(chunk_id, source)`` pairs matching a metadata filter.
+
+        Used by the existence-based session purge. Never raises — yields the
+        empty list on any backend error.
+        """
+        try:
+            return await self.vector_store.get_id_source_pairs(where=where)
+        except Exception:  # noqa: BLE001 — cleanup probe must never crash
+            return []
+
     async def delete_by_metadata(
         self,
         where: dict[str, Any],

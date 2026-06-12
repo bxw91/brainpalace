@@ -44,6 +44,23 @@ async def test_heal_once_restarts_dead_watcher_and_worker(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_heal_index_heals_both_code_and_memory_stores():
+    """The heartbeat recompacts the memory shadow index too, not just code."""
+    code = MagicMock()
+    code.heal_if_corrupt = AsyncMock(return_value=0)
+    mem = MagicMock()
+    mem.heal_if_corrupt = AsyncMock(return_value=0)
+
+    app = SimpleNamespace(
+        state=SimpleNamespace(vector_store=code, mem_vector_store=mem)
+    )
+    await sh._heal_index(app)
+
+    code.heal_if_corrupt.assert_awaited_once()
+    mem.heal_if_corrupt.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_worker_restart_capped(monkeypatch):
     worker = MagicMock()
     worker.is_running.return_value = False

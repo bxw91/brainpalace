@@ -228,3 +228,80 @@ async def test_heal_rebuilds_when_bloated(tmp_path, monkeypatch) -> None:
     )
     assert n == 10
     assert await store.get_count() == 30
+
+
+# ── #5 self-heal guard: persistent audit of a vector-shedding rebuild ──────────
+
+
+async def _make_state_store(tmp_path, n: int) -> VectorStoreManager:
+    """A store laid out like a real project: ``<state_dir>/data/chroma_db``."""
+    store = VectorStoreManager(
+        persist_dir=str(tmp_path / "data" / "chroma_db"),
+        collection_name="test_collection",
+    )
+    await store.initialize()
+    await store.upsert_documents(
+        ids=[f"id_{i}" for i in range(n)],
+        embeddings=[_emb(i) for i in range(n)],
+        documents=[f"doc {i}" for i in range(n)],
+        metadatas=[{"i": i} for i in range(n)],
+    )
+    return store
+
+
+def test_heal_events_path_none_for_legacy_layout(tmp_path) -> None:
+    """A non-standard (CWD-relative) persist_dir disables the audit marker."""
+    store = VectorStoreManager(
+        persist_dir=str(tmp_path / "chroma_db"),
+        collection_name="test_collection",
+    )
+    assert store.heal_events_path is None
+
+
+def test_read_heal_events_empty_when_no_log(tmp_path) -> None:
+    """No log file → zeroed counters, never raises."""
+    out = VectorStoreManager.read_heal_events(str(tmp_path / "data" / "chroma_db"))
+    assert out == {"count": 0, "total_dropped": 0, "last": None}
+
+
+@pytest.mark.asyncio
+async def test_heal_records_event_on_shed(tmp_path, monkeypatch) -> None:
+    """A bloated rebuild that sheds slots writes a loud, auditable heal event."""
+    store = await _make_state_store(tmp_path, 20)
+    # Physical slots dwarf the 20 live vectors → rebuild keeps 20, sheds the rest.
+    monkeypatch.setattr(store, "_hnsw_physical_count", lambda: 13108)
+
+    recovered = await store.heal_if_corrupt()
+    assert recovered == 20
+
+    path = store.heal_events_path
+    assert path is not None and path.exists()
+
+    summary = VectorStoreManager.read_heal_events(store.persist_dir)
+    assert summary["count"] == 1
+    assert summary["total_dropped"] == 13108 - 20
+    last = summary["last"]
+    assert last is not None
+    assert last["physical"] == 13108
+    assert last["recovered"] == 20
+    assert last["dropped"] == 13108 - 20
+    assert "bloated" in last["reason"]
+
+
+@pytest.mark.asyncio
+async def test_heal_event_records_zero_drop_on_clean_rebuild(
+    tmp_path, monkeypatch
+) -> None:
+    """A wrong-space rebuild with no shed still logs, with dropped == 0."""
+    store = await _make_state_store(tmp_path, 12)
+    # Not bloated: physical == live, so only the (forced) space drives the heal.
+    monkeypatch.setattr(store, "_hnsw_physical_count", lambda: 12)
+    monkeypatch.setattr(store, "_measured_cosine", lambda: False)
+
+    recovered = await store.heal_if_corrupt()
+    assert recovered == 12
+
+    summary = VectorStoreManager.read_heal_events(store.persist_dir)
+    assert summary["count"] == 1
+    assert summary["total_dropped"] == 0
+    assert summary["last"]["dropped"] == 0

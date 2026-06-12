@@ -448,6 +448,77 @@ class VectorStoreManager:
 
             return None
 
+    async def get_existing_ids(self, ids: list[str]) -> set[str]:
+        """Return the subset of ``ids`` that currently exist in the collection.
+
+        Batched ``collection.get(ids=...)`` reads SQLite only and returns just
+        the ids that exist, so this is a cheap existence probe — used by the
+        startup reconcile to detect chunks the store has *lost* relative to the
+        manifest (e.g. after a corrupt/healed HNSW shed live vectors). Never
+        raises: a backend error yields whatever was confirmed so far, so the
+        caller treats unconfirmed ids as missing rather than crashing startup.
+        """
+        if not self.is_initialized or not ids:
+            return set()
+        found: set[str] = set()
+        async with self._lock:
+            assert self._collection is not None
+            for start in range(0, len(ids), 500):
+                batch = ids[start : start + 500]
+                try:
+                    res = self._collection.get(ids=batch, include=[])  # ids only
+                    found.update(res.get("ids") or [])
+                except Exception as e:  # noqa: BLE001 — never fail the probe
+                    logger.warning("get_existing_ids batch failed: %s", e)
+        return found
+
+    async def get_ids_by_where(self, where: dict[str, Any]) -> set[str]:
+        """Return all chunk ids matching a metadata filter (read-only).
+
+        SQLite-only id probe (``collection.get(where=..., include=[])``) used by
+        the manifest-orphan cleanup to enumerate the store's live ``code``/``doc``
+        chunks. Never raises: a backend error yields the empty set so the caller
+        treats "can't enumerate" as "nothing to clean" rather than crashing.
+        """
+        if not self.is_initialized:
+            return set()
+        async with self._lock:
+            assert self._collection is not None
+            try:
+                res = self._collection.get(where=where, include=[])
+                return set(res.get("ids") or [])
+            except Exception as e:  # noqa: BLE001 — never fail the probe
+                logger.warning("get_ids_by_where failed: %s", e)
+                return set()
+
+    async def get_id_source_pairs(self, where: dict[str, Any]) -> list[tuple[str, str]]:
+        """Return ``(chunk_id, source)`` for every chunk matching ``where``.
+
+        Used by the existence-based purges (e.g. drop ``session_turn`` chunks
+        whose source transcript is gone from disk). ``source`` is the empty
+        string when a chunk has no recorded source. Never raises — yields an
+        empty list on any backend error so the caller cleans nothing.
+        """
+        if not self.is_initialized:
+            return []
+        async with self._lock:
+            assert self._collection is not None
+            try:
+                res = self._collection.get(
+                    where=where,
+                    include=["metadatas"],  # type: ignore[list-item]
+                )
+            except Exception as e:  # noqa: BLE001 — never fail the probe
+                logger.warning("get_id_source_pairs failed: %s", e)
+                return []
+        ids = res.get("ids") or []
+        metas = res.get("metadatas") or []
+        pairs: list[tuple[str, str]] = []
+        for i, cid in enumerate(ids):
+            meta = metas[i] if i < len(metas) else {}
+            pairs.append((cid, str((meta or {}).get("source", "") or "")))
+        return pairs
+
     async def delete_by_where(self, where: dict[str, Any]) -> int:
         """Delete documents matching a metadata filter and return count.
 
@@ -698,6 +769,88 @@ class VectorStoreManager:
                 logger.warning("Failed to remove orphan segment %s: %s", child, exc)
         return removed
 
+    @property
+    def heal_events_path(self) -> Path | None:
+        """Path to the persistent heal-event audit log (``.brainpalace/``).
+
+        ``persist_dir`` is ``<state_dir>/data/chroma_db``, so the state dir is
+        two levels up. Returns ``None`` for the legacy CWD-relative default
+        (``./chroma_db``) where that derivation would point outside the project.
+        """
+        persist = Path(self.persist_dir)
+        if persist.parent.name != "data":
+            return None  # legacy/non-standard layout — skip the marker
+        return persist.parent.parent / "heal-events.jsonl"
+
+    def _record_heal_event(
+        self, reason: str, physical: int | None, live: int, recovered: int
+    ) -> None:
+        """Append one heal event to ``heal-events.jsonl`` (best-effort, audit).
+
+        The heal rebuilds to the *live* count; when the HNSW held far more
+        physical slots than that, a large drop just got locked in. Persisting
+        the event makes that loss auditable (surfaced in ``brainpalace status``)
+        instead of scrolling past in the log. Never raises.
+        """
+        path = self.heal_events_path
+        if path is None:
+            return
+        import json
+        from datetime import datetime, timezone
+
+        event = {
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "collection": self.collection_name,
+            "reason": reason,
+            "physical": physical,
+            "live": live,
+            "recovered": recovered,
+            # Slots shed by the rebuild — the upper bound on what the heal lost.
+            "dropped": (physical - recovered) if physical is not None else None,
+        }
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(event) + "\n")
+        except Exception as exc:  # noqa: BLE001 — auditing must never block heal
+            logger.warning("Failed to record heal event to %s: %s", path, exc)
+
+    @staticmethod
+    def read_heal_events(persist_dir: str, limit: int = 50) -> dict[str, Any]:
+        """Read the heal-event log for status reporting (best-effort).
+
+        Returns ``{"count", "total_dropped", "last": <event|None>}``. Never
+        raises; a missing/unparseable log yields zeroed counters.
+        """
+        import json
+
+        persist = Path(persist_dir)
+        if persist.parent.name != "data":
+            return {"count": 0, "total_dropped": 0, "last": None}
+        path = persist.parent.parent / "heal-events.jsonl"
+        if not path.exists():
+            return {"count": 0, "total_dropped": 0, "last": None}
+        events: list[dict[str, Any]] = []
+        try:
+            for line in path.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    events.append(json.loads(line))
+                except Exception:  # noqa: BLE001 — skip a corrupt line
+                    continue
+        except Exception as exc:  # noqa: BLE001 — never fail status on the log
+            logger.warning("Failed to read heal events from %s: %s", path, exc)
+            return {"count": 0, "total_dropped": 0, "last": None}
+        total_dropped = sum(int(e.get("dropped") or 0) for e in events)
+        return {
+            "count": len(events),
+            "total_dropped": total_dropped,
+            "last": events[-1] if events else None,
+            "recent": events[-limit:],
+        }
+
     async def heal_if_corrupt(self, batch_size: int = 500) -> int:
         """Rebuild a bloated or wrong-space HNSW index, returning vectors rebuilt.
 
@@ -801,10 +954,28 @@ class VectorStoreManager:
             # Sweep the now-orphaned old segment dir left by the recreate.
             await asyncio.to_thread(self._prune_orphan_segments)
 
-        logger.warning(
-            "Healed vector index %r: rebuilt %d live vectors from SQLite",
-            self.collection_name,
-            recovered,
+        # The rebuild keeps only the *live* count; if the HNSW held far more
+        # physical slots, that gap was shed for good. Make the loss loud and
+        # auditable rather than a single easy-to-miss INFO line.
+        dropped = (physical - recovered) if physical is not None else 0
+        if dropped > 0:
+            logger.warning(
+                "Healed vector index %r: rebuilt %d live vectors from SQLite "
+                "(HNSW held %d physical slots — %d shed by the rebuild). "
+                "Recorded to heal-events.jsonl; check `brainpalace status`.",
+                self.collection_name,
+                recovered,
+                physical,
+                dropped,
+            )
+        else:
+            logger.warning(
+                "Healed vector index %r: rebuilt %d live vectors from SQLite",
+                self.collection_name,
+                recovered,
+            )
+        await asyncio.to_thread(
+            self._record_heal_event, reason, physical, live, recovered
         )
         return recovered
 

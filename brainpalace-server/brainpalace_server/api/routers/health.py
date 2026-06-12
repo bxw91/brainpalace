@@ -376,6 +376,26 @@ async def indexing_status(request: Request) -> dict[str, Any]:
         },
     }
 
+    # Index-health: self-heal audit trail (#5). A heal rebuilds the HNSW to the
+    # live count; a large shed (physical >> live) means vectors were lost and is
+    # recorded to .brainpalace/heal-events.jsonl. Surface it so the loss isn't
+    # silent. Best-effort — never fail /status on the audit log.
+    try:
+        from brainpalace_server.storage.vector_store import VectorStoreManager
+
+        persist_dir = None
+        if vector_store is not None:
+            persist_dir = getattr(vector_store, "persist_dir", None)
+        if persist_dir:
+            heal = VectorStoreManager.read_heal_events(persist_dir)
+            data["features"]["index_health"] = {
+                "heal_events": int(heal.get("count", 0) or 0),
+                "total_dropped": int(heal.get("total_dropped", 0) or 0),
+                "last_heal": heal.get("last"),
+            }
+    except Exception:  # noqa: BLE001 — never fail /status on the heal log
+        pass
+
     # Session summarization coverage: how many archived sessions have a durable
     # extraction (.done marker) vs the total archived. Engine-agnostic — both the
     # plugin subagent and the provider distiller write the unified marker.

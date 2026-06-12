@@ -15,6 +15,19 @@ Entries are kept short (≤ 3 sentences); see
 
 ---
 
+## [26.6.36] - 2026-06-12
+
+### Changed
+- **Clearer setup-wizard session prompts + a safer post-install default.** The `config wizard` rewords the embed question (says it goes through your embedding provider, and is independent of chat summarization) and the archive question (stored locally in `.brainpalace/`, never leaves the machine), and the lemmatization prompt now states the download size (~65 MB); `setup.sh`'s "Set up and index a project now?" now defaults to No.
+
+### Fixed
+- **Code indexing no longer crashes on a missing `pkg_resources`.** `setuptools` (which provides `pkg_resources`, imported transitively at index time by tree-sitter) is now a declared server dependency, so indexing can't die with "No module named 'pkg_resources'" on Python 3.12 environments that ship without setuptools.
+- **Index self-healing is now a layered procedure that runs at startup and on a periodic heartbeat.** Two independent planes keep the index correct against the data-loss failure modes from a recent incident. The *vector plane* (`heal_if_corrupt`, startup + every ~3 min, for both the code and memory collections) detects a corrupt/bloated HNSW — the on-disk approximate-search index — from its metadata and **rebuilds it from the intact embeddings in ChromaDB's SQLite, with no re-embedding**; the *bookkeeping plane* (startup + every ~30 min) reconciles the per-file manifests in `.brainpalace/manifests/` against what the store actually holds.
+- **The bookkeeping plane both recovers and cleans, each source type against its own source of truth.** *Recover:* chunk IDs a manifest claims but the store has lost (e.g. an HNSW that shed live vectors) are dropped from the manifest so those files re-index next run — it never deletes store data. *Clean (existence-based, never by age):* `code`/`doc` chunks no manifest references are removed (with whole vanished folders), `session_turn` chunks are removed when their source transcript is gone from disk, and `git_commit` chunks are removed when their commit is no longer reachable in the repo (`git rev-list --all`, so a reset/rebase/squash reaps them) — each cleaner is skipped while indexing runs and refuses to act when its baseline can't be verified (no manifest union, missing archive dir, or unresolvable repo).
+- **A self-heal that sheds vectors is now loud and auditable, not a buried log line.** When the HNSW rebuild keeps far fewer vectors than the index physically held, the drop is recorded to `.brainpalace/heal-events.jsonl` and surfaced as an "Index Health" warning in `brainpalace status`, telling you to re-index to recover.
+- **A second server can no longer attach to a project that already has a live one.** On startup the server probes the project's recorded `runtime.json` endpoint and refuses (instead of clearing the lock) when a healthy server is already serving that project, and `is_stale` now treats a lock as stale only when the server is both dead and unreachable — closing the duplicate-server path that corrupted the embedded Chroma index.
+- **Re-indexing a changed file no longer risks losing it on a crash.** Incremental indexing now adds the new chunks first and deletes the file's old chunks only after the new ones are safely stored (atomic add-then-swap), so an interruption mid-reindex leaves the old chunks intact instead of a gap; deleted-file chunks are still evicted immediately.
+
 ## [26.6.35] - 2026-06-12
 
 ### Changed

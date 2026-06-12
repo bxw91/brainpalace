@@ -16,7 +16,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from brainpalace_server.config.provider_config import ProviderSettings
@@ -86,6 +86,74 @@ _job_worker: JobWorker | None = None
 
 # Module-level reference to file watcher service for cleanup
 _file_watcher: object = None
+
+
+def _probe_health(base_url: str, timeout: float = 3.0) -> dict[str, Any] | None:
+    """GET ``<base_url>/health/`` and return the JSON body, or None.
+
+    None on any non-200 / unreachable / unparseable response. Never raises.
+    """
+    import json
+    import urllib.request
+
+    try:
+        req = urllib.request.Request(f"{base_url}/health/", method="GET")
+        with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
+            if resp.status != 200:
+                return None
+            data = json.loads(resp.read().decode("utf-8"))
+            return data if isinstance(data, dict) else None
+    except Exception:  # noqa: BLE001 — probe must never break startup
+        return None
+
+
+def _refuse_if_incumbent_alive(state_dir: Path) -> None:
+    """Abort startup if another LIVE server already owns this project.
+
+    The flock is the primary single-instance guard, but a stale-lock false
+    positive (recycled pid, an unlinked lock file) historically let a SECOND
+    server attach to the same ``.brainpalace/`` and corrupt the embedded,
+    single-process ChromaDB. Before any stale-lock cleanup, probe the recorded
+    server: if a *different*, healthy process answers ``/health`` **for this
+    project**, raise instead of clearing the lock. Best-effort — an unreachable
+    or unrelated endpoint lets a legitimate restart proceed.
+    """
+    try:
+        from brainpalace_server.runtime import read_runtime
+
+        state = read_runtime(state_dir)
+    except Exception:  # noqa: BLE001 — never block startup on the probe
+        return
+    if state is None or not state.base_url:
+        return
+    # The CLI writes runtime.json with our own pid right after spawning us; that
+    # record is not an incumbent.
+    if state.pid and state.pid == os.getpid():
+        return
+
+    body = _probe_health(state.base_url)
+    if body is None:
+        return  # not answering — dead/stale; reclaim the lock normally below
+
+    # A healthy server answered. Confirm it actually serves THIS project (guard
+    # against an unrelated process that recycled the recorded port) before
+    # refusing. If we can't tell, err toward refusing (safer than a duplicate).
+    incumbent_root = str(body.get("project_root") or state.project_root or "")
+    try:
+        serves_this_project = bool(incumbent_root) and (
+            Path(incumbent_root).resolve() == state_dir.parent.resolve()
+        )
+    except Exception:  # noqa: BLE001
+        serves_this_project = bool(incumbent_root)
+    if not serves_this_project:
+        return
+
+    raise RuntimeError(
+        f"Another BrainPalace server (pid {state.pid}) is already live for this "
+        f"project at {state.base_url}. Refusing to start a second server on the "
+        f"same .brainpalace/ — two servers corrupt the embedded Chroma index. "
+        f"Stop the running one first (`brainpalace stop`)."
+    )
 
 
 def _silence_chromadb_telemetry() -> None:
@@ -337,6 +405,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if state_dir is not None:
         # Per-project mode with explicit state directory
         mode = "project"
+
+        # #1: never attach a second live server to one project's .brainpalace/.
+        # Probe the recorded server BEFORE any stale-lock cleanup so an eager
+        # "stale" verdict can't clear the lock out from under a running server.
+        _refuse_if_incumbent_alive(state_dir)
 
         # Check for stale locks and clean up
         if is_stale(state_dir):
@@ -665,6 +738,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             manifest_tracker=manifest_tracker,
         )
         app.state.indexing_service = indexing_service
+        # Exposed so the self-heal heartbeat can run the periodic deep-clean.
+        app.state.manifest_tracker = manifest_tracker
 
         # Self-heal manifest/store drift on every start (e.g. inflated folder
         # counts + store orphans left by a past duplicate-server incident).
@@ -672,10 +747,27 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # when consistent. Never block startup on it.
         try:
             from brainpalace_server.services.startup_reconcile import (
+                deep_clean,
                 reconcile_folders,
+                reconcile_store_against_manifest,
             )
 
+            # First, the store→manifest direction: if the vector store has LOST
+            # chunks the manifest still claims (a corrupt/healed index, a
+            # duplicate-server stomp), drop those file records so they re-index
+            # next run. Never deletes store chunks. Then the manifest→store
+            # direction purges any remaining orphans the manifest no longer
+            # references. Order matters: prune stale manifest claims before
+            # treating the manifest as authoritative.
+            await reconcile_store_against_manifest(
+                folder_manager, manifest_tracker, storage_backend
+            )
             await reconcile_folders(folder_manager, manifest_tracker, storage_backend)
+            # Deep clean (manifest-orphan step 2): drop folders gone from disk
+            # (manifest + chunks) and delete live code/doc chunks no manifest
+            # references. Safe at startup — nothing is indexing yet. Strictly
+            # scoped to code/doc, so session/git/memory chunks are untouched.
+            await deep_clean(folder_manager, manifest_tracker, storage_backend)
         except Exception as exc:  # noqa: BLE001 — heal must never block startup
             logger.warning("Startup reconcile failed (non-fatal): %s", exc)
 
@@ -718,6 +810,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 embedding_generator=get_embedding_generator(),
             )
             app.state.memory_service = memory_service
+            # Exposed so the self-heal heartbeat can recompact this collection
+            # too (not just the code index) on its periodic tick.
+            app.state.mem_vector_store = mem_vector_store
             logger.info("Memory namespace initialized: %s", mem_path)
 
             # Self-heal (ADR 0001): if the shadow index is empty but the
@@ -794,6 +889,28 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                         archive_dir=arch_dir, tool=caps.tool
                     )
                 app.state.session_archive_service = archive_service
+
+                # Existence-based purge of orphaned session + git chunks (their
+                # source transcript / commit is gone). Runs once at startup; the
+                # heartbeat repeats it on an idle tick. Best-effort.
+                try:
+                    from brainpalace_server.services.startup_reconcile import (
+                        DeepCleanSummary,
+                        prune_orphan_git_chunks,
+                        prune_orphan_session_chunks,
+                    )
+
+                    _purge = DeepCleanSummary()
+                    await prune_orphan_session_chunks(
+                        storage_backend,
+                        getattr(archive_service, "archive_dir", None),
+                        _purge,
+                    )
+                    await prune_orphan_git_chunks(
+                        storage_backend, app.state.project_root or None, _purge
+                    )
+                except Exception as exc:  # noqa: BLE001 — never block startup
+                    logger.warning("Session/git orphan purge failed: %s", exc)
 
                 # Index service — only when indexing is enabled.
                 sess_svc = None

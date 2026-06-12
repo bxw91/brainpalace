@@ -267,6 +267,82 @@ async def test_force_bypasses_manifest(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Test: atomic add-then-swap reindex (#4)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_changed_file_swaps_old_chunks_after_upsert(tmp_path: Path) -> None:
+    """A changed file's old chunks are deleted only AFTER the new ones upsert."""
+    folder = str(tmp_path / "docs")
+    Path(folder).mkdir()
+    file1 = str(tmp_path / "docs" / "a.md")
+    Path(file1).write_text("content a")
+
+    tracker = ManifestTracker(manifests_dir=tmp_path / "manifests")
+    abs_folder = str(Path(folder).resolve())
+    abs_file1 = str(Path(file1).resolve())
+    # Old manifest with mismatched checksum/mtime → file detected as changed.
+    old = FolderManifest(folder_path=abs_folder)
+    old.files[abs_file1] = FileRecord(
+        checksum="stale", mtime=0.0, chunk_ids=["old-1", "old-2"]
+    )
+    await tracker.save(old)
+
+    order: list[str] = []
+    storage = _make_storage_backend()
+    storage.upsert_documents = AsyncMock(side_effect=lambda **k: order.append("upsert"))
+
+    async def _del(ids):
+        order.append(f"delete:{sorted(ids)}")
+        return len(ids)
+
+    storage.delete_by_ids = AsyncMock(side_effect=_del)
+
+    docs = [_make_doc(file1)]
+    chunk1 = _make_chunk("new-1", file1)
+    service = _make_indexing_service(storage, tracker, docs, [chunk1])
+
+    request = IndexRequest(folder_path=folder)
+    with _patch_chunkers([chunk1]):
+        await service._run_indexing_pipeline(request, "job_test")
+
+    # Upsert of the new chunk happened BEFORE the old chunks were swapped out.
+    assert order == ["upsert", "delete:['old-1', 'old-2']"]
+
+
+@pytest.mark.asyncio
+async def test_crash_during_upsert_keeps_old_chunks(tmp_path: Path) -> None:
+    """If the upsert fails mid-reindex, the old chunks are NOT deleted."""
+    folder = str(tmp_path / "docs")
+    Path(folder).mkdir()
+    file1 = str(tmp_path / "docs" / "a.md")
+    Path(file1).write_text("content a")
+
+    tracker = ManifestTracker(manifests_dir=tmp_path / "manifests")
+    abs_folder = str(Path(folder).resolve())
+    abs_file1 = str(Path(file1).resolve())
+    old = FolderManifest(folder_path=abs_folder)
+    old.files[abs_file1] = FileRecord(checksum="stale", mtime=0.0, chunk_ids=["old-1"])
+    await tracker.save(old)
+
+    storage = _make_storage_backend()
+    storage.upsert_documents = AsyncMock(side_effect=RuntimeError("boom"))
+
+    docs = [_make_doc(file1)]
+    chunk1 = _make_chunk("new-1", file1)
+    service = _make_indexing_service(storage, tracker, docs, [chunk1])
+
+    request = IndexRequest(folder_path=folder)
+    with _patch_chunkers([chunk1]):
+        with pytest.raises(RuntimeError, match="boom"):
+            await service._run_indexing_pipeline(request, "job_test")
+
+    # The crash happened before the swap → old chunks survive (never deleted).
+    storage.delete_by_ids.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
 # Test: deleted file chunks are evicted
 # ---------------------------------------------------------------------------
 

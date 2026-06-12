@@ -366,6 +366,21 @@ def status_command(
                         "[dim]off[/] (enable: brainpalace init --git-history)",
                     )
 
+            # Index health: self-heal audit (#5). Only show a row when a heal
+            # actually shed vectors — a clean index stays quiet.
+            index_health = features.get("index_health")
+            if isinstance(index_health, dict):
+                heal_events = int(index_health.get("heal_events", 0) or 0)
+                dropped = int(index_health.get("total_dropped", 0) or 0)
+                if heal_events and dropped:
+                    table.add_row(
+                        "Index Health",
+                        f"[yellow]⚠ {heal_events} heal event(s), "
+                        f"~{dropped:,} vectors shed[/] — "
+                        f"see .brainpalace/heal-events.jsonl; "
+                        f"re-index to recover (brainpalace index . --force)",
+                    )
+
             # Show BM25 language/engine from local config.yaml (Task 16)
             if bm25_cfg:
                 lang = bm25_cfg.get("language", "en")
