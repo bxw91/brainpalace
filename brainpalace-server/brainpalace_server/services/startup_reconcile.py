@@ -22,6 +22,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from brainpalace_server.services import chunk_recovery
+
 logger = logging.getLogger(__name__)
 
 
@@ -517,3 +519,185 @@ async def reconcile_folders(
             summary.chunks_purged,
         )
     return summary
+
+
+def _manifest_union(folders_with_manifests: list[Any]) -> set[str]:
+    """Union of authoritative chunk ids across every folder manifest."""
+    ids: set[str] = set()
+    for manifest in folders_with_manifests:
+        if manifest is not None:
+            ids.update(_authoritative_ids(manifest))
+    return ids
+
+
+async def _enqueue_folder_reindex(
+    job_service: Any, folder_manager: Any, folders: list[str]
+) -> int:
+    """Enqueue an incremental index job per folder so dropped files reindex.
+
+    Mirrors the file-watcher enqueue (``force=False`` → relies on the manifest
+    for incremental, so only the dropped/new files are processed). Embeddings
+    come from the cache; only the genuinely-gone residue calls the provider.
+    Never raises — a per-folder failure is logged and skipped.
+    """
+    from brainpalace_server.models.index import IndexRequest  # lazy: avoid cycle
+
+    enqueued = 0
+    for folder_path in folders:
+        try:
+            rec = await folder_manager.get_folder(folder_path)
+            include_code = rec.include_code if rec is not None else True
+            request = IndexRequest(
+                folder_path=folder_path,
+                include_code=include_code,
+                recursive=True,
+                force=False,
+                trigger="self-heal",
+            )
+            await job_service.enqueue_job(
+                request=request,
+                operation="index",
+                force=False,
+                allow_external=True,
+                source="self-heal",
+            )
+            enqueued += 1
+        except Exception as exc:  # noqa: BLE001 — never fail heal on a single folder
+            logger.warning(
+                "self-heal: failed to enqueue reindex for %s: %s", folder_path, exc
+            )
+    if enqueued:
+        logger.warning(
+            "self-heal: enqueued incremental reindex for %d folder(s) to restore "
+            "dropped/lost files (post-deep_clean).",
+            enqueued,
+        )
+    return enqueued
+
+
+async def self_heal_on_startup(
+    *,
+    folder_manager: Any,
+    manifest_tracker: Any,
+    storage_backend: Any,
+    vector_store: Any,
+    cache_db_path: Any,
+    target_dimensions: int,
+    bm25_manager: Any = None,
+    repo_path: str | None = None,
+    job_service: Any = None,
+) -> dict[str, Any]:
+    """Recover lost chunks FIRST, then gate the destructive deep_clean on success.
+
+    Order and gating (the data-safety contract):
+
+      1. **Recover** the manifest's missing chunks from dead segments + the
+         embedding cache — constructive, no re-embed (:mod:`chunk_recovery`).
+      2. **reconcile_folders** — heal folder counts / drop folder-record orphans
+         the manifest no longer references (its purge can never touch a restored
+         chunk, which is in the manifest).
+      3. **deep_clean** — destructive existence-based purges — runs **only if
+         recovery fully succeeded** (``RecoverySummary.complete``): no error and
+         every *possible* chunk (dead-text + cache-vector) restored. A failed or
+         partial recovery keeps the gate CLOSED so we never delete on an
+         unrecovered store. When recovery is not applicable (no vector store / no
+         manifest ids) the gate defaults open, preserving prior behavior.
+
+    Never raises — a failure is logged and leaves the gate closed.
+    """
+    report: dict[str, Any] = {
+        "recovery": None,
+        "deep_clean_ran": False,
+        "deep_clean_skipped_reason": None,
+        "bm25_rebuilt": 0,
+        "files_dropped": 0,
+        "dropped_folders": [],
+        "reindex_enqueued": 0,
+    }
+
+    # Build the manifest union (what the index *should* contain for code/doc).
+    manifest_ids: set[str] = set()
+    if folder_manager is not None and manifest_tracker is not None:
+        manifests = []
+        for rec in await folder_manager.list_folders():
+            manifests.append(await manifest_tracker.load(rec.folder_path))
+        manifest_ids = _manifest_union(manifests)
+
+    # Add the git plane: every commit currently in the repo should have a
+    # git_commit chunk. Git chunks live in the same collection + embedding cache,
+    # so a lost commit recovers from cache+dead exactly like code/doc — but git
+    # isn't manifest-tracked, so we source its wanted ids from the repo itself.
+    git_ids: set[str] = set()
+    if repo_path:
+        shas = _current_git_shas(repo_path)
+        if shas:
+            git_ids = {f"git_commit:{sha}" for sha in shas}
+
+    wanted = manifest_ids | git_ids
+
+    summary: chunk_recovery.RecoverySummary | None = None
+    if vector_store is not None and wanted:
+        chroma_sqlite = Path(vector_store.persist_dir) / "chroma.sqlite3"
+        summary = await chunk_recovery.recover_lost_chunks(
+            vector_store=vector_store,
+            wanted_ids=wanted,
+            chroma_sqlite_path=chroma_sqlite,
+            cache_db_path=cache_db_path,
+            target_dimensions=target_dimensions,
+        )
+    report["recovery"] = summary
+
+    # GATE: stage 2 (mutating + destructive) runs ONLY when recovery fully
+    # succeeded (or was N/A). A failed/partial recovery keeps the gate CLOSED so
+    # we never drop manifest records or delete on an unrecovered store.
+    gate_open = summary is None or summary.complete
+    if gate_open:
+        # 2a. Drop manifest records for files NOT fully present in the store after
+        #     recovery (fully- OR partially-missing) so the next index treats them
+        #     as new and reindexes them like any unindexed file. Pure manifest
+        #     bookkeeping — NO API call here. (vector_store carries the
+        #     get_existing_ids probe the backend wrapper lacks.)
+        drop = await reconcile_store_against_manifest(
+            folder_manager, manifest_tracker, vector_store
+        )
+        report["files_dropped"] = drop.files_dropped
+        report["dropped_folders"] = list(drop.repaired_folders)
+        # 2b. Heal folder records against the updated manifests.
+        await reconcile_folders(folder_manager, manifest_tracker, storage_backend)
+        # 2c. Destructive existence purges. Deletes the now-orphaned restored
+        #     chunks of dropped partial files; they return on reindex (cache hits).
+        await deep_clean(folder_manager, manifest_tracker, storage_backend)
+        report["deep_clean_ran"] = True
+        # 2d. AFTER deep_clean: reindex the dropped files like any unindexed file
+        #     (incremental folder index; embeddings come from the cache, only the
+        #     genuinely-gone residue hits the provider).
+        if drop.files_dropped and job_service is not None:
+            report["reindex_enqueued"] = await _enqueue_folder_reindex(
+                job_service, folder_manager, drop.repaired_folders
+            )
+    else:
+        assert summary is not None  # gate_open is False => summary present
+        report["deep_clean_skipped_reason"] = (
+            f"recovery incomplete (restored={summary.restored}/"
+            f"{summary.recoverable}, missed={summary.missed}, "
+            f"error={summary.error})"
+        )
+        logger.warning(
+            "self-heal: SKIPPING stage 2 (drop/clean/reindex) — %s. Refusing "
+            "destructive cleanup until lost chunks are recovered.",
+            report["deep_clean_skipped_reason"],
+        )
+
+    # Restored chunks went into the vector store only; rebuild the lexical BM25
+    # index from the (post-cleanup) live collection so keyword/hybrid-bm25 search
+    # finds them too. No re-embed. Only when something was actually restored.
+    if (
+        summary is not None
+        and summary.restored
+        and bm25_manager is not None
+        and vector_store is not None
+    ):
+        report["bm25_rebuilt"] = chunk_recovery.rebuild_bm25_from_collection(
+            bm25_manager, vector_store
+        )
+    return report

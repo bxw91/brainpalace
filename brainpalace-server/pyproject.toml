@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "brainpalace-rag"
-version = "26.6.36"
+version = "26.6.37"
 description = "BrainPalace RAG - Intelligent document indexing and semantic search server that gives AI agents long-term memory"
 authors = ["bxw91"]
 readme = "README.md"
@@ -41,10 +41,14 @@ tree-sitter-language-pack = "^0.7.3"
 pyyaml = "^6.0.0"
 pathspec = "^0.12.0"
 # Runtime requirement for `pkg_resources` (imported transitively at index time by
-# tree-sitter-language-pack). Python >=3.12 venvs ship without setuptools, so
-# declare it explicitly or code indexing crashes with "No module named
-# 'pkg_resources'". See the 26.6.x index-job failures.
-setuptools = ">=65"
+# tree-sitter-language-pack, and on the BM25/keyword search path). Python >=3.12
+# venvs ship without setuptools, so declare it explicitly or code indexing and
+# keyword search crash with "No module named 'pkg_resources'".
+# Upper bound is MANDATORY: setuptools 81 REMOVED the vendored pkg_resources, so a
+# bare ">=65" resolves to 81+ on the pip-as-dependency path (CLI venv) and
+# reintroduces the exact crash. Keep <81 until the pkg_resources import is dropped.
+# See the 26.6.x index-job + keyword-search failures.
+setuptools = ">=65,<81"
 
 # Pluggable Provider dependencies (Feature 103)
 cohere = "^5.0.0"

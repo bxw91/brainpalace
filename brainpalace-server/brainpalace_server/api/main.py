@@ -205,6 +205,72 @@ def _build_provider_fingerprint() -> str:
         return "unknown:unknown:0"
 
 
+def _record_self_heal_result(report: dict[str, Any], persist_dir: str | None) -> None:
+    """Notify + persist the startup self-heal outcome.
+
+    Only acts when recovery actually engaged (a healthy no-op / count-precheck
+    skip is silent). Emits a prominent startup log and appends an event that
+    ``brainpalace status`` surfaces. Never raises.
+    """
+    rec = report.get("recovery")
+    restored = int(getattr(rec, "restored", 0) or 0)
+    recoverable = int(getattr(rec, "recoverable", 0) or 0)
+    missed = int(getattr(rec, "missed", 0) or 0)
+    residue = int(getattr(rec, "no_text", 0) or 0) + int(
+        getattr(rec, "no_vector", 0) or 0
+    )
+    error = getattr(rec, "error", None)
+    wanted = int(getattr(rec, "wanted", 0) or 0)
+    files_dropped = int(report.get("files_dropped", 0) or 0)
+    skipped = report.get("deep_clean_skipped_reason")
+
+    if not (wanted or restored or files_dropped or error or skipped):
+        return  # healthy no-op — nothing to report
+
+    if error or skipped:
+        logger.warning(
+            "SELF-HEAL INCOMPLETE — restored=%d/%d, missed=%d, error=%s. Stage 2 "
+            "(drop/clean/reindex) SKIPPED to protect data; fix and restart. "
+            "(see `brainpalace status` → self_heal)",
+            restored,
+            recoverable,
+            missed,
+            error,
+        )
+    else:
+        logger.warning(
+            "SELF-HEAL: restored %d lost chunk(s) from cache+dead (no re-embed); "
+            "dropped %d not-fully-recovered file(s) for reindex; %d need a source "
+            "re-index. (see `brainpalace status` → self_heal)",
+            restored,
+            files_dropped,
+            residue,
+        )
+
+    if persist_dir:
+        try:
+            from brainpalace_server.services.chunk_recovery import (
+                record_recovery_event,
+            )
+
+            record_recovery_event(
+                persist_dir,
+                {
+                    "restored": restored,
+                    "recoverable": recoverable,
+                    "missed": missed,
+                    "residue": residue,
+                    "files_dropped": files_dropped,
+                    "deep_clean_ran": bool(report.get("deep_clean_ran")),
+                    "bm25_rebuilt": int(report.get("bm25_rebuilt", 0) or 0),
+                    "incomplete_reason": skipped,
+                    "error": error,
+                },
+            )
+        except Exception as exc:  # noqa: BLE001 — persist must never block startup
+            logger.warning("self-heal: persist failed: %s", exc)
+
+
 async def check_embedding_compatibility(
     vector_store: VectorStoreManager,
 ) -> str | None:
@@ -741,35 +807,45 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # Exposed so the self-heal heartbeat can run the periodic deep-clean.
         app.state.manifest_tracker = manifest_tracker
 
-        # Self-heal manifest/store drift on every start (e.g. inflated folder
-        # counts + store orphans left by a past duplicate-server incident).
-        # No reindex, no re-embed: pure bookkeeping + targeted deletes; a no-op
-        # when consistent. Never block startup on it.
+        # Self-heal on every start. RECOVER FIRST, DESTROY LAST:
+        #   stage 1 — restore lost chunks (code/doc AND git) from dead Chroma
+        #     segments + the embedding cache — constructive, NO re-embed / no
+        #     provider call (chunk_recovery). Replaces the old no-op
+        #     reconcile_store_against_manifest.
+        #   stage 2 (only if stage 1 fully succeeded): drop manifest records for
+        #     files NOT fully recovered so they reindex like any unindexed file,
+        #     heal folder records, then deep_clean (destructive purges). A failed
+        #     or partial recovery keeps the gate CLOSED.
+        # The reindex of dropped files is enqueued AFTER deep_clean, below, once
+        # the job service exists. Never blocks startup.
+        heal_report: dict[str, Any] = {}
         try:
+            from brainpalace_server.services.chunk_recovery import detect_dimensions
             from brainpalace_server.services.startup_reconcile import (
-                deep_clean,
-                reconcile_folders,
-                reconcile_store_against_manifest,
+                self_heal_on_startup,
             )
 
-            # First, the store→manifest direction: if the vector store has LOST
-            # chunks the manifest still claims (a corrupt/healed index, a
-            # duplicate-server stomp), drop those file records so they re-index
-            # next run. Never deletes store chunks. Then the manifest→store
-            # direction purges any remaining orphans the manifest no longer
-            # references. Order matters: prune stale manifest claims before
-            # treating the manifest as authoritative.
-            await reconcile_store_against_manifest(
-                folder_manager, manifest_tracker, storage_backend
+            vector_store = getattr(app.state, "vector_store", None)
+            target_dimensions = detect_dimensions(
+                cache_db_path=cache_db_path, vector_store=vector_store
             )
-            await reconcile_folders(folder_manager, manifest_tracker, storage_backend)
-            # Deep clean (manifest-orphan step 2): drop folders gone from disk
-            # (manifest + chunks) and delete live code/doc chunks no manifest
-            # references. Safe at startup — nothing is indexing yet. Strictly
-            # scoped to code/doc, so session/git/memory chunks are untouched.
-            await deep_clean(folder_manager, manifest_tracker, storage_backend)
+            heal_report = await self_heal_on_startup(
+                folder_manager=folder_manager,
+                manifest_tracker=manifest_tracker,
+                storage_backend=storage_backend,
+                vector_store=vector_store,
+                cache_db_path=cache_db_path,
+                target_dimensions=target_dimensions or 0,
+                bm25_manager=getattr(app.state, "bm25_manager", None),
+                repo_path=app.state.project_root or None,
+            )
+            # Persist the result so `brainpalace status` can surface it, and emit
+            # a prominent startup notification when recovery actually ran.
+            _record_self_heal_result(
+                heal_report, getattr(vector_store, "persist_dir", None)
+            )
         except Exception as exc:  # noqa: BLE001 — heal must never block startup
-            logger.warning("Startup reconcile failed (non-fatal): %s", exc)
+            logger.warning("Startup self-heal failed (non-fatal): %s", exc)
 
         # Curated memory namespace (Phase 030). Markdown source-of-truth +
         # a dedicated Chroma collection as a rebuildable shadow index.
@@ -1258,6 +1334,24 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 )
             except Exception as exc:  # noqa: BLE001 — never block startup on git
                 logger.warning("Git boot-index enqueue failed: %s", exc)
+
+        # Reindex the files self-heal dropped (not-fully-recovered) — AFTER
+        # deep_clean and once the job service + worker exist. force=False so the
+        # incremental index only re-creates the dropped/new files; their
+        # embeddings come from the cache, only the genuinely-gone residue calls
+        # the provider. Never blocks startup.
+        dropped_folders = heal_report.get("dropped_folders") or []
+        if dropped_folders and job_service is not None:
+            try:
+                from brainpalace_server.services.startup_reconcile import (
+                    _enqueue_folder_reindex,
+                )
+
+                heal_report["reindex_enqueued"] = await _enqueue_folder_reindex(
+                    job_service, folder_manager, dropped_folders
+                )
+            except Exception as exc:  # noqa: BLE001 — never block startup
+                logger.warning("Self-heal reindex enqueue failed: %s", exc)
 
         # Set multi-instance metadata on app.state for health endpoint
         app.state.mode = mode

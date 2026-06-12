@@ -381,6 +381,29 @@ def status_command(
                         f"re-index to recover (brainpalace index . --force)",
                     )
 
+            # Self-heal recovery (lost chunks restored from cache+dead at start)
+            self_heal = features.get("self_heal")
+            if isinstance(self_heal, dict):
+                last = self_heal.get("last") or {}
+                if last.get("error") or last.get("incomplete_reason"):
+                    table.add_row(
+                        "Self-Heal",
+                        f"[red]⚠ INCOMPLETE[/] — restored "
+                        f"{int(last.get('restored', 0) or 0):,}/"
+                        f"{int(last.get('recoverable', 0) or 0):,}; stage 2 skipped "
+                        f"to protect data — fix + restart",
+                    )
+                else:
+                    restored = int(last.get("restored", 0) or 0)
+                    dropped_f = int(last.get("files_dropped", 0) or 0)
+                    residue = int(last.get("residue", 0) or 0)
+                    table.add_row(
+                        "Self-Heal",
+                        f"[green]restored {restored:,} chunk(s)[/] from cache+dead "
+                        f"(no re-embed); {dropped_f:,} file(s) re-indexing; "
+                        f"{residue:,} need re-index",
+                    )
+
             # Show BM25 language/engine from local config.yaml (Task 16)
             if bm25_cfg:
                 lang = bm25_cfg.get("language", "en")

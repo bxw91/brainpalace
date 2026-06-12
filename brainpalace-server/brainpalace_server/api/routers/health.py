@@ -396,6 +396,23 @@ async def indexing_status(request: Request) -> dict[str, Any]:
     except Exception:  # noqa: BLE001 — never fail /status on the heal log
         pass
 
+    # Self-heal recovery: lost chunks restored from cache+dead at startup, and
+    # whether stage 2 (drop/clean/reindex) ran or was blocked by an incomplete
+    # recovery. Surfaced so a recovery — or a data-protecting block — is visible.
+    try:
+        from brainpalace_server.services.chunk_recovery import read_recovery_events
+
+        persist_dir = getattr(vector_store, "persist_dir", None)
+        if persist_dir:
+            recov = read_recovery_events(persist_dir)
+            if recov.get("count"):
+                data["features"]["self_heal"] = {
+                    "events": int(recov.get("count", 0) or 0),
+                    "last": recov.get("last"),
+                }
+    except Exception:  # noqa: BLE001 — never fail /status on the recovery log
+        pass
+
     # Session summarization coverage: how many archived sessions have a durable
     # extraction (.done marker) vs the total archived. Engine-agnostic — both the
     # plugin subagent and the provider distiller write the unified marker.

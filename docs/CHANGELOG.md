@@ -15,6 +15,14 @@ Entries are kept short (≤ 3 sentences); see
 
 ---
 
+## [26.6.37] - 2026-06-12
+
+### Fixed
+- **Lost vector chunks now actually recover at startup — from cached vectors, with no re-embedding.** The new `chunk_recovery` plane restores each lost chunk (code/doc **and git**) by reading its text from the stranded *dead* Chroma segments and its vector from the embedding cache (`SHA256(text)`), then upserting it back with zero provider calls — replacing the old self-heal that only re-indexed and was a no-op on the real backend. It restores the latest stranded copy per chunk id and rebuilds the lexical BM25 index (code/doc) so keyword search finds them.
+- **Self-heal is now recover-first, destroy-last, with a hard gate.** Stage 1 recovers (no API); only if it fully succeeds does stage 2 run — drop the manifest records of files that are *not fully recovered* (so they reindex like any unindexed file, after `deep_clean`), then `deep_clean`. A failed or partial recovery keeps stage 2 CLOSED, so the index is never dropped or purged on top of an unrecovered store.
+- **Self-heal result is surfaced.** A prominent startup notification fires only when recovery actually runs (or is blocked/incomplete), and `brainpalace status` shows the last result (restored / dropped / residue, or an INCOMPLETE warning). The healthy-start probe is also cheaper now — a `count()` pre-check skips the per-id scan when nothing is missing.
+- **`pkg_resources` crash no longer returns above setuptools 81.** The bare `setuptools >= 65` pin resolved to setuptools 82 on the pip-installed CLI venv — and setuptools **81 removed the vendored `pkg_resources`**, re-breaking code indexing and keyword search with "No module named 'pkg_resources'". Capped to `>=65,<81` until the `pkg_resources` import is dropped.
+
 ## [26.6.36] - 2026-06-12
 
 ### Changed
