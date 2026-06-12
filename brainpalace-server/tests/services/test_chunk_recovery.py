@@ -557,7 +557,9 @@ async def test_self_heal_unions_git_ids_into_recovery(monkeypatch, tmp_path):
     monkeypatch.setattr(startup_reconcile, "reconcile_folders", noop)
     monkeypatch.setattr(startup_reconcile, "deep_clean", noop)
     monkeypatch.setattr(
-        startup_reconcile, "_current_git_shas", lambda _p: {"sha1", "sha2"}
+        startup_reconcile,
+        "_indexable_git_shas",
+        lambda _p, config=None: {"sha1", "sha2"},
     )
 
     await startup_reconcile.self_heal_on_startup(
@@ -574,11 +576,12 @@ async def test_self_heal_unions_git_ids_into_recovery(monkeypatch, tmp_path):
     assert "git_commit:sha2" in captured["wanted"]
 
 
-async def test_self_heal_drops_unrecovered_files_and_enqueues_reindex(
+async def test_self_heal_marks_unrecovered_files_and_enqueues_reindex(
     monkeypatch, tmp_path
 ):
     # File f.py has chunks c1,c2; after recovery only c1 is present -> f.py is
-    # "not fully recovered" -> dropped from manifest -> reindex enqueued.
+    # "not fully recovered" -> marked pending_reindex (record + ids retained,
+    # so recovery keeps wanting c2) -> reindex enqueued.
     fm, mt = await _seed_manifest(tmp_path, ["c1", "c2"])
 
     async def fake_recover(**_):
@@ -621,7 +624,10 @@ async def test_self_heal_drops_unrecovered_files_and_enqueues_reindex(
     assert report["reindex_enqueued"] == 1
     assert len(jobs.calls) == 1
     man = await mt.load(str(tmp_path / "repo"))
-    assert man is None or "f.py" not in man.files  # dropped so it reindexes
+    # Record retained + marked: recovery keeps wanting c2 until the reindex
+    # verifies; nothing is forgotten if the reindex fails or the server crashes.
+    assert man.files["f.py"].pending_reindex is True
+    assert man.files["f.py"].chunk_ids == ["c1", "c2"]
 
 
 def test_recovery_events_roundtrip(tmp_path):

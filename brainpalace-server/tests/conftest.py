@@ -93,8 +93,15 @@ def _isolate_state_dir(tmp_path_factory, monkeypatch):
     real lifespan via ``TestClient`` fall back to ``CWD/.brainpalace`` and
     create a stray ``brainpalace-server/.brainpalace`` (or worse, write the
     repo's real index). Isolate it per test.
+
+    An empty ``config.yaml`` is planted so project-config discovery stops at
+    the state dir: without it, ``_find_project_config_file`` falls through to
+    the CWD walk-up and reads the REPO'S OWN ``.brainpalace/config.yaml``, so
+    a dev-machine setting (e.g. ``server.read_only: true``) leaks into every
+    test that resolves the project config layer.
     """
     state = tmp_path_factory.mktemp("bp_state")
+    (state / "config.yaml").write_text("{}\n")
     monkeypatch.setenv("BRAINPALACE_STATE_DIR", str(state))
     yield
 

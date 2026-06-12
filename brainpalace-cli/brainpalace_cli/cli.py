@@ -6,6 +6,8 @@ the BrainPalace RAG server.
 
 import click
 
+from brainpalace_cli.commands.read_only import read_only_command
+
 from . import __version__
 from .commands import (
     backfill_command,
@@ -128,6 +130,7 @@ cli.add_command(inject_command, name="inject")
 cli.add_command(jobs_command, name="jobs")
 cli.add_command(reset_command, name="reset")
 cli.add_command(config_group, name="config")
+cli.add_command(read_only_command, name="read-only")
 cli.add_command(plugin_group, name="plugin")
 cli.add_command(folders_group, name="folders")
 cli.add_command(types_group, name="types")

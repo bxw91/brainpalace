@@ -152,6 +152,7 @@ tmp/
 .claude/scheduled_tasks.lock
 brainpalace-server/.brainpalace/
 .brainpalace/
+.brainpalace-backup/
 integration/tests/quick_start/
 /DEV-WORKFLOW.md
 

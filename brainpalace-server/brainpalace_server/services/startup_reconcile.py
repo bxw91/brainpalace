@@ -47,12 +47,21 @@ def _authoritative_ids(manifest: Any) -> list[str]:
 
 @dataclass
 class StoreReconcileSummary:
-    """Outcome of the store→manifest reconcile (lost-chunk detection)."""
+    """Outcome of the store→manifest reconcile (lost-chunk detection).
+
+    ``files_dropped`` counts files NEWLY marked ``pending_reindex`` this run
+    (name kept for event-log/status compatibility). ``pending_folders`` lists
+    folders that still carry marks from a previous run whose reindex hasn't
+    landed yet — the caller re-enqueues those too, so a failed/crashed reindex
+    is retried on every start.
+    """
 
     folders_checked: int = 0
     folders_repaired: int = 0
     files_dropped: int = 0
     repaired_folders: list[str] = field(default_factory=list)
+    files_pending: int = 0
+    pending_folders: list[str] = field(default_factory=list)
 
 
 async def reconcile_store_against_manifest(
@@ -60,14 +69,20 @@ async def reconcile_store_against_manifest(
     manifest_tracker: Any,
     storage_backend: Any,
 ) -> StoreReconcileSummary:
-    """Drop manifest file records whose chunks the STORE has lost, so they re-index.
+    """Mark manifest file records whose chunks the STORE has lost, so they re-index.
 
     The inverse of :func:`reconcile_folders`: that trusts the manifest and
-    purges the store; this trusts the store's *existence* and prunes the
-    manifest. For every tracked folder it asks the backend which of the
-    manifest's chunk ids still exist, and removes any file whose chunks are
-    (partly or fully) gone — leaving no manifest record, so the next index run
-    treats the file as new and re-creates its chunks.
+    purges the store; this trusts the store's *existence*. For every tracked
+    folder it asks the backend which of the manifest's chunk ids still exist,
+    and flags any file whose chunks are (partly or fully) gone with
+    ``pending_reindex`` — the eviction diff then forces a reindex regardless of
+    mtime/checksum, and the add-then-swap pipeline replaces the record only
+    after the new chunks are safely upserted (**drop-after-verify**).
+
+    The record and its surviving chunk ids are KEPT, never deleted: stage-1
+    recovery keeps wanting the missing chunks on every start, and deep-clean's
+    manifest-orphan sweep keeps sparing the survivors. A failed reindex or a
+    crash in the window loses nothing — the mark persists and retries.
 
     This makes silent vector-store loss (a corrupt/healed HNSW that shed live
     vectors, a duplicate-server stomp) **detectable and self-repairing** instead
@@ -108,20 +123,30 @@ async def reconcile_store_against_manifest(
         lost_files = [
             fp
             for fp, frec in manifest.files.items()
-            if frec.chunk_ids and not set(frec.chunk_ids).issubset(present)
+            if frec.chunk_ids
+            and not frec.pending_reindex
+            and not set(frec.chunk_ids).issubset(present)
         ]
+        # Marks left by a previous run (reindex failed / crashed mid-window):
+        # nothing to re-mark, but the folder must be re-enqueued for retry.
+        already_pending = sum(
+            1 for frec in manifest.files.values() if frec.pending_reindex
+        )
+        if already_pending:
+            summary.files_pending += already_pending
+            summary.pending_folders.append(rec.folder_path)
         if not lost_files:
             continue
 
         for fp in lost_files:
-            del manifest.files[fp]
+            manifest.files[fp].pending_reindex = True
         try:
             await manifest_tracker.save(manifest)
-            survivors = _authoritative_ids(manifest)
+            authoritative = _authoritative_ids(manifest)
             await folder_manager.add_folder(
                 folder_path=rec.folder_path,
-                chunk_count=len(survivors),
-                chunk_ids=survivors,
+                chunk_count=len(authoritative),
+                chunk_ids=authoritative,
                 watch_mode=rec.watch_mode,
                 watch_debounce_seconds=rec.watch_debounce_seconds,
                 include_code=rec.include_code,
@@ -129,7 +154,7 @@ async def reconcile_store_against_manifest(
             )
         except Exception as exc:  # noqa: BLE001 — never fail startup on a heal
             logger.warning(
-                "reconcile(store): failed to prune manifest for %s: %s",
+                "reconcile(store): failed to mark manifest for %s: %s",
                 rec.folder_path,
                 exc,
             )
@@ -139,9 +164,9 @@ async def reconcile_store_against_manifest(
         summary.files_dropped += len(lost_files)
         summary.repaired_folders.append(rec.folder_path)
         logger.warning(
-            "reconcile(store): %s lost chunks for %d file(s) — dropped from "
-            "manifest so they re-index next run (manifest claimed %d chunks, "
-            "store has %d)",
+            "reconcile(store): %s lost chunks for %d file(s) — marked "
+            "pending_reindex; records kept until the reindex verifies "
+            "(manifest claimed %d chunks, store has %d)",
             rec.folder_path,
             len(lost_files),
             len(all_ids),
@@ -150,8 +175,8 @@ async def reconcile_store_against_manifest(
 
     if summary.folders_repaired:
         logger.warning(
-            "Startup store-reconcile: %d/%d folder(s) had lost chunks; dropped "
-            "%d file record(s) for re-index.",
+            "Startup store-reconcile: %d/%d folder(s) had lost chunks; marked "
+            "%d file record(s) pending_reindex (kept until reindex verifies).",
             summary.folders_repaired,
             summary.folders_checked,
             summary.files_dropped,
@@ -244,6 +269,32 @@ def _current_git_shas(repo_path: str) -> set[str] | None:
         logger.warning("git-clean: rev-list failed: %s", exc)
         return None
     return {line.strip() for line in out.stdout.splitlines() if line.strip()}
+
+
+def _indexable_git_shas(repo_path: str, config: Any = None) -> set[str] | None:
+    """Shas the git indexer can actually reach — the self-heal WANTED scope.
+
+    Mirrors the indexer exactly (``git log`` from HEAD, depth cap, monorepo
+    path scope via ``resolve_commit_scope`` — a BrainPalace project that is a
+    subfolder of a larger repo wants only commits touching that subfolder).
+    NOT ``rev-list --all``: commits reachable only from other branches are not
+    indexable, so wanting them reports phantom "need re-embed" residue
+    forever. The deep-clean keep-set (:func:`_current_git_shas`) intentionally
+    stays ``--all`` — never delete chunks of commits that still exist on any
+    ref. Disabled git indexing wants nothing. ``None`` = couldn't determine.
+    """
+    from brainpalace_server.config.git_config import load_git_indexing_config
+    from brainpalace_server.indexing.git_loader import (
+        list_indexable_shas,
+        resolve_commit_scope,
+    )
+
+    cfg = config if config is not None else load_git_indexing_config()
+    if not cfg.enabled:
+        return set()
+    target = cfg.repo_path or repo_path
+    scope = resolve_commit_scope(target, cfg.path_filter)
+    return list_indexable_shas(target, depth=cfg.depth, paths=scope)
 
 
 async def prune_orphan_git_chunks(
@@ -586,6 +637,7 @@ async def self_heal_on_startup(
     bm25_manager: Any = None,
     repo_path: str | None = None,
     job_service: Any = None,
+    read_only: bool = False,
 ) -> dict[str, Any]:
     """Recover lost chunks FIRST, then gate the destructive deep_clean on success.
 
@@ -623,13 +675,14 @@ async def self_heal_on_startup(
             manifests.append(await manifest_tracker.load(rec.folder_path))
         manifest_ids = _manifest_union(manifests)
 
-    # Add the git plane: every commit currently in the repo should have a
+    # Add the git plane: every commit the git indexer can reach should have a
     # git_commit chunk. Git chunks live in the same collection + embedding cache,
     # so a lost commit recovers from cache+dead exactly like code/doc — but git
-    # isn't manifest-tracked, so we source its wanted ids from the repo itself.
+    # isn't manifest-tracked, so we source its wanted ids from the repo itself,
+    # scoped exactly like the indexer (HEAD + monorepo path filter, not --all).
     git_ids: set[str] = set()
     if repo_path:
-        shas = _current_git_shas(repo_path)
+        shas = _indexable_git_shas(repo_path)
         if shas:
             git_ids = {f"git_commit:{sha}" for sha in shas}
 
@@ -648,15 +701,30 @@ async def self_heal_on_startup(
     report["recovery"] = summary
 
     # GATE: stage 2 (mutating + destructive) runs ONLY when recovery fully
-    # succeeded (or was N/A). A failed/partial recovery keeps the gate CLOSED so
-    # we never drop manifest records or delete on an unrecovered store.
-    gate_open = summary is None or summary.complete
+    # succeeded (or was N/A) AND we are not read-only. A failed/partial recovery
+    # keeps the gate CLOSED so we never drop manifest records or delete on an
+    # unrecovered store. Read-only forces the gate CLOSED unconditionally:
+    # stage-1 recovery (cache+dead, no network) already ran above, but we never
+    # drop manifest records, delete chunks, or enqueue a reindex.
+    if read_only:
+        gate_open = False
+        report["deep_clean_skipped_reason"] = "read-only mode"
+        logger.warning(
+            "self-heal: read-only — recovery ran (restored=%d) but SKIPPING "
+            "stage 2 (drop/clean/reindex); no deletes, no provider calls.",
+            int(getattr(summary, "restored", 0) or 0),
+        )
+    else:
+        gate_open = summary is None or summary.complete
     if gate_open:
-        # 2a. Drop manifest records for files NOT fully present in the store after
-        #     recovery (fully- OR partially-missing) so the next index treats them
-        #     as new and reindexes them like any unindexed file. Pure manifest
-        #     bookkeeping — NO API call here. (vector_store carries the
-        #     get_existing_ids probe the backend wrapper lacks.)
+        # 2a. MARK manifest records for files NOT fully present in the store
+        #     after recovery (fully- OR partially-missing) as pending_reindex.
+        #     Records + surviving chunk ids are KEPT — recovery keeps wanting
+        #     the missing chunks and deep-clean spares the survivors — and the
+        #     record is replaced only when the reindex verifies
+        #     (drop-after-verify via the pipeline's add-then-swap). Pure
+        #     manifest bookkeeping — NO API call here. (vector_store carries
+        #     the get_existing_ids probe the backend wrapper lacks.)
         drop = await reconcile_store_against_manifest(
             folder_manager, manifest_tracker, vector_store
         )
@@ -664,18 +732,22 @@ async def self_heal_on_startup(
         report["dropped_folders"] = list(drop.repaired_folders)
         # 2b. Heal folder records against the updated manifests.
         await reconcile_folders(folder_manager, manifest_tracker, storage_backend)
-        # 2c. Destructive existence purges. Deletes the now-orphaned restored
-        #     chunks of dropped partial files; they return on reindex (cache hits).
+        # 2c. Destructive existence purges. Marked files' surviving chunks stay
+        #     in the manifest union, so the orphan sweep cannot touch them.
         await deep_clean(folder_manager, manifest_tracker, storage_backend)
         report["deep_clean_ran"] = True
-        # 2d. AFTER deep_clean: reindex the dropped files like any unindexed file
-        #     (incremental folder index; embeddings come from the cache, only the
-        #     genuinely-gone residue hits the provider).
-        if drop.files_dropped and job_service is not None:
+        # 2d. AFTER deep_clean: reindex the marked files (incremental folder
+        #     index; embeddings come from the cache, only the genuinely-gone
+        #     residue hits the provider). Folders with marks left over from a
+        #     previous failed/crashed reindex are re-enqueued too.
+        reindex_folders = list(
+            dict.fromkeys(drop.repaired_folders + drop.pending_folders)
+        )
+        if reindex_folders and job_service is not None:
             report["reindex_enqueued"] = await _enqueue_folder_reindex(
-                job_service, folder_manager, drop.repaired_folders
+                job_service, folder_manager, reindex_folders
             )
-    else:
+    elif not read_only:
         assert summary is not None  # gate_open is False => summary present
         report["deep_clean_skipped_reason"] = (
             f"recovery incomplete (restored={summary.restored}/"

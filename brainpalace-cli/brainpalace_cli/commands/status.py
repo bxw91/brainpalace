@@ -33,6 +33,71 @@ def _load_bm25_config_for_status() -> dict[str, str]:
         return {}
 
 
+def _read_only_row(features: dict[str, Any]) -> tuple[str, str] | None:
+    """Return the (label, value) status row when read-only is active, else None."""
+    if features.get("read_only"):
+        return (
+            "Read-Only",
+            "[red]ON[/] — provider calls disabled (embedding/summarization/"
+            "remote-rerank off; vector queries → BM25; indexing skipped)",
+        )
+    return None
+
+
+# Canonical reason the server records when stage-2 is skipped *because* the
+# server is read-only (set in startup_reconcile.self_heal_on_startup). Matching
+# it lets status distinguish the intentional skip from a genuine incomplete
+# recovery. Keep in sync with the server literal.
+_READ_ONLY_SKIP_REASON = "read-only mode"
+
+
+def _self_heal_row(features: dict[str, Any]) -> tuple[str, str] | None:
+    """Return the (label, value) row for the last self-heal recovery, else None.
+
+    Distinguishes three outcomes so a healthy run is never shown as a problem:
+      * genuine failure/incomplete recovery → red ``⚠ INCOMPLETE … fix + restart``
+      * intentional read-only stage-2 skip (recovery succeeded, nothing deleted)
+        → green ``recovered X/Y … stage 2 skipped — read-only (no deletes)``
+      * complete recovery → green ``restored X … N re-indexing … M need re-index``
+    """
+    self_heal = features.get("self_heal")
+    if not isinstance(self_heal, dict):
+        return None
+    last = self_heal.get("last")
+    if not isinstance(last, dict):
+        return None
+
+    restored = int(last.get("restored", 0) or 0)
+    recoverable = int(last.get("recoverable", 0) or 0)
+    reason = last.get("incomplete_reason")
+
+    if last.get("error"):
+        return (
+            "Self-Heal",
+            f"[red]⚠ INCOMPLETE[/] — restored {restored:,}/{recoverable:,}; "
+            f"stage 2 skipped to protect data — fix + restart",
+        )
+    if reason == _READ_ONLY_SKIP_REASON:
+        return (
+            "Self-Heal",
+            f"[green]recovered {restored:,}/{recoverable:,} chunk(s)[/] from "
+            f"cache+dead (no re-embed); stage 2 skipped — read-only (no deletes)",
+        )
+    if reason:
+        return (
+            "Self-Heal",
+            f"[red]⚠ INCOMPLETE[/] — restored {restored:,}/{recoverable:,}; "
+            f"stage 2 skipped to protect data — fix + restart",
+        )
+    dropped_f = int(last.get("files_dropped", 0) or 0)
+    residue = int(last.get("residue", 0) or 0)
+    return (
+        "Self-Heal",
+        f"[green]restored {restored:,} chunk(s)[/] from cache+dead (no re-embed); "
+        f"{dropped_f:,} file(s) re-indexing ({residue:,} chunk(s) need re-embed)",
+    )
+
+
 def _status_all(json_output: bool) -> None:
     """Show detailed status for every running registered server (B2b)."""
     import json
@@ -381,28 +446,17 @@ def status_command(
                         f"re-index to recover (brainpalace index . --force)",
                     )
 
-            # Self-heal recovery (lost chunks restored from cache+dead at start)
-            self_heal = features.get("self_heal")
-            if isinstance(self_heal, dict):
-                last = self_heal.get("last") or {}
-                if last.get("error") or last.get("incomplete_reason"):
-                    table.add_row(
-                        "Self-Heal",
-                        f"[red]⚠ INCOMPLETE[/] — restored "
-                        f"{int(last.get('restored', 0) or 0):,}/"
-                        f"{int(last.get('recoverable', 0) or 0):,}; stage 2 skipped "
-                        f"to protect data — fix + restart",
-                    )
-                else:
-                    restored = int(last.get("restored", 0) or 0)
-                    dropped_f = int(last.get("files_dropped", 0) or 0)
-                    residue = int(last.get("residue", 0) or 0)
-                    table.add_row(
-                        "Self-Heal",
-                        f"[green]restored {restored:,} chunk(s)[/] from cache+dead "
-                        f"(no re-embed); {dropped_f:,} file(s) re-indexing; "
-                        f"{residue:,} need re-index",
-                    )
+            # Read-only mode banner (master provider kill switch) — show first.
+            _ro_row = _read_only_row(features)
+            if _ro_row is not None:
+                table.add_row(*_ro_row)
+
+            # Self-heal recovery (lost chunks restored from cache+dead at start).
+            # The read-only stage-2 skip is shown as a healthy outcome, not a
+            # scary "INCOMPLETE" — see _self_heal_row.
+            sh_row = _self_heal_row(features)
+            if sh_row is not None:
+                table.add_row(*sh_row)
 
             # Show BM25 language/engine from local config.yaml (Task 16)
             if bm25_cfg:

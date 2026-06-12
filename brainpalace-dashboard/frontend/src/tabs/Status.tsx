@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { FileText, Boxes, FolderTree, Share2, GitCommit } from "lucide-react";
+import { FileText, Boxes, FolderTree, Share2, GitCommit, Lock } from "lucide-react";
 import { getInstanceStatus, getInstanceHealth, getConfig } from "../api/client";
 import { StatCard } from "../components/StatCard";
 import { useOptionalSelectedInstance } from "../state/selectedInstance";
@@ -124,8 +124,38 @@ export function Status({ instanceId }: { instanceId?: string }) {
       ? `${(cache.hit_rate * 100).toFixed(1)}%`
       : "—";
 
+  // Read-only mode + self-heal + index-health — mirror `brainpalace status`.
+  const readOnly = features.read_only === true;
+  const heal = obj(obj(features.self_heal).last);
+  const hasHeal =
+    heal.error != null || heal.incomplete_reason != null || heal.restored != null;
+  const healReadOnlySkip = heal.incomplete_reason === "read-only mode";
+  const healIncomplete = !!heal.error || (!!heal.incomplete_reason && !healReadOnlySkip);
+  const indexHealth = obj(features.index_health);
+  const healEvents = num(indexHealth.heal_events);
+  const healDropped = num(indexHealth.total_dropped);
+
   return (
     <div data-testid="tab-status" className="flex flex-col gap-6">
+      {readOnly && (
+        <div
+          data-testid="readonly-banner"
+          role="status"
+          className="flex items-start gap-2 rounded-lg border border-warn/30 bg-warn/15 px-4 py-3 text-sm text-warn"
+        >
+          <Lock className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+          <span>
+            <span className="font-semibold">Read-only mode is ON.</span> Provider calls
+            are disabled (embedding, summarization, remote rerank); indexing jobs are
+            skipped and self-heal will not delete; vector/hybrid queries fall back to
+            BM25. Toggle with{" "}
+            <code className="rounded bg-ink-900/40 px-1 py-0.5 font-mono text-xs">
+              brainpalace read-only off
+            </code>{" "}
+            (restart to apply).
+          </span>
+        </div>
+      )}
       {/* Headline cards */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard
@@ -263,6 +293,54 @@ export function Status({ instanceId }: { instanceId?: string }) {
                 : "off"
             }
           />
+          {healEvents > 0 && healDropped > 0 && (
+            <Row
+              label="Index health"
+              value={
+                <span className="text-warn">
+                  ⚠ {fmt(healEvents)} heal event(s), ~{fmt(healDropped)} vectors shed —
+                  re-index to recover
+                </span>
+              }
+            />
+          )}
+          {readOnly && (
+            <Row
+              label="Read-only"
+              value={
+                <span className="text-warn">
+                  ON — provider calls disabled (embedding/summarization/remote-rerank
+                  off; vector queries → BM25; indexing skipped)
+                </span>
+              }
+            />
+          )}
+          {hasHeal && (
+            <Row
+              label="Self-heal"
+              value={
+                healIncomplete ? (
+                  <span className="text-bad">
+                    ⚠ incomplete — restored {fmt(num(heal.restored))}/
+                    {fmt(num(heal.recoverable))}; stage 2 skipped to protect data — fix
+                    + restart
+                  </span>
+                ) : healReadOnlySkip ? (
+                  <span className="text-warn">
+                    recovered {fmt(num(heal.restored))}/{fmt(num(heal.recoverable))}{" "}
+                    chunk(s) from cache+dead (no re-embed); stage 2 skipped — read-only
+                    (no deletes)
+                  </span>
+                ) : (
+                  <span className="text-run">
+                    restored {fmt(num(heal.restored))} chunk(s) from cache+dead (no
+                    re-embed); {fmt(num(heal.files_dropped))} file(s) re-indexing (
+                    {fmt(num(heal.residue))} chunk(s) need re-embed)
+                  </span>
+                )
+              }
+            />
+          )}
           <Row
             label="BM25 language"
             value={`${bm25.language ?? "en"} (engine: ${bm25.engine ?? "stem"})`}

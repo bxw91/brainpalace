@@ -7,6 +7,7 @@ import logging
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
+from brainpalace_server.config.runtime_mode import is_read_only
 from brainpalace_server.job_queue.job_store import JobQueueStore
 from brainpalace_server.models import IndexingState, IndexingStatusEnum, IndexRequest
 from brainpalace_server.models.job import JobProgress, JobRecord, JobStatus
@@ -271,6 +272,20 @@ class JobWorker:
         self._current_job = job
 
         try:
+            # Read-only gate: no embed-producing job runs (folder index, git
+            # history, session index). End SKIPPED with a reason — zero embed,
+            # zero eviction, zero delete. Neutralises file-watcher / self-heal
+            # auto-enqueues so they can never trigger the destructive reindex
+            # that, offline, fails and strands data.
+            if is_read_only():
+                job.status = JobStatus.SKIPPED
+                job.started_at = datetime.now(timezone.utc)
+                job.finished_at = datetime.now(timezone.utc)
+                job.error = "server is read-only — indexing disabled"
+                await self._job_store.update_job(job)
+                logger.info("Job %s skipped: server is read-only", job.id)
+                return
+
             # -- git_history jobs bypass the entire doc pipeline -------------
             if job.job_type == "git_history":
                 await self._process_git_job(job)

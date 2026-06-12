@@ -135,9 +135,11 @@ def _storage_existing(present_ids):
 
 
 @pytest.mark.asyncio
-async def test_store_reconcile_drops_files_with_lost_chunks(tmp_path):
+async def test_store_reconcile_marks_files_with_lost_chunks(tmp_path):
     # Manifest claims x.py=[a,b] and y.py=[c]; the store lost c. y.py must be
-    # dropped from the manifest so it re-indexes; x.py kept.
+    # MARKED pending_reindex — record + chunk ids retained so recovery keeps
+    # wanting them and deep-clean spares the surviving chunks. The record is
+    # replaced only when the reindex verifies (add-then-swap in the pipeline).
     folder = str(tmp_path / "repo")
     fm, mt = await _seed(
         tmp_path,
@@ -151,16 +153,37 @@ async def test_store_reconcile_drops_files_with_lost_chunks(tmp_path):
     summary = await reconcile_store_against_manifest(fm, mt, storage)
 
     assert summary.folders_repaired == 1
-    assert summary.files_dropped == 1
-    # Manifest pruned: only x.py survives.
+    assert summary.files_dropped == 1  # counts files marked for reindex
+    # Record retained, marked, ids intact.
     man = await mt.load(folder)
-    assert set(man.files) == {f"{folder}/x.py"}
-    # Folder record rebuilt from survivors.
+    assert set(man.files) == {f"{folder}/x.py", f"{folder}/y.py"}
+    assert man.files[f"{folder}/y.py"].pending_reindex is True
+    assert man.files[f"{folder}/y.py"].chunk_ids == ["c"]
+    assert man.files[f"{folder}/x.py"].pending_reindex is False
+    # Folder record still references ALL manifest ids (recovery keeps wanting c).
     rec = await fm.get_folder(folder)
-    assert sorted(rec.chunk_ids) == ["a", "b"]
-    assert rec.chunk_count == 2
+    assert sorted(rec.chunk_ids) == ["a", "b", "c"]
+    assert rec.chunk_count == 3
     # Never deletes store chunks.
     assert not storage.delete_by_ids.await_count
+
+
+@pytest.mark.asyncio
+async def test_pending_reindex_survives_manifest_roundtrip(tmp_path):
+    """pending_reindex must persist across save/load (crash between mark and
+    reindex must not lose the retry); legacy manifests default to False."""
+    folder = "/proj"
+    mt = ManifestTracker(manifests_dir=tmp_path / "m")
+    man = FolderManifest(folder_path=folder)
+    man.files["/proj/a.py"] = FileRecord(
+        checksum="x", mtime=1.0, chunk_ids=["c1"], pending_reindex=True
+    )
+    man.files["/proj/b.py"] = FileRecord(checksum="y", mtime=1.0, chunk_ids=["c2"])
+    await mt.save(man)
+
+    loaded = await mt.load(folder)
+    assert loaded.files["/proj/a.py"].pending_reindex is True
+    assert loaded.files["/proj/b.py"].pending_reindex is False
 
 
 @pytest.mark.asyncio
@@ -472,3 +495,101 @@ async def test_git_purge_empty_repo_purges_all(tmp_path, monkeypatch):
 
     storage.delete_by_ids.assert_awaited_once_with(["git_commit:aaa"])
     assert summary.git_chunks_removed == 1
+
+
+# ---------------------------------------------------------------------------
+# _indexable_git_shas — the self-heal WANTED scope must mirror the git indexer
+# (git log from HEAD, monorepo path scope), never `rev-list --all`.
+# ---------------------------------------------------------------------------
+
+
+def _git(repo, *args) -> str:
+    import subprocess
+
+    return subprocess.run(
+        ["git", "-C", str(repo), *args],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+
+def _init_repo(path):
+    path.mkdir(parents=True, exist_ok=True)
+    _git(path, "init", "-q", "-b", "main")
+    _git(path, "config", "user.email", "t@t")
+    _git(path, "config", "user.name", "t")
+    return path
+
+
+def _commit(repo, relpath: str, msg: str) -> str:
+    f = repo / relpath
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(msg)
+    _git(repo, "add", str(relpath))
+    _git(repo, "commit", "-q", "-m", msg)
+    return _git(repo, "rev-parse", "HEAD")
+
+
+def _git_cfg(**kw):
+    from brainpalace_server.config.git_config import GitIndexingConfig
+
+    return GitIndexingConfig(enabled=True, **kw)
+
+
+def test_indexable_git_shas_follow_head_not_all_refs(tmp_path):
+    """Commits reachable only from other branches are NOT indexable — wanting
+    them (rev-list --all) reported phantom 'need re-embed' residue forever."""
+    import brainpalace_server.services.startup_reconcile as sr
+
+    repo = _init_repo(tmp_path / "repo")
+    sha_main = _commit(repo, "a.txt", "on main")
+    _git(repo, "checkout", "-q", "-b", "side")
+    sha_side = _commit(repo, "b.txt", "on side")
+    _git(repo, "checkout", "-q", "main")
+
+    shas = sr._indexable_git_shas(str(repo), config=_git_cfg())
+    assert sha_main in shas
+    assert sha_side not in shas
+
+
+def test_indexable_git_shas_scope_to_project_subdir_in_monorepo(tmp_path):
+    """BrainPalace project in a monorepo subfolder: only commits touching the
+    subfolder are indexable, not the whole repo's history."""
+    import brainpalace_server.services.startup_reconcile as sr
+
+    repo = _init_repo(tmp_path / "mono")
+    sha_sub = _commit(repo, "proj/code.py", "touches project")
+    sha_other = _commit(repo, "elsewhere/other.txt", "outside project")
+
+    shas = sr._indexable_git_shas(str(repo / "proj"), config=_git_cfg())
+    assert sha_sub in shas
+    assert sha_other not in shas
+
+
+def test_indexable_git_shas_disabled_wants_nothing(tmp_path):
+    import brainpalace_server.services.startup_reconcile as sr
+    from brainpalace_server.config.git_config import GitIndexingConfig
+
+    repo = _init_repo(tmp_path / "repo")
+    _commit(repo, "a.txt", "x")
+
+    shas = sr._indexable_git_shas(str(repo), config=GitIndexingConfig(enabled=False))
+    assert shas == set()
+
+
+def test_indexable_git_shas_respects_depth_cap(tmp_path):
+    import brainpalace_server.services.startup_reconcile as sr
+
+    repo = _init_repo(tmp_path / "repo")
+    _commit(repo, "a.txt", "first")
+    sha_new = _commit(repo, "b.txt", "second")
+
+    shas = sr._indexable_git_shas(str(repo), config=_git_cfg(depth=1))
+    assert shas == {sha_new}
+
+
+def test_indexable_git_shas_not_a_repo_returns_none(tmp_path):
+    import brainpalace_server.services.startup_reconcile as sr
+
+    assert sr._indexable_git_shas(str(tmp_path / "void"), config=_git_cfg()) is None

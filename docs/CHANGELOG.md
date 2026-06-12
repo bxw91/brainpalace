@@ -15,6 +15,63 @@ Entries are kept short (≤ 3 sentences); see
 
 ---
 
+## [26.6.38] - 2026-06-12
+
+### Added
+- **Automatic vector-store compaction.** Collection recreations strand dead rows
+  in `chroma.sqlite3` that can balloon to several copies of the index, so a
+  startup whose self-heal verifies the index complete now compacts heavy bloat
+  away — live collections copied to a fresh persist dir (no re-embed), verified,
+  atomically swapped, audited in `compact-events.jsonl`. Threshold-gated, so
+  healthy stores pay nothing.
+- **Manifest hardening — drop-after-verify.** Self-heal now marks
+  not-fully-recovered files `pending_reindex` instead of deleting their manifest
+  records, keeping the record and surviving chunk ids while the eviction diff
+  forces a reindex regardless of mtime. The record is replaced only after the
+  add-then-swap upsert lands, so a crash in the window loses nothing and retries
+  on every start.
+
+### Fixed
+- **Stale git-history jobs are no longer replayed as folder reindexes.** The
+  crash-recovery re-enqueue rebuilt an `IndexRequest` from a `git_history` job
+  record — which carries `folder_path=<repo root>` and the `include_code=False`
+  field default — running a documents-only index that evicted every code chunk
+  as "deleted". Only `documents` jobs are re-enqueue candidates now.
+- **Out-of-scope files are no longer treated as deletions.** An incremental
+  index that didn't load a prior-manifest file (e.g. `include_code=False` over
+  a code-indexed folder, a changed exclude pattern) only evicts its chunks when
+  the file is also gone from disk; files still on disk keep their chunks and
+  manifest record.
+- **The per-job embedding token budget counts only cache misses.** Cached
+  chunks cost no provider call, so a self-heal/recovery reindex whose
+  embeddings sit in the embedding cache is no longer blocked by
+  `BudgetExceededError` over its raw token size.
+- **Self-heal's wanted git scope now mirrors the git indexer.** It wanted
+  `rev-list --all` while the indexer walks HEAD with the monorepo path scope,
+  so commits reachable only from other branches showed as phantom
+  "N chunk(s) need re-embed" residue forever. Deep-clean's keep-set stays
+  `--all` (never deletes chunks of commits alive on any ref).
+
+### Added
+- **Read-only mode** (`server.read_only` / `BRAINPALACE_READ_ONLY`): master
+  provider kill switch that disables embedding, summarization and remote rerank
+  — indexing jobs end `skipped` (zero deletes), startup self-heal recovers from
+  cache only and skips destructive cleanup, and vector/hybrid/multi queries fall
+  back to BM25. Toggle via `brainpalace read-only on|off|status` or the dashboard
+  Config toggle; prevents the offline self-heal data-loss cascade.
+- **Dashboard surfaces read-only + self-heal.** The per-instance Status page
+  shows a read-only banner plus Read-Only, Self-Heal and Index-Health rows
+  (parity with `brainpalace status`).
+
+### Changed
+- **Self-heal status no longer cries "INCOMPLETE" for the read-only skip.** When
+  stage 2 is skipped *because* the server is read-only, `brainpalace status` and
+  the dashboard now show a healthy "recovered X/Y … stage 2 skipped — read-only
+  (no deletes)" instead of the alarming "⚠ INCOMPLETE … fix + restart" (that copy
+  is reserved for a genuine failed/partial recovery).
+- **Dashboard log-alerts wrap instead of truncating** so long self-heal / error
+  lines are fully readable.
+
 ## [26.6.37] - 2026-06-12
 
 ### Fixed

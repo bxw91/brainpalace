@@ -192,8 +192,21 @@ class ChunkEvictionService:
         cooldown = indexing_config.reembed_cooldown_seconds
         now = time.time()
 
-        files_deleted = list(prior_set - current_set)
-        files_unchanged: list[str] = []
+        # A prior-manifest file missing from the loaded set is a DELETION only
+        # when it is also gone from disk. A file still on disk that the loader
+        # skipped is merely out of this run's scope (include_code=False over a
+        # previously code-indexed folder, a changed exclude pattern, …) — its
+        # chunks and manifest record must survive. Treating scope as deletion
+        # once evicted an entire project's code chunks in a single
+        # documents-only run.
+        files_deleted: list[str] = []
+        files_out_of_scope: list[str] = []
+        for fp in prior_set - current_set:
+            if os.path.exists(fp):
+                files_out_of_scope.append(fp)
+            else:
+                files_deleted.append(fp)
+        files_unchanged: list[str] = list(files_out_of_scope)
         files_added: list[str] = []
         files_changed: list[str] = []
         files_deferred: list[str] = []
@@ -205,6 +218,15 @@ class ChunkEvictionService:
                 files_to_index.append(fp)
             else:
                 prior_rec = prior.files[fp]
+                if getattr(prior_rec, "pending_reindex", False):
+                    # Self-heal marked this file: some chunks unrecoverable.
+                    # Force a reindex regardless of mtime/checksum (and skip
+                    # the re-embed cooldown — restoring lost data must not
+                    # wait). Surviving old chunks swap out only after the new
+                    # upsert (drop-after-verify).
+                    files_changed.append(fp)
+                    files_to_index.append(fp)
+                    continue
                 try:
                     stat_result = os.stat(fp)
                     current_mtime = stat_result.st_mtime
@@ -271,13 +293,19 @@ class ChunkEvictionService:
             if deferred_evict_ids
             else ""
         )
+        scope_note = (
+            f" ({len(files_out_of_scope)} out-of-scope file(s) kept — on disk "
+            "but not loaded this run)"
+            if files_out_of_scope
+            else ""
+        )
         logger.info(
             f"Manifest diff for {folder_path}: "
             f"+{len(files_added)} added "
             f"~{len(files_changed)} changed "
             f"-{len(files_deleted)} deleted "
             f"={len(files_unchanged)} unchanged, "
-            f"{chunks_evicted} chunks evicted{deferred_note}{swap_note}"
+            f"{chunks_evicted} chunks evicted{deferred_note}{swap_note}{scope_note}"
         )
 
         return (
@@ -290,6 +318,7 @@ class ChunkEvictionService:
                 chunks_to_create=len(files_to_index),
                 files_deferred=files_deferred,
                 deferred_evict_ids=deferred_evict_ids,
+                files_out_of_scope=files_out_of_scope,
             ),
             files_to_index,
         )

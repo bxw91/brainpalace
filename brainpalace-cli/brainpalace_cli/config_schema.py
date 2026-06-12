@@ -102,7 +102,7 @@ GRAPHRAG_KNOWN_FIELDS = {
     "doc_extractor",
 }
 API_KNOWN_FIELDS = {"host", "port"}
-SERVER_KNOWN_FIELDS = {"url", "host", "port", "auto_port"}
+SERVER_KNOWN_FIELDS = {"url", "host", "port", "auto_port", "read_only"}
 PROJECT_KNOWN_FIELDS = {"state_dir", "project_root"}
 QUERY_LOG_KNOWN_FIELDS = {"enabled", "retention_days"}
 # Control-plane (dashboard process) settings — global only. Mirrors
@@ -308,6 +308,7 @@ _SECTION_SCHEMA: dict[str, dict[str, Any]] = {
         "type_fields": {
             "port": (int, "server.port must be an integer"),
             "auto_port": (bool, "server.auto_port must be a boolean (true/false)"),
+            "read_only": (bool, "server.read_only must be a boolean (true/false)"),
         },
     },
     "project": {

@@ -17,6 +17,7 @@ class JobStatus(str, Enum):
     DONE = "done"
     FAILED = "failed"
     CANCELLED = "cancelled"
+    SKIPPED = "skipped"
 
 
 class JobProgress(BaseModel):

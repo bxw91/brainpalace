@@ -20,6 +20,7 @@ def _rec(
     folder: str,
     status: JobStatus,
     retry_count: int = 0,
+    job_type: str = "documents",
 ) -> JobRecord:
     return JobRecord(
         id=job_id,
@@ -29,6 +30,7 @@ def _rec(
         folder_path=folder,
         status=status,
         retry_count=retry_count,
+        job_type=job_type,
         started_at=datetime.now(timezone.utc),
     )
 
@@ -76,3 +78,26 @@ def test_folder_with_only_failed_job_excluded() -> None:
 
 def test_empty_input() -> None:
     assert select_reenqueue_candidates([]) == []
+
+
+def test_git_history_jobs_are_excluded() -> None:
+    """A stale git_history job must never be replayed as a folder reindex.
+
+    Regression: a git job record carries folder_path=<project root> and the
+    include_code field default (False); replaying it through
+    reenqueue_from_record ran a documents-only index over the whole project,
+    which evicted every code chunk as "deleted". Git boot-indexing re-enqueues
+    itself on every startup anyway, so stale git jobs need no replay.
+    """
+    stale = [_rec("j_git", "/p/a", JobStatus.PENDING, job_type="git_history")]
+    assert select_reenqueue_candidates(stale) == []
+
+
+def test_git_job_does_not_shadow_documents_job_for_same_folder() -> None:
+    """A skipped git job must not consume the folder's dedupe slot."""
+    stale = [
+        _rec("j_git", "/p/a", JobStatus.PENDING, job_type="git_history"),
+        _rec("j_doc", "/p/a", JobStatus.PENDING),
+    ]
+    picked = select_reenqueue_candidates(stale)
+    assert [j.id for j in picked] == ["j_doc"]

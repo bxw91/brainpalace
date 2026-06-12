@@ -73,7 +73,8 @@ else:
 def select_reenqueue_candidates(stale_jobs: list[JobRecord]) -> list[JobRecord]:
     """Choose which recovered stale jobs to auto-reindex (D14).
 
-    Picks at most one job per folder and **excludes permanently-FAILED jobs**.
+    Picks at most one **document** job per folder and **excludes
+    permanently-FAILED jobs**.
 
     A stale job is marked FAILED by ``_handle_stale_jobs`` only after its retry
     budget is exhausted. Re-enqueuing such a job mints a fresh ``retry_count=0``
@@ -83,15 +84,24 @@ def select_reenqueue_candidates(stale_jobs: list[JobRecord]) -> list[JobRecord]:
     of staying failed. Only jobs reset to PENDING — still under the retry cap —
     are eligible for re-enqueue.
 
+    Non-document jobs are never replayed: ``reenqueue_from_record`` rebuilds an
+    ``IndexRequest`` from the record, but a ``git_history`` record carries
+    ``folder_path=<repo root>`` and the ``include_code`` field default (False),
+    so replaying one runs a documents-only index over the whole project that
+    evicts every code chunk as "deleted". The git boot-index is enqueued on
+    every startup anyway, so a stale git job needs no replay.
+
     Args:
         stale_jobs: Records returned by ``JobQueueStore.initialize()``.
 
     Returns:
-        Deduped-by-folder list of jobs to re-enqueue, FAILED jobs removed.
+        Deduped-by-folder list of document jobs to re-enqueue.
     """
     seen_folders: set[str] = set()
     candidates: list[JobRecord] = []
     for job in stale_jobs:
+        if job.job_type != "documents":
+            continue
         if job.status == JobStatus.FAILED:
             continue
         if job.folder_path in seen_folders:

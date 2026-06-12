@@ -85,6 +85,10 @@ def _make_indexing_service(
     mock_embedding_gen.embed_chunks = AsyncMock(
         return_value=[[0.1] * 1536 for _ in chunks]
     )
+    # No cache in tests: every text is a budget-relevant miss.
+    mock_embedding_gen.uncached_indices = AsyncMock(
+        side_effect=lambda texts: list(range(len(texts)))
+    )
 
     mock_bm25 = MagicMock()
     mock_bm25.build_index = MagicMock()

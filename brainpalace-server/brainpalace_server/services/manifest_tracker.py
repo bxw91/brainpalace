@@ -34,6 +34,12 @@ class FileRecord:
             the re-embed cooldown treats that as "embed once".
         size_bytes: File size in bytes at last embed (Phase L). 0 = unknown
             (legacy manifest).
+        pending_reindex: Self-heal found some of this file's chunks
+            unrecoverable. The record (and its surviving chunk ids) is kept —
+            so recovery keeps wanting the missing chunks and deep-clean spares
+            the survivors — and the eviction diff forces a reindex regardless
+            of mtime/checksum. Cleared by the fresh record the successful
+            reindex writes (drop-after-verify).
     """
 
     checksum: str
@@ -41,6 +47,7 @@ class FileRecord:
     chunk_ids: list[str]
     last_embedded_at: float = 0.0
     size_bytes: int = 0
+    pending_reindex: bool = False
 
 
 @dataclass
@@ -75,6 +82,11 @@ class EvictionSummary:
             them only AFTER the new chunks are safely upserted, so a crash
             mid-reindex leaves the old chunks intact instead of losing data.
             Distinct from ``files_deferred`` (a re-embed-cooldown concept).
+        files_out_of_scope: Prior-manifest files the current run did NOT load
+            but that still exist on disk — out of the run's scope (e.g. an
+            include_code=False run over a folder previously indexed with code),
+            NOT deletions. Their chunks survive and their records carry over
+            (they are also listed in ``files_unchanged`` for that purpose).
     """
 
     files_added: list[str]
@@ -85,6 +97,7 @@ class EvictionSummary:
     chunks_to_create: int
     files_deferred: list[str] = field(default_factory=list)
     deferred_evict_ids: list[str] = field(default_factory=list)
+    files_out_of_scope: list[str] = field(default_factory=list)
 
 
 class ManifestTracker:
@@ -228,6 +241,7 @@ class ManifestTracker:
                 # Phase L fields — absent in legacy manifests, default to 0.
                 last_embedded_at=rec.get("last_embedded_at", 0.0),
                 size_bytes=rec.get("size_bytes", 0),
+                pending_reindex=rec.get("pending_reindex", False),
             )
             for fp, rec in data.get("files", {}).items()
         }
@@ -259,6 +273,7 @@ class ManifestTracker:
                     "chunk_ids": rec.chunk_ids,
                     "last_embedded_at": rec.last_embedded_at,
                     "size_bytes": rec.size_bytes,
+                    "pending_reindex": rec.pending_reindex,
                 }
                 for fp, rec in manifest.files.items()
             },

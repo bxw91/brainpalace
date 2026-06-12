@@ -33,7 +33,7 @@ allowed_tools:
   - "Edit(~/.config/brainpalace/**)"
   - "Write(.claude/brainpalace/**)"
   - "Edit(.claude/brainpalace/**)"
-last_validated: 2026-06-11
+last_validated: 2026-06-12
 ---
 
 # Setup Assistant Agent
@@ -482,6 +482,8 @@ Index git commit history? [y/N]
 ## YAML Configuration Management
 
 Guide users through YAML config setup:
+
+- **Read-only mode:** `brainpalace read-only on|off|status` toggles `server.read_only` (master kill switch: disables embedding/summarization/remote-rerank, skips indexing + destructive self-heal, vector queries fall back to BM25; needs a restart; env: `BRAINPALACE_READ_ONLY`).
 
 ```bash
 # Show current configuration

@@ -155,6 +155,8 @@ async def test_incremental_deleted_file_chunks_evicted(tmp_path: Path) -> None:
     current_files = [file_a]
 
     def fake_stat(fp: str, **kwargs: object) -> object:
+        if fp == file_b:  # gone from disk (os.path.exists also uses os.stat)
+            raise FileNotFoundError(fp)
         return type("FakeStat", (), {"st_mtime": 100.0})()
 
     with patch(
@@ -257,6 +259,8 @@ async def test_defer_changed_eviction_holds_changed_evicts_deleted(
     service = ChunkEvictionService(manifest_tracker=tracker, storage_backend=storage)
 
     def fake_stat(fp: str, **kwargs: object) -> object:
+        if fp == gone:  # gone from disk (os.path.exists also uses os.stat)
+            raise FileNotFoundError(fp)
         return type("FakeStat", (), {"st_mtime": 999.0})()
 
     with (
@@ -473,6 +477,8 @@ async def test_mixed_diff_scenario(tmp_path: Path) -> None:
     current_files = [file_unchanged, file_changed, file_new]
 
     def fake_stat(fp: str, **kwargs: object) -> object:
+        if fp == file_deleted:  # gone from disk (os.path.exists uses os.stat)
+            raise FileNotFoundError(fp)
         if fp == file_unchanged:
             return type("FakeStat", (), {"st_mtime": 1.0})()  # mtime unchanged
         return type("FakeStat", (), {"st_mtime": 999.0})()  # mtime changed
@@ -730,3 +736,122 @@ async def test_cooldown_zero_disables_throttle(tmp_path: Path) -> None:
     )
     assert summary.files_deferred == []
     assert summary.files_changed == [fp]
+
+
+# ---------------------------------------------------------------------------
+# Test: out-of-scope files (on disk but not loaded) are NOT deletions
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_out_of_scope_file_still_on_disk_is_not_deleted(
+    tmp_path: Path,
+) -> None:
+    """A prior-manifest file the current run did not load but that still exists
+    on disk is OUT OF SCOPE (e.g. an include_code=False run over a folder
+    previously indexed with code), not deleted: its chunks survive and its
+    manifest record carries over via files_unchanged.
+
+    Regression: a documents-only reindex over a code-indexed folder treated
+    every code file as deleted and evicted all code chunks in one run.
+    """
+    folder = str(tmp_path)
+    code = tmp_path / "main.py"
+    code.write_text("print('x')\n")
+    doc = tmp_path / "readme.md"
+    doc.write_text("# hi\n")
+
+    manifest = FolderManifest(folder_path=folder)
+    manifest.files[str(doc)] = FileRecord(
+        checksum="doc-sum",
+        mtime=os.stat(doc).st_mtime,
+        chunk_ids=["doc-1"],
+    )
+    manifest.files[str(code)] = FileRecord(
+        checksum="code-sum",
+        mtime=os.stat(code).st_mtime,
+        chunk_ids=["code-1", "code-2"],
+    )
+    tracker = await make_tracker_with_manifest(tmp_path / "state", folder, manifest)
+    storage = make_mock_storage()
+    service = ChunkEvictionService(manifest_tracker=tracker, storage_backend=storage)
+
+    summary, files_to_index = await service.compute_diff_and_evict(
+        folder_path=folder,
+        current_files=[str(doc)],  # docs-only scope: code file not loaded
+        force=False,
+    )
+
+    assert summary.files_deleted == []
+    assert summary.files_out_of_scope == [str(code)]
+    # Record (and therefore chunks + BM25 survivors) carry over as unchanged.
+    assert str(code) in summary.files_unchanged
+    assert str(doc) in summary.files_unchanged
+    assert files_to_index == []
+    storage.delete_by_ids.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_pending_reindex_file_is_reindexed_with_deferred_swap(
+    tmp_path: Path,
+) -> None:
+    """A file marked pending_reindex (self-heal: some chunks unrecoverable)
+    must reindex even though mtime/checksum are unchanged — and its surviving
+    old chunks are evicted only AFTER the new upsert (deferred swap), which is
+    the drop-after-verify contract."""
+    folder = str(tmp_path)
+    f = tmp_path / "lost.py"
+    f.write_text("print('x')\n")
+
+    manifest = FolderManifest(folder_path=folder)
+    manifest.files[str(f)] = FileRecord(
+        checksum="sum",
+        mtime=os.stat(f).st_mtime,  # unchanged on disk
+        chunk_ids=["old-1", "old-2"],
+        pending_reindex=True,
+    )
+    tracker = await make_tracker_with_manifest(tmp_path / "state", folder, manifest)
+    storage = make_mock_storage()
+    service = ChunkEvictionService(manifest_tracker=tracker, storage_backend=storage)
+
+    summary, files_to_index = await service.compute_diff_and_evict(
+        folder_path=folder,
+        current_files=[str(f)],
+        force=False,
+        defer_changed_eviction=True,
+    )
+
+    assert summary.files_changed == [str(f)]
+    assert files_to_index == [str(f)]
+    # Old chunks held for the post-upsert swap — NOT deleted up front.
+    assert sorted(summary.deferred_evict_ids) == ["old-1", "old-2"]
+    storage.delete_by_ids.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_file_gone_from_disk_is_still_deleted(tmp_path: Path) -> None:
+    """The existence check must not weaken real deletions: a prior-manifest
+    file missing from BOTH the loaded set and the disk is evicted."""
+    folder = str(tmp_path)
+    ghost = str(tmp_path / "gone.py")
+
+    manifest = FolderManifest(folder_path=folder)
+    manifest.files[ghost] = FileRecord(
+        checksum="ghost-sum",
+        mtime=1700000000.0,
+        chunk_ids=["g-1", "g-2"],
+    )
+    tracker = await make_tracker_with_manifest(tmp_path / "state", folder, manifest)
+    storage = make_mock_storage(deleted_count=2)
+    service = ChunkEvictionService(manifest_tracker=tracker, storage_backend=storage)
+
+    summary, files_to_index = await service.compute_diff_and_evict(
+        folder_path=folder,
+        current_files=[],
+        force=False,
+    )
+
+    assert summary.files_deleted == [ghost]
+    assert summary.files_out_of_scope == []
+    assert summary.chunks_evicted == 2
+    storage.delete_by_ids.assert_awaited_once_with(["g-1", "g-2"])

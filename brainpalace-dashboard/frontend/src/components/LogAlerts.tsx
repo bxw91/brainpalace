@@ -51,8 +51,7 @@ export function LogAlerts({ lines }: { lines: string[] }) {
         {alerts.slice(-5).map((a, i) => (
           <li
             key={i}
-            className="truncate font-mono text-xs text-fg-muted"
-            title={a.line}
+            className="whitespace-pre-wrap break-words font-mono text-xs text-fg-muted"
           >
             {a.line}
           </li>

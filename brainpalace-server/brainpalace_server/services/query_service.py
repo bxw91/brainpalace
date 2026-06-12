@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from brainpalace_server.services.memory_service import MemoryService
     from brainpalace_server.services.query_cache import QueryCacheService
 from brainpalace_server.config.provider_config import load_provider_settings
+from brainpalace_server.config.runtime_mode import is_read_only
 from brainpalace_server.indexing import EmbeddingGenerator, get_embedding_generator
 from brainpalace_server.indexing.bm25_index import BM25IndexManager, get_bm25_manager
 from brainpalace_server.indexing.graph_index import (
@@ -294,6 +295,22 @@ class QueryService:
             stage1_request = request.model_copy(update={"top_k": stage1_top_k})
         else:
             stage1_request = request
+
+        # Read-only: vector/hybrid/multi need to embed the query text (a
+        # provider call). On a cache miss, degrade to BM25 (purely lexical, no
+        # network) so the server stays queryable offline. GRAPH and BM25 are
+        # unaffected. Cached vector/hybrid results are still served — this runs
+        # only after the cache-miss path.
+        if is_read_only() and stage1_request.mode in (
+            QueryMode.VECTOR,
+            QueryMode.HYBRID,
+            QueryMode.MULTI,
+        ):
+            logger.info(
+                "read-only: %s query degraded to bm25 (no embed_query)",
+                stage1_request.mode.value,
+            )
+            stage1_request = stage1_request.model_copy(update={"mode": QueryMode.BM25})
 
         # Execute Stage 1 retrieval
         if stage1_request.mode == QueryMode.BM25:

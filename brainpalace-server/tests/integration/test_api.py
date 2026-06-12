@@ -66,6 +66,8 @@ class TestHealthEndpoints:
         assert "total_chunks" in data
         assert "indexing_in_progress" in data
         assert "indexed_folders" in data
+        assert "read_only" in data["features"]
+        assert data["features"]["read_only"] is False
 
 
 class TestIndexEndpoints:

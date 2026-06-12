@@ -979,6 +979,219 @@ class VectorStoreManager:
         )
         return recovered
 
+    #: Compaction trigger: at least this many dead rows AND dead >= ratio×live.
+    #: Dead rows are the chunk-recovery fuel, so compaction runs only when the
+    #: caller has verified the index is complete (nothing left to recover) and
+    #: the bloat is heavy — a healthy store never pays.
+    _COMPACT_MIN_DEAD = 5000
+    _COMPACT_DEAD_RATIO = 1.0
+
+    def _dead_row_stats(self) -> tuple[int, int] | None:
+        """(dead, live) embedding-row counts from ``chroma.sqlite3``, or None.
+
+        Read-only file probe (never loads chroma), never raises. A "dead" row
+        belongs to no live segment — stranded by a past collection recreation.
+        """
+        path = Path(self.persist_dir) / "chroma.sqlite3"
+        if not path.exists():
+            return None
+        import sqlite3  # noqa: PLC0415 — stdlib, probe-only
+
+        try:
+            con = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+            try:
+                total = con.execute("SELECT count(*) FROM embeddings").fetchone()[0]
+                live = con.execute(
+                    "SELECT count(*) FROM embeddings WHERE segment_id IN "
+                    "(SELECT id FROM segments)"
+                ).fetchone()[0]
+            finally:
+                con.close()
+        except Exception as exc:  # noqa: BLE001 — probe must never crash startup
+            logger.warning("dead-row probe failed for %s: %s", path, exc)
+            return None
+        return total - live, live
+
+    @property
+    def compact_events_path(self) -> Path | None:
+        """``<state_dir>/compact-events.jsonl`` (mirrors heal_events_path)."""
+        persist = Path(self.persist_dir)
+        if persist.parent.name != "data":
+            return None
+        return persist.parent.parent / "compact-events.jsonl"
+
+    def _record_compact_event(self, event: dict[str, Any]) -> None:
+        """Append one compaction event (best-effort audit, never raises)."""
+        path = self.compact_events_path
+        if path is None:
+            return
+        import json  # noqa: PLC0415
+        from datetime import datetime, timezone  # noqa: PLC0415
+
+        try:
+            record = {"ts": datetime.now(timezone.utc).isoformat(), **event}
+            with path.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(record) + "\n")
+        except Exception as exc:  # noqa: BLE001 — auditing must never block
+            logger.warning("Failed to record compact event to %s: %s", path, exc)
+
+    async def compact_if_bloated(
+        self,
+        *,
+        min_dead: int | None = None,
+        dead_ratio: float | None = None,
+        batch_size: int = 500,
+    ) -> dict[str, Any] | None:
+        """Reclaim dead-row bloat by rebuilding the persist dir from live data.
+
+        Collection recreations (heal rebuilds, resets, duplicate-server stomps)
+        strand the previous generation's rows in ``chroma.sqlite3`` — kept on
+        purpose as chunk-recovery fuel, but after a few incidents the file
+        holds several full copies of the index and SQLite never shrinks.
+
+        This copies EVERY live collection (the sqlite file is shared, e.g. the
+        memories collection) into a fresh persist dir via the public API — no
+        re-embed — verifies the copy's counts, then atomically swaps it in and
+        deletes the old dir. A crash mid-build leaves the old dir untouched
+        (the ``.compacting`` leftover is swept on the next attempt); the swap
+        itself is two renames.
+
+        **Caller contract: run only when the index is verified complete**
+        (startup self-heal found nothing missing) — compaction deletes the
+        dead rows recovery would otherwise restore from.
+
+        Returns a summary dict when compaction ran, else ``None``.
+        """
+        if not self.is_initialized or self._client is None:
+            return None
+        stats = await asyncio.to_thread(self._dead_row_stats)
+        if stats is None:
+            return None
+        dead, live = stats
+        floor = self._COMPACT_MIN_DEAD if min_dead is None else min_dead
+        ratio = self._COMPACT_DEAD_RATIO if dead_ratio is None else dead_ratio
+        if dead < floor or dead < ratio * live:
+            return None
+
+        logger.warning(
+            "Vector store bloated: %d dead row(s) vs %d live — compacting "
+            "persist dir (no re-embed)",
+            dead,
+            live,
+        )
+        async with self._lock:
+            result = await asyncio.to_thread(self._compact, batch_size)
+        if result is None:
+            return None
+        result.update({"dead_rows_reclaimed": dead, "live_rows": live})
+        await asyncio.to_thread(self._record_compact_event, result)
+        logger.warning(
+            "Compacted vector store: reclaimed %d dead row(s), kept %d live "
+            "across %d collection(s) (%s → %s bytes)",
+            dead,
+            live,
+            result.get("collections", 0),
+            f"{result.get('bytes_before', 0):,}",
+            f"{result.get('bytes_after', 0):,}",
+        )
+        return result
+
+    def _compact(self, batch_size: int) -> dict[str, Any] | None:
+        """Build a fresh persist dir from live data and swap it in (sync).
+
+        Must run under ``self._lock``. Returns None (old dir untouched) on any
+        failure — compaction is an optimization and must never lose data.
+        """
+        import shutil  # noqa: PLC0415
+
+        old_dir = Path(self.persist_dir)
+        new_dir = old_dir.with_name(old_dir.name + ".compacting")
+        bak_dir = old_dir.with_name(old_dir.name + ".pre-compact")
+        sqlite_path = old_dir / "chroma.sqlite3"
+        bytes_before = sqlite_path.stat().st_size if sqlite_path.exists() else 0
+
+        assert self._client is not None
+        try:
+            # 1. Snapshot every live collection through the public API.
+            snapshots: list[tuple[str, dict[str, Any], dict[str, Any]]] = []
+            for coll_ref in self._client.list_collections():
+                coll = self._client.get_collection(coll_ref.name)
+                data = coll.get(include=["embeddings", "documents", "metadatas"])
+                snapshots.append((coll.name, dict(coll.metadata or {}), data))
+
+            # 2. Build the replacement dir (crash here leaves old dir intact).
+            for leftover in (new_dir, bak_dir):
+                if leftover.exists():
+                    shutil.rmtree(leftover)
+            new_client = chromadb.PersistentClient(
+                path=str(new_dir),
+                settings=ChromaSettings(
+                    anonymized_telemetry=False,
+                    allow_reset=True,
+                ),
+            )
+            for name, meta, data in snapshots:
+                meta.setdefault("hnsw:space", "cosine")
+                new_coll = new_client.create_collection(name=name, metadata=meta)
+                ids = data.get("ids") or []
+                embs = data.get("embeddings")
+                docs = data.get("documents") or [""] * len(ids)
+                metas = data.get("metadatas") or [None] * len(ids)
+                for start in range(0, len(ids), batch_size):
+                    end = min(start + batch_size, len(ids))
+                    new_coll.add(
+                        ids=ids[start:end],
+                        embeddings=embs[start:end],
+                        documents=[d or "" for d in docs[start:end]],
+                        # Chroma rejects {} per-item metadata; None is allowed.
+                        metadatas=[m if m else None for m in metas[start:end]],
+                    )
+                # 3. Verify before anything is swapped.
+                if new_coll.count() != len(ids):
+                    raise RuntimeError(
+                        f"compaction verify failed for {name!r}: "
+                        f"{new_coll.count()} != {len(ids)}"
+                    )
+        except Exception as exc:  # noqa: BLE001 — never lose data on a failure
+            logger.warning("Compaction aborted (old store untouched): %s", exc)
+            shutil.rmtree(new_dir, ignore_errors=True)
+            return None
+
+        # 4. Swap: old → .pre-compact, new → live path. Drop chroma's cached
+        # client handles first so the re-open below binds the fresh dir.
+        self._client = None
+        self._collection = None
+        try:
+            import chromadb.api.client as _chroma_client  # noqa: PLC0415
+
+            _chroma_client.SharedSystemClient.clear_system_cache()
+        except Exception:  # noqa: BLE001 — cache shape varies across versions
+            pass
+        old_dir.rename(bak_dir)
+        new_dir.rename(old_dir)
+
+        # 5. Re-open on the live path and delete the bloat.
+        self._client = chromadb.PersistentClient(
+            path=str(old_dir),
+            settings=ChromaSettings(
+                anonymized_telemetry=False,
+                allow_reset=True,
+            ),
+        )
+        self._collection = self._client.get_or_create_collection(
+            name=self.collection_name,
+            metadata={"hnsw:space": "cosine"},
+        )
+        shutil.rmtree(bak_dir, ignore_errors=True)
+
+        new_sqlite = old_dir / "chroma.sqlite3"
+        bytes_after = new_sqlite.stat().st_size if new_sqlite.exists() else 0
+        return {
+            "collections": len(snapshots),
+            "bytes_before": bytes_before,
+            "bytes_after": bytes_after,
+        }
+
     async def close(self) -> None:
         """
         Close the vector store connection.

@@ -205,6 +205,44 @@ class EmbeddingGenerator:
         # All results are now populated (no Nones remain)
         return [r for r in results if r is not None]
 
+    async def uncached_indices(self, texts: list[str]) -> list[int]:
+        """Indices of ``texts`` whose embeddings are NOT in the cache.
+
+        Used by the per-job token budget so it counts only the texts that
+        would actually hit the provider — cached texts cost nothing. The probe
+        is conservative: with no cache configured, or on any lookup error,
+        every index is returned (the budget then guards everything, exactly
+        the pre-cache behavior). Read-only; never raises.
+        """
+        if not texts:
+            return []
+        # Lazy import to break circular import (see embed_text for details)
+        from brainpalace_server.services.embedding_cache import (  # noqa: PLC0415
+            EmbeddingCacheService,
+            get_embedding_cache,
+        )
+
+        cache = get_embedding_cache()
+        if cache is None:
+            return list(range(len(texts)))
+        try:
+            dims = self._embedding_provider.get_dimensions()
+            provider = self._embedding_provider.provider_name
+            model = self._embedding_provider.model_name
+            keys = [
+                EmbeddingCacheService.make_cache_key(t, provider, model, dims)
+                for t in texts
+            ]
+            hits = await cache.get_batch(keys)
+            return [i for i, k in enumerate(keys) if k not in hits]
+        except Exception as exc:  # noqa: BLE001 — probe must never break indexing
+            logger.warning(
+                "Cache-miss probe failed (%s) — budgeting all %d texts",
+                exc,
+                len(texts),
+            )
+            return list(range(len(texts)))
+
     async def embed_chunks(
         self,
         chunks: list[TextChunk],

@@ -13,6 +13,7 @@ from brainpalace_server.config.provider_config import (
     load_provider_settings,
     validate_provider_config,
 )
+from brainpalace_server.config.runtime_mode import is_read_only
 from brainpalace_server.config.session_config import load_session_extraction_config
 from brainpalace_server.indexing import get_embedding_generator
 from brainpalace_server.models import HealthStatus, IndexingStatus
@@ -424,6 +425,9 @@ async def indexing_status(request: Request) -> dict[str, Any]:
     data["features"]["session_extraction"] = summarization_coverage(
         project_root, int(archive_stats["archived_sessions"]), extract_mode
     )
+
+    # Read-only mode flag (master provider kill switch).
+    data["features"]["read_only"] = is_read_only()
 
     return data
 

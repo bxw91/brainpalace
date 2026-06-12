@@ -24,6 +24,7 @@ import anyio
 import watchfiles
 from watchfiles import Change, DefaultFilter
 
+from brainpalace_server.config.runtime_mode import is_read_only
 from brainpalace_server.models.index import IndexRequest
 
 if TYPE_CHECKING:
@@ -345,6 +346,11 @@ class FileWatcherService:
         Args:
             folder_path: Absolute path to the changed folder.
         """
+        if is_read_only():
+            logger.debug(
+                "read-only: skipping watcher reindex enqueue for %s", folder_path
+            )
+            return
         try:
             # Post-enqueue cooldown: collapse delayed-inotify replays that
             # arrive after a prior job already transitioned to DONE.

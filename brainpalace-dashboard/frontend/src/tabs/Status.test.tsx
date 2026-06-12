@@ -63,6 +63,40 @@ describe("Status tab", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows the read-only banner and a non-alarming self-heal row in read-only mode", async () => {
+    vi.mocked(client.getInstanceStatus).mockResolvedValue({
+      total_documents: 1,
+      code_documents: 1,
+      doc_documents: 0,
+      total_chunks: 1,
+      total_code_chunks: 1,
+      total_doc_chunks: 0,
+      indexed_folders: ["/a"],
+      git_commits: 0,
+      features: {
+        read_only: true,
+        self_heal: {
+          last: {
+            restored: 4878,
+            recoverable: 4878,
+            incomplete_reason: "read-only mode",
+          },
+        },
+      },
+    } as never);
+
+    wrap(<Status instanceId="inst-1" />);
+
+    const banner = await screen.findByTestId("readonly-banner");
+    expect(banner).toHaveTextContent(/read-only mode is on/i);
+
+    const tab = screen.getByTestId("tab-status");
+    // Self-heal renders the calm read-only copy, NOT the scary "fix + restart".
+    expect(tab).toHaveTextContent(/stage 2 skipped — read-only \(no deletes\)/i);
+    expect(tab).not.toHaveTextContent(/fix \+ restart/i);
+    expect(tab).not.toHaveTextContent(/incomplete/i);
+  });
+
   it("shows the stopped state when the instance is unreachable", async () => {
     const err = new client.InstanceUnreachableError("instance unreachable", 502);
     vi.mocked(client.getInstanceStatus).mockRejectedValue(err);

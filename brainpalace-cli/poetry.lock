@@ -515,14 +515,14 @@ uvicorn = ">=0.32.0,<0.33.0"
 
 [[package]]
 name = "brainpalace-rag"
-version = "26.6.36"
+version = "26.6.37"
 description = "BrainPalace RAG - Intelligent document indexing and semantic search server that gives AI agents long-term memory"
 optional = false
 python-versions = "<4.0,>=3.10"
 groups = ["main"]
 files = [
-    {file = "brainpalace_rag-26.6.36-py3-none-any.whl", hash = "sha256:6007a3a4898d5e2c3bd59e43510629777fed2abb183989b6ff21467326143489"},
-    {file = "brainpalace_rag-26.6.36.tar.gz", hash = "sha256:c3471a5e866f4a060f6abaaf6497b0ba5a71480afaf670a6807afe0869130772"},
+    {file = "brainpalace_rag-26.6.37-py3-none-any.whl", hash = "sha256:026d175b228e7a77ab0fdbf0095fd93b9458ea29059ddc621c69ea7a4b20b2c1"},
+    {file = "brainpalace_rag-26.6.37.tar.gz", hash = "sha256:a8ef34d0c3eb29f10336c00fcc62b6683cfa2284aabaad189c7c0ccd6b867fdb"},
 ]
 
 [package.dependencies]
@@ -546,7 +546,7 @@ pydantic-settings = ">=2.6.0,<3.0.0"
 PyStemmer = ">=2.2.0,<3.0.0"
 python-dotenv = ">=1.0.0,<2.0.0"
 pyyaml = ">=6.0.0,<7.0.0"
-setuptools = ">=65"
+setuptools = ">=65,<81"
 stopwordsiso = ">=0.6.1,<0.7.0"
 tiktoken = ">=0.8.0,<0.9.0"
 tree-sitter-language-pack = ">=0.7.3,<0.8.0"

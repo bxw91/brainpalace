@@ -16,7 +16,7 @@ metadata:
   version: 7.0.0
   category: ai-tools
   author: bxw91
-  last_validated: 2026-06-11
+  last_validated: 2026-06-12
 ---
 
 # Configuring BrainPalace
@@ -515,6 +515,17 @@ brainpalace query "how do services work" --mode multi   # GraphRAG + ChromaDB re
 ```
 
 **Note**: There is no global `query.default_mode` config key yet. Mode is per-request only. The setup wizard writes the selected default mode as a YAML comment for documentation purposes.
+
+### Read-only mode (provider kill switch)
+
+`brainpalace read-only on` sets `server.read_only: true` — the server makes no
+outbound provider calls (embedding, summarization, remote rerank), indexing jobs
+end `skipped`, startup self-heal recovers from cache only and skips its
+destructive cleanup, and vector/hybrid queries fall back to BM25. `brainpalace
+read-only off` restores normal operation; `brainpalace read-only status` reports
+the effective value. Env override: `BRAINPALACE_READ_ONLY=true`. Requires a
+server restart to take effect. Use it when the provider is unreachable (offline,
+broken key, rate-limited) to keep the index queryable without risking data loss.
 
 ### Verify Configuration
 

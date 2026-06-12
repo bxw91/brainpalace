@@ -55,6 +55,12 @@ def _make_embedding_gen() -> MagicMock:
         return [[0.0] * 1536 for _ in chunks]
 
     gen.embed_chunks = _embed
+
+    # No cache in tests: every text is a budget-relevant miss.
+    async def _uncached(texts: list) -> list:
+        return list(range(len(texts)))
+
+    gen.uncached_indices = _uncached
     return gen
 
 

@@ -115,6 +115,7 @@ CLI_DASHBOARD_COVERAGE: dict[str, str] = {
     "memories": "Sessions",
     "plugin": "cli_only: Claude Code plugin management",
     "query": "Queries (replay)",
+    "read-only": "Config (server.read_only toggle + Overview read-only banner)",
     "recall": "Queries (replay) / Sessions",
     "remember": "Sessions (memories)",
     "reset": "Folders (Reset index)",

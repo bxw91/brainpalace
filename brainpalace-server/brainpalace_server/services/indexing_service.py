@@ -930,16 +930,29 @@ class IndexingService:
 
             # Budget guard: block the job if the to-embed token count exceeds
             # the configured cap (limit<=0 disables; force_budget bypasses).
+            # Only cache MISSES count — cached chunks cost no provider call, so
+            # a recovery/self-heal reindex whose embeddings all sit in the
+            # cache must not be blocked by its raw token size.
             from brainpalace_server.config.indexing_config import (  # noqa: PLC0415
                 load_indexing_config as _load_indexing_config,
             )
 
             _budget = _load_indexing_config().max_embed_tokens_per_job
+            _miss_idx = await self.embedding_generator.uncached_indices(
+                [chunk.text for chunk in chunks]
+            )
             _tok = enforce_token_budget(
-                chunks, limit=_budget, force=request.force_budget
+                [chunks[i] for i in _miss_idx],
+                limit=_budget,
+                force=request.force_budget,
             )
             logger.info(
-                "Embedding budget check ok: ~%d tokens (limit %d)", _tok, _budget
+                "Embedding budget check ok: ~%d tokens to embed "
+                "(%d/%d chunks cached; limit %d)",
+                _tok,
+                len(chunks) - len(_miss_idx),
+                len(chunks),
+                _budget,
             )
 
             async def embedding_progress(processed: int, total: int) -> None:

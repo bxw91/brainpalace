@@ -36,6 +36,7 @@ from brainpalace_server.config.provider_config import (
     load_provider_settings,
     validate_provider_config,
 )
+from brainpalace_server.config.runtime_mode import is_read_only
 from brainpalace_server.indexing.bm25_index import BM25IndexManager, set_bm25_manager
 from brainpalace_server.job_queue import (
     JobQueueService,
@@ -240,8 +241,9 @@ def _record_self_heal_result(report: dict[str, Any], persist_dir: str | None) ->
     else:
         logger.warning(
             "SELF-HEAL: restored %d lost chunk(s) from cache+dead (no re-embed); "
-            "dropped %d not-fully-recovered file(s) for reindex; %d need a source "
-            "re-index. (see `brainpalace status` → self_heal)",
+            "marked %d not-fully-recovered file(s) pending verified reindex; "
+            "%d chunk(s) need a source re-embed. "
+            "(see `brainpalace status` → self_heal)",
             restored,
             files_dropped,
             residue,
@@ -818,6 +820,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         #     or partial recovery keeps the gate CLOSED.
         # The reindex of dropped files is enqueued AFTER deep_clean, below, once
         # the job service exists. Never blocks startup.
+        read_only = is_read_only()
+        if read_only:
+            logger.warning(
+                "BrainPalace is in READ-ONLY mode: embedding, summarization, "
+                "remote rerank and destructive self-heal are disabled."
+            )
         heal_report: dict[str, Any] = {}
         try:
             from brainpalace_server.services.chunk_recovery import detect_dimensions
@@ -838,12 +846,33 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 target_dimensions=target_dimensions or 0,
                 bm25_manager=getattr(app.state, "bm25_manager", None),
                 repo_path=app.state.project_root or None,
+                read_only=read_only,
             )
             # Persist the result so `brainpalace status` can surface it, and emit
             # a prominent startup notification when recovery actually ran.
             _record_self_heal_result(
                 heal_report, getattr(vector_store, "persist_dir", None)
             )
+
+            # Automatic dead-row compaction — ONLY when this start verified the
+            # index complete: nothing missing, nothing marked pending reindex,
+            # stage 2 not skipped. Dead rows are the chunk-recovery fuel, so a
+            # store with anything left to recover keeps them; a clean, heavily
+            # bloated store (several stranded index generations) gets rebuilt
+            # from live data and shrunk — no re-embed, threshold-gated so a
+            # healthy store pays nothing. Runs BEFORE the memories collection
+            # opens its handle on the same persist dir.
+            _rec = heal_report.get("recovery")
+            _index_complete = (
+                not read_only
+                and heal_report.get("deep_clean_skipped_reason") is None
+                and not heal_report.get("files_dropped")
+                and not heal_report.get("reindex_enqueued")
+                and (_rec is None or getattr(_rec, "wanted", 0) == 0)
+                and getattr(_rec, "error", None) is None
+            )
+            if _index_complete and vector_store is not None:
+                await vector_store.compact_if_bloated()
         except Exception as exc:  # noqa: BLE001 — heal must never block startup
             logger.warning("Startup self-heal failed (non-fatal): %s", exc)
 
@@ -1024,6 +1053,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                         extract_mode in ("provider", "auto")
                         and session_distill_enabled()
                         and app.state.project_root
+                        and not read_only
                     ):
                         from brainpalace_server.indexing import (
                             get_embedding_generator,

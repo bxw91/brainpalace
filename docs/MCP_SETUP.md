@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-11
+last_validated: 2026-06-12
 ---
 
 # MCP setup — connecting AI clients to BrainPalace
@@ -293,6 +293,12 @@ The MCP shim only forwards calls — it doesn't host anything. Pass
 the HTTP server for your workspace project on first connect. Without
 `--ensure-server`, you must run `brainpalace start` in the project (integrated
 terminal, or as a background service) before MCP tools work.
+
+An MCP-launched server honours `BRAINPALACE_READ_ONLY=true` in the client
+config's `env` block to start in read-only mode: no provider calls (embedding,
+summarization, remote rerank) are made, and vector/hybrid queries fall back to
+BM25. This is useful when the server is started by the MCP shim in offline or
+restricted environments.
 
 ### 3. Working directory
 

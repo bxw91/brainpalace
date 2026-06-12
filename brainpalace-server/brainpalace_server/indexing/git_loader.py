@@ -45,6 +45,34 @@ def git_toplevel(repo_path: str | Path) -> Path | None:
         return None
 
 
+def list_indexable_shas(
+    repo_path: str | Path, *, depth: int = 0, paths: list[str] | None = None
+) -> set[str] | None:
+    """Shas the git indexer would walk: ``git log`` from HEAD, depth-capped,
+    path-scoped — the same invocation shape as :func:`load_commits` minus the
+    record payload. Returns ``None`` when they can't be determined (not a
+    repo / git error / empty history), never raises.
+    """
+    args = ["log", "--format=%H"]
+    if depth and depth > 0:
+        args.append(f"--max-count={depth}")
+    if paths:
+        args.append("--")
+        args.extend(paths)
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(repo_path), *args],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (subprocess.SubprocessError, OSError) as exc:
+        logger.debug("list_indexable_shas failed for %s: %s", repo_path, exc)
+        return None
+    return {line.strip() for line in out.stdout.splitlines() if line.strip()}
+
+
 def resolve_commit_scope(
     project_root: str | Path, path_filter: list[str] | None
 ) -> list[str]:
