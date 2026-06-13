@@ -48,7 +48,7 @@ At least one of `--script` or `--folder-metadata` must be provided.
 | --chunk-size | No | 512 | Target chunk size in tokens |
 | --chunk-overlap | No | 50 | Overlap between chunks in tokens |
 | --no-recursive | No | false | Don't scan subdirectories |
-| --include-code | No | false | Include code files in indexing |
+| --include-code / --no-code | No | true (ON) | Include code files in indexing (use --no-code for doc-only) |
 | --include-type | No | - | File type presets (e.g., python,docs) |
 | --languages | No | - | Comma-separated language list for code |
 | --code-strategy | No | ast_aware | Code splitting: ast_aware or text_based |

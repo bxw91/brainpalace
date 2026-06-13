@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-05-30
+last_validated: 2026-06-13
 ---
 
 # BM25 Keyword Search Guide
@@ -57,8 +57,38 @@ curl -X POST http://localhost:8000/query/ \
 | Option | Default | Description | Use Case |
 |--------|---------|-------------|----------|
 | `--mode bm25` | Required | Selects BM25 algorithm | All BM25 searches |
-| `--threshold F` | 0.7 | Minimum relevance score (0.0-1.0) | Lower for more results, higher for precision |
+| `--threshold F` | 0.3 | Minimum relevance score (0.0-1.0) | Lower for more results, higher for precision |
 | `--top-k N` | 5 | Maximum results to return | Increase for comprehensive results |
+| `--language CODE` | project `bm25.language` (default `en`) | Per-query tokenization/stemming language (ISO 639-1) | Searching content in a language other than the project default |
+
+## Language Override
+
+BM25 and hybrid modes apply language-aware stemming. By default the project
+language (`bm25.language`, default `en`) is used. Override per-query with
+`--language`:
+
+```bash
+# Query a German-language document set
+brainpalace query "Authentifizierungsablauf" --mode bm25 --language de
+
+# Hybrid search with French tokenization override
+brainpalace query "gestion des erreurs" --mode hybrid --language fr
+
+# Croatian (lemma engine must be configured at project level)
+brainpalace query "upravljanje pogreškama" --mode bm25 --language hr
+```
+
+The `--language` flag maps to `QueryRequest.language` and only affects BM25
+tokenization for that single query. It applies to `bm25` and `hybrid` modes;
+`vector`, `graph`, and `multi` modes are not affected. Use `--language`
+per-query only when a single search targets a language other than the project
+default.
+
+Setting the **project-wide** default language, the BM25 engine (`stem` vs
+`lemma`), supported language codes, and per-document detection is config-time
+setup — not a query flag. See the `configuring-brainpalace` skill (BM25 Language
+Configuration). The Croatian (`hr`) lemma engine must be configured there before
+`--language hr` has any effect.
 
 ## Why Choose BM25 Over Other Modes
 

@@ -1,32 +1,22 @@
----
-name: using-brainpalace
-description: |
-  Expert BrainPalace skill for document search with BM25 keyword, semantic
-  vector, hybrid, graph, and multi retrieval modes.
-  Use when asked to "search documentation", "query domain", "find in docs",
-  "bm25 search", "hybrid search", "semantic search", "graph search", "multi search",
-  "find dependencies", "code relationships", "searching knowledge base",
-  "querying indexed documents", "finding code references", "exploring codebase",
-  "what calls this function", "find imports", "trace dependencies",
-  "brain search", "brain query", "knowledge base search",
-  "cache management", "clear embedding cache", "cache hit rate", or "cache status".
-  Supports multi-instance architecture with automatic server discovery.
-  GraphRAG mode enables relationship-aware queries for code dependencies and
-  entity connections.
-  Pluggable providers for embeddings (OpenAI, Cohere, Ollama) and summarization
-  (Anthropic, OpenAI, Gemini, Grok, Ollama).
-  Supports multiple runtimes (Claude Code, OpenCode, Gemini CLI) with shared
-  .brainpalace/ data directory.
-license: MIT
-allowed-tools:
-  - Bash
-  - Read
-metadata:
-  version: 7.3.0
-  category: ai-tools
-  author: bxw91
-  last_validated: 2026-06-13
----
+<!--
+SINGLE SOURCE OF TRUTH for AI-facing BrainPalace usage guidance.
+Edit HERE only. Do NOT hand-edit generated copies:
+  - brainpalace-plugin/skills/using-brainpalace/SKILL.md   (generated FULL tier)
+  - MCP Server(instructions=...)                            (reads CORE tier)
+  - SessionStart hook additionalContext                     (reads CORE tier, via `brainpalace hook`)
+See CLAUDE.md → "AI-guidance parity". Verified against code on the date below.
+
+meta: version=7.3.0 last_validated=2026-06-13
+
+Tiers:
+  CORE = the marked slice below (between the CORE open/close HTML markers). The
+         decision contract; cheap enough to inject on every session start / MCP
+         connect. Keep under budget.
+  FULL = the entire body (CORE + the sections after it). Pulled on demand:
+         `brainpalace ai-guide --tier full`, or the `ai_guide` MCP tool.
+NOTE: this header is the only HTML comment with no nested markers, so the loader
+strips it cleanly. Do not write the literal marker tokens inside this comment.
+-->
 
 # BrainPalace Expert Skill
 
@@ -38,12 +28,15 @@ injection, jobs, cache, server lifecycle, per-mode deep dives) lives in the
 **Reference Documentation** table at the end — look it up on demand; the CLI's
 own `--help` is authoritative for flags.
 
+<!--CORE-->
+<!--NUDGE-->
 **BrainPalace is indexed for this project — prefer `brainpalace query` over
 Glob/Grep for codebase search.** If the server is not running, start it with
 `brainpalace start`. `brainpalace query --json` result keys are
 `text`/`source`/`score`/`chunk_id` (no `file_path`, no line numbers); on failure
 stdout is `{"error": ...}` with no `results` key and a non-zero exit — check for
 it, and never append `2>/dev/null` to brainpalace commands.
+<!--/NUDGE-->
 
 ## Mode Decision Table — Quick Reference
 
@@ -128,6 +121,7 @@ not-indexed (no `.brainpalace/` at all → the skill yields).
 
 For full operational detail run `brainpalace ai-guide --tier full` (or, over MCP,
 call the `ai_guide` tool).
+<!--/CORE-->
 
 ---
 

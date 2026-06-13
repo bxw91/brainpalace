@@ -21,6 +21,44 @@ def _get_default_url() -> str:
     return get_server_url()
 
 
+def _ai_hint_enabled() -> bool:
+    """Whether to print the one-line AI-guidance hint. Fail-soft → default on.
+
+    Disabled by ``BRAINPALACE_NO_AI_HINT`` (env) or ``cli.show_ai_hint: false``
+    in config. Pull path for CLI-only external agents (see AI-guidance parity).
+    """
+    import os
+
+    if os.environ.get("BRAINPALACE_NO_AI_HINT"):
+        return False
+    try:
+        from ..config import _find_config_file, _load_yaml_config
+
+        path = _find_config_file()
+        if path is not None:
+            cfg = _load_yaml_config(path) or {}
+            if (cfg.get("cli") or {}).get("show_ai_hint") is False:
+                return False
+    except Exception:
+        pass
+    return True
+
+
+def _maybe_print_ai_hint() -> None:
+    """Print the AI-guidance hint on an interactive (TTY) human-format run only.
+
+    Never on ``--json`` (that branch returns earlier) or piped/scripted output —
+    keeps the documented JSON contract and scripts clean.
+    """
+    import sys
+
+    if sys.stdout.isatty() and _ai_hint_enabled():
+        console.print(
+            "\n[dim]↳ AI agents: run 'brainpalace ai-guide' for search rules "
+            "& modes.[/]"
+        )
+
+
 @click.command("query")
 @click.argument("query_text")
 @click.option(
@@ -243,6 +281,8 @@ def query_command(
                         padding=(0, 1),
                     )
                 )
+
+            _maybe_print_ai_hint()
 
     except ConnectionError as e:
         exit_on_connection_error(e, base_url=resolved_url, json_output=json_output)

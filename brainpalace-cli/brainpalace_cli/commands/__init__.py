@@ -1,5 +1,6 @@
 """CLI commands for brainpalace."""
 
+from .ai_guide import ai_guide_command
 from .backfill import backfill_command
 from .cache import cache_group
 from .config import config_group
@@ -7,6 +8,7 @@ from .context import context_command
 from .dashboard import dashboard_command
 from .doctor import doctor_command
 from .folders import folders_group
+from .hook import hook_group
 from .index import index_command
 from .init import init_command
 from .inject import inject_command
@@ -52,6 +54,8 @@ __all__ = [
     "mcp_command",
     "memories_group",
     "plugin_group",
+    "ai_guide_command",
+    "hook_group",
     "query_command",
     "recall_command",
     "remember_command",

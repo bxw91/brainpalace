@@ -106,6 +106,31 @@ detect_local_checkout() {
     return 1
 }
 
+stop_all_brainpalace() {
+    # Gracefully stop EVERY running BrainPalace server + the dashboard using the
+    # currently-installed binary, BEFORE its pipx venv gets replaced. A live
+    # server still holding the old venv/code can clash with the reinstall.
+    # Best-effort, never fatal. No jq dependency — pull roots out of list --json.
+    local bin="$1" roots root any=0
+    if roots="$("$bin" list --json 2>/dev/null)"; then
+        while IFS= read -r root; do
+            [[ -z "$root" ]] && continue
+            say "stopping server: $root"
+            "$bin" stop --path "$root" >/dev/tty 2>&1 || true
+            any=1
+        done < <(printf '%s' "$roots" \
+            | grep -oE '"project_root"[[:space:]]*:[[:space:]]*"[^"]+"' \
+            | sed -E 's/.*"([^"]*)"$/\1/')
+    fi
+    say "stopping dashboard"
+    "$bin" dashboard stop >/dev/tty 2>&1 || true
+    if [[ "$any" -eq 1 ]]; then
+        ok "All BrainPalace servers + dashboard stopped."
+    else
+        say "No tracked servers were running; dashboard reaped if present."
+    fi
+}
+
 latest_pypi_version() {
     # Print the latest published version of a PyPI package, or return 1 if it
     # can't be determined (offline, PyPI down). Best-effort — never fatal.
@@ -182,6 +207,16 @@ confirm "Continue?" "y" || { say "Aborted."; exit 0; }
 # -----------------------------------------------------------------------------
 
 step "Step 1/6 — Install brainpalace binary"
+
+# Shut everything down FIRST — before we touch the venv. A running server (or
+# dashboard) on the old code can clash with the reinstall, so ask up front.
+if command -v brainpalace >/dev/null 2>&1; then
+    if confirm "Stop all running BrainPalace servers and the dashboard before installing? (recommended)" "y"; then
+        stop_all_brainpalace "$(command -v brainpalace)"
+    else
+        warn "Leaving running servers up — a live old-venv server can clash with the reinstall."
+    fi
+fi
 
 if command -v brainpalace >/dev/null 2>&1; then
     CURRENT_VERSION="$(brainpalace --version 2>/dev/null || echo unknown)"
@@ -282,17 +317,17 @@ if command -v claude >/dev/null 2>&1; then
         say "Claude Code plugin detected — chat/session summaries run FREE on your"
         say "Claude Code subscription. The provider you pick next is for code only."
         CHAT_SUMM="plugin"
-    elif confirm "Install the BrainPalace Claude Code plugin? (recommended — free chat/session summarization on your Claude Code subscription, richest UX)" "y"; then
-        say "Installing plugin via Claude Code…"
-        if timeout 120 claude plugins marketplace add bxw91/brainpalace </dev/tty >/dev/tty 2>&1 \
-           && timeout 120 claude plugins install brainpalace@brainpalace-marketplace </dev/tty >/dev/tty 2>&1; then
-            ok "Plugin installed."
-            warn "Restart Claude Code (or start a new session) — plugin hooks + the chat-session-extractor agent load at session start."
-            CHAT_SUMM="plugin"
-        else
-            warn "Plugin install did not complete. Install it later: 'claude plugins marketplace add bxw91/brainpalace && claude plugins install brainpalace@brainpalace-marketplace'. Continuing with CLI/provider setup."
-            CHAT_SUMM="provider"
-        fi
+    else
+        # We no longer install the plugin from here. Claude Code manages its own
+        # plugins, and driving 'claude plugins …' from a script can hang on its
+        # process scan. Leave the install to Claude Code itself.
+        say "Claude Code plugin not installed. Install it from INSIDE Claude Code"
+        say "(it manages its own plugins): run /plugin, add the marketplace"
+        say "'bxw91/brainpalace', then install 'brainpalace'. Once it loads, chat/"
+        say "session summaries run FREE on your Claude Code subscription."
+        say "Until then chat summarization is OFF by default (opt in with"
+        say "SESSION_DISTILL_ENABLED=true). The provider you pick next is for code only."
+        CHAT_SUMM="provider"
     fi
 else
     say "Claude CLI not found — chat/session summaries are handled by the Claude"

@@ -91,6 +91,38 @@ def write_hook_scripts(home: Path) -> list[Path]:
     return written
 
 
+#: Marker proving an installed hook is the current thin shim (delegates to the
+#: CLI). A legacy "fat" hook embeds its own python/whoami logic instead.
+_SHIM_MARKER = "brainpalace hook sessionstart"
+
+
+def migrate_legacy_sessionstart_hook(home: Path) -> bool:
+    """Rewrite an already-installed legacy fat SessionStart hook to the thin shim.
+
+    Idempotent, fail-soft, and **non-installing**: only touches the hook if it
+    ALREADY exists and is not yet the shim — users who never installed the hook
+    are left alone. Once migrated, the shim never goes stale (all logic is
+    CLI-side), so this is a one-time transition. Returns True if it rewrote.
+    """
+    hook = home / ".claude" / "hooks" / "brainpalace-sessionstart.sh"
+    try:
+        if not hook.exists():
+            return False
+        current = hook.read_text(encoding="utf-8")
+        if _SHIM_MARKER in current:
+            return False  # already the shim
+        shim = (
+            files("brainpalace_cli.data.hooks")
+            .joinpath("sessionstart-hook.sh")
+            .read_text(encoding="utf-8")
+        )
+        hook.write_text(shim, encoding="utf-8")
+        hook.chmod(0o755)
+        return True
+    except OSError:
+        return False
+
+
 def merge_hook_settings(
     settings: dict[str, Any], hooks: dict[str, str]
 ) -> dict[str, Any]:

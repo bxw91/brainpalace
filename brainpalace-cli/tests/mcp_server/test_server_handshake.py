@@ -31,6 +31,7 @@ def test_list_tools_returns_expected_tools() -> None:
         "memorize",
         "recall",
         "session_context",
+        "ai_guide",
     ]
 
 
@@ -47,10 +48,15 @@ def test_list_tools_schemas_carry_path_arg() -> None:
 
 
 def test_list_tools_descriptions_terse() -> None:
-    """Risk register budget: total descriptions ≤ 500 chars."""
+    """Risk register budget: total descriptions ≤ 575 chars (9 tools).
+
+    Raised from 500 when the read-only ``ai_guide`` tool was added; descriptions
+    stay one-line terse — doctrine lives in the server ``instructions=`` (CORE
+    tier), not duplicated into per-tool descriptions.
+    """
     tools = asyncio.run(server.list_tools())
     total = sum(len(t.description or "") for t in tools)
-    assert total <= 500, f"description budget exceeded: {total} chars"
+    assert total <= 575, f"description budget exceeded: {total} chars"
 
 
 def test_call_tool_unknown_name_returns_error() -> None:

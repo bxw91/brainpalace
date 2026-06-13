@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-11
+last_validated: 2026-06-13
 ---
 
 # BrainPalace Developer Guide
@@ -473,6 +473,63 @@ that is not surfaced in the UI carries a one-line reason.
 > **Why this section exists:** the dashboard's whole point is to be the single
 > management surface; an un-enforced "remember to add it to the UI" rule rots
 > immediately. The gate makes drift a failing test, not a silent gap.
+
+---
+
+## AI-guidance parity — single source
+
+AI-facing usage guidance (how an AI should search this codebase: modes, query
+rules, the `--json` contract, server-down behavior) used to be hand-copied across
+three surfaces that drifted silently. It now flows from **one source**.
+
+**The source:** `brainpalace-cli/brainpalace_cli/data/ai_guidance.md`, with three
+nested, marker-delimited tiers — **NUDGE ⊂ CORE ⊂ FULL**:
+
+| Tier | Bytes (approx) | Consumer | Why this size |
+|------|----------------|----------|---------------|
+| **NUDGE** | ~440 | SessionStart hook `additionalContext` | Plugin users already load FULL via the skill; the hook only nudges. |
+| **CORE** | ~3.8 K | MCP `Server(instructions=...)` | MCP clients have no skill/hook — they need the whole decision contract at connect. |
+| **FULL** | ~6.4 K | generated SKILL.md, `ai-guide --tier full`, `ai_guide` MCP tool | The complete guide; pulled on demand. |
+
+CORE is a literal slice of FULL; NUDGE a literal slice of CORE — never
+hand-maintained copies. The loader/renderer is `brainpalace_cli/ai_guidance.py`;
+`brainpalace ai-guide --tier <t> --format <f>` renders it. `version` /
+`last_validated` come from the source's `meta:` line (never `today()`), so output
+is byte-deterministic.
+
+**Surfaces & how they consume the source:**
+
+| Surface | Mechanism | Notes |
+|---------|-----------|-------|
+| Plugin skill | `SKILL.md` is GENERATED (`--format skill`) | Never hand-edit. Skill-only frontmatter lives in `ai_guidance.py`'s template. |
+| MCP instructions | `Server(instructions=core())` at connect | Fail-soft: empty source → no instructions. |
+| MCP `ai_guide` tool | read-only tool returning a tier | The ONLY pull path for MCP-only clients (CLI `ai-guide` is unreachable over MCP). |
+| SessionStart hook | thin shim → `brainpalace hook sessionstart` | All logic CLI-side; legacy fat hooks auto-migrate on `brainpalace start`. |
+| CLI query footer | one-line hint on interactive `query` runs | Pull path for CLI-only external agents; TTY + non-`--json` only, disable via `cli.show_ai_hint: false` or `BRAINPALACE_NO_AI_HINT`. |
+
+**The gate:** `scripts/check_ai_guidance_parity.py`, run via
+`task lint:ai-guidance-parity` (in `task before-push`). It imports the **live**
+renderer and fails on: SKILL.md ≠ generated; an empty NUDGE/CORE slice (catches
+stray marker tokens in the header comment); the two in-repo hook copies differing
+or carrying legacy fat-hook logic; the MCP `Server(instructions=...)` not equal to
+the CORE tier verbatim; non-English **letters** in NUDGE/FULL (Unicode
+punctuation like `—` `…` `⊂` is allowed; accented/Cyrillic letters fail).
+
+**To satisfy the gate when you change guidance:**
+
+- [ ] Edit `data/ai_guidance.md` **only** (verify any contract claim against LIVE
+      code — Click group, `QueryRequest`, FastAPI routes — never against another doc).
+- [ ] Regenerate the skill:
+      `cd brainpalace-cli && poetry run brainpalace ai-guide --format skill > ../brainpalace-plugin/skills/using-brainpalace/SKILL.md`.
+- [ ] Keep it English-only (AI guidance + user-facing CLI strings).
+- [ ] Never write literal tier-marker tokens inside the source's header comment.
+- [ ] Bump the source `meta:` `last_validated` (and `version` if structural).
+- [ ] `docs/CHANGELOG.md` `[Unreleased]` notes it.
+- [ ] `task lint:ai-guidance-parity` green.
+
+> **Why this section exists:** three independent front-ends (plugin/MCP/hook) for
+> the same instructions drift the instant one is edited. One source + a generated
+> skill + a parity gate makes drift a failing test, not a silent gap.
 
 ---
 

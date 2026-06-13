@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-05-30
+last_validated: 2026-06-13
 ---
 
 # Integration Guide
@@ -157,6 +157,11 @@ brainpalace jobs --watch
 
 ### Embedding Cache Integration (v8.0+)
 
+The embedding cache automatically stores computed embeddings to avoid redundant
+API calls during reindexing. It is active by default — no setup required.
+Unchanged content (identified by SHA-256 hash) reuses cached vectors on reindex,
+complementing the ManifestTracker.
+
 Monitor cache health in CI pipelines:
 
 ```bash
@@ -166,6 +171,22 @@ brainpalace cache status --json | jq '.hit_rate'
 # Clear cache if switching providers
 brainpalace cache clear --yes
 ```
+
+**When to check cache status:**
+- After indexing — verify the cache works and hit rate is growing
+- When queries seem slow — a low/zero hit rate means embeddings are recomputed every reindex
+- To monitor cache growth — track disk usage over time for large indexes
+
+A healthy cache shows a hit rate > 80% after the first full reindex cycle,
+growing disk entries over time, and low misses relative to hits.
+
+**When to clear the cache:**
+- After changing embedding provider or model — prevents dimension mismatches and stale vectors
+- Suspected cache corruption — if search quality degrades unexpectedly
+- To force fresh embeddings — when all vectors must reflect the current provider/model
+
+See `references/api_reference.md` for the `GET /index/cache` and
+`DELETE /index/cache` endpoint schemas.
 
 ---
 

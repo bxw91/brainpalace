@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-12
+last_validated: 2026-06-13
 ---
 
 # Changelog
@@ -14,6 +14,56 @@ Entries are kept short (≤ 3 sentences); see
 [DEVELOPERS_GUIDE.md → Changelog style](DEVELOPERS_GUIDE.md#changelog-style-docschangelogmd).
 
 ---
+
+## [26.6.39] - 2026-06-13
+
+### Added
+- **Single-source AI guidance across plugin, MCP, and hook.** AI usage guidance
+  now flows from one file (`brainpalace_cli/data/ai_guidance.md`, tiers
+  NUDGE⊂CORE⊂FULL) via the new `brainpalace ai-guide` command — the plugin
+  `SKILL.md` is generated from it, MCP serves CORE as `instructions=` plus an
+  `ai_guide` tool, and the SessionStart hook is a thin shim with legacy fat hooks
+  auto-migrating on `brainpalace start`. The `lint:ai-guidance-parity` gate (in
+  `task before-push`) fails on any surface drifting from the source.
+- **Dashboard read-only toggle beside Stop.** The instance action bar (visible on
+  the Status page) now has a one-click read-only switch that writes the sparse
+  `server.read_only` override and restarts the instance, so the provider kill
+  switch no longer needs the Config tab or the CLI.
+
+### Fixed
+- **Indexing no longer falsely fails on added empty files.** A watcher run that
+  only adds zero-chunk files (e.g. empty `__init__.py`) leaves the store size
+  flat, which `_verify_collection_delta` mis-flagged as
+  `Verification failed: No chunks found in vector store`. Added files with no
+  store shrinkage now verify as a valid zero-delta run.
+
+### Changed
+- **`configuring-brainpalace` skill slimmed to a router (793 → 587 lines).**
+  Provider-config methods/profiles, the two GraphRAG env blocks, the inline
+  troubleshooting tables, and the cache deep-dive were de-duplicated against the
+  four reference guides they already cover; unique content (wizard question set,
+  opt-in optional-dep rule, BM25 language config, read-only kill switch) stays
+  inline. Fixed three stale commands in `references/provider-configuration.md`
+  (`verify`/`test-embedding`/`test-summarize` → `brainpalace doctor`).
+- **setuptools `<81` cap lifted — `pkg_resources` crash root cause removed.** The
+  only runtime dep that hard-imported the (setuptools-81-removed) `pkg_resources`
+  at module load was `stopwordsiso`, forcing a `setuptools >=65,<81` pin. The
+  stopword dataset is now vendored verbatim
+  (`indexing/text_analysis/vendor/stopwords-iso.json`, MIT) and `stopwordsiso`
+  dropped, so the pin relaxes to `>=65` and setuptools 81+ no longer crashes
+  indexing/keyword search.
+- **Guided setup stops everything first.** `scripts/setup.sh` now asks up front
+  to stop all running BrainPalace servers + the dashboard before touching the
+  pipx venv, avoiding a live old-venv server clashing with the reinstall.
+- **Setup no longer installs the Claude Code plugin from the CLI.** Driving
+  `claude plugins …` from the script could hang on its process scan; the step now
+  points users to install the plugin from inside Claude Code (`/plugin`) instead.
+- **Config wizard flags summarization-OFF in red.** "Chat-session summarization is
+  OFF" is now styled red so the user notices chat summaries are disabled.
+- **Lemmatization prompt names the supported languages.** The BM25 lemma question
+  now appends the lemma-capable languages (currently Croatian/Serbian), read live
+  from the server's analyzer registry (`lemma_language_label`) rather than a
+  hardcoded list, so it can't drift as languages are added.
 
 ## [26.6.38] - 2026-06-12
 

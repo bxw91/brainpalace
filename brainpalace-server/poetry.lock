@@ -6144,18 +6144,6 @@ anyio = ">=3.6.2,<5"
 full = ["httpx (>=0.27.0,<0.29.0)", "itsdangerous", "jinja2", "python-multipart (>=0.0.18)", "pyyaml"]
 
 [[package]]
-name = "stopwordsiso"
-version = "0.6.1"
-description = "Collection of stopwords for multiple languages. Using ISO 639-1 language code."
-optional = false
-python-versions = "*"
-groups = ["main"]
-files = [
-    {file = "stopwordsiso-0.6.1-py3-none-any.whl", hash = "sha256:c9bff4ed5fdddbfb56998c99d5b11460c2fea0134403e0c4104f63b7c665fffc"},
-    {file = "stopwordsiso-0.6.1.tar.gz", hash = "sha256:5be2b4f25afc296fca4f626710b98168949057f81a655e2dbdf670ddfce2af50"},
-]
-
-[[package]]
 name = "striprtf"
 version = "0.0.26"
 description = "A simple library to convert rtf to text"
@@ -7586,4 +7574,4 @@ reranker-local = ["sentence-transformers"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.10"
-content-hash = "75a622de88f8b4f324079033142e2ed41792a74ad0fb1a68dfd7b8fe69ff07b0"
+content-hash = "2a40ec85d8c2bebdbe6ed134f47f71d027df9dab9d1fc82dd6b9ede6f519c583"

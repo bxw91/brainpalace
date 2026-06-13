@@ -12,6 +12,11 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+# Optional list filters default to ``[]`` (not ``None``) so the generated JSON
+# schema is a plain array — no ``anyOf: [array, null]`` union, which some LLM /
+# MCP clients mishandle (the "null parameter during query" problem). The client
+# treats an empty list as "no filter" (see api_client.query), so ``[]`` == omit.
+
 QueryMode = Literal["bm25", "vector", "hybrid", "graph", "multi"]
 
 # Shared: override CWD-based server discovery. See the CWD-coupling risk
@@ -24,8 +29,14 @@ class QueryInput(BaseModel):
     query: str = Field(..., description="Search query text")
     mode: QueryMode = Field(default="hybrid", description="Search mode")
     top_k: int = Field(default=8, ge=1, le=100)
-    languages: list[str] | None = None
-    source_types: list[str] | None = None
+    languages: list[str] = Field(
+        default_factory=list,
+        description="Filter by programming languages (empty = all)",
+    )
+    source_types: list[str] = Field(
+        default_factory=list,
+        description="Filter by source types (empty = all)",
+    )
     language: str | None = Field(
         default=None,
         description=(
@@ -68,3 +79,13 @@ class RecallInput(BaseModel):
 
 class SessionContextInput(BaseModel):
     path: str | None = Field(default=None, description=_PATH_DESC)
+
+
+class AiGuideInput(BaseModel):
+    tier: Literal["nudge", "core", "full"] = Field(
+        default="full",
+        description=(
+            "full = complete usage guide (default); core = decision contract; "
+            "nudge = one-line reminder. CORE is already in the server instructions."
+        ),
+    )

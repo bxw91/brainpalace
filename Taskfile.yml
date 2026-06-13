@@ -208,6 +208,12 @@ tasks:
     cmds:
       - python3 scripts/check_changelog_style.py
 
+  lint:ai-guidance-parity:
+    desc: "Fail if SKILL.md / hooks / MCP drift from the single AI-guidance source"
+    dir: ./{{.CLI_DIR}}
+    cmds:
+      - "{{.POETRY}} run python ../scripts/check_ai_guidance_parity.py"
+
   typecheck:
     desc: Type check all code with mypy
     aliases: [mypy]
@@ -247,6 +253,8 @@ tasks:
       - task: lint:changelog
       - echo "--- Checking dashboard parity ---"
       - task: lint:dashboard-parity
+      - echo "--- Checking AI-guidance parity ---"
+      - task: lint:ai-guidance-parity
       - echo "--- Type checking ---"
       - task: typecheck
       - echo "--- Running tests with coverage ---"

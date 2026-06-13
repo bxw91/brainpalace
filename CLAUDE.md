@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-10
+last_validated: 2026-06-13
 ---
 
 # BrainPalace — repo guide for Claude
@@ -57,6 +57,31 @@ a `cli_only:`/`unsurfaced:` reason). The gate `lint:dashboard-parity` (in
 LIVE FastAPI app and fails on any unclassified addition or stale map entry. Note
 the change in `docs/CHANGELOG.md`. Full rule + how to satisfy each check:
 [docs/DEVELOPERS_GUIDE.md → Dashboard parity](docs/DEVELOPERS_GUIDE.md#dashboard-parity-surface-every-feature).
+
+## AI-guidance parity — single source (MANDATORY)
+
+AI-facing usage guidance (search rules, modes, `--json` contract, server-down
+behavior) reaches three surfaces — the **Claude plugin skill**
+(`brainpalace-plugin/skills/using-brainpalace/SKILL.md`), the **MCP server**
+(`Server(instructions=...)` + the `ai_guide` tool), and the **SessionStart hook**
+— from **one source**: `brainpalace-cli/brainpalace_cli/data/ai_guidance.md`.
+Three nested tiers slice from it: **NUDGE ⊂ CORE ⊂ FULL** (hook gets NUDGE, MCP
+instructions get CORE, skill + `ai-guide --tier full` + the `ai_guide` MCP tool
+get FULL). The loader is `brainpalace_cli/ai_guidance.py`; `brainpalace ai-guide`
+renders it.
+
+**Edit guidance in `ai_guidance.md` ONLY.** `SKILL.md` is a GENERATED artifact —
+never hand-edit it; regenerate with
+`cd brainpalace-cli && poetry run brainpalace ai-guide --format skill > ../brainpalace-plugin/skills/using-brainpalace/SKILL.md`.
+The hooks are thin shims (`brainpalace hook sessionstart`); all logic lives in the
+CLI, so a CLI upgrade propagates changes (legacy fat hooks auto-migrate on
+`brainpalace start`). Rules: verify contract claims against LIVE code (never
+doc-vs-doc); AI guidance + user-facing CLI strings are **English-only**; never put
+literal tier-marker tokens in the source's header comment. The gate
+`lint:ai-guidance-parity` (in `task before-push`) fails on SKILL.md drift, empty
+tier slices, hook-shim drift, or non-English letters. Note the change in
+`docs/CHANGELOG.md`. Full rule:
+[docs/DEVELOPERS_GUIDE.md → AI-guidance parity](docs/DEVELOPERS_GUIDE.md#ai-guidance-parity-single-source).
 
 ## Build / test
 

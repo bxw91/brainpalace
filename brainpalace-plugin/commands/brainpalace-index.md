@@ -6,9 +6,9 @@ parameters:
     description: Path to documents to index
     required: true
   - name: include-code
-    description: Include code files in indexing
+    description: Include code files in indexing (use --no-code to disable)
     required: false
-    default: false
+    default: true
   - name: include-type
     description: File type presets to include (e.g., python,docs)
     required: false
@@ -38,7 +38,9 @@ Indexes documents at the specified path for semantic search. Processes markdown,
 | Parameter | Required | Default | Description |
 |-----------|----------|---------|-------------|
 | path | Yes | - | Path to documents (file or directory) |
-| --include-code | No | false | Include code files (.py, .ts, .js, .java, etc.) |
+| --include-code / --no-code | No | true (ON) | Include code files (.py, .ts, .js, .java, etc.); --no-code for doc-only |
+| --watch | No | unchanged | Enable (`auto`) or disable (`off`) live re-indexing of this folder |
+| --watch-debounce | No | 30 | Debounce window (seconds) before a watched change re-indexes |
 | --include-type | No | - | File type presets (e.g., python,docs,typescript). Use `brainpalace types list` to see all. |
 | --chunk-size | No | 512 | Target chunk size in tokens |
 | --chunk-overlap | No | 50 | Overlap between chunks in tokens |

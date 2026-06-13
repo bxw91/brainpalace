@@ -134,6 +134,26 @@ def _load_yaml(path: Path) -> dict[str, Any]:
         return yaml.safe_load(f) or {}
 
 
+def _lemma_languages_hint() -> str:
+    """`" — currently: Croatian/Serbian"` listing the languages the lemma BM25
+    engine actually supports, read live from the bundled server's analyzer
+    registry (the single source of truth) so the prompt never hardcodes the list.
+
+    Resolved dynamically via ``getattr`` so an older bundled server that predates
+    ``lemma_language_label`` degrades to an empty hint instead of breaking. Empty
+    string if the server can't be imported."""
+    try:
+        import importlib
+
+        registry = importlib.import_module(
+            "brainpalace_server.indexing.text_analysis.registry"
+        )
+        label = str(getattr(registry, "lemma_language_label", lambda: "")())
+    except Exception:
+        return ""
+    return f" — currently: {label}" if label else ""
+
+
 def _resolve_wizard_config_path() -> Path:
     """Resolve output path for config wizard.
 
@@ -256,7 +276,9 @@ def wizard(global_: bool, chat_summarizer: str) -> None:
         )
     else:
         click.echo(
-            "\nChat-session summarization is OFF. Enable it by installing the Claude"
+            "\n"
+            + click.style("Chat-session summarization is OFF.", fg="red", bold=True)
+            + " Enable it by installing the Claude"
             " Code\nplugin (free, Haiku subagent), or set SESSION_DISTILL_ENABLED=true"
             " to use\nthe code summarization provider/model below."
         )
@@ -312,7 +334,7 @@ def wizard(global_: bool, chat_summarizer: str) -> None:
 
     use_lemma = click.confirm(
         "\nUse lemmatization for BM25 keyword search? (better recall for inflected "
-        "languages)\n  "
+        f"languages{_lemma_languages_hint()})\n  "
         f"{optional_deps.REGISTRY['lemma-hr'].download_note}",
         default=False,
     )

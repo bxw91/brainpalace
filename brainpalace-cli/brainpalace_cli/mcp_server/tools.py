@@ -31,7 +31,9 @@ from brainpalace_cli.client.api_client import (
 )
 from brainpalace_cli.discovery import discover_project_dir, discover_server_url
 
+from ..ai_guidance import render as _render_guidance
 from .schemas import (
+    AiGuideInput,
     FoldersListInput,
     JobsListInput,
     MemorizeInput,
@@ -226,3 +228,12 @@ async def recall_tool(inp: RecallInput) -> dict[str, Any]:
 
 async def session_context_tool(inp: SessionContextInput) -> dict[str, Any]:
     return await asyncio.to_thread(_session_context_sync, inp)
+
+
+async def ai_guide_tool(inp: AiGuideInput) -> dict[str, Any]:
+    # Pure local read of the bundled single-source guidance; no server needed.
+    # The pull path for MCP-only clients (CLI `ai-guide` is unreachable over MCP).
+    text = _render_guidance(tier=inp.tier, fmt="markdown")
+    if not text:
+        return _err("guidance unavailable")
+    return {"tier": inp.tier, "guidance": text}

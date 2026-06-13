@@ -13,10 +13,10 @@ allowed-tools:
   - Bash
   - Read
 metadata:
-  version: 7.0.0
+  version: 7.1.0
   category: ai-tools
   author: bxw91
-  last_validated: 2026-06-12
+  last_validated: 2026-06-13
 ---
 
 # Configuring BrainPalace
@@ -25,15 +25,17 @@ Installation and configuration for BrainPalace document search with pluggable pr
 
 ## Contents
 
+- [Multi-Runtime Support](#multi-runtime-support)
 - [Quick Setup](#quick-setup)
 - [Setup Wizard](#setup-wizard)
 - [Prerequisites](#prerequisites)
 - [Installation](#installation)
-- [Provider Configuration](#provider-configuration)
-- [BM25 Language Configuration](#bm25-language-configuration)
+- [Provider Configuration](#provider-configuration) · [GraphRAG](#graphrag-configuration) · [BM25 Language](#bm25-language-configuration) · [Query Modes](#query-mode-selection) · [Read-only](#read-only-mode-provider-kill-switch)
 - [Project Initialization](#project-initialization)
 - [Verification](#verification)
 - [When Not to Use](#when-not-to-use)
+- [Common Setup Issues](#common-setup-issues)
+- [Environment Variables Reference](#environment-variables-reference)
 - [Reference Documentation](#reference-documentation)
 
 ---
@@ -165,9 +167,9 @@ The wizard asks the following questions in sequence:
 | Ollama (FREE, local) | `ollama` | `llama3.2` | Requires Ollama running locally |
 | Ollama + Mistral (FREE, local) | `ollama` | `mistral-small3.2` | Better summarization quality |
 | Anthropic | `anthropic` | `claude-haiku-4-5-20251001` | Requires `ANTHROPIC_API_KEY` |
-| OpenAI | `openai` | `gpt-4o-mini` | Requires `OPENAI_API_KEY` |
+| OpenAI | `openai` | `gpt-5-mini` | Requires `OPENAI_API_KEY` |
 | Google Gemini | `gemini` | `gemini-3.1-flash-lite` (cheapest; premium e.g. `gemini-3.5-flash` or `gemini-3.1-pro-preview` can be set manually) | Requires `GOOGLE_API_KEY` |
-| Grok (xAI) | `grok` | `grok-3-mini-fast` | Requires `XAI_API_KEY` |
+| Grok (xAI) | `grok` | `grok-4-fast` | Requires `XAI_API_KEY` |
 
 ### Config.yaml Written by Wizard
 
@@ -230,20 +232,8 @@ Expected: Version number displayed (e.g., `3.0.0` or current version)
 pip install "brainpalace-rag[graphrag]" brainpalace-cli
 ```
 
-### Enable GraphRAG (server)
-
-```bash
-export ENABLE_GRAPH_INDEX=true            # Master switch (default: true)
-export GRAPH_STORE_TYPE=sqlite            # "sqlite" (default, persistent + temporal) or "simple" (in-memory)
-export GRAPH_INDEX_PATH=./graph_index
-export GRAPH_USE_CODE_METADATA=true       # Extract from AST metadata
-export GRAPH_USE_LLM_EXTRACTION=true      # Use LLM extractor when available
-export GRAPH_MAX_TRIPLETS_PER_CHUNK=10    # Triplet cap per chunk
-export GRAPH_TRAVERSAL_DEPTH=2            # Default traversal depth
-export GRAPH_EXTRACTION_MODEL=claude-haiku-4-5
-```
-
-Add the same values to your `.env` if you prefer file-based config.
+GraphRAG is enabled by default; tune it via the
+[GraphRAG Configuration](#graphrag-configuration) section below.
 
 ### Virtual Environment (Recommended)
 
@@ -255,147 +245,43 @@ pip install brainpalace-rag brainpalace-cli
 
 ### Installation Troubleshooting
 
-| Problem | Solution |
-|---------|----------|
-| `pip not found` | Run `python -m ensurepip` |
-| Permission denied | Use `pip install --user` or virtual env |
-| Module not found after install | Restart terminal or activate venv |
-| Wrong Python version | Use `python3.10 -m pip install` |
-
-**Counter-example - Wrong approach**:
-```bash
-# DO NOT use sudo with pip
-sudo pip install brainpalace-rag  # Wrong - creates permission issues
-```
-
-**Correct approach**:
-```bash
-pip install --user brainpalace-rag  # Correct - user installation
-# OR use virtual environment
-```
+Common pip failures (`pip not found`, permission denied, module-not-found, wrong
+Python) and their fixes are in the [Installation Guide](references/installation-guide.md)
+and [Troubleshooting Guide](references/troubleshooting-guide.md). Rule of thumb:
+never `sudo pip install` — use `pip install --user` or a virtualenv.
 
 ---
 
 ## Provider Configuration
 
-BrainPalace supports pluggable providers with two configuration methods.
+Two methods; **precedence: CLI options → env vars → config file → defaults**.
 
-### Method 1: Configuration File (Recommended)
-
-Create a `config.yaml` file in one of these locations:
-
-1. `BRAINPALACE_CONFIG` env / project `./.brainpalace/config.yaml`
-2. **XDG config (preferred global)**: `~/.config/brainpalace/config.yaml`
-3. **User-level (legacy, deprecated)**: `~/.brainpalace/config.yaml`
+- **Config file** (recommended) — `config.yaml` resolved in order:
+  `BRAINPALACE_CONFIG` env → project `./.brainpalace/config.yaml` → XDG
+  `~/.config/brainpalace/config.yaml` (preferred global) → legacy
+  `~/.brainpalace/config.yaml` (deprecated).
+- **Environment variables** — `EMBEDDING_PROVIDER`/`EMBEDDING_MODEL`,
+  `SUMMARIZATION_PROVIDER`/`SUMMARIZATION_MODEL`, plus the provider API key
+  (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, …).
 
 ```yaml
-# ~/.config/brainpalace/config.yaml
-server:
-  url: "http://127.0.0.1:8000"
-  port: 8000
-
-project:
-  state_dir: null  # null = use default (.brainpalace)
-
+# ~/.config/brainpalace/config.yaml  (cloud example)
 embedding:
   provider: "openai"
   model: "text-embedding-3-large"
-  api_key: "sk-proj-..."  # Direct key, OR use api_key_env
-  # api_key_env: "OPENAI_API_KEY"  # Read from env var
-
+  api_key_env: "OPENAI_API_KEY"   # or api_key: "sk-..." inline
 summarization:
   provider: "anthropic"
   model: "claude-haiku-4-5-20251001"
-  api_key: "sk-ant-..."  # Direct key, OR use api_key_env
-  # api_key_env: "ANTHROPIC_API_KEY"
+  api_key_env: "ANTHROPIC_API_KEY"
 ```
 
-**Config file search order**: BRAINPALACE_CONFIG env → current dir → project dir → XDG (~/.config/brainpalace/config.yaml) → legacy ~/.brainpalace (deprecated)
+**Security** (inline keys): `chmod 600` the file, add `config.yaml` to
+`.gitignore`, never commit keys.
 
-**Security**: If storing API keys in config file:
-- Set file permissions: `chmod 600 ~/.config/brainpalace/config.yaml`
-- Add to `.gitignore`: `config.yaml`
-- Never commit API keys to version control
-
-### Method 2: Environment Variables
-
-Set variables in shell or `.env` file:
-
-```bash
-export EMBEDDING_PROVIDER=openai
-export EMBEDDING_MODEL=text-embedding-3-large
-export SUMMARIZATION_PROVIDER=anthropic
-export SUMMARIZATION_MODEL=claude-haiku-4-5-20251001
-export OPENAI_API_KEY="sk-proj-..."
-export ANTHROPIC_API_KEY="sk-ant-..."
-```
-
-**Precedence order**: CLI options → environment variables → config file → defaults
-
----
-
-### Provider Profiles
-
-#### Fully Local with Ollama (No API Keys)
-
-Best for privacy, air-gapped environments:
-
-**Config file** (`~/.config/brainpalace/config.yaml`):
-```yaml
-embedding:
-  provider: "ollama"
-  model: "nomic-embed-text"
-  base_url: "http://localhost:11434/v1"
-
-summarization:
-  provider: "ollama"
-  model: "llama3.2"
-  base_url: "http://localhost:11434/v1"
-```
-
-**Or environment variables**:
-```bash
-export EMBEDDING_PROVIDER=ollama
-export EMBEDDING_MODEL=nomic-embed-text
-export SUMMARIZATION_PROVIDER=ollama
-export SUMMARIZATION_MODEL=llama3.2
-```
-
-**Prerequisite**: Ollama must be installed and running with models pulled.
-
-#### Cloud (Best Quality)
-
-**Config file**:
-```yaml
-embedding:
-  provider: "openai"
-  model: "text-embedding-3-large"
-  api_key: "sk-proj-..."
-
-summarization:
-  provider: "anthropic"
-  model: "claude-haiku-4-5-20251001"
-  api_key: "sk-ant-..."
-```
-
-**Or environment variables**:
-```bash
-export OPENAI_API_KEY="sk-proj-..."
-export ANTHROPIC_API_KEY="sk-ant-..."
-```
-
-#### Mixed (Balance Quality and Privacy)
-
-```yaml
-embedding:
-  provider: "openai"
-  model: "text-embedding-3-large"
-  api_key: "sk-proj-..."
-
-summarization:
-  provider: "ollama"
-  model: "llama3.2"
-```
+Full per-provider settings, base_url, and the Ollama / Cloud / Mixed /
+Budget / Multi-language profiles are in the
+[Provider Configuration](references/provider-configuration.md) guide.
 
 ### GraphRAG Configuration
 
@@ -419,7 +305,12 @@ point-in-time queries, decision supersession). `simple` disables all temporal fe
 |---------|-----------|---------|-------------|
 | `ENABLE_GRAPH_INDEX` | `graphrag.enabled` | `true` | Master switch |
 | `GRAPH_STORE_TYPE` | `graphrag.store_type` | `sqlite` | `simple` or `sqlite` |
+| `GRAPH_INDEX_PATH` | — | `./graph_index` | On-disk graph store path |
 | `GRAPH_USE_CODE_METADATA` | `graphrag.use_code_metadata` | `true` | AST metadata extraction |
+| `GRAPH_USE_LLM_EXTRACTION` | — | `true` | Use LLM extractor when available |
+| `GRAPH_MAX_TRIPLETS_PER_CHUNK` | — | `10` | Triplet cap per chunk |
+| `GRAPH_TRAVERSAL_DEPTH` | — | `2` | Default traversal depth |
+| `GRAPH_EXTRACTION_MODEL` | — | `claude-haiku-4-5` | Triplet-extraction model |
 
 **Note**: GraphRAG requires the `--include-code` flag during indexing to extract code structure:
 
@@ -530,24 +421,11 @@ broken key, rate-limited) to keep the index queryable without risking data loss.
 ### Verify Configuration
 
 ```bash
-brainpalace verify
+brainpalace doctor   # checks providers, config, and server health
 ```
 
-**Counter-example - Common mistake**:
-```bash
-# DO NOT put keys in shell command history
-OPENAI_API_KEY="sk-proj-abc123" brainpalace start  # Wrong - key in history
-```
-
-**Correct approaches**:
-```bash
-# Use config file (keys are in file, not command line)
-brainpalace start
-
-# Or use environment from shell profile
-export OPENAI_API_KEY="sk-proj-..."  # In ~/.bashrc
-brainpalace start
-```
+Keep keys out of shell history — put them in the config file or a shell-profile
+`export`, never inline before `brainpalace start`.
 
 ---
 
@@ -563,7 +441,7 @@ brainpalace init
 
 **Verify initialization succeeded**:
 ```bash
-ls .brainpalace/config.json
+ls .brainpalace/config.yaml
 ```
 
 Expected: File exists
@@ -612,51 +490,23 @@ Expected: Search results or "No results" (not an error)
 
 ## Verification
 
-### Full Verification Checklist
+`brainpalace doctor` runs all checks and reports issues — the fastest single
+command. Manual checklist:
 
-Run each command and verify expected output:
+- [ ] `brainpalace --version` shows a version number
+- [ ] `ls .brainpalace/config.yaml` exists
+- [ ] `brainpalace status` shows "healthy" and document count > 0
+- [ ] `brainpalace query "test"` returns results or "no matches" (not an error)
+- [ ] `brainpalace folders list` / `types list` show expected entries
+- [ ] **GraphRAG:** `brainpalace status --json | jq '.graph_index'` shows index
+      info; `query --mode graph` / `--mode multi` return results
 
-- [ ] `brainpalace --version` shows version number (7.0.0+)
-- [ ] `echo ${OPENAI_API_KEY:+SET}` shows "SET" (if using OpenAI)
-- [ ] `ls .brainpalace/config.json` file exists
-- [ ] `brainpalace status` shows "healthy"
-- [ ] `brainpalace status` shows document count > 0
-- [ ] `brainpalace query "test"` returns results or "no matches"
-- [ ] `brainpalace folders list` shows indexed folders
-- [ ] `brainpalace types list` shows file type presets
-- [ ] `brainpalace jobs` shows job queue (empty or with history)
-
-### GraphRAG Verification (if enabled)
-
-- [ ] `echo ${ENABLE_GRAPH_INDEX}` shows "true"
-- [ ] `brainpalace status --json | jq '.graph_index'` shows graph index info
-- [ ] `brainpalace query "class relationships" --mode graph` returns results or graceful error
-- [ ] `brainpalace query "how it works" --mode multi` returns fused results
-
-### Automated Verification
+### Post-Indexing
 
 ```bash
-brainpalace verify
-```
-
-This runs all checks and reports any issues.
-
-### Post-Indexing Verification
-
-After indexing documents, verify the pipeline is working:
-
-```bash
-# Monitor indexing job
-brainpalace jobs --watch
-
-# Check job completed successfully
-brainpalace jobs <job_id>
-
-# Verify incremental indexing works
-brainpalace index ./docs  # Should show eviction summary with unchanged files
-
-# Validate injection scripts before use
-brainpalace inject ./docs --script enrich.py --dry-run
+brainpalace jobs --watch                     # monitor the indexing job
+brainpalace index ./docs                     # re-run → eviction summary (unchanged files)
+brainpalace inject ./docs --script enrich.py --dry-run   # validate injection before use
 ```
 
 ---
@@ -676,50 +526,10 @@ This skill focuses on **installation and configuration**. Do NOT use for:
 
 ## Common Setup Issues
 
-### Issue: Module Not Found
-
-```bash
-pip install --force-reinstall brainpalace-rag brainpalace-cli
-```
-
-### Issue: API Key Not Working
-
-```bash
-# Test OpenAI key
-curl -s https://api.openai.com/v1/models \
-  -H "Authorization: Bearer $OPENAI_API_KEY" | head -c 100
-```
-
-Expected: JSON response (not error)
-
-### Issue: Server Won't Start
-
-```bash
-# Check for stale state
-rm -f .brainpalace/runtime.json
-rm -f .brainpalace/lock.json
-brainpalace start
-```
-
-### Issue: Ollama Connection Failed
-
-```bash
-# Verify Ollama is running
-curl http://localhost:11434/api/tags
-```
-
-Expected: JSON with model list
-
-### Issue: No Search Results
-
-```bash
-brainpalace status  # Check document count
-```
-
-If count is 0, index documents:
-```bash
-brainpalace index ./docs
-```
+Module-not-found, API-key, server-won't-start, Ollama-connection, and no-results
+problems — with copy-paste fixes — live in the
+[Troubleshooting Guide](references/troubleshooting-guide.md). First move for most
+issues: `brainpalace doctor`.
 
 ---
 
@@ -746,33 +556,17 @@ brainpalace index ./docs
 
 ### Caching
 
-#### Embedding Cache
+Both caches are **automatic — no setup required**:
 
-The embedding cache is **automatic** — no setup required. Embeddings are cached on first compute
-and reused on subsequent reindexes of unchanged content, significantly reducing OpenAI API costs
-when using file watching or frequent reindexing.
+- **Embedding cache** — reuses embeddings for unchanged content, cutting API
+  costs on reindex. Tune with `EMBEDDING_CACHE_MAX_MEM_ENTRIES` /
+  `EMBEDDING_CACHE_MAX_DISK_MB`.
+- **Query cache** — identical queries return instantly within the TTL; `graph`
+  and `multi` bypass it, and it's invalidated on every completed reindex. Tune
+  with `QUERY_CACHE_TTL` (default 300s) / `QUERY_CACHE_MAX_SIZE` (default 256).
 
-The two cache env vars allow tuning for specific environments:
-- **Large indexes** — increase `EMBEDDING_CACHE_MAX_MEM_ENTRIES` (e.g., 5000) to keep more embeddings
-  in the fast in-memory tier and reduce SQLite lookups
-- **Memory-constrained environments** — decrease `EMBEDDING_CACHE_MAX_MEM_ENTRIES` (e.g., 200) to
-  limit RAM usage; the disk cache still provides cost savings even with a small memory tier
-- **Disk space constrained** — decrease `EMBEDDING_CACHE_MAX_DISK_MB` (e.g., 100) to cap the SQLite
-  cache database size; oldest entries are evicted when the limit is reached
-
-The disk cache uses SQLite with WAL mode for safe concurrent access during indexing operations.
-
-#### Query Cache
-
-The query cache is **automatic** — no setup required. Identical queries within
-the TTL window return instantly without hitting storage.
-
-- **`graph` and `multi` modes bypass the cache** — each call reaches storage
-  for fresh results.
-- Cache is **invalidated on every completed reindex job** (file watcher or manual).
-- Configurable via environment variables (see Configuration Guide for details):
-  - `QUERY_CACHE_TTL` — cache TTL in seconds (default: 300, i.e., 5 minutes)
-  - `QUERY_CACHE_MAX_SIZE` — max cached query results (default: 256)
+Full cache tuning is in the
+[Configuration Guide](references/configuration-guide.md).
 
 ---
 

@@ -183,4 +183,4 @@ Show comprehensive details:
 - Commands can be invoked as `/brainpalace:brainpalace-<name>` in Claude Code
 - Setup commands are typically run once per project
 - Search commands require a running server with indexed documents
-- GraphRAG is disabled by default. Enable with `export ENABLE_GRAPH_INDEX=true` before starting the server, then re-index documents
+- GraphRAG is enabled by default on new projects (`graphrag.enabled: true`). Disable with `export ENABLE_GRAPH_INDEX=false` or `graphrag.enabled: false` in config

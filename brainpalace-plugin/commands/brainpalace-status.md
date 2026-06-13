@@ -46,6 +46,7 @@ Use this command to verify the server is running before performing searches.
 | --url | No | from config or http://127.0.0.1:8000 | Server URL (env: BRAINPALACE_URL) |
 | --json | No | false | Output in JSON format for scripting |
 | --verbose, -v | No | false | Show additional detail (cache size, memory stats) |
+| --all, -a | No | false | Show detailed status for every running registered server |
 
 ## Execution
 
@@ -116,9 +117,7 @@ BM25 Language      en (engine: stem)
   },
   "bm25": {
     "language": "en",
-    "engine": "stem",
-    "detect": false,
-    "detect_min_confidence": 0.6
+    "engine": "stem"
   }
 }
 ```
@@ -209,17 +208,17 @@ Use JSON output for scripting and diagnostics:
 
 ```bash
 # Check document count
-brainpalace status --json | jq '.index.document_count'
+brainpalace status --json | jq '.indexing.total_documents'
 
-# Check server port
-brainpalace status --json | jq '.server.port'
+# Check health status
+brainpalace status --json | jq -r '.health.status'
 ```
 
 ### CI/CD Integration
 
 ```bash
 # Wait for server to be healthy
-until brainpalace status --json | jq -e '.server.status == "healthy"'; do
+until brainpalace status --json | jq -e '.health.status == "healthy"'; do
   sleep 1
 done
 ```

@@ -493,6 +493,17 @@ def start_command(
         # Trigger one-time migration from legacy ~/.brainpalace to XDG dirs
         migrate_legacy_paths()
 
+        # Best-effort: migrate an already-installed legacy "fat" SessionStart
+        # hook to the thin shim (logic now lives in `brainpalace hook`). Only
+        # touches a hook the user already has; never installs one. After this
+        # the shim can never go stale. Must not break `start`.
+        try:
+            from .session_hooks import migrate_legacy_sessionstart_hook
+
+            migrate_legacy_sessionstart_hook(Path.home())
+        except Exception:
+            pass
+
         # Resolve project root
         if path:
             project_root = Path(path).resolve()

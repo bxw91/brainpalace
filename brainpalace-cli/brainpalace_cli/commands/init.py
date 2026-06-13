@@ -943,6 +943,12 @@ def _emit_init_result(
         for item in todo:
             console.print(f"  • {item}")
 
+    # Point AI agents at the canonical usage guidance (search rules + modes).
+    console.print(
+        "\n[dim]AI agents: run [bold]brainpalace ai-guide[/] for search rules "
+        "& modes.[/]"
+    )
+
 
 def _estimate_and_confirm_local(
     project_root: Path, config_yaml: Path, include_code: bool
@@ -1644,9 +1650,12 @@ def init_command(
 
                 _leng, _lsrc = _resolve_cfg("bm25.engine", {}, _gcfg)
                 _lemma_default = (str(_leng) == "lemma") if _lsrc == "global" else False
+                from brainpalace_cli.commands.config import _lemma_languages_hint
+
+                _lemma_hint = _lemma_languages_hint()
                 console.print(
                     "\n[bold]Use lemmatization for BM25 keyword search?[/] "
-                    "(better recall for inflected languages)\n"
+                    f"(better recall for inflected languages{_lemma_hint})\n"
                     f"  [yellow]{optional_deps.REGISTRY['lemma-hr'].download_note}[/]\n"
                     "  Disable later: config bm25.engine=stem."
                 )

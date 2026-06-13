@@ -18,7 +18,7 @@ parameters:
   - name: timeout
     description: Startup timeout in seconds
     required: false
-    default: 30
+    default: 120
   - name: strict
     description: Fail on critical provider configuration errors
     required: false
@@ -57,8 +57,9 @@ Starts the BrainPalace server for the current project. The server provides:
 | --host | No | 127.0.0.1 | Server bind host (overrides config) |
 | --port | No | auto-select (8000-8100) | Server port (overrides config) |
 | --foreground, -f | No | false | Run in foreground (don't daemonize) |
-| --timeout | No | 30 | Startup timeout in seconds |
+| --timeout | No | 120 | Startup timeout in seconds |
 | --strict | No | false | Fail on critical provider config errors |
+| --no-dashboard | No | false | Do not auto-start the web dashboard (overrides `dashboard.autostart`) |
 | --json | No | false | Output as JSON |
 
 ## Execution

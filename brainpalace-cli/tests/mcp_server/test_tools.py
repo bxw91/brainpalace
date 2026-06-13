@@ -136,8 +136,10 @@ def test_query_happy_path(monkeypatch: pytest.MonkeyPatch) -> None:
         "query_text": "x",
         "top_k": 8,
         "mode": "bm25",
-        "source_types": None,
-        "languages": None,
+        # Optional list filters now default to [] (clean array schema, no
+        # nullable union); the client treats [] as "no filter".
+        "source_types": [],
+        "languages": [],
         "language": None,
     }
 

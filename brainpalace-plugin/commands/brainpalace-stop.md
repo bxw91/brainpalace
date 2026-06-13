@@ -39,8 +39,10 @@ Gracefully stops the BrainPalace server running for the current project. Sends S
 | Parameter | Required | Default | Description |
 |-----------|----------|---------|-------------|
 | --path, -p | No | auto-detect | Project path |
+| --url | No | from config | Server URL — resolves project_root via `GET /runtime/` |
 | --force, -f | No | false | Force stop with SIGKILL if SIGTERM fails |
 | --timeout | No | 10 | Graceful shutdown timeout in seconds |
+| --all | No | false | Also reap orphan server processes not in the registry |
 | --json | No | false | Output as JSON |
 
 ## Execution

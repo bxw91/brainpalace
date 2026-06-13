@@ -33,6 +33,7 @@ VALID_TOP_LEVEL_KEYS = {
     "session_extraction",
     "indexing",
     "dashboard",
+    "cli",
 }
 
 VALID_EMBEDDING_PROVIDERS = {"openai", "ollama", "cohere"}
@@ -105,6 +106,7 @@ API_KNOWN_FIELDS = {"host", "port"}
 SERVER_KNOWN_FIELDS = {"url", "host", "port", "auto_port", "read_only"}
 PROJECT_KNOWN_FIELDS = {"state_dir", "project_root"}
 QUERY_LOG_KNOWN_FIELDS = {"enabled", "retention_days"}
+CLI_KNOWN_FIELDS = {"show_ai_hint"}
 # Control-plane (dashboard process) settings — global only. Mirrors
 # brainpalace_dashboard.config.DashboardConfig.
 DASHBOARD_KNOWN_FIELDS = {
@@ -331,6 +333,16 @@ _SECTION_SCHEMA: dict[str, dict[str, Any]] = {
             "port": (int, "dashboard.port must be an integer"),
             "poll_s": (int, "dashboard.poll_s must be an integer"),
             "autostart": (bool, "dashboard.autostart must be a boolean (true/false)"),
+        },
+    },
+    "cli": {
+        "known_fields": CLI_KNOWN_FIELDS,
+        "enum_fields": {},
+        "type_fields": {
+            "show_ai_hint": (
+                bool,
+                "cli.show_ai_hint must be a boolean (true/false)",
+            ),
         },
     },
     "bm25": {

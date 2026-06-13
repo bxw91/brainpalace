@@ -146,9 +146,9 @@ Options:
 1. Ollama (FREE, local) - llama3.2, runs on your machine, no API key needed
 2. Ollama + Mistral (FREE, local) - mistral-small3.2, better summarization quality, no API key needed
 3. Anthropic - claude-haiku-4-5-20251001, fast and cost-effective, requires ANTHROPIC_API_KEY
-4. OpenAI - gpt-4o-mini, OpenAI summarization, requires OPENAI_API_KEY
+4. OpenAI - gpt-5-mini, OpenAI summarization, requires OPENAI_API_KEY
 5. Google Gemini - gemini-3.1-flash-lite, Google's model, requires GOOGLE_API_KEY
-6. Grok (xAI) - grok-3-mini-fast, xAI's fast model, requires XAI_API_KEY
+6. Grok (xAI) - grok-4-fast, xAI's fast model, requires XAI_API_KEY
 ```
 
 Record the selection as `summarization.provider` and `summarization.model`. If a cloud provider is selected, ask for the API key or `api_key_env` reference (same as embedding step). For Ollama options, record `summarization.base_url: "http://localhost:11434/v1"`.
@@ -345,10 +345,10 @@ echo "SECURITY WARNING: Never commit this file to git — it may contain API key
 
 ### Step 8: Wizard — Verify Connectivity
 
-Run `brainpalace verify` to validate that the selected providers are reachable:
+Run `brainpalace doctor` to validate that the selected providers are reachable:
 
 ```bash
-brainpalace verify
+brainpalace doctor
 ```
 
 If verify fails, show troubleshooting guidance:

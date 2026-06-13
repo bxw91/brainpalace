@@ -95,6 +95,7 @@ ENDPOINT_SURFACES: dict[str, str] = {
 # Every CLI command -> "tab/action" it maps to, or "cli_only: <reason>".
 # Keys MUST match the live ``brainpalace_cli.cli.cli.commands`` exactly.
 CLI_DASHBOARD_COVERAGE: dict[str, str] = {
+    "ai-guide": "cli_only: prints AI usage guidance for agents, not a UI surface",
     "backfill-sessions": "cli_only: one-off maintenance script",
     "cache": "Cache",
     "config": "Config",
@@ -104,6 +105,7 @@ CLI_DASHBOARD_COVERAGE: dict[str, str] = {
     "drain-queue": "Jobs (queue drains via job worker)",
     "drain-tick": ("cli_only: single job-worker tick, internal scheduler hook"),
     "folders": "Folders",
+    "hook": "cli_only: internal hook dispatcher, not a user command",
     "index": "Folders",
     "init": ("cli_only: project bootstrap; dashboard manages existing projects only"),
     "inject": "cli_only: scripted enrichment, advanced",

@@ -37,6 +37,7 @@ Clears all indexed documents from the BrainPalace server. This removes all vecto
 | --yes, -y | No | false | Skip confirmation prompt and proceed immediately |
 | --url | No | from config or http://127.0.0.1:8000 | Server URL (env: BRAINPALACE_URL) |
 | --json | No | false | Output as JSON |
+| --include-sessions | No | false | Also delete the raw session archive (`.brainpalace/session_archive`) |
 
 ### Examples
 

@@ -55,6 +55,13 @@ Initializes the current project for BrainPalace by creating the necessary config
 | --include-code / --no-code | No | on | Index source code files alongside documents. Use `--no-code` for doc-only repos. Applies to BOTH the first index and the pre-index token estimate. |
 | --git-history / --no-git-history | No | off | Index this repo's git commit history (message + changed-file list) as searchable chunks. **Off by default** — commit messages/diffs can contain secrets, so it is a deliberate opt-in. Interactive runs ask (default no); written to `git_indexing.enabled` only when enabled. |
 | --migrate-graph-store / --no-migrate-graph-store | No | (ask) | On an **already-initialized** project still on the legacy `simple` graph store, upgrade `graphrag.store_type` to `sqlite` (persistent + temporal). Interactive runs ask (default **yes**); the existing graph is replayed into sqlite on next start (JSON kept for rollback). No effect on fresh inits or projects already on sqlite. |
+| --start / --no-start | No | on when interactive | Start the server after init |
+| --watch | No | auto (when starting) | Folder watch mode: `auto` (index + watch) or `off` |
+| --no-watch | No | false | Do not register/watch the project folder |
+| --yes / -y | No | false | Skip the confirmation prompt and apply defaults |
+| --sessions / --no-sessions | No | off (default/--yes do NOT embed) | INDEX this project's AI chat transcripts (billable); pass `--sessions` to enable |
+| --archive / --no-archive | No | on | ARCHIVE raw transcripts under `.brainpalace/` (free, independent of indexing) |
+| --force-monorepo-root | No | false | Allow init at a directory flagged as a monorepo root |
 | --json | No | false | Output as JSON |
 
 ### Examples
@@ -137,18 +144,13 @@ Running: brainpalace init
 
 Created directory structure:
   .brainpalace/
-    config.json      - Project configuration
+    config.yaml      - Project configuration (sparse — only values that diverge from global)
     chroma_db/       - Vector store (created on first index)
     bm25_index/      - Keyword index (created on first index)
 
 Project initialized successfully!
 
-Configuration file: .brainpalace/config.json
-{
-  "project_name": "my-project",
-  "created_at": "2025-01-31T12:00:00Z",
-  "mode": "project"
-}
+Configuration file: .brainpalace/config.yaml
 
 Next steps:
   1. Start server: /brainpalace:brainpalace-start
@@ -162,7 +164,7 @@ The initialization creates the following structure:
 
 ```
 .brainpalace/
-  config.json          # Project configuration (bind_host, port, chunk settings, exclude patterns)
+  config.yaml          # Project configuration (sparse — bind_host, port, chunk settings, exclude patterns, providers)
   data/
     chroma_db/         # ChromaDB vector store (created on index)
     bm25_index/        # BM25 keyword index (created on index)
@@ -170,35 +172,16 @@ The initialization creates the following structure:
   logs/                # Server logs
 ```
 
-### config.json
+### config.yaml
 
-Contains project-specific settings:
-
-```json
-{
-  "bind_host": "127.0.0.1",
-  "port_range_start": 8000,
-  "port_range_end": 8100,
-  "auto_port": true,
-  "chunk_size": 512,
-  "chunk_overlap": 50,
-  "exclude_patterns": [
-    "**/node_modules/**",
-    "**/__pycache__/**",
-    "**/.venv/**",
-    "**/venv/**",
-    "**/.git/**",
-    "**/dist/**",
-    "**/build/**",
-    "**/target/**"
-  ],
-  "project_root": "/path/to/project"
-}
-```
-
-### config.yaml (Optional)
-
-Create a `config.yaml` in the project's `.brainpalace/` directory for project-specific provider settings:
+The project config is a **single YAML file** (`.brainpalace/config.yaml`) — there
+is no `config.json`. It is **sparse**: `init` writes only values that diverge from
+the inherited global (`~/.config/brainpalace/config.yaml`) and the code defaults,
+which resolve `code < global < project`. `brainpalace config unset <dotpath>`
+removes a project override so the key inherits again. It can hold server/index
+settings (`bind_host`, `port_range_start`/`_end`, `auto_port`, `chunk_size`,
+`chunk_overlap`, `exclude_patterns`, `project_root`) plus the provider / BM25 /
+GraphRAG blocks below:
 
 ```yaml
 # .brainpalace/config.yaml
@@ -237,7 +220,7 @@ git_indexing:
 - `engine: lemma` requires the `simplemma` library (Croatian lemmatization via the Serbo-Croatian `hbs` data). Install the optional extra: `pip install 'brainpalace[lemma-hr]'`. For all other languages, `engine: stem` is recommended.
 - Changing `bm25.language` or `bm25.engine` changes tokenization; the BM25 index auto-rebuilds from the stored corpus on next server start (the analyzer fingerprint is persisted). To re-detect per-document languages, re-run indexing with `brainpalace index <path>`.
 
-**Note**: BrainPalace searches for config.yaml in multiple locations. Project-level config takes precedence over user-level (`~/.brainpalace/config.yaml`).
+**Note**: BrainPalace merges config across `code < global < project`. The project file (`.brainpalace/config.yaml`) overrides the global XDG config (`~/.config/brainpalace/config.yaml`); the legacy `~/.brainpalace/` path is deprecated.
 
 ### runtime.json
 
@@ -245,10 +228,15 @@ Created when server starts, contains:
 
 ```json
 {
+  "schema_version": 1,
+  "mode": "project",
+  "project_root": "/path/to/project",
+  "instance_id": "a1b2c3d4",
+  "base_url": "http://127.0.0.1:49321",
+  "bind_host": "127.0.0.1",
   "port": 49321,
   "pid": 12345,
-  "started_at": "2025-01-31T12:00:00Z",
-  "state_dir": ".brainpalace"
+  "started_at": "2025-01-31T12:00:00Z"
 }
 ```
 

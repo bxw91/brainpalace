@@ -272,11 +272,14 @@ class DocServeClient:
         }
         if not time_decay:
             request_data["time_decay"] = False
-        if source_types is not None:
+        # Truthy (not ``is not None``) so an empty list means "no filter" — the
+        # MCP QueryInput now defaults these to ``[]`` (avoids a nullable-union
+        # JSON schema that some LLM clients mishandle). Empty == omit == default.
+        if source_types:
             request_data["source_types"] = source_types
-        if languages is not None:
+        if languages:
             request_data["languages"] = languages
-        if file_paths is not None:
+        if file_paths:
             request_data["file_paths"] = file_paths
         if language is not None:
             request_data["language"] = language

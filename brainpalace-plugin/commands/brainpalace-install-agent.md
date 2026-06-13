@@ -1,6 +1,6 @@
 ---
 name: brainpalace-install-agent
-description: Install BrainPalace plugin for a specific runtime (Claude, OpenCode, Gemini)
+description: Install BrainPalace plugin for a specific runtime (Claude, OpenCode, Gemini, skill-runtime, Codex)
 parameters:
   - name: agent
     description: "Target runtime: claude, opencode, gemini, skill-runtime, or codex"

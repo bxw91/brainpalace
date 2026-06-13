@@ -26,7 +26,9 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from pydantic import BaseModel
 
+from ..ai_guidance import core as _core_guidance
 from .schemas import (
+    AiGuideInput,
     FoldersListInput,
     JobsListInput,
     MemorizeInput,
@@ -37,6 +39,7 @@ from .schemas import (
     WhoamiInput,
 )
 from .tools import (
+    ai_guide_tool,
     folders_list_tool,
     jobs_list_tool,
     memorize_tool,
@@ -47,7 +50,12 @@ from .tools import (
     whoami_tool,
 )
 
-app: Server = Server("brainpalace")
+# CORE tier of the single-source AI guidance, shipped to every client at connect
+# (MCP clients have no skill/hook). Fail-soft: empty source → no instructions.
+# See CLAUDE.md → "AI-guidance parity".
+_INSTRUCTIONS = _core_guidance() or None
+
+app: Server = Server("brainpalace", instructions=_INSTRUCTIONS)
 
 # Tool descriptions kept intentionally terse — every byte ships in every
 # MCP client's context window (see the "tool description context cost"
@@ -67,6 +75,10 @@ _TOOL_DESCRIPTIONS: dict[str, str] = {
     "memorize": "Save a durable curated fact to the project memory namespace.",
     "recall": "Recall curated facts from the project memory namespace only.",
     "session_context": ("Session-start context block: project facts + curated memory."),
+    "ai_guide": (
+        "BrainPalace usage guide (modes, rules, gotchas); "
+        "tier=full for the full guide."
+    ),
 }
 
 # Maps tool name → (schema class, async handler). The schema parses and
@@ -80,6 +92,7 @@ _DISPATCH: dict[str, tuple[type[BaseModel], Any]] = {
     "memorize": (MemorizeInput, memorize_tool),
     "recall": (RecallInput, recall_tool),
     "session_context": (SessionContextInput, session_context_tool),
+    "ai_guide": (AiGuideInput, ai_guide_tool),
 }
 
 

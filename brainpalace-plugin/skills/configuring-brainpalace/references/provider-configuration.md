@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-11
+last_validated: 2026-06-13
 ---
 
 # Provider Configuration Guide
@@ -344,14 +344,8 @@ reranking:
 # Show current configuration
 brainpalace config show
 
-# Verify providers are working
-brainpalace verify
-
-# Test embedding provider
-brainpalace test-embedding "sample text"
-
-# Test summarization provider
-brainpalace test-summarize "sample code content"
+# Verify providers (embedding + summarization) are reachable and working
+brainpalace doctor
 ```
 
 ## Switching Providers

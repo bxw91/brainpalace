@@ -164,12 +164,12 @@ Found 3 results in 850.2ms
 ╰────────────────────────────────────────────────────────────────╯
 ```
 
-### Relationship Metadata
+### Result keys
 
-Graph and multi results may include relationship metadata in the `--json` output:
-- `graph_score`: Score from graph-based retrieval
-- `related_entities`: Connected entities found
-- `relationship_path`: Relationship chain to query term
+Graph and multi results use the same `--json` per-result keys as every other
+mode: `text`, `source`, `score`, `chunk_id`. There are no `graph_score`,
+`related_entities`, or `relationship_path` keys — relationship context surfaces
+in the result `text`, not as separate fields.
 
 ## Error Handling
 

@@ -10,6 +10,7 @@ from brainpalace_cli.commands.read_only import read_only_command
 
 from . import __version__
 from .commands import (
+    ai_guide_command,
     backfill_command,
     cache_group,
     config_group,
@@ -19,6 +20,7 @@ from .commands import (
     drain_queue_command,
     drain_tick_command,
     folders_group,
+    hook_group,
     index_command,
     init_command,
     inject_command,
@@ -65,6 +67,7 @@ def cli() -> None:
     Server Commands:
       status   Check server status
       query    Search documents
+      ai-guide Print AI usage guidance (search rules, modes); for AI agents
       index    Index documents from a folder
       inject   Index documents with content injection
       jobs     View and manage job queue
@@ -119,6 +122,8 @@ cli.add_command(whoami_command, name="whoami")
 cli.add_command(doctor_command, name="doctor")
 cli.add_command(status_command, name="status")
 cli.add_command(query_command, name="query")
+cli.add_command(ai_guide_command, name="ai-guide")
+cli.add_command(hook_group, name="hook")
 cli.add_command(remember_command, name="remember")
 cli.add_command(recall_command, name="recall")
 cli.add_command(memories_group, name="memories")

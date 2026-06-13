@@ -1,4 +1,9 @@
-from brainpalace_server.indexing.text_analysis.registry import get_analyzer
+from brainpalace_server.indexing.text_analysis.registry import (
+    LEMMA_LANGUAGES,
+    get_analyzer,
+    lemma_language_label,
+    lemma_languages,
+)
 from brainpalace_server.indexing.text_analysis.snowball import SNOWBALL
 
 
@@ -29,3 +34,22 @@ def test_cached_singleton():
 def test_lemma_engine_selects_lemma_analyzer():
     a = get_analyzer("hr", "lemma")
     assert a.name == "Croatian (lemma)"  # does not load model until analyze_batch
+
+
+def test_lemma_languages_lists_only_lemma_capable_codes():
+    # Every advertised code must actually resolve to a lemma analyzer (not the
+    # stem fallback) — the CLI prompt promises lemma support for exactly these.
+    assert LEMMA_LANGUAGES, "expected at least one lemma language"
+    for code in LEMMA_LANGUAGES:
+        assert "lemma" in get_analyzer(code, "lemma").name.lower()
+    # Stem-only Snowball langs and the English fallback are NOT advertised.
+    assert "en" not in LEMMA_LANGUAGES
+    assert lemma_languages() == LEMMA_LANGUAGES
+    assert lemma_languages() is not LEMMA_LANGUAGES  # returns a copy
+
+
+def test_lemma_language_label_joins_human_names():
+    label = lemma_language_label()
+    assert label  # non-empty
+    for human in LEMMA_LANGUAGES.values():
+        assert human in label

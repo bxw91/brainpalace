@@ -31,20 +31,23 @@ remove all chunks associated with a folder.
 /brainpalace:brainpalace-folders list
 /brainpalace:brainpalace-folders add <path>
 /brainpalace:brainpalace-folders remove <path>
+/brainpalace:brainpalace-folders prune
 ```
+
+`prune` removes indexed-folder records whose path no longer exists on disk.
 
 ### Parameters
 
 | Parameter | Required | Default | Description |
 |-----------|----------|---------|-------------|
-| action | Yes | - | list, add, or remove |
+| action | Yes | - | list, add, remove, or prune |
 | path | For add/remove | - | Path to the folder |
 | --yes | No | false | Skip confirmation for remove |
-| --include-code | No | false | Include code files (for add) |
+| --include-code | No | true (ON) | Include code files (for add); use --no-code for doc-only |
 | --include-type | No | - | File type presets, e.g., python,docs (for add) |
 | --chunk-size | No | 512 | Target chunk size in tokens (for add) |
 | --force | No | false | Force re-indexing, bypass manifest (for add) |
-| --watch | No | off | Watch mode: `auto` (file watching) or `off` (for add) |
+| --watch | No | auto | Watch mode: `auto` (file watching) or `off` (for add) |
 | --debounce | No | 30 | Debounce interval in seconds for file watching (for add) |
 | --language | No | project default (`bm25.language`) | Set the project default BM25 language (ISO 639-1, e.g. `en`, `de`, `fr`). Writes `bm25.language` to the project config. There is no per-folder language; this sets the project-wide default. |
 | --json | No | false | Output as JSON (for list, add, remove) |

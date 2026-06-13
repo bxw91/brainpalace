@@ -769,15 +769,23 @@ class JobWorker:
                 files_deleted = eviction.get("files_deleted", []) or []
                 files_changed = eviction.get("files_changed", []) or []
                 files_deferred = eviction.get("files_deferred", []) or []
+                files_added = eviction.get("files_added", []) or []
+                # Added files that legitimately yield no chunks (empty / comment-
+                # only files such as `__init__.py`) leave the store size flat. As
+                # long as nothing shrank (count_after >= count_before) that is a
+                # valid zero-delta run, not a verification failure.
+                added_zero_chunk = bool(files_added) and count_after >= count_before
                 if (
                     evicted_chunks > 0
                     or files_deleted
                     or files_changed
                     or files_deferred
+                    or added_zero_chunk
                 ):
                     logger.info(
                         f"Eviction-only/incremental run for job {job.id}: "
                         f"{evicted_chunks} chunks evicted, "
+                        f"+{len(files_added)} added "
                         f"-{len(files_deleted)} deleted "
                         f"~{len(files_changed)} changed "
                         + (

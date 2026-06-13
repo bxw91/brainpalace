@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "brainpalace-cli"
-version = "26.6.38"
+version = "26.6.39"
 description = "BrainPalace CLI - Command-line interface for managing AI agent memory and knowledge retrieval"
 authors = ["bxw91"]
 readme = "README.md"
@@ -19,7 +19,10 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
 ]
 packages = [{include = "brainpalace_cli"}]
-include = [{ path = "brainpalace_cli/data/hooks/*.sh", format = ["sdist", "wheel"] }]
+include = [
+    { path = "brainpalace_cli/data/hooks/*.sh", format = ["sdist", "wheel"] },
+    { path = "brainpalace_cli/data/ai_guidance.md", format = ["sdist", "wheel"] },
+]
 
 [tool.poetry.dependencies]
 python = "^3.10"

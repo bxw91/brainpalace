@@ -1184,14 +1184,19 @@ All settings can be placed in a `.env` file in the server directory or set as en
 
 ## CLI Subcommands Reference
 
-The `brainpalace config` group has two subcommands:
+The `brainpalace config` group has these subcommands:
 
 | Subcommand | Description |
 |------------|-------------|
 | `brainpalace config show` | Display active provider configuration (embedding, summarization, reranker) |
 | `brainpalace config path` | Show the path to the active config file |
+| `brainpalace config wizard` | Create/update config interactively |
+| `brainpalace config validate` | Validate config against the schema |
+| `brainpalace config migrate` | Upgrade config.yaml to the current schema version |
+| `brainpalace config diff` | Preview what `migrate` would change |
+| `brainpalace config unset <dotpath>` | Remove a project override so the key inherits again |
 
-Both support `--json` for machine-readable output.
+`show`, `path`, and `unset` support `--json` for machine-readable output.
 
 ## Related Commands
 

@@ -217,6 +217,55 @@ async def test_verify_delta_zero_change_but_empty_store_fails() -> None:
 
 
 @pytest.mark.asyncio
+async def test_verify_delta_added_empty_files_zero_chunks_passes() -> None:
+    """Newly-added files that yield no chunks (empty `__init__.py`) leave the
+    store flat (delta==0). With the additions recorded and no shrinkage this is a
+    valid run, not a verification failure (regression: false 'No chunks found')."""
+    worker, _ = _make_worker_with_mock_service(count_before=7655, count_after=7655)
+
+    eviction_from_pipeline: dict[str, Any] = {
+        "files_added": ["/repo/pkg/__init__.py", "/repo/pkg/sub/__init__.py"],
+        "files_changed": [],
+        "files_deleted": [],
+        "files_unchanged": ["/repo/pkg/code.py"],
+        "chunks_evicted": 0,
+        # chunks_to_create counts files queued for indexing, not chunks produced —
+        # the empty files queue but yield nothing.
+        "chunks_to_create": 2,
+    }
+
+    job = _make_job(eviction_summary=None)
+    result = await worker._verify_collection_delta(
+        job, count_before=7655, eviction_result=eviction_from_pipeline
+    )
+
+    assert result is True
+
+
+@pytest.mark.asyncio
+async def test_verify_delta_added_files_but_store_shrank_fails() -> None:
+    """Added files recorded but the store shrank (count_after < count_before) is a
+    genuine anomaly — the added-zero-chunk allowance must not mask real loss."""
+    worker, _ = _make_worker_with_mock_service(count_before=100, count_after=90)
+
+    eviction_from_pipeline: dict[str, Any] = {
+        "files_added": ["/repo/a.py"],
+        "files_changed": [],
+        "files_deleted": [],
+        "files_unchanged": [],
+        "chunks_evicted": 0,
+        "chunks_to_create": 1,
+    }
+
+    job = _make_job(eviction_summary=None)
+    result = await worker._verify_collection_delta(
+        job, count_before=100, eviction_result=eviction_from_pipeline
+    )
+
+    assert result is False
+
+
+@pytest.mark.asyncio
 async def test_verify_delta_negative_without_eviction_fails() -> None:
     """A negative delta with no eviction recorded is a genuine anomaly → fail."""
     worker, _ = _make_worker_with_mock_service(count_before=35, count_after=34)

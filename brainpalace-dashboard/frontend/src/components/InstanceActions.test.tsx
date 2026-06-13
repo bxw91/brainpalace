@@ -40,6 +40,11 @@ beforeEach(() => {
   vi.mocked(client.startInstance).mockResolvedValue({ ok: true });
   vi.mocked(client.stopInstance).mockResolvedValue({ ok: true });
   vi.mocked(client.restartInstance).mockResolvedValue({ ok: true });
+  vi.mocked(client.patchConfig).mockResolvedValue({ ok: true, restarted: true });
+  // Default: read-only OFF.
+  vi.mocked(client.getInstanceStatus).mockResolvedValue({
+    features: { read_only: false },
+  } as never);
 });
 
 describe("InstanceActions", () => {
@@ -69,5 +74,47 @@ describe("InstanceActions", () => {
     fireEvent.click(screen.getByTestId("btn-detail-start"));
     fireEvent.click(screen.getByTestId("btn-confirm"));
     await waitFor(() => expect(client.startInstance).toHaveBeenCalledWith("a"));
+  });
+
+  it("running: shows read-only toggle; stopped: hides it", () => {
+    const { unmount } = wrap(<InstanceActions instance={inst({ status: "running" })} />);
+    expect(screen.getByTestId("btn-detail-readonly")).toBeInTheDocument();
+    unmount();
+    wrap(<InstanceActions instance={inst({ status: "stopped", base_url: "" })} />);
+    expect(screen.queryByTestId("btn-detail-readonly")).not.toBeInTheDocument();
+  });
+
+  it("read-only OFF → turning on sets server.read_only=true with restart", async () => {
+    wrap(<InstanceActions instance={inst({ status: "running" })} />);
+    fireEvent.click(screen.getByTestId("btn-detail-readonly"));
+    fireEvent.click(screen.getByTestId("btn-confirm"));
+    await waitFor(() =>
+      expect(client.patchConfig).toHaveBeenCalledWith(
+        "a",
+        { server: { read_only: true } },
+        true,
+      ),
+    );
+  });
+
+  it("read-only ON → turning off sets server.read_only=false with restart", async () => {
+    vi.mocked(client.getInstanceStatus).mockResolvedValue({
+      features: { read_only: true },
+    } as never);
+    wrap(<InstanceActions instance={inst({ status: "running" })} />);
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("btn-detail-readonly").getAttribute("aria-pressed"),
+      ).toBe("true"),
+    );
+    fireEvent.click(screen.getByTestId("btn-detail-readonly"));
+    fireEvent.click(screen.getByTestId("btn-confirm"));
+    await waitFor(() =>
+      expect(client.patchConfig).toHaveBeenCalledWith(
+        "a",
+        { server: { read_only: false } },
+        true,
+      ),
+    );
   });
 });
