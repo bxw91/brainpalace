@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-13
+last_validated: 2026-06-14
 ---
 
 # BrainPalace — repo guide for Claude
@@ -82,6 +82,16 @@ literal tier-marker tokens in the source's header comment. The gate
 tier slices, hook-shim drift, or non-English letters. Note the change in
 `docs/CHANGELOG.md`. Full rule:
 [docs/DEVELOPERS_GUIDE.md → AI-guidance parity](docs/DEVELOPERS_GUIDE.md#ai-guidance-parity-single-source).
+
+**Interface doc-sync — `sync-docs`.** Interface docs (command docs, query modes,
+skills, config keys, MCP tools, endpoints) are deterministically gated against
+LIVE code by `scripts/check_doc_sync.py` (`lint:doc-sync`); the generator owns the
+machine regions and the CLI never calls an LLM. `sync-docs --check` also asserts
+the dump/checker `schema_version` and wraps the ai-guidance + dashboard parity
+gates as one entry point. The residual **human prose** is authored in-session via
+the `authoring-brainpalace-docs` skill; editing an interface-source file fires a
+PostToolUse soft-nudge (`brainpalace hook posttooluse`, thin shim) to run
+`sync-docs --fix`. The nudge never blocks.
 
 ## Build / test
 

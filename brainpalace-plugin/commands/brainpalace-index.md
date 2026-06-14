@@ -2,23 +2,77 @@
 name: brainpalace-index
 description: Index documents for semantic search
 parameters:
-  - name: path
-    description: Path to documents to index
-    required: true
+  - name: url
+    type: text
+    required: false
+    default: ""
+  - name: chunk-size
+    type: integer
+    required: false
+    default: 512
+  - name: chunk-overlap
+    type: integer
+    required: false
+    default: 50
+  - name: no-recursive
+    type: bool
+    required: false
+    default: false
   - name: include-code
-    description: Include code files in indexing (use --no-code to disable)
+    type: bool
     required: false
     default: true
-  - name: include-type
-    description: File type presets to include (e.g., python,docs)
+  - name: languages
+    type: text
     required: false
+    default: ""
+  - name: code-strategy
+    type: choice
+    required: false
+    default: ast_aware
+  - name: include-patterns
+    type: text
+    required: false
+    default: ""
+  - name: include-type
+    type: text
+    required: false
+    default: ""
+  - name: exclude-patterns
+    type: text
+    required: false
+    default: ""
+  - name: generate-summaries
+    type: bool
+    required: false
+    default: false
   - name: force
-    description: Force re-indexing (bypass manifest, evict all prior chunks)
+    type: bool
+    required: false
+    default: false
+  - name: allow-external
+    type: bool
+    required: false
+    default: false
+  - name: watch
+    type: choice
+    required: false
+    default: ""
+  - name: watch-debounce
+    type: integer
+    required: false
+    default: ""
+  - name: estimate
+    type: bool
+    required: false
+    default: false
+  - name: json
+    type: bool
     required: false
     default: false
 skills:
   - using-brainpalace
-last_validated: 2026-06-09
+last_validated: 2026-06-13
 ---
 
 # Index Documents
@@ -192,8 +246,8 @@ Use `brainpalace types list` to see all available presets.
 # Verify server is running
 brainpalace status
 
-# Check configuration
-brainpalace verify
+# Diagnose setup and configuration
+brainpalace doctor
 
 # Monitor job progress
 brainpalace jobs --watch
@@ -217,3 +271,26 @@ brainpalace index <path> --force
 - Use `--watch auto` to enable automatic re-indexing when files change
 - Watcher-triggered jobs use incremental diff for efficiency (only changed files processed)
 - Directories like `.git/`, `node_modules/`, `__pycache__/`, `dist/`, `build/` are excluded from watching
+
+### Flags
+<!--GENERATED:flags-->
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| --url | text | "" | BrainPalace server URL (default: from config or http://127.0.0.1:8000) |
+| --chunk-size | integer | 512 | Target chunk size in tokens (default: 512) |
+| --chunk-overlap | integer | 50 | Overlap between chunks in tokens (default: 50) |
+| --no-recursive | bool | false | Don't scan folder recursively |
+| --include-code | bool | true | Index source code files alongside documents (default: ON). Use --no-code for doc-only repos. |
+| --languages | text | "" | Comma-separated list of programming languages to index |
+| --code-strategy | choice | ast_aware | Strategy for chunking code files (default: ast_aware) |
+| --include-patterns | text | "" | Comma-separated additional include patterns (wildcards supported) |
+| --include-type | text | "" | Comma-separated file type presets to include (e.g., python,docs,typescript). Use 'brainpalace types list' to see all available presets. |
+| --exclude-patterns | text | "" | Comma-separated additional exclude patterns (wildcards supported) |
+| --generate-summaries | bool | false | Generate LLM summaries for code chunks to improve semantic search |
+| --force | bool | false | Force re-indexing even if embedding provider has changed |
+| --allow-external | bool | false | Allow indexing paths outside the project directory |
+| --watch | choice | "" | Enable ('auto') or disable ('off') live re-index on file changes for this folder. Default: leave the folder's current setting unchanged. |
+| --watch-debounce | integer | "" | Debounce window in seconds before a watched folder re-indexes. |
+| --estimate | bool | false | Estimate approximate embedding-token usage and exit — do not index. |
+| --json | bool | false | Output as JSON |
+<!--/GENERATED-->

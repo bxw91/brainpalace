@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "brainpalace-dashboard"
-version = "26.6.39"
+version = "26.6.40"
 description = "BrainPalace control-plane web dashboard"
 authors = ["BrainPalace"]
 readme = "README.md"

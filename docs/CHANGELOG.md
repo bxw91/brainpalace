@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-13
+last_validated: 2026-06-14
 ---
 
 # Changelog
@@ -14,6 +14,27 @@ Entries are kept short (≤ 3 sentences); see
 [DEVELOPERS_GUIDE.md → Changelog style](DEVELOPERS_GUIDE.md#changelog-style-docschangelogmd).
 
 ---
+
+## [26.6.40] - 2026-06-14
+
+### Added
+- **Interface doc-sync gains an AI authoring layer.** A new
+  `authoring-brainpalace-docs` skill plus a PostToolUse soft-nudge (fired when an
+  interface-source file is edited) drive in-session prose authoring of the
+  residual human regions — the CLI still never calls an LLM. `sync-docs --check`
+  now asserts the dump/checker `schema_version` match and wraps the ai-guidance +
+  dashboard parity gates so doc-sync is one entry point.
+- **Interface doc-sync now covers config keys, MCP tools, and HTTP endpoints.**
+  `dump-interface --include-endpoints` adds live FastAPI routes to the JSON
+  snapshot; MCP tools gain a canonical generated list; config keys validate
+  against the unified CLI+server schema and endpoints against the
+  project-server + dashboard route tables; referential scans skip CHANGELOG.md.
+- **Interface doc-sync now covers query modes and skills.** The deterministic
+  `sync-docs` gate validates the `query --mode` choices and the `skills:`
+  frontmatter in command docs against live code, command-doc flags tables are
+  machine-owned `GENERATED:flags` blocks the generator creates and refreshes, and
+  a single-pair command rename is detected and applied via a confirm-gated
+  `git mv` (the `--check` path used by CI only reports, never moves).
 
 ## [26.6.39] - 2026-06-13
 
@@ -36,6 +57,12 @@ Entries are kept short (≤ 3 sentences); see
   flat, which `_verify_collection_delta` mis-flagged as
   `Verification failed: No chunks found in vector store`. Added files with no
   store shrinkage now verify as a valid zero-delta run.
+- **Zero-chunk files no longer churn the watcher forever.** A loaded file that
+  chunks to nothing (e.g. an empty `__init__.py`) was never written to the
+  manifest, so every scan re-classified it as "added" and re-indexed it — a
+  steady stream of watch jobs that created 0 chunks. Such files now get a
+  manifest record with empty `chunk_ids`, so they read as "unchanged" on the
+  next run.
 
 ### Changed
 - **`configuring-brainpalace` skill slimmed to a router (793 → 587 lines).**

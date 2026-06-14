@@ -3,30 +3,94 @@ name: brainpalace-init
 description: Initialize BrainPalace for the current project
 parameters:
   - name: path
-    description: "Project path (default: auto-detect project root)"
+    type: directory
     required: false
+    default: ""
   - name: host
-    description: "Server bind host (default: 127.0.0.1)"
+    type: text
     required: false
+    default: ""
   - name: port
-    description: "Preferred server port (default: auto-select from range)"
+    type: integer
     required: false
+    default: ""
   - name: force
-    description: Overwrite existing configuration
+    type: bool
+    required: false
+    default: false
+  - name: json
+    type: bool
     required: false
     default: false
   - name: state-dir
-    description: Custom state directory for index data
+    type: directory
     required: false
-  - name: json
-    description: Output as JSON
+    default: ""
+  - name: force-monorepo-root
+    type: bool
     required: false
     default: false
+  - name: start
+    type: bool
+    required: false
+    default: ""
+  - name: watch
+    type: choice
+    required: false
+    default: ""
+  - name: no-watch
+    type: bool
+    required: false
+    default: false
+  - name: "yes"
+    type: bool
+    required: false
+    default: false
+  - name: sessions
+    type: bool
+    required: false
+    default: ""
+  - name: archive
+    type: bool
+    required: false
+    default: ""
+  - name: extract
+    type: bool
+    required: false
+    default: ""
+  - name: git-history
+    type: bool
+    required: false
+    default: ""
+  - name: graphrag-extract
+    type: bool
+    required: false
+    default: ""
+  - name: migrate-graph-store
+    type: bool
+    required: false
+    default: ""
+  - name: language
+    type: text
+    required: false
+    default: ""
+  - name: reranking
+    type: bool
+    required: false
+    default: ""
+  - name: bm25-engine
+    type: choice
+    required: false
+    default: ""
+  - name: include-code
+    type: bool
+    required: false
+    default: true
 context: brainpalace
 agent: setup-assistant
 skills:
   - configuring-brainpalace
-last_validated: 2026-06-09
+last_validated: 2026-06-13
 ---
 
 # Initialize BrainPalace Project
@@ -320,3 +384,30 @@ Each project should be initialized separately. BrainPalace uses the `.brainpalac
 - Server runtime state
 
 This allows running multiple BrainPalace instances for different projects simultaneously, each on its own port.
+
+### Flags
+<!--GENERATED:flags-->
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| --path | directory | "" | Project path (default: auto-detect project root) |
+| --host | text | "" | Server bind host. Default: inherit from global config / code (127.0.0.1). Pass to override for this project. |
+| --port | integer | "" | Preferred server port (default: auto-select from range) |
+| --force | bool | false | Overwrite existing configuration |
+| --json | bool | false | Output as JSON |
+| --state-dir | directory | "" | Custom state directory for index data (default: .brainpalace) |
+| --force-monorepo-root | bool | false | Allow init at a directory whose CLAUDE.md flags it as a mono-repo workspace root. Use only if you really want a project-level state dir at the workspace root. |
+| --start | bool | "" | Start the server after init. Default: ON in an interactive terminal (after a confirmation) or with --yes; OFF in non-interactive/--json runs. --no-start forces config-only. |
+| --watch | choice | "" | Folder watch mode when starting (auto = register + index project_root + live re-index). Default 'auto' when starting, else 'off'. |
+| --no-watch | bool | false | Do not register/watch the project folder (alias for --watch off). |
+| --yes | bool | false | Skip the confirmation prompt and apply the full resolved plan. |
+| --sessions | bool | "" | INDEX this project's AI chat transcripts into searchable session memory (embeddings, billable). ON by default for new projects: interactive runs confirm (default yes), non-interactive runs enable it. Pass --no-sessions to opt out (archive still runs). |
+| --archive | bool | "" | ARCHIVE raw transcripts under .brainpalace/ as a durable backup (no embeddings, independent of indexing). ON by default. Pass --no-archive to opt out. |
+| --extract | bool | "" | SUMMARIZE each session into durable knowledge (summary, decisions, triplets). ON by default, summarized ONLY inside Claude Code (the plugin, free on your Claude Code subscription — no separate API bill). The server does not summarize on its own. Pass --no-extract to opt out. |
+| --git-history | bool | "" | INDEX this repo's git commit history (message + diff stat) as searchable chunks. OFF by default — commits can contain secrets, so this is a deliberate opt-in. Interactive runs ask (default no). |
+| --graphrag-extract | bool | "" | Extract a knowledge graph from document text (installs the optional langextract dep on enable). |
+| --migrate-graph-store | bool | "" | On an already-initialized project whose graph store is the legacy in-memory 'simple' backend, upgrade graphrag.store_type to 'sqlite' (persistent + temporal; the existing graph is replayed into sqlite on next start, with the JSON kept for rollback). Interactive runs ask (default yes). No effect on fresh inits or projects already on sqlite. |
+| --language | text | "" | Project default natural language for BM25 indexing (ISO 639-1, e.g. en, de, hr). Passed → written to bm25.language; omitted → inherit from global config / code default (en). |
+| --reranking | bool | "" | Two-stage reranking: a local cross-encoder re-scores the top candidates for finer relevance ordering. OFF by default — the local model needs the heavy reranker-local extra (~2.8 GB PyTorch). --reranking installs that extra and enables it; or set reranker.provider=ollama for a torch-free reranker. Writes reranker.enabled to config.yaml. |
+| --bm25-engine | choice | "" | BM25 stemming engine: 'stem' (Snowball, no extra deps) or 'lemma' (simplemma, better recall for morphologically-rich languages). Passed → written to bm25.engine; omitted → inherit from global config / code default (stem). engine=lemma requires simplemma: pip install 'brainpalace[lemma-hr]'. |
+| --include-code | bool | true | Index source code files alongside documents (default: ON). Use --no-code for doc-only repos. Applies to the first index and to the pre-index token estimate. |
+<!--/GENERATED-->

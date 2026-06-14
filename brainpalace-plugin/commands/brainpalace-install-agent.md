@@ -3,30 +3,40 @@ name: brainpalace-install-agent
 description: Install BrainPalace plugin for a specific runtime (Claude, OpenCode, Gemini, skill-runtime, Codex)
 parameters:
   - name: agent
-    description: "Target runtime: claude, opencode, gemini, skill-runtime, or codex"
+    type: choice
     required: true
-  - name: scope
-    description: "Install scope: project (default) or global"
+    default: ""
+  - name: project
+    type: bool
     required: false
     default: project
+  - name: global
+    type: bool
+    required: false
+    default: ""
   - name: plugin-dir
-    description: Custom canonical plugin source directory
+    type: directory
     required: false
+    default: ""
   - name: dir
-    description: Target skill directory (required for skill-runtime)
+    type: path
     required: false
+    default: ""
   - name: dry-run
-    description: List files that would be created without writing
+    type: bool
     required: false
+    default: false
   - name: json
-    description: Output as JSON
+    type: bool
     required: false
+    default: false
   - name: path
-    description: "Project path for --project scope (default: cwd)"
+    type: directory
     required: false
+    default: ""
 skills:
   - configuring-brainpalace
-last_validated: 2026-05-30
+last_validated: 2026-06-13
 ---
 
 # BrainPalace Install Agent
@@ -189,3 +199,17 @@ brainpalace install-agent --agent opencode --plugin-dir ./my-custom-plugin
 - The canonical plugin format uses YAML frontmatter + markdown body
 - Runtime converters handle tool name mapping and format differences automatically
 - Use `--dry-run` to preview changes before installing
+
+### Flags
+<!--GENERATED:flags-->
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| --agent | choice | "" | Target runtime to install for |
+| --project | bool | project | Install to project directory (default) |
+| --global | bool | "" | Install to user-level directory |
+| --plugin-dir | directory | "" | Custom canonical plugin source directory |
+| --dir | path | "" | Target skill directory (required for skill-runtime) |
+| --dry-run | bool | false | List files that would be created without writing |
+| --json | bool | false | Output as JSON |
+| --path | directory | "" | Project path for --project scope (default: cwd) |
+<!--/GENERATED-->

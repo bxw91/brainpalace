@@ -6,7 +6,7 @@ context: brainpalace
 agent: setup-assistant
 skills:
   - configuring-brainpalace
-last_validated: 2026-06-11
+last_validated: 2026-06-13
 ---
 
 # Complete BrainPalace Setup
@@ -254,7 +254,7 @@ Options:
 
 Record the selected mode. This will be written as a YAML comment in config.yaml (the server does not yet support a global `query.default_mode` setting — use `--mode` flag per request to override).
 
-Note in wizard output: "Use --mode flag on queries to override, e.g.: `brainpalace query 'text' --mode hybrid`"
+Note in wizard output: "Use the `--mode` flag on queries to override, e.g.: `brainpalace query 'text' --mode hybrid`"
 
 After the mode selection, add this informational note to wizard output:
 
@@ -332,7 +332,7 @@ print(yaml.dump(config, default_flow_style=False, sort_keys=False))
 
 # Append query mode as a comment
 echo "" >> "$CONFIG_PATH"
-echo "# Query mode (informational — set per-request with --mode flag)" >> "$CONFIG_PATH"
+echo "# Query mode (informational — override per-request with the --mode=<value> flag)" >> "$CONFIG_PATH"
 echo "# query:" >> "$CONFIG_PATH"
 echo "#   default_mode: \"<SELECTED_QUERY_MODE>\"  # vector | bm25 | hybrid | graph | multi" >> "$CONFIG_PATH"
 

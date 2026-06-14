@@ -2,20 +2,25 @@
 name: brainpalace-reset
 description: Clear the document index (requires confirmation)
 parameters:
-  - name: yes
-    description: Skip confirmation prompt
+  - name: url
+    type: text
+    required: false
+    default: ""
+  - name: "yes"
+    type: bool
     required: false
     default: false
-  - name: url
-    description: Server URL (default from config or http://127.0.0.1:8000)
-    required: false
   - name: json
-    description: Output as JSON
+    type: bool
+    required: false
+    default: false
+  - name: include-sessions
+    type: bool
     required: false
     default: false
 skills:
   - using-brainpalace
-last_validated: 2026-05-30
+last_validated: 2026-06-13
 ---
 
 # Reset Document Index
@@ -149,3 +154,13 @@ brainpalace status
 - Other project instances are not affected
 - Server remains running after reset
 - Re-index with `/brainpalace:brainpalace-index <path>` after reset
+
+### Flags
+<!--GENERATED:flags-->
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| --url | text | "" | BrainPalace server URL (default: from config or http://127.0.0.1:8000) |
+| --yes | bool | false | Skip confirmation prompt |
+| --json | bool | false | Output as JSON |
+| --include-sessions | bool | false | Also delete the raw session archive (.brainpalace/session_archive). Off by default — the archive survives a normal reset. |
+<!--/GENERATED-->

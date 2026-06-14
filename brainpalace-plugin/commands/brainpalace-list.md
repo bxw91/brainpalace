@@ -3,11 +3,11 @@ name: brainpalace-list
 description: List all running BrainPalace instances across projects
 parameters:
   - name: all
-    description: Show all instances including stale ones
+    type: bool
     required: false
     default: false
   - name: json
-    description: Output as JSON
+    type: bool
     required: false
     default: false
 skills:
@@ -126,3 +126,11 @@ ps aux | grep brainpalace
 - Each project has its own isolated instance
 - Ports are automatically assigned from the 8000-8100 range (configurable)
 - Stale registry entries are automatically cleaned up during listing
+
+### Flags
+<!--GENERATED:flags-->
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| --all | bool | false | Show all instances including stale ones |
+| --json | bool | false | Output as JSON |
+<!--/GENERATED-->

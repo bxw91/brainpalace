@@ -3,23 +3,32 @@ name: brainpalace-stop
 description: Stop the BrainPalace server for this project
 parameters:
   - name: path
-    description: Project path (default auto-detect project root)
+    type: directory
     required: false
+    default: ""
+  - name: url
+    type: text
+    required: false
+    default: ""
   - name: force
-    description: Force stop with SIGKILL if SIGTERM fails
+    type: bool
     required: false
     default: false
   - name: timeout
-    description: Timeout for graceful shutdown in seconds
+    type: integer
     required: false
     default: 10
+  - name: all
+    type: bool
+    required: false
+    default: false
   - name: json
-    description: Output as JSON
+    type: bool
     required: false
     default: false
 skills:
   - using-brainpalace
-last_validated: 2026-05-30
+last_validated: 2026-06-13
 ---
 
 # Stop BrainPalace Server
@@ -141,3 +150,15 @@ brainpalace status
 - State files (runtime.json, lock, PID) are cleaned up on stop
 - The project is removed from the global registry on stop
 - Restart with `/brainpalace:brainpalace-start` when needed
+
+### Flags
+<!--GENERATED:flags-->
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| --path | directory | "" | Project path (default: auto-detect project root) |
+| --url | text | "" | Server URL — resolves project_root via GET /runtime/ (ignored when --path is given) |
+| --force | bool | false | Force stop with SIGKILL if SIGTERM fails |
+| --timeout | integer | 10 | Timeout for graceful shutdown in seconds (default: 10) |
+| --all | bool | false | Also reap orphan server processes not referenced by the registry. |
+| --json | bool | false | Output as JSON |
+<!--/GENERATED-->

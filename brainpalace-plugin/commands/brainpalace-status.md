@@ -3,19 +3,24 @@ name: brainpalace-status
 description: Show BrainPalace server status (health, documents, cache, watcher)
 parameters:
   - name: url
-    description: Server URL (default from config or http://127.0.0.1:8000)
+    type: text
     required: false
+    default: ""
   - name: json
-    description: Output in JSON format
+    type: bool
     required: false
     default: false
   - name: verbose
-    description: Show additional detail (cache size, memory entries)
+    type: bool
+    required: false
+    default: false
+  - name: all
+    type: bool
     required: false
     default: false
 skills:
   - using-brainpalace
-last_validated: 2026-06-04
+last_validated: 2026-06-13
 ---
 
 # BrainPalace Status
@@ -230,3 +235,13 @@ done
 | `/brainpalace:brainpalace-start` | Start the server |
 | `/brainpalace:brainpalace-stop` | Stop the server |
 | `/brainpalace:brainpalace-list` | List all running instances |
+
+### Flags
+<!--GENERATED:flags-->
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| --url | text | "" | BrainPalace server URL (default: from config or http://127.0.0.1:8000) |
+| --json | bool | false | Output as JSON |
+| --verbose | bool | false | Show additional detail |
+| --all | bool | false | Show detailed status for every running registered server |
+<!--/GENERATED-->

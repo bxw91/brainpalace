@@ -29,6 +29,7 @@ from .sessions import session_path_command, submit_session_command
 from .start import start_command
 from .status import status_command
 from .stop import stop_command
+from .sync_docs import dump_interface_command, sync_docs_command
 from .types import types_group
 from .uninstall import uninstall_command
 from .update import update_command
@@ -65,6 +66,8 @@ __all__ = [
     "submit_session_command",
     "status_command",
     "stop_command",
+    "dump_interface_command",
+    "sync_docs_command",
     "types_group",
     "uninstall_command",
     "update_command",

@@ -1252,6 +1252,32 @@ class IndexingService:
                     last_embedded_at=embedded_at,
                     size_bytes=getattr(stat_result, "st_size", 0),
                 )
+            # Record added/changed files that produced ZERO chunks (e.g. an empty
+            # __init__.py) with an empty chunk_ids list. Without a record they are
+            # never tracked, so every subsequent scan re-classifies them as "added"
+            # and re-indexes them — an endless no-op churn that schedules watch
+            # jobs creating no chunks. An empty-chunk record is safe: reconcile
+            # skips it (`if frec.chunk_ids`) and the folder chunk-id set ignores it.
+            for fp in list(eviction_summary.files_added) + list(
+                eviction_summary.files_changed
+            ):
+                rfp = str(_Path(fp).resolve())
+                if rfp in new_manifest.files:
+                    continue
+                try:
+                    checksum = await asyncio.to_thread(compute_file_checksum, rfp)
+                    stat_result = await asyncio.to_thread(_os.stat, rfp)
+                except OSError:
+                    # File vanished between scan and persist — skip; the next
+                    # run's diff will treat it as deleted.
+                    continue
+                new_manifest.files[rfp] = FileRecord(
+                    checksum=checksum,
+                    mtime=stat_result.st_mtime,
+                    chunk_ids=[],
+                    last_embedded_at=embedded_at,
+                    size_bytes=getattr(stat_result, "st_size", 0),
+                )
             await self.manifest_tracker.save(new_manifest)
             logger.info(f"Manifest saved with {len(new_manifest.files)} file entries")
             eviction_summary_result = asdict(eviction_summary)

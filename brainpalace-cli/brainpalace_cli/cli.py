@@ -19,6 +19,7 @@ from .commands import (
     doctor_command,
     drain_queue_command,
     drain_tick_command,
+    dump_interface_command,
     folders_group,
     hook_group,
     index_command,
@@ -40,6 +41,7 @@ from .commands import (
     status_command,
     stop_command,
     submit_session_command,
+    sync_docs_command,
     types_group,
     uninstall_command,
     update_command,
@@ -147,6 +149,10 @@ cli.add_command(install_session_hooks_command, name="install-session-hooks")
 cli.add_command(backfill_command, name="backfill-sessions")
 cli.add_command(drain_queue_command, name="drain-queue")
 cli.add_command(drain_tick_command, name="drain-tick")
+
+# Register doc-sync maintenance commands (hidden; deterministic, never call an LLM)
+cli.add_command(sync_docs_command, name="sync-docs")
+cli.add_command(dump_interface_command, name="dump-interface")
 
 # Register MCP server (opt-in stdio shim for non-Claude-Code AI clients)
 cli.add_command(mcp_command, name="mcp")

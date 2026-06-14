@@ -2,28 +2,6 @@
 name: brainpalace-dashboard
 description: Launch, stop, or inspect the BrainPalace web control-plane dashboard
 parameters:
-  - name: action
-    description: One of start, stop, status (default start)
-    required: false
-    default: start
-  - name: host
-    description: Bind host (overrides config; start only)
-    required: false
-  - name: port
-    description: Preferred port; scans upward 8787-8887 (start only)
-    required: false
-  - name: foreground
-    description: Run in the foreground instead of backgrounding (start only)
-    required: false
-    default: false
-  - name: no-open
-    description: Do not open a browser after starting (start only)
-    required: false
-    default: false
-  - name: json
-    description: Output as JSON
-    required: false
-    default: false
 context: brainpalace
 agent: setup-assistant
 skills:

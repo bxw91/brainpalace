@@ -2,21 +2,6 @@
 name: brainpalace-cache
 description: View embedding cache metrics or clear the cache
 parameters:
-  - name: subcommand
-    description: "Operation to perform: status or clear"
-    required: true
-    allowed: [status, clear]
-  - name: yes
-    description: Skip confirmation prompt (only for clear)
-    required: false
-    default: false
-  - name: json
-    description: Output in JSON format (only for status)
-    required: false
-    default: false
-  - name: url
-    description: "Server URL (default: BRAINPALACE_URL or http://127.0.0.1:8000)"
-    required: false
 skills:
   - using-brainpalace
 last_validated: 2026-05-30

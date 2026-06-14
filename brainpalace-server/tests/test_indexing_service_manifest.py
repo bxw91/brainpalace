@@ -606,6 +606,73 @@ async def test_zero_change_run_succeeds(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Test: a loaded file that chunks to zero is still recorded in the manifest
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_zero_chunk_file_recorded_in_manifest(tmp_path: Path) -> None:
+    """A loaded file that produces zero chunks (e.g. an empty ``__init__.py``)
+    must be recorded in the manifest with empty ``chunk_ids``.
+
+    Otherwise it is never tracked, so the next scan re-classifies it as "added"
+    and re-indexes it — an endless no-op churn that schedules watch jobs which
+    create no chunks.
+    """
+    folder = str(tmp_path / "pkg")
+    Path(folder).mkdir()
+    empty = str(tmp_path / "pkg" / "__init__.py")
+    Path(empty).write_text("")  # 0 bytes → chunks to nothing
+
+    tracker = ManifestTracker(manifests_dir=tmp_path / "manifests")
+
+    # The loader still returns a document for the file (that is why it shows up
+    # as "added" in the diff), but the chunker yields no chunks.
+    docs = [_make_doc(empty)]
+    storage = _make_storage_backend()
+    service = _make_indexing_service(storage, tracker, docs, [])
+
+    request = IndexRequest(folder_path=folder)
+    with _patch_chunkers([]):
+        await service._run_indexing_pipeline(request, "job_zero")
+
+    abs_empty = str(Path(empty).resolve())
+    saved = await tracker.load(str(Path(folder).resolve()))
+    assert saved is not None
+    assert abs_empty in saved.files, "zero-chunk file must be tracked in manifest"
+    assert saved.files[abs_empty].chunk_ids == []
+
+
+@pytest.mark.asyncio
+async def test_zero_chunk_file_not_re_added_next_run(tmp_path: Path) -> None:
+    """Once recorded, an unchanged zero-chunk file is "unchanged", not "added".
+
+    Drives the churn fix end-to-end: the second incremental run over the same
+    empty file must see it as unchanged (the symptom of the bug was it showing
+    up as ``files_added`` on every run).
+    """
+    folder = str(tmp_path / "pkg")
+    Path(folder).mkdir()
+    empty = str(tmp_path / "pkg" / "__init__.py")
+    Path(empty).write_text("")
+
+    tracker = ManifestTracker(manifests_dir=tmp_path / "manifests")
+    docs = [_make_doc(empty)]
+    storage = _make_storage_backend()
+    service = _make_indexing_service(storage, tracker, docs, [])
+
+    request = IndexRequest(folder_path=folder)
+    with _patch_chunkers([]):
+        await service._run_indexing_pipeline(request, "job_zero_1")
+        result = await service._run_indexing_pipeline(request, "job_zero_2")
+
+    abs_empty = str(Path(empty).resolve())
+    assert result is not None
+    assert abs_empty in result["files_unchanged"]
+    assert abs_empty not in result["files_added"]
+
+
+# ---------------------------------------------------------------------------
 # Test: interrupt in the rebuildable tail still leaves a consistent manifest
 # ---------------------------------------------------------------------------
 

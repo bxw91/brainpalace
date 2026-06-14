@@ -1,0 +1,32 @@
+"""Commands that intentionally have no plugin doc. Every entry needs a reason —
+same closed-loop discipline as dashboard coverage_maps.py."""
+
+from __future__ import annotations
+
+UNDOCUMENTED_COMMANDS: dict[str, str] = {
+    "hook": "hidden: internal SessionStart dispatcher, not user-facing",
+    "drain-tick": "hidden: internal job-worker tick",
+    "drain-queue": "hidden: internal job-queue drain",
+    "submit-session": "hidden: internal session-submit shim",
+    "backfill-sessions": "maintenance one-off, not a plugin command",
+    "session-path": "internal path helper",
+    "dump-interface": "doc-sync introspection helper, not user-facing",
+    "sync-docs": "doc-sync maintenance command, not a plugin command",
+}
+
+# Intentionally documented deprecated aliases (resolution I): alias -> canonical.
+DOCUMENTED_ALIASES: dict[str, str] = {}
+
+# Plugin slash-command docs (brainpalace-plugin/commands/) that are NOT mirrors of a
+# CLI subcommand — they drive a Claude Code agent workflow and have no `brainpalace
+# <name>` command. The CLI-commands checker must not treat them as EXTRA drift or
+# gate their frontmatter against a (non-existent) CLI contract. Keyed by doc stem
+# (the `<name>` in brainpalace-<name>.md). Every entry needs a reason.
+PLUGIN_ONLY_COMMAND_DOCS: dict[str, str] = {
+    "setup": "plugin slash-command /brainpalace-setup (setup-assistant agent); "
+    "no CLI subcommand — orchestrates install/config/init/verify",
+    "install": "plugin slash-command /brainpalace-install (setup-assistant agent); "
+    "no CLI subcommand — guided install flow",
+    "verify": "plugin slash-command /brainpalace-verify (setup-assistant agent); "
+    "no CLI subcommand — guided install/config verification",
+}

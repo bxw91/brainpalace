@@ -16,11 +16,18 @@ on any error we print nothing on the block channel and exit 0.
 from __future__ import annotations
 
 import json
+import sys
 
 import click
 
 from ..ai_guidance import nudge
 from ..discovery import discover_project_dir, discover_server_url
+from ..doc_sync.triggers import is_interface_source
+
+_DOCSYNC_NUDGE = (
+    "Interface source changed — run `brainpalace sync-docs --fix` and commit the "
+    "regenerated docs before finishing."
+)
 
 
 @click.group("hook", hidden=True)
@@ -43,6 +50,27 @@ def hook_sessionstart() -> None:
         _emit_sessionstart()
     except Exception:
         # Never block session start. Swallow everything.
+        pass
+
+
+@hook_group.command("posttooluse")
+def hook_posttooluse() -> None:
+    """Advisory nudge when an interface-source file is edited. Never blocks."""
+    try:
+        payload = json.loads(sys.stdin.read() or "{}")
+        path = (payload.get("tool_input") or {}).get("file_path", "")
+        if path and is_interface_source(path):
+            click.echo(
+                json.dumps(
+                    {
+                        "hookSpecificOutput": {
+                            "hookEventName": "PostToolUse",
+                            "additionalContext": _DOCSYNC_NUDGE,
+                        }
+                    }
+                )
+            )
+    except Exception:  # noqa: BLE001 — a hook must NEVER crash/block a session
         pass
 
 

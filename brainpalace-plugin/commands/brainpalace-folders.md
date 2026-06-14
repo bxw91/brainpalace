@@ -2,19 +2,9 @@
 name: brainpalace-folders
 description: Manage indexed folders — list, add, or remove
 parameters:
-  - name: action
-    description: Action to perform (list, add, remove)
-    required: true
-  - name: path
-    description: Folder path (required for add/remove)
-    required: false
-  - name: yes
-    description: Skip confirmation prompt for remove
-    required: false
-    default: false
 skills:
   - using-brainpalace
-last_validated: 2026-06-11
+last_validated: 2026-06-13
 ---
 
 # Manage Indexed Folders

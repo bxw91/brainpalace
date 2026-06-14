@@ -100,6 +100,11 @@ jobs:
       - name: Run type checking
         run: task server:typecheck cli:typecheck
 
+      - name: Run doc-sync + parity gates
+        env:
+          PYTHON_KEYRING_BACKEND: keyring.backends.null.Keyring
+        run: task lint:docs-gates-ci
+
       - name: Run tests
         run: task test
 

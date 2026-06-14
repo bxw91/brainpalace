@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Interface doc-sync pre-commit gate (CLI surface). Fast, deterministic, no LLM.
+# Skips during rebase/merge/cherry-pick so history replay never mass-fails.
+set -euo pipefail
+
+GIT_DIR_PATH="$(git rev-parse --git-dir 2>/dev/null || echo "${GIT_DIR:-.git}")"
+for marker in rebase-merge rebase-apply MERGE_HEAD CHERRY_PICK_HEAD; do
+  if [ -e "${GIT_DIR_PATH}/${marker}" ]; then
+    echo "doc-sync: skip (git ${marker} in progress)"
+    exit 0
+  fi
+done
+
+# Run against the repo env; never the global binary.
+if command -v poetry >/dev/null 2>&1 && [ -d brainpalace-cli ]; then
+  (cd brainpalace-cli && poetry run python ../scripts/check_doc_sync.py --mode block) || {
+    echo "doc-sync: drift — run 'brainpalace sync-docs --fix' and recommit (or --no-verify to skip; CI still enforces)."
+    exit 1
+  }
+fi
+exit 0

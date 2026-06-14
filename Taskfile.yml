@@ -49,6 +49,13 @@ tasks:
       - task: server:install
       - task: cli:install
       - task: dashboard:install
+      - task: install:hooks
+
+  install:hooks:
+    desc: "Point git at the version-controlled hooks"
+    cmds:
+      - git config core.hooksPath scripts/githooks
+      - chmod +x scripts/githooks/pre-commit
 
   install:server:
     desc: Install server dependencies only
@@ -214,6 +221,19 @@ tasks:
     cmds:
       - "{{.POETRY}} run python ../scripts/check_ai_guidance_parity.py"
 
+  lint:doc-sync:
+    desc: "Fail if interface docs (CLI surface) drift from live code"
+    dir: ./{{.CLI_DIR}}
+    cmds:
+      - "{{.POETRY}} run python ../scripts/check_doc_sync.py --mode block"
+
+  lint:docs-gates-ci:
+    desc: "Doc gates runnable with the server+cli env (freshness, ai-guidance, doc-sync)"
+    cmds:
+      - task: lint:doc-freshness
+      - task: lint:ai-guidance-parity
+      - task: lint:doc-sync
+
   typecheck:
     desc: Type check all code with mypy
     aliases: [mypy]
@@ -255,6 +275,8 @@ tasks:
       - task: lint:dashboard-parity
       - echo "--- Checking AI-guidance parity ---"
       - task: lint:ai-guidance-parity
+      - echo "--- Checking interface doc-sync ---"
+      - task: lint:doc-sync
       - echo "--- Type checking ---"
       - task: typecheck
       - echo "--- Running tests with coverage ---"

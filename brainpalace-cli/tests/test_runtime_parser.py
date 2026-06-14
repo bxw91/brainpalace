@@ -321,7 +321,7 @@ class TestParseRealPluginDir:
         bundle = parse_plugin_dir(real_plugin_dir)
         assert len(bundle.commands) >= 29
         assert len(bundle.agents) >= 3
-        assert len(bundle.skills) == 2
+        assert len(bundle.skills) >= 3
         assert bundle.manifest.name == "brainpalace"
 
 

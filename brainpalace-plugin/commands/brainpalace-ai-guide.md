@@ -3,11 +3,11 @@ name: brainpalace-ai-guide
 description: Print canonical AI usage guidance (search modes, query rules, gotchas)
 parameters:
   - name: tier
-    description: "nudge = minimal reminder; core = decision contract; full = everything"
+    type: choice
     required: false
     default: full
   - name: format
-    description: "markdown/hook/mcp emit the tier text; skill emits the full SKILL.md"
+    type: choice
     required: false
     default: markdown
 skills:
@@ -77,3 +77,11 @@ brainpalace ai-guide --format skill > brainpalace-plugin/skills/using-brainpalac
 |---------|-------------|
 | `/brainpalace:brainpalace-search` | Run a search using the guidance below |
 | `/brainpalace:brainpalace-status` | Verify the server before searching |
+
+### Flags
+<!--GENERATED:flags-->
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| --tier | choice | full | nudge = minimal reminder; core = decision contract; full = everything. |
+| --format | choice | markdown | markdown/hook/mcp emit the tier text; skill emits the full SKILL.md. |
+<!--/GENERATED-->

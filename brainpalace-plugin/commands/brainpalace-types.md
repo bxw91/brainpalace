@@ -2,10 +2,6 @@
 name: brainpalace-types
 description: List available file type presets for indexing
 parameters:
-  - name: json
-    description: Output as JSON
-    required: false
-    default: false
 skills:
   - using-brainpalace
 last_validated: 2026-05-30

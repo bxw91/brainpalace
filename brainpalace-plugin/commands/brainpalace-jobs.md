@@ -2,15 +2,24 @@
 name: brainpalace-jobs
 description: Monitor and manage async indexing jobs in the queue
 parameters:
-  - name: job_id
-    description: Specific job ID to inspect or cancel
-    required: false
   - name: watch
-    description: Poll the queue with live updates every 3 seconds
+    type: bool
     required: false
     default: false
   - name: cancel
-    description: Cancel the specified job (requires job_id)
+    type: bool
+    required: false
+    default: false
+  - name: limit
+    type: integer
+    required: false
+    default: 20
+  - name: url
+    type: text
+    required: false
+    default: ""
+  - name: json
+    type: bool
     required: false
     default: false
 skills:
@@ -185,3 +194,14 @@ brainpalace index <path> --force
 - Eviction summary only appears for incremental re-indexing (not first-time indexing)
 - Use `--force` on the index/inject command to bypass manifest and force full re-indexing
 - Job history persists across server restarts (JSONL storage)
+
+### Flags
+<!--GENERATED:flags-->
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| --watch | bool | false | Poll every 3 seconds |
+| --cancel | bool | false | Cancel the specified job |
+| --limit | integer | 20 | Max jobs to show (default: 20) |
+| --url | text | "" | BrainPalace server URL (default: from config or http://127.0.0.1:8000) |
+| --json | bool | false | Output as JSON |
+<!--/GENERATED-->

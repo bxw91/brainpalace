@@ -3,35 +3,42 @@ name: brainpalace-start
 description: Start the BrainPalace server for this project
 parameters:
   - name: path
-    description: Project path (default auto-detect project root)
+    type: directory
     required: false
+    default: ""
   - name: host
-    description: Server bind host (overrides config)
+    type: text
     required: false
+    default: ""
   - name: port
-    description: Server port (overrides config)
+    type: integer
     required: false
+    default: ""
   - name: foreground
-    description: Run in foreground instead of daemonizing
+    type: bool
     required: false
     default: false
   - name: timeout
-    description: Startup timeout in seconds
+    type: integer
     required: false
     default: 120
-  - name: strict
-    description: Fail on critical provider configuration errors
+  - name: json
+    type: bool
     required: false
     default: false
-  - name: json
-    description: Output as JSON
+  - name: strict
+    type: bool
+    required: false
+    default: false
+  - name: no-dashboard
+    type: bool
     required: false
     default: false
 context: brainpalace
 agent: setup-assistant
 skills:
   - using-brainpalace
-last_validated: 2026-05-30
+last_validated: 2026-06-13
 ---
 
 # BrainPalace Start
@@ -329,3 +336,17 @@ Each started server is registered in the global registry (`~/.local/state/brainp
    ```bash
    pip check
    ```
+
+### Flags
+<!--GENERATED:flags-->
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| --path | directory | "" | Project path (default: auto-detect project root) |
+| --host | text | "" | Server bind host (overrides config) |
+| --port | integer | "" | Server port (overrides config) |
+| --foreground | bool | false | Run in foreground (don't daemonize) |
+| --timeout | integer | 120 | Startup timeout in seconds (default: 120) |
+| --json | bool | false | Output as JSON |
+| --strict | bool | false | Enable strict mode: fail on critical provider configuration errors |
+| --no-dashboard | bool | false | Do not auto-start the web dashboard (overrides dashboard.autostart) |
+<!--/GENERATED-->

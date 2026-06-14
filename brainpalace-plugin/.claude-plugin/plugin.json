@@ -42,6 +42,18 @@
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/posttooluse-docsync-hook.sh\"",
+            "timeout": 3
+          }
+        ]
+      }
     ]
   }
 }
