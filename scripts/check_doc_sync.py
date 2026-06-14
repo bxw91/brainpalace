@@ -60,16 +60,27 @@ def run_wrapped_gates() -> int:
     if ai.returncode != 0:
         print("wrapped gate ai-guidance-parity FAILED:\n" + ai.stdout + ai.stderr)
         rc = 1
-    dash = subprocess.run(
-        ["poetry", "run", "pytest", "tests/test_dashboard_parity.py", "-q"],
-        cwd=REPO / "brainpalace-dashboard",
-        capture_output=True,
-        text=True,
-        env=env,
-    )
-    if dash.returncode != 0:
-        print("wrapped gate dashboard-parity FAILED:\n" + dash.stdout + dash.stderr)
-        rc = 1
+    # Dashboard parity is a local-only gate: it needs the dashboard's own
+    # (Python 3.12) venv, which `task before-push` installs but the publish /
+    # PR-QA CI jobs (server+cli, 3.11) deliberately do not. Skip when that env
+    # is absent so wrapping it here doesn't drag a local-only gate into CI;
+    # before-push always has the venv, so it still runs there.
+    if (REPO / "brainpalace-dashboard" / ".venv").exists():
+        dash = subprocess.run(
+            ["poetry", "run", "pytest", "tests/test_dashboard_parity.py", "-q"],
+            cwd=REPO / "brainpalace-dashboard",
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        if dash.returncode != 0:
+            print("wrapped gate dashboard-parity FAILED:\n" + dash.stdout + dash.stderr)
+            rc = 1
+    else:
+        print(
+            "wrapped gate dashboard-parity SKIPPED "
+            "(dashboard env not installed — local-only gate, runs in `task before-push`)."
+        )
     return rc
 
 

@@ -43,6 +43,11 @@ Entries are kept short (≤ 3 sentences); see
   one-commit-per-release `main`, where every doc's content-change date collapses
   to the release commit and trips freshness regardless of fetch-depth. Freshness
   still runs in `task before-push` on the real `stable` history.
+- **doc-sync's wrapped dashboard-parity gate no longer breaks CI.** The plan-4
+  "one entry point" wrap ran the dashboard-parity pytest unconditionally, but
+  that gate needs the dashboard's Python 3.12 venv which the server+cli CI jobs
+  never install; it now skips when that env is absent and still runs in
+  `task before-push`.
 
 ## [26.6.39] - 2026-06-13
 
