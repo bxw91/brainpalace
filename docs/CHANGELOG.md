@@ -48,6 +48,11 @@ Entries are kept short (≤ 3 sentences); see
   that gate needs the dashboard's Python 3.12 venv which the server+cli CI jobs
   never install; it now skips when that env is absent and still runs in
   `task before-push`.
+- **doc-sync endpoints checker no longer false-flags dashboard routes in CI.**
+  When the dashboard package is not installed the snapshot has no `/dashboard`
+  routes, so the checker can't verify dashboard references; it now skips
+  `/dashboard`-prefixed doc tokens in that case and still gates them when the
+  dashboard is present (`task before-push`).
 
 ## [26.6.39] - 2026-06-13
 
