@@ -250,6 +250,85 @@ def _restart_and_verify(
     return all_ok
 
 
+def _restart_claude_box() -> None:
+    """Loud, bordered, red reminder that Claude Code must be restarted to load the
+    new plugin code (a running session keeps the old copy)."""
+    from rich.panel import Panel
+
+    console.print(
+        Panel(
+            "Restart Claude Code to load the updated plugin.\n"
+            "Running sessions keep the OLD plugin (hooks, skills, agents) "
+            "until you restart.",
+            title="ACTION REQUIRED",
+            border_style="red",
+            style="red",
+            expand=False,
+        )
+    )
+
+
+def _plugin_update_flow(yes: bool) -> None:
+    """After a successful CLI upgrade: show installed-vs-available plugin version,
+    and — only when the plugin is behind — offer to run ``claude plugin update``
+    (ask first; fall back to printing the command on decline/missing/failure),
+    then always require a Claude Code restart. Fully fail-soft; never raises."""
+    try:
+        from .plugin_detect import (
+            available_plugin_version,
+            claude_plugin_installed,
+            installed_plugin_version,
+            plugin_update_available,
+            plugin_update_target,
+        )
+
+        if not claude_plugin_installed():
+            return  # nothing to reconcile.
+        installed = installed_plugin_version()
+        available = available_plugin_version()
+        inst_s = installed or "unknown"
+
+        if not (available and plugin_update_available(installed, available)):
+            # Up to date, or latest unknown (offline) → report, no restart needed.
+            tail = "(up to date)" if available else "(latest unknown — offline?)"
+            console.print(f"\n[bold]Claude Code plugin:[/] {inst_s} [dim]{tail}[/]")
+            return
+
+        console.print(
+            f"\n[bold]Claude Code plugin:[/] installed [yellow]{inst_s}[/] "
+            f"-> [green]{available}[/] available."
+        )
+        target = plugin_update_target()
+        cmd = ["claude", "plugin", "update", target]
+        claude_exe = shutil.which("claude")
+
+        ran_ok = False
+        if claude_exe and (
+            yes
+            or click.confirm(
+                f"Update the Claude Code plugin now ({' '.join(cmd)})?",
+                default=True,
+            )
+        ):
+            console.print(f"  [dim]running[/] {' '.join(cmd)}")
+            res = subprocess.run(cmd, cwd=str(Path.home()))
+            ran_ok = res.returncode == 0
+            console.print(
+                f"  [green]✓[/] plugin updated to {available}."
+                if ran_ok
+                else "  [red]✗[/] plugin update failed."
+            )
+        if not ran_ok:
+            # Declined, `claude` not on PATH, or the update failed → manual command.
+            console.print(
+                "Update the plugin manually:\n  [bold]" + " ".join(cmd) + "[/]"
+            )
+        _restart_claude_box()
+    except Exception:
+        # A successful CLI upgrade must never be undone by the plugin tail.
+        pass
+
+
 @click.command("update")
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt")
 @click.option(
@@ -310,6 +389,7 @@ def update_command(yes: bool, no_restart: bool) -> None:
                 "them: [bold]brainpalace stop && brainpalace start[/] "
                 "(and [bold]brainpalace dashboard start[/])."
             )
+        _plugin_update_flow(yes)
         return
 
     # --- default: stop-all -> upgrade -> restart-and-verify --------------------
@@ -347,6 +427,7 @@ def update_command(yes: bool, no_restart: bool) -> None:
         raise SystemExit(result.returncode)
 
     console.print("\n[green]Upgrade complete.[/]")
+    _plugin_update_flow(yes)
 
     if not servers and not dashboard_live:
         return

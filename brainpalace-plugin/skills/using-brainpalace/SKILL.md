@@ -138,10 +138,11 @@ When you delegate codebase search/exploration to a subagent, dispatch the
 and `Grep` disabled and searches via BrainPalace only, so it cannot quietly fall
 back to filesystem grep. Avoid generic search subagents (e.g. `Explore`) for code
 lookup — they retain grep/find and will bypass the index. The PreToolUse subagent
-guard (`cli.subagent_guard`, on by default while the server runs) enforces this by
-denying `Agent`/`Task` spawns whose prompt lacks a `brainpalace query --mode`
-directive; `research-assistant` is allowlisted. For a genuine exemption, open the
-prompt with `# BRAINPALACE_EXEMPT: <reason of 20+ chars>`.
+guard (`cli.subagent_guard`, on by default while the server runs) reinforces this:
+it nudges `Agent`/`Task` spawns whose prompt lacks a `brainpalace query --mode`
+directive (or the equivalent MCP query-tool `mode:` argument), and in opt-in
+`enforce` mode denies them; `research-assistant` is allowlisted. For a genuine
+exemption, open the prompt with `# BRAINPALACE_EXEMPT: <reason of 20+ chars>`.
 
 ---
 

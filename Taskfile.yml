@@ -317,8 +317,15 @@ tasks:
       # Server+cli only — the publish gate's scope. The dashboard is treated as
       # absent here, so its own suite is intentionally NOT run (it has its own
       # 3.12 job and is covered locally by `task before-push`).
-      - task: test:server
-      - task: test:cli
+      #
+      # These MUST be inline `cmd:`s, not `- task: test:cli` refs: go-task does
+      # NOT propagate this task's `env:` (PYTHONPATH + BRAINPALACE_BLOCK_DASHBOARD)
+      # into a called task's pytest subprocess, so the import-blocker never
+      # reached the tests — a CLI module that hard-imported `brainpalace_dashboard`
+      # passed the rehearsal locally yet failed the real dashboard-absent CI gate.
+      # Running pytest here applies this task's env directly to the subprocess.
+      - cd brainpalace-server && env -u VIRTUAL_ENV poetry run pytest tests -q
+      - cd brainpalace-cli && env -u VIRTUAL_ENV poetry run pytest tests -q
       - echo "--- CI rehearsal passed (dashboard-absent gate green) ---"
 
   ci:

@@ -112,7 +112,8 @@ CLI_KNOWN_FIELDS = {"show_ai_hint", "subagent_guard"}
 # (PreToolUse hook); not a server control-plane concern, so it lives under `cli`
 # and is intentionally not surfaced in the dashboard (the parity gate does not
 # enumerate the `cli` section). Default ON but active only in indexed projects;
-# default mode `enforce`. Disable via enabled:false or BRAINPALACE_SUBAGENT_GUARD=off.
+# default mode `advisory` (nudge) — opt into `enforce` (deny) per project. Disable
+# via enabled:false or BRAINPALACE_SUBAGENT_GUARD=off.
 SUBAGENT_GUARD_KNOWN_FIELDS = {"enabled", "mode", "allow_agents"}
 VALID_GUARD_MODES = {"advisory", "enforce"}
 # Control-plane (dashboard process) settings — global only. Mirrors

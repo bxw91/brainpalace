@@ -1,7 +1,9 @@
 """Tests for the PreToolUse subagent guard (`brainpalace hook pretooluse`).
 
 The guard gates Agent/Task spawns so subagents are forced to search via
-BrainPalace. It is opt-in (`cli.subagent_guard.enabled`) and fails open.
+BrainPalace. It is ON by default (`cli.subagent_guard.enabled`) in `advisory`
+mode (enforce is opt-in), engages only while the project's BrainPalace server is
+running, and fails open.
 """
 
 from __future__ import annotations
@@ -64,9 +66,11 @@ def test_server_down_is_silent(monkeypatch: pytest.MonkeyPatch) -> None:
     assert res.output.strip() == ""
 
 
-def test_default_config_is_on_and_enforce() -> None:
+def test_default_config_is_on_and_advisory() -> None:
+    # Default is ON but advisory (nudge, never deny) so the guard doesn't silently
+    # block other plugins' agents; enforce is opt-in. See _GUARD_DEFAULTS comment.
     assert hook._GUARD_DEFAULTS["enabled"] is True
-    assert hook._GUARD_DEFAULTS["mode"] == "enforce"
+    assert hook._GUARD_DEFAULTS["mode"] == "advisory"
     assert hook._GUARD_DEFAULTS["allow_agents"] == ["research-assistant"]
 
 
@@ -94,6 +98,24 @@ def test_research_assistant_agent_allowed_by_default(
     assert res.output.strip() == ""
 
 
+def test_default_nudges_not_denies(monkeypatch: pytest.MonkeyPatch) -> None:
+    # With the shipped default (advisory), a non-allowlisted agent + bad prompt is
+    # NUDGED, never DENIED — so other plugins' spawns are not silently blocked.
+    monkeypatch.setattr(hook, "discover_server_url", lambda _=None: "http://x")
+    monkeypatch.setattr(hook, "_guard_config_sources", lambda: [])
+    monkeypatch.delenv("BRAINPALACE_SUBAGENT_GUARD", raising=False)
+    runner = CliRunner()
+    res = runner.invoke(
+        cli,
+        ["hook", "pretooluse"],
+        input=json.dumps({"tool_name": "Agent", "tool_input": {"prompt": _BAD_PROMPT}}),
+    )
+    out = json.loads(res.output)
+    hso = out["hookSpecificOutput"]
+    assert "permissionDecision" not in hso  # not a denial
+    assert "brainpalace query" in hso["additionalContext"]
+
+
 def test_enforce_denies_missing_directive(monkeypatch: pytest.MonkeyPatch) -> None:
     res = _run(
         {"tool_name": "Agent", "tool_input": {"prompt": _BAD_PROMPT}},
@@ -114,6 +136,38 @@ def test_good_prompt_allowed(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch,
     )
     assert res.output.strip() == ""
+
+
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "Use the brainpalace `query` tool with mode: hybrid to find auth.",
+        "Call brainpalace query tool (mode=graph) to trace callers.",
+        'Search via brainpalace: {"tool": "query", "mode": "vector"}.',
+    ],
+)
+def test_mcp_mode_directive_allowed(
+    prompt: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The MCP/skill `query` tool has no `--mode` flag; a `mode:` argument near a
+    # brainpalace mention must satisfy the guard just like the CLI directive.
+    res = _run(
+        {"tool_name": "Agent", "tool_input": {"prompt": prompt}}, _ENFORCE, monkeypatch
+    )
+    assert res.output.strip() == ""
+
+
+def test_mode_without_brainpalace_still_denied(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A bare `mode: hybrid` with no brainpalace mention is not a search directive.
+    res = _run(
+        {"tool_name": "Agent", "tool_input": {"prompt": "Render with mode: hybrid."}},
+        _ENFORCE,
+        monkeypatch,
+    )
+    out = json.loads(res.output)
+    assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
 
 
 def test_allowlisted_agent_skipped(monkeypatch: pytest.MonkeyPatch) -> None:

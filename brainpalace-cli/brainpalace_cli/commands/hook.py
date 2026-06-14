@@ -79,13 +79,86 @@ def hook_posttooluse() -> None:
         pass
 
 
+def _drain_directive(ids: list[str], remaining: int) -> str:
+    """Build the UserPromptSubmit extraction directive. Text lives HERE (CLI), not
+    in the installed shim, so a ``pip`` upgrade propagates wording changes."""
+    tail = f" ({remaining} more queued — draining gradually.)" if remaining else ""
+    return (
+        "Prior sessions are pending knowledge extraction: "
+        + " ".join(ids)
+        + ". Run the chat-session-extractor subagent on each (it submits via "
+        "`brainpalace submit-session`). Best-effort background curation — do it "
+        "alongside the user's request, don't block on it." + tail
+    )
+
+
+@hook_group.command("userpromptsubmit")
+def hook_userpromptsubmit() -> None:
+    """Drain a throttled batch of the session-summarization gap after a user turn.
+
+    Indexed projects only (silent no-op otherwise). Selection, byte budget, count
+    cap, and the 5-min cooldown live in ``drain-queue`` (unit-tested); this just
+    invokes it and, when sessions are drained, injects a directive asking the
+    in-session model to run the free ``chat-session-extractor`` subagent on each.
+    Empty drain / active cooldown → emit nothing. Never blocks.
+    """
+    try:
+        # Lazy import: keeps the hook module light + avoids an import cycle.
+        from .session_drain import (
+            drain_queue,
+            resolve_budget,
+            resolve_cooldown,
+            resolve_max_count,
+        )
+
+        root = discover_project_dir(None)
+        if root is None:
+            return  # not an indexed project → never touch it.
+        res = drain_queue(
+            root,
+            budget=resolve_budget(root),
+            cap=resolve_max_count(root),
+            cooldown=resolve_cooldown(root),
+        )
+        ids = res.get("drained") or []
+        if not ids:
+            return  # empty queue / active cooldown → inject nothing.
+        click.echo(
+            json.dumps(
+                {
+                    "hookSpecificOutput": {
+                        "hookEventName": "UserPromptSubmit",
+                        "additionalContext": _drain_directive(
+                            ids, int(res.get("remaining", 0) or 0)
+                        ),
+                    }
+                }
+            )
+        )
+    except Exception:  # noqa: BLE001 — a hook must NEVER crash/block a session
+        pass
+
+
 # --- subagent guard (PreToolUse) ------------------------------------------
 
 # Query modes a guarded subagent prompt must reference to prove it will search
-# via BrainPalace. Mirrors the modes accepted by `brainpalace query --mode`.
+# via BrainPalace. Mirrors the modes accepted by `brainpalace query --mode` and
+# the MCP/skill `query` tool's `mode` argument.
 _GUARD_QUERY_MODES = ("hybrid", "bm25", "vector", "graph", "multi")
-_GUARD_DIRECTIVE_RE = re.compile(
-    r"brainpalace\s+query\s+.*--mode\s+(?:" + "|".join(_GUARD_QUERY_MODES) + r")",
+_GUARD_MODES_ALT = "|".join(_GUARD_QUERY_MODES)
+# A prompt proves BrainPalace search two equivalent ways:
+#   CLI form — `brainpalace query ... --mode <mode>`
+#   MCP form — the MCP/skill `query` tool (no `--mode` flag) carrying a mode
+#              argument near a `brainpalace` mention: `mode: hybrid`,
+#              `mode=graph`, `"mode": "vector"`.
+# Either satisfies the guard; matching either errs toward allowing the spawn,
+# which is the safe (fail-open) direction.
+_GUARD_DIRECTIVE_CLI_RE = re.compile(
+    rf"brainpalace\s+query\s+.*--mode\s+(?:{_GUARD_MODES_ALT})",
+    re.IGNORECASE,
+)
+_GUARD_DIRECTIVE_MCP_RE = re.compile(
+    rf"brainpalace[\s\S]{{0,200}}?\bmode\b[\"']?\s*[:=]\s*[\"']?(?:{_GUARD_MODES_ALT})\b",
     re.IGNORECASE,
 )
 _GUARD_BYPASS_RE = re.compile(
@@ -101,7 +174,20 @@ _GUARD_DENY_REASON = (
 )
 _GUARD_DEFAULTS: dict[str, Any] = {
     "enabled": True,
-    "mode": "enforce",
+    # Default mode is ``advisory`` (nudge, never deny). Rationale: this guard is
+    # ON by default and fires on EVERY Agent/Task spawn once the server is up,
+    # including agents from OTHER plugins it knows nothing about (Explore, Plan,
+    # gsd-*, caveman, …). A default that silently DENIES those spawns is too
+    # blunt — an on-by-default feature should not block by default. Advisory
+    # keeps the BrainPalace-search nudge without the cross-plugin breakage.
+    #
+    # To restore hard blocking, set this back to ``"enforce"`` (and re-point
+    # ``test_default_config_*``). Enforce has more teeth because subagents often
+    # ignore an advisory nudge; prefer it only when every spawned agent in the
+    # project is expected to search via BrainPalace. Per-project opt-in stays
+    # available via ``cli.subagent_guard.mode: enforce`` or
+    # ``BRAINPALACE_SUBAGENT_GUARD=enforce``.
+    "mode": "advisory",
     # The shipped brainpalace research agent is BrainPalace-only by construction
     # (Glob/Grep disabled), so never deny spawning it.
     "allow_agents": ["research-assistant"],
@@ -119,9 +205,10 @@ def hook_pretooluse() -> None:
     back to grep until the server is up. When a guarded spawn's prompt carries
     no ``brainpalace query --mode`` directive (or opens with a bypass
     instruction), the guard reacts per ``cli.subagent_guard.mode``:
-      - ``enforce`` (default) → deny the spawn with a fix hint;
-      - ``advisory`` → allow but inject a nudge (subagents often ignore nudges —
-        that is why ``enforce`` is the default).
+      - ``advisory`` (default) → allow but inject a nudge;
+      - ``enforce`` → deny the spawn with a fix hint (more teeth, since subagents
+        often ignore a nudge — opt in when every project agent should search via
+        BrainPalace).
     Disable with ``cli.subagent_guard.enabled: false`` or
     ``BRAINPALACE_SUBAGENT_GUARD=off``.
     Fail-soft: any error → allow (emit nothing). Never blocks on a crash.
@@ -179,8 +266,10 @@ def _guard_prompt_ok(prompt: str) -> bool:
         m = _GUARD_EXEMPT_RE.match(line.strip())
         if m and len(m.group(1).strip()) >= 20:
             return True
-    # Layer 2: prompt must carry a BrainPalace query directive.
-    if not _GUARD_DIRECTIVE_RE.search(prompt):
+    # Layer 2: prompt must carry a BrainPalace query directive (CLI or MCP form).
+    if not (
+        _GUARD_DIRECTIVE_CLI_RE.search(prompt) or _GUARD_DIRECTIVE_MCP_RE.search(prompt)
+    ):
         return False
     # Layer 3: reject prompts that open by telling the subagent to skip BrainPalace.
     if _GUARD_BYPASS_RE.search(prompt[:200]):

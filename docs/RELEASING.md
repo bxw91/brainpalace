@@ -106,6 +106,13 @@ The version lives in **one place per package**: `pyproject.toml`.
    behavior by answering *every* prompt explicitly. Interactive tests should mock
    `claude_plugin_installed` and the port scan (`_find_available_api_port`) so
    they are host-independent.
+   - **Dashboard-absent coupling (same trap).** The 3.11 CLI gate has **no
+     dashboard installed**, so CLI code must not `import brainpalace_dashboard`
+     in a call/render path (probe via `dashboard_status_info()`), and CLI tests
+     for dashboard-aware output must mock that seam — never assume the package
+     imports. See [DEVELOPERS_GUIDE.md → CLI ↔ dashboard import boundary](DEVELOPERS_GUIDE.md#cli--dashboard-import-boundary-the-dashboard-is-optional).
+     `task release:rehearse-ci` (step 8a) now import-blocks the dashboard for the
+     cli/server suites, so this fails locally instead of in CI.
 
    **8a. Dashboard-absent CI rehearsal — now automatic.** The 3.11 publish/PR-QA
    quality gate runs in a **server+cli env with no dashboard installed** (the

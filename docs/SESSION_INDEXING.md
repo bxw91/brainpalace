@@ -335,9 +335,9 @@ model to run the **`chat-session-extractor`** subagent (pinned to **Haiku**) on
 each pending session. Free (subscription model); no `claude -p` headless spend, no
 paid cron. The gap is recomputed from the durable archive every run, so a pending
 session is summarized at the next Claude Code session, however much later. The
-`sessionend-hook.sh` still ships but is now a **no-op** (queue retired).
+legacy `sessionend-hook.sh` queue is retired and the hook has been removed.
 
-These **two extraction hooks now ship with the Claude Code plugin**
+This **extraction hook now ships with the Claude Code plugin**
 (`plugin.json` `hooks`, under `${CLAUDE_PLUGIN_ROOT}/hooks/`), alongside the
 plugin's **SessionStart reminder**. Installing the plugin gives you the complete
 hook set — nothing else to wire. **`brainpalace install-session-hooks`** now

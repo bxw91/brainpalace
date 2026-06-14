@@ -15,6 +15,36 @@ Entries are kept short (≤ 3 sentences and ≤ 320 characters); see
 
 ---
 
+## [26.6.44] - 2026-06-15
+
+### Added
+- **Plugin version awareness on update.** `brainpalace plugin status` and the
+  `brainpalace update` tail now report installed-vs-latest-release plugin version
+  (`version`/`latest`/`update_available` in `--json`) and, when behind, ask before
+  running `claude plugin update` with a red "restart Claude Code" notice. Fail-soft
+  and offline-safe.
+
+### Changed
+- **UserPromptSubmit drain hook is now a thin shim.** Its logic + injected
+  directive text moved into the CLI (`brainpalace hook userpromptsubmit`), matching
+  the other three hooks, so a `pip` upgrade propagates wording changes and the
+  shim can't drift. Behavior is unchanged; one `whoami`/discovery call instead of
+  two, no inline `python3` heredoc.
+- **Subagent guard defaults to `advisory`, not `enforce`.** The PreToolUse guard
+  is still ON while the server runs but now NUDGES rather than DENYING spawns by
+  default, so it no longer silently blocks other plugins' agents. Opt into hard
+  blocking via `cli.subagent_guard.mode: enforce` / `BRAINPALACE_SUBAGENT_GUARD=enforce`.
+- **Subagent guard accepts MCP query directives.** A spawn prompt now satisfies
+  the guard with either the CLI `brainpalace query ... --mode <mode>` form or the
+  MCP/skill `query` tool's `mode:` argument — fixing false denials of MCP-only
+  search subagents.
+
+### Removed
+- **Retired `sessionend-hook.sh`.** The SessionEnd extract-queue hook (a no-op
+  since summarization went archive-driven) is deleted and unregistered from the
+  plugin `plugin.json`. Session knowledge extraction is unaffected — it runs from
+  the `UserPromptSubmit` drain hook.
+
 ## [26.6.43] - 2026-06-14
 
 ### Added

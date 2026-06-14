@@ -458,6 +458,22 @@ The control-plane dashboard (`brainpalace-dashboard/`) is meant to surface
 enforcement these drift: a new endpoint or command ships and the dashboard
 never grows a control for it. The parity gate prevents that.
 
+### CLI ↔ dashboard import boundary (the dashboard is optional)
+
+The dashboard package (`brainpalace-dashboard`, `python = ">=3.12"`) is **not
+installed** in the publish/PR-QA CLI quality gate (Python 3.11). So **CLI code
+must never `import brainpalace_dashboard` in a call/render path** — probe it
+through `brainpalace_cli.commands._dashboard_url.dashboard_status_info()`, which
+returns `{"status": "not_installed"}` when the package is absent. A direct import
+passes locally (where the dashboard usually IS installed) and then fails the
+dashboard-absent CI gate.
+
+Same trap in **tests**: a CLI test asserting dashboard-aware output must mock
+`dashboard_status_info` (or another seam that doesn't import the package) — never
+assume `import brainpalace_dashboard` succeeds. `task release:rehearse-ci` runs
+the cli/server suites with the package import-blocked (`BRAINPALACE_BLOCK_DASHBOARD`),
+so this class now fails in `before-push` instead of in CI.
+
 **The gate:** `tests/test_dashboard_parity.py`, run via
 `task lint:dashboard-parity` (included in `task before-push`). It imports the
 **live** sources of truth — not snapshots — and diffs them against the

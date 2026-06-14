@@ -87,9 +87,22 @@ def test_plugin_status_json_installed(monkeypatch) -> None:
         "brainpalace_cli.commands.plugin_detect.claude_plugin_installed",
         lambda: True,
     )
+    monkeypatch.setattr(
+        "brainpalace_cli.commands.plugin_detect.installed_plugin_version",
+        lambda: "26.5.1",
+    )
+    monkeypatch.setattr(
+        "brainpalace_cli.commands.plugin_detect.available_plugin_version",
+        lambda: "26.5.1",
+    )
     result = CliRunner().invoke(plugin_group, ["status", "--json"])
     assert result.exit_code == 0, result.output
-    assert json.loads(result.output) == {"installed": True}
+    assert json.loads(result.output) == {
+        "installed": True,
+        "version": "26.5.1",
+        "latest": "26.5.1",
+        "update_available": False,
+    }
 
 
 def test_plugin_status_json_absent(monkeypatch) -> None:
@@ -99,4 +112,10 @@ def test_plugin_status_json_absent(monkeypatch) -> None:
     )
     result = CliRunner().invoke(plugin_group, ["status", "--json"])
     assert result.exit_code == 0, result.output
-    assert json.loads(result.output) == {"installed": False}
+    # Version probes are skipped when not installed → all null/false.
+    assert json.loads(result.output) == {
+        "installed": False,
+        "version": None,
+        "latest": None,
+        "update_available": False,
+    }

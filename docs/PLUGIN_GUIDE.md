@@ -555,7 +555,6 @@ emits the extraction JSON, and submits it.
 |---|---|
 | `agents/chat-session-extractor.md` | Subagent that extracts + submits a finished session (read-only tools + submit). |
 | `agents/memory-curator.md` | Distils recent decisions into curated memory; prunes/merges. |
-| `templates/sessionend-hook.sh` | Queues the ended `session_id` for extraction. |
 | `templates/sessionstart-hook.sh` | Drains the queue → runs the extractor subagent (free, in-session model). |
 | `templates/daily-distill-hook.sh` / `weekly-curate-hook.sh` | Opt-in periodic curation. |
 
