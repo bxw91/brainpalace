@@ -228,9 +228,15 @@ tasks:
       - "{{.POETRY}} run python ../scripts/check_doc_sync.py --mode block"
 
   lint:docs-gates-ci:
-    desc: "Doc gates runnable with the server+cli env (freshness, ai-guidance, doc-sync)"
+    # NB: doc-freshness is intentionally NOT here. It is git-history based, but
+    # CI only ever sees `main` — the squashed one-commit-per-release mirror (the
+    # publish job on the release tag; pr-qa-gate on push/PR to main). On that
+    # tree every doc's last content-change collapses to the release commit date
+    # (>= its stable-side last_validated), so freshness false-positives there
+    # regardless of fetch-depth. It runs where the real, non-squashed history
+    # lives: `task before-push` on the local `stable` branch.
+    desc: "Doc gates runnable with the server+cli env (ai-guidance, doc-sync)"
     cmds:
-      - task: lint:doc-freshness
       - task: lint:ai-guidance-parity
       - task: lint:doc-sync
 

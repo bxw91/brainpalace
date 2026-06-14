@@ -36,6 +36,14 @@ Entries are kept short (≤ 3 sentences); see
   a single-pair command rename is detected and applied via a confirm-gated
   `git mv` (the `--check` path used by CI only reports, never moves).
 
+### Fixed
+- **CI doc gate no longer false-fails on the squashed `main` mirror.**
+  `lint:docs-gates-ci` (run by the publish + PR-QA workflows) dropped the
+  git-history-based `lint:doc-freshness` step: CI only ever sees the
+  one-commit-per-release `main`, where every doc's content-change date collapses
+  to the release commit and trips freshness regardless of fetch-depth. Freshness
+  still runs in `task before-push` on the real `stable` history.
+
 ## [26.6.39] - 2026-06-13
 
 ### Added
