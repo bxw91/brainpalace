@@ -65,7 +65,10 @@ def run_wrapped_gates() -> int:
     # PR-QA CI jobs (server+cli, 3.11) deliberately do not. Skip when that env
     # is absent so wrapping it here doesn't drag a local-only gate into CI;
     # before-push always has the venv, so it still runs there.
-    if (REPO / "brainpalace-dashboard" / ".venv").exists():
+    # BRAINPALACE_DOCSYNC_NO_DASHBOARD forces the skip so `task release:rehearse-ci`
+    # can reproduce the dashboard-absent CI gate locally.
+    dashboard_env = (REPO / "brainpalace-dashboard" / ".venv").exists()
+    if dashboard_env and not os.environ.get("BRAINPALACE_DOCSYNC_NO_DASHBOARD"):
         dash = subprocess.run(
             ["poetry", "run", "pytest", "tests/test_dashboard_parity.py", "-q"],
             cwd=REPO / "brainpalace-dashboard",

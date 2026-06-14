@@ -114,10 +114,14 @@ task install
 
 ## Docs — `last_validated` freshness
 
-Audited docs carry `last_validated: YYYY-MM-DD` = "confirmed accurate against
-code on this date." **Edit a doc's content → re-check vs code → bump the date.**
-`task before-push` runs `lint:doc-freshness` (fails when a doc's content commit
-is newer than its `last_validated`). Rule:
+Audited docs carry `last_validated: YYYY-MM-DD` in frontmatter (human "confirmed
+accurate on this date", display only). The gate compares a hash of authored
+content recorded in the sidecar manifest `scripts/doc_freshness.json` (kept out
+of frontmatter so docs render clean on GitHub). **Edit a doc's content → re-check
+vs code → re-stamp** (`python scripts/add_audit_metadata.py`). `task before-push`
+runs `lint:doc-freshness` (fails when a doc's authored content no longer matches
+its manifest hash). The hash catches same-day edits a date comparison would miss.
+Rule:
 [docs/DEVELOPERS_GUIDE.md](docs/DEVELOPERS_GUIDE.md#documentation-freshness-last_validated);
 release-time step: [docs/RELEASING.md](docs/RELEASING.md).
 

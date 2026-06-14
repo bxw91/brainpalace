@@ -33,3 +33,15 @@ def test_endpoints_introspection_is_side_effect_free_and_lists_routes():
     paths = endpoint_paths()
     assert any(p.startswith("/") for p in paths)
     assert "/health" in paths or any("health" in p for p in paths)
+
+
+def test_no_dashboard_env_drops_dashboard_routes(monkeypatch):
+    # `release:rehearse-ci` forces the dashboard-absent path so the publish CI
+    # gate (server+cli, no dashboard) is reproducible regardless of local Python.
+    from brainpalace_cli.doc_sync.introspect import endpoint_paths
+
+    monkeypatch.setenv("BRAINPALACE_DOCSYNC_NO_DASHBOARD", "1")
+    paths = endpoint_paths()
+    assert not any(p.startswith("/dashboard") for p in paths)
+    # Project-server routes are still present.
+    assert "/health" in paths or any("health" in p for p in paths)

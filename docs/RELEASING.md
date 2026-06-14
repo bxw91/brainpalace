@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-11
+last_validated: 2026-06-14
 ---
 
 # Releasing BrainPalace
@@ -80,12 +80,12 @@ The version lives in **one place per package**: `pyproject.toml`.
 5. **Changelog** — add the `[YY.M.N]` section in `docs/CHANGELOG.md`. Keep each
    entry ≤ 3 sentences (see [DEVELOPERS_GUIDE.md → Changelog style](DEVELOPERS_GUIDE.md#changelog-style-docschangelogmd)).
 6. **Refresh doc freshness** — any audited doc whose content changed this
-   release must be re-read against the code and have its `last_validated` date
-   bumped. List stale docs with `python scripts/check_doc_freshness.py`; after
-   re-reading, stamp them (`python scripts/add_audit_metadata.py` for today, or
-   `--from-git` to backfill per-file content dates). The gate in step 8 enforces
-   this — a doc committed after its `last_validated` fails the build. The rule's
-   meaning lives in [DEVELOPERS_GUIDE.md](DEVELOPERS_GUIDE.md#documentation-freshness-last_validated).
+   release must be re-read against the code and re-stamped. List stale docs with
+   `python scripts/check_doc_freshness.py`; after re-reading, stamp them
+   (`python scripts/add_audit_metadata.py` re-stamps `last_validated` to today +
+   re-records the hash in `scripts/doc_freshness.json`). The gate in step 8
+   enforces this — a doc whose authored content no longer matches its manifest
+   hash fails the build. The rule's meaning lives in [DEVELOPERS_GUIDE.md](DEVELOPERS_GUIDE.md#documentation-freshness-last_validated).
 7. **Dashboard parity** — confirm every new config option / CLI command /
    server endpoint this release is surfaced in the control-plane dashboard or
    allowlisted with a reason. Enforced by `task lint:dashboard-parity` (part of
@@ -106,6 +106,18 @@ The version lives in **one place per package**: `pyproject.toml`.
    behavior by answering *every* prompt explicitly. Interactive tests should mock
    `claude_plugin_installed` and the port scan (`_find_available_api_port`) so
    they are host-independent.
+
+   **8a. Dashboard-absent CI rehearsal — now automatic.** The 3.11 publish/PR-QA
+   quality gate runs in a **server+cli env with no dashboard installed** (the
+   dashboard's `python = ">=3.12"` marker excludes it, and its venv is absent), so
+   a doc-sync checker or wrapped gate that needs the dashboard could pass
+   `before-push` yet fail there. `task before-push` now runs `task
+   release:rehearse-ci` for you — it forces that env (`BRAINPALACE_DOCSYNC_NO_DASHBOARD`
+   + a `sitecustomize` import-blocker) and re-runs `lint:docs-gates-ci` + server &
+   cli tests as CI does, so step 8 already covers this. The flip side is validated
+   too: the publish/PR-QA workflows now include a **Dashboard Gate** job (Python
+   3.12, all three packages installed) that runs the FULL `lint:doc-sync` +
+   `lint:dashboard-parity` with the dashboard present, and publishing waits on it.
 9. **Commit on `stable`** (version bump + changelog).
 10. **Mirror to `main`** and tag. **`stable` is LOCAL-ONLY — NEVER `git push` it.**
    `main` is the only remote branch: a single squashed commit per release that

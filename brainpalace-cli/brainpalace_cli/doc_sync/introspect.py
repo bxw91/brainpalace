@@ -198,12 +198,19 @@ def endpoint_paths() -> list[str]:
     from brainpalace_server.api.main import app as _server_app  # routes only
 
     apps = [_server_app]
-    try:
-        from brainpalace_dashboard.app import create_app as _dash_create_app
+    # `BRAINPALACE_DOCSYNC_NO_DASHBOARD` forces the dashboard-absent path even when
+    # the package is importable, so `task release:rehearse-ci` can reproduce the
+    # publish CI gate (server+cli env, no dashboard) on a dev box of any Python
+    # version. Otherwise the dashboard is unioned in when installed.
+    if not os.environ.get("BRAINPALACE_DOCSYNC_NO_DASHBOARD"):
+        try:
+            from brainpalace_dashboard.app import create_app as _dash_create_app
 
-        apps.append(_dash_create_app())  # side-effect-free factory (lifespan deferred)
-    except ImportError:
-        pass  # dashboard optional / not installed → project-server routes only
+            apps.append(
+                _dash_create_app()
+            )  # side-effect-free factory (lifespan deferred)
+        except ImportError:
+            pass  # dashboard optional / not installed → project-server routes only
 
     paths: set[str] = set()
     for app in apps:

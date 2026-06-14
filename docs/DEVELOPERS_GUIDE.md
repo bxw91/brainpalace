@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-13
+last_validated: 2026-06-14
 ---
 
 # BrainPalace Developer Guide
@@ -181,54 +181,73 @@ doesn't probe real sockets under test. A test that follows these rules behaves
 the same on every host and in CI.
 
 ### Documentation Freshness (`last_validated`)
-Audited docs carry a `last_validated: YYYY-MM-DD` frontmatter field. It means
-**"this doc was last read against the live code and confirmed accurate on that
-date"** — it is *not* an auto "last modified" stamp.
+Freshness has two parts:
+- `last_validated: YYYY-MM-DD` in each audited doc's frontmatter — human-readable
+  **"this doc was last read against the live code and confirmed accurate on that
+  date"**. Display only; *not* an auto "last modified" stamp, and it does **not**
+  gate.
+- A **content hash** of the doc's **authored content** (prose + non-contract
+  frontmatter, with machine-owned `GENERATED` blocks and metadata stripped),
+  recorded in the sidecar manifest **`scripts/doc_freshness.json`** (a committed
+  `path → sha256` map). This is the value the gate actually compares. It lives in
+  the manifest, *not* in frontmatter, so docs render clean on GitHub.
 
 The rule:
 
 > **When you change an audited doc's content, you must re-confirm it against the
-> code and bump its `last_validated` to today.** A doc whose last git commit is
-> newer than its `last_validated` is *stale* — the claim of validation no longer
-> covers the current text.
+> code and re-stamp it.** A doc whose authored content no longer matches its
+> manifest hash is *stale* — the claim of validation no longer covers the current
+> text.
+
+Why a hash and not a date: a date comparison is blind below day granularity, so
+an edit made the *same calendar day* as validation slipped through. The hash
+compares *what the content is*, not *when it changed*, so same-day edits are
+caught. Machine-owned regions are excluded, so a pure doc-sync regen does not
+trip the gate.
 
 Enforcement is automated. `task lint:doc-freshness` (run as part of
-`task before-push`) fails if any audited doc was committed after its
-`last_validated` date, or is missing the field. The audited set is the same
-globs used by the audit scripts: `docs/*.md`,
-`brainpalace-plugin/commands/*.md`, `brainpalace-plugin/skills/*/references/*.md`,
-`brainpalace-plugin/agents/*.md`, plus `README.md`, `CLAUDE.md`, `AGENTS.md`.
+`task before-push`) fails if any audited doc's authored content differs from its
+manifest hash, or has no manifest entry. The audited set is the same globs used
+by the audit scripts: `docs/*.md`, `brainpalace-plugin/commands/*.md`,
+`brainpalace-plugin/skills/*/references/*.md`, `brainpalace-plugin/agents/*.md`,
+plus `README.md`, `CLAUDE.md`, `AGENTS.md`.
 
 To clear staleness after actually re-reading the docs:
 ```bash
 python scripts/check_doc_freshness.py        # list what's stale
-python scripts/add_audit_metadata.py         # stamp today's date into frontmatter
+python scripts/add_audit_metadata.py         # re-stamp last_validated (today) + manifest hash
 ```
 Do **not** run `add_audit_metadata.py` to silence the check without re-reading
-the doc — the date asserts a human (or you) verified it against the code.
+the doc — the stamp asserts a human (or you) verified it against the code.
+(`--keep-date` re-records only the manifest hash, preserving the existing date;
+use it for mechanical backfills, not to claim fresh validation.)
 
 ### Changelog style (`docs/CHANGELOG.md`)
 Changelog entries are for **readers deciding whether a change affects them**, not
 for explaining how it was built. Keep each entry **short**:
 
-> **Each entry is ≤ 3 sentences.** A bold lead naming what changed, one sentence
-> of user-facing impact, and at most one clause for the key default/gotcha or the
-> cross-surface parity pointer. Reference the issue/PR (`(#NN)`) and let the
-> **commit message** carry the root-cause / file-level detail — don't duplicate it
-> here.
+> **Each entry is ≤ 3 sentences and ≤ 320 characters.** A bold lead naming what
+> changed, one sentence of user-facing impact, and at most one clause for the key
+> default/gotcha or the cross-surface parity pointer. Reference the issue/PR
+> (`(#NN)`) and let the **commit message** carry the root-cause / file-level
+> detail — don't duplicate it here.
 
-The cap applies to **every** entry, old and new — released sections may be
+The 320-char cap is a backstop against run-ons that pack many clauses into one
+period-terminated sentence (joined with `;`/`—`) to dodge the sentence count.
+The caps apply to **every** entry, old and new — released sections may be
 normalized for length in a deliberate pass, but never drop a real entry, version
 header, date, or issue reference when tightening. Group entries under the standard
 Keep-a-Changelog headings (`Added`, `Changed`, `Fixed`, `Docs`, …) within each
 `[YY.M.N]` section.
 
 Enforcement is automated. `task lint:changelog` (run as part of `task
-before-push`) fails when any entry in the **`[Unreleased]`** section or the
-**most recent released** section exceeds the 3-sentence cap; older sections are
-out of scope (normalize them deliberately, never fail the build retroactively).
-The check (`scripts/check_changelog_style.py`) strips inline code, link targets,
-and CalVer dots before counting, so only real sentence terminators count.
+before-push`) fails when any **`[Unreleased]`** or **most recent released** entry
+exceeds the 3-sentence cap, or any **`[Unreleased]`** entry exceeds 320 chars
+(the char cap is authoring-time only — entries land in `[Unreleased]` first — so
+already-versioned sections are never failed retroactively). Older sections are
+out of scope for both. The check (`scripts/check_changelog_style.py`) strips
+inline code, link targets, and CalVer dots before counting, so only real sentence
+terminators count.
 
 ### Test Directories
 - `brainpalace-server/tests/`: Server-specific tests.

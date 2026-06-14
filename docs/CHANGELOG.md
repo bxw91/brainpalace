@@ -10,10 +10,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 Versioning is **CalVer** `YY.M.N` — 2-digit year · month · Nth release that
 month (the counter resets monthly). It looks like SemVer but is not.
 
-Entries are kept short (≤ 3 sentences); see
+Entries are kept short (≤ 3 sentences and ≤ 320 characters); see
 [DEVELOPERS_GUIDE.md → Changelog style](DEVELOPERS_GUIDE.md#changelog-style-docschangelogmd).
 
 ---
+
+## [26.6.41] - 2026-06-14
+
+### Added
+- **`task release:rehearse-ci` reproduces the dashboard-absent publish gate.** The
+  publish/PR-QA CI runs in a server+cli env with no dashboard installed, so
+  dashboard-coupled code can pass `before-push` yet fail CI; the new task forces
+  that env both ways — `BRAINPALACE_DOCSYNC_NO_DASHBOARD` for the doc-sync paths
+  and a `sitecustomize` import-blocker (`BRAINPALACE_BLOCK_DASHBOARD`) that makes
+  `import brainpalace_dashboard` raise — then runs `lint:docs-gates-ci` + server
+  & cli tests as CI does, surfacing that class of failure before a release is cut
+  (RELEASING.md step 8a). `task before-push` now runs it automatically, so the
+  rehearsal can't be forgotten.
+- **CI now validates the dashboard for real (new `Dashboard Gate` job).** The
+  publish + PR-QA workflows gained a Python 3.12 job that installs all three
+  packages and runs the FULL `lint:doc-sync` + `lint:dashboard-parity` with the
+  dashboard present; the 3.11 server+cli gate still skips `/dashboard` checks, so
+  together they cover both without false-fails, and publishing now waits on it.
+
+### Changed
+- **Doc-freshness now gates on a content hash, not a commit date.** `lint:doc-freshness`
+  compares each audited doc's authored content against a sha256 in the sidecar
+  manifest `scripts/doc_freshness.json`, closing the blind spot where an edit made
+  the *same calendar day* as validation passed the date check. `last_validated`
+  stays a human frontmatter date; the hash lives in the manifest so docs render
+  clean on GitHub.
+- **Changelog lint gains a 320-char per-entry cap.** A backstop against run-ons
+  that dodge the 3-sentence cap by joining clauses with `;`/`—`; enforced on
+  `[Unreleased]` entries only, so already-versioned sections never fail
+  retroactively.
 
 ## [26.6.40] - 2026-06-14
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail when a changelog entry exceeds the 3-sentence cap.
+"""Fail when a changelog entry exceeds the style caps.
 
 Usage:
     python scripts/check_changelog_style.py [--json] [path/to/CHANGELOG.md]
@@ -9,9 +9,17 @@ every entry at **3 sentences**: a bold lead naming what changed, one sentence
 of user-facing impact, and at most one clause for the key default/gotcha.
 Root-cause / file-level detail belongs in the commit message, not here.
 
-Scope: only the **[Unreleased]** section and the **most recent released**
-section are linted — the two topmost sections, i.e. the part actively edited.
-Older released sections predate the rule and are left alone (normalize them in
+A second cap guards against run-ons that dodge the sentence count by joining
+clauses with ``;``/``—``: an entry may be at most **320 characters** (joined,
+machine-neutral length). The sentence count is wrap-independent and so is this.
+
+Scope:
+  - The **3-sentence cap** lints the **[Unreleased]** section *and* the **most
+    recent released** section (the two topmost, actively-edited sections).
+  - The **320-char cap** lints the **[Unreleased]** section only — it is enforced
+    at authoring time (entries land in [Unreleased] first) and does not fail
+    already-versioned sections retroactively.
+Older released sections predate the rules and are left alone (normalize them in
 a deliberate pass, never fail the build retroactively).
 
 Sentence counting is a heuristic tuned for the changelog's controlled style:
@@ -33,6 +41,9 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 DEFAULT_CHANGELOG = os.path.join(PROJECT_ROOT, "docs", "CHANGELOG.md")
 
 MAX_SENTENCES = 3
+#: Max characters per entry (joined). Guards run-ons that dodge the sentence cap
+#: with ``;``/``—``. Enforced on the [Unreleased] section only — see module docs.
+MAX_CHARS = 320
 
 #: A version section heading like ``## [26.6.34] - 2026-06-11``.
 _VERSION_HEADING = re.compile(r"^##\s+\[\d+\.\d+\.\d+\]")
@@ -143,7 +154,22 @@ def main() -> int:
                 {
                     "line": line_no,
                     "section": heading,
-                    "sentences": n,
+                    "kind": "sentences",
+                    "measure": n,
+                    "limit": MAX_SENTENCES,
+                    "entry": entry[:80],
+                }
+            )
+        # The char cap is authoring-time only: [Unreleased] entries.
+        is_unreleased = bool(heading and _UNRELEASED_HEADING.match(f"## {heading}"))
+        if is_unreleased and len(entry) > MAX_CHARS:
+            violations.append(
+                {
+                    "line": line_no,
+                    "section": heading,
+                    "kind": "chars",
+                    "measure": len(entry),
+                    "limit": MAX_CHARS,
                     "entry": entry[:80],
                 }
             )
@@ -153,17 +179,20 @@ def main() -> int:
         print(json.dumps({"violations": violations}, indent=2))
     else:
         if not violations:
-            print(f"✓ {rel}: all in-scope entries are ≤ {MAX_SENTENCES} sentences.")
+            print(
+                f"✓ {rel}: all in-scope entries are ≤ {MAX_SENTENCES} sentences "
+                f"(and [Unreleased] entries ≤ {MAX_CHARS} chars)."
+            )
         else:
             print(
                 f"✗ {rel}: {len(violations)} entr"
-                f"{'y' if len(violations) == 1 else 'ies'} exceed the "
-                f"{MAX_SENTENCES}-sentence cap:\n"
+                f"{'y' if len(violations) == 1 else 'ies'} exceed the style caps:\n"
             )
             for v in violations:
+                unit = "sentences" if v["kind"] == "sentences" else "chars"
                 print(
                     f"  {rel}:{v['line']} {v['section']} — "
-                    f"{v['sentences']} sentences: \"{v['entry']}…\""
+                    f"{v['measure']} {unit} (cap {v['limit']}): \"{v['entry']}…\""
                 )
             print(
                 "\nTighten to: bold lead + one impact sentence + one gotcha "

@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
-"""Add last_validated frontmatter metadata to audited documentation files.
+"""Stamp audited docs: last_validated frontmatter + the freshness hash manifest.
 
 Usage:
     python scripts/add_audit_metadata.py [--date YYYY-MM-DD] [--dry-run]
 
-Adds or updates `last_validated: YYYY-MM-DD` in YAML frontmatter for every
-audited documentation file. Files without existing frontmatter get a new
-frontmatter block prepended.
+For every audited documentation file:
+  - writes `last_validated: YYYY-MM-DD` into the YAML frontmatter (human-readable
+    "confirmed on" date); files without frontmatter get a new block prepended,
+  - records the hash of the file's authored portion in the sidecar manifest
+    `scripts/doc_freshness.json` — the value the freshness gate
+    (check_doc_freshness.py) actually compares against.
+
+The hash lives in the manifest, NOT in each doc's frontmatter, so the docs render
+clean on GitHub. Any legacy `validated_hash:` frontmatter line is stripped.
 """
 
 import argparse
@@ -65,17 +71,17 @@ def has_frontmatter(content: str) -> bool:
 
 
 def update_frontmatter(content: str, audit_date: str) -> tuple:
-    """Update or add last_validated in existing frontmatter.
+    """Set last_validated in frontmatter and strip any legacy validated_hash line.
 
-    Returns (new_content, action) where action is 'updated', 'added', or 'current'.
+    Returns (new_content, action) where action is 'updated', 'added',
+    'new_frontmatter', or 'current'.
     """
+    block = f"---\nlast_validated: {audit_date}\n---\n\n{content}"
     if not has_frontmatter(content):
         # No frontmatter - prepend new block
-        new_content = f"---\nlast_validated: {audit_date}\n---\n\n{content}"
-        return new_content, "new_frontmatter"
+        return block, "new_frontmatter"
 
-    # Find the closing --- of frontmatter
-    # First --- is at position 0, find the second one
+    # Find the closing --- of frontmatter (first --- is at position 0).
     lines = content.split("\n")
     closing_idx = None
     for i in range(1, len(lines)):
@@ -85,30 +91,25 @@ def update_frontmatter(content: str, audit_date: str) -> tuple:
 
     if closing_idx is None:
         # Malformed frontmatter (no closing ---), treat as no frontmatter
-        new_content = f"---\nlast_validated: {audit_date}\n---\n\n{content}"
-        return new_content, "new_frontmatter"
+        return block, "new_frontmatter"
 
-    # Extract frontmatter lines (between opening and closing ---)
     fm_lines = lines[1:closing_idx]
+    # Drop any legacy validated_hash line (hashes now live in the manifest).
+    fm_lines = [ln for ln in fm_lines if not ln.startswith("validated_hash:")]
 
-    # Check if last_validated already exists
     found = False
     for j, line in enumerate(fm_lines):
         if line.startswith("last_validated:"):
-            current_val = line.split(":", 1)[1].strip().strip('"').strip("'")
-            if current_val == audit_date:
-                return content, "current"
             fm_lines[j] = f"last_validated: {audit_date}"
             found = True
             break
-
     if not found:
-        # Add as last field before closing ---
         fm_lines.append(f"last_validated: {audit_date}")
 
-    # Reconstruct content
     new_lines = ["---"] + fm_lines + lines[closing_idx:]
     new_content = "\n".join(new_lines)
+    if new_content == content:
+        return content, "current"
     return new_content, "updated" if found else "added"
 
 
@@ -132,6 +133,15 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--keep-date",
+        action="store_true",
+        help=(
+            "Preserve each file's existing last_validated; only (re)stamp "
+            "validated_hash. Files with no existing date fall back to --date. "
+            "Use to backfill validated_hash without re-claiming validation."
+        ),
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Print what would change without writing files",
@@ -145,6 +155,15 @@ def main() -> None:
         print(f"Error: Invalid date format '{args.date}'. Use YYYY-MM-DD.", file=sys.stderr)
         sys.exit(1)
 
+    # Reuse the freshness checker's authored-content hash + manifest so the stamp
+    # matches exactly what the gate recomputes.
+    from check_doc_freshness import (
+        content_hash,
+        last_validated,
+        load_manifest,
+        save_manifest,
+    )
+
     per_file_date = None
     if args.from_git:
         # Reuse the freshness checker's content-change-date logic.
@@ -153,6 +172,8 @@ def main() -> None:
 
     audit_date = args.date
     files = resolve_files(PROJECT_ROOT)
+    old_manifest = load_manifest()
+    new_manifest = {}  # rebuilt from the resolved set (prunes orphan entries)
 
     updated = 0
     added = 0
@@ -171,6 +192,10 @@ def main() -> None:
             continue
 
         file_date = audit_date
+        if args.keep_date:
+            existing = last_validated(content)
+            if existing:
+                file_date = existing
         if per_file_date is not None:
             gd = per_file_date(filepath)
             if not gd:
@@ -181,14 +206,20 @@ def main() -> None:
             file_date = gd
 
         new_content, action = update_frontmatter(content, file_date)
+        digest = content_hash(new_content)
+        new_manifest[rel] = digest
+        manifest_changed = old_manifest.get(rel) != digest
 
-        if action == "current":
+        if action == "current" and not manifest_changed:
             current += 1
             if args.dry_run:
                 print(f"  SKIP (current): {rel}")
             continue
 
-        if action == "updated":
+        if action == "current":
+            label = "HASH"  # frontmatter unchanged, manifest hash (re)stamped
+            updated += 1
+        elif action == "updated":
             updated += 1
             label = "UPDATE"
         elif action == "added":
@@ -201,20 +232,28 @@ def main() -> None:
         if args.dry_run:
             print(f"  {label}: {rel}")
         else:
-            with open(filepath, "w", encoding="utf-8") as f:
-                f.write(new_content)
+            if new_content != content:
+                with open(filepath, "w", encoding="utf-8") as f:
+                    f.write(new_content)
             print(f"  {label}: {rel}")
+
+    manifest_dirty = new_manifest != old_manifest
+    if not args.dry_run:
+        save_manifest(new_manifest)
+    elif manifest_dirty:
+        print("  (manifest scripts/doc_freshness.json would be rewritten)")
 
     # Summary
     total = updated + added + new_fm
     mode = " (dry-run)" if args.dry_run else ""
     print(f"\nSummary{mode}:")
     print(f"  Files processed: {len(files)}")
-    print(f"  Updated existing last_validated: {updated}")
+    print(f"  Frontmatter/last_validated updates: {updated}")
     print(f"  Added last_validated to frontmatter: {added}")
     print(f"  Added new frontmatter block: {new_fm}")
     print(f"  Already current: {current}")
     print(f"  Total modified: {total}")
+    print(f"  Manifest entries: {len(new_manifest)}")
     if errors:
         print(f"  Errors: {errors}")
 

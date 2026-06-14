@@ -1,25 +1,35 @@
 #!/usr/bin/env python3
-"""Fail when an audited doc was changed after its last_validated date.
+"""Fail when an audited doc's authored content changed since it was validated.
 
 Usage:
     python scripts/check_doc_freshness.py [--json] [glob1 glob2 ...]
 
-For every audited documentation file, compares the file's last git commit
-date against the `last_validated:` value in its YAML frontmatter. A file is
+For every audited documentation file, compares a hash of the file's authored
+content (the `human_portion` — prose + non-contract frontmatter, with
+machine-owned GENERATED blocks and metadata stripped) against the hash recorded
+for that file in the sidecar manifest `scripts/doc_freshness.json`. A file is
 STALE when:
-  - it has no `last_validated` field, or
-  - its last commit date is newer than `last_validated`.
+  - it has no entry in the manifest, or
+  - the recomputed hash differs from the recorded one.
+
+The hash compares *what the content is*, not *when it changed*, so an edit made
+the same calendar day as validation is still caught — unlike a date comparison,
+which is blind below day granularity. Hashes live in the manifest (not in each
+doc's frontmatter) so the docs render clean on GitHub; `last_validated:` stays in
+frontmatter as a human-readable "confirmed on" date but no longer gates.
 
 Exit code is non-zero if any file is stale, so this can gate `before-push`.
 After re-reading a stale doc against the code, run
-`scripts/add_audit_metadata.py` to stamp today's date and clear it.
+`scripts/add_audit_metadata.py` to re-stamp `last_validated` + the manifest hash.
 
-Uncommitted working-tree changes are ignored — freshness is measured against
-committed history, matching what reviewers and CI see.
+Working-tree content is hashed directly — no git history walk is needed for the
+gate. (The git content-date helper below is retained for
+`add_audit_metadata.py --from-git` backfill.)
 """
 
 import argparse
 import glob
+import hashlib
 import json
 import os
 import re
@@ -44,7 +54,28 @@ STANDALONE_FILES = [
     ".claude/CLAUDE.md",
 ]
 
+#: Sidecar manifest of authored-content hashes (kept out of doc frontmatter so
+#: docs render clean on GitHub). Maps repo-relative path -> sha256 hex.
+MANIFEST_PATH = os.path.join(PROJECT_ROOT, "scripts", "doc_freshness.json")
+
 LAST_VALIDATED_RE = re.compile(r"^last_validated:\s*(.+?)\s*$", re.MULTILINE)
+
+
+def load_manifest() -> dict:
+    """Load the path->hash manifest, or {} if absent/unreadable."""
+    try:
+        with open(MANIFEST_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, IOError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def save_manifest(manifest: dict) -> None:
+    """Write the manifest sorted by key with a trailing newline (stable diffs)."""
+    with open(MANIFEST_PATH, "w", encoding="utf-8") as f:
+        json.dump(dict(sorted(manifest.items())), f, indent=2)
+        f.write("\n")
 
 
 def resolve_files(root: str, globs: list) -> list:
@@ -122,7 +153,7 @@ def _strip_contract_frontmatter(fm: str) -> str:
         is_top_key = bool(line) and not line[0].isspace() and ":" in line
         if is_top_key:
             key = line.split(":", 1)[0].strip()
-            if key == "last_validated":
+            if key in ("last_validated", "validated_hash"):
                 continue
             skip_block = key in CONTRACT_FRONTMATTER_KEYS
             if skip_block:
@@ -142,6 +173,14 @@ def human_portion(content: str) -> str:
     body = GENERATED_BLOCK_RE.sub("", body)
     combined = _strip_contract_frontmatter(fm) + "\n" + body
     return _WHITESPACE_RE.sub(" ", combined).strip()
+
+
+def content_hash(content: str) -> str:
+    """Stable hash of the authored portion, used as the freshness gate.
+
+    Strips `validated_hash` itself (via human_portion) so stamping the hash does
+    not change the thing being hashed — the value is self-consistent."""
+    return hashlib.sha256(human_portion(content).encode("utf-8")).hexdigest()
 
 
 def _file_at(sha: str, filepath: str):
@@ -211,7 +250,7 @@ git_commit_date = last_content_commit_date
 def main() -> None:
     """Main entry point."""
     parser = argparse.ArgumentParser(
-        description="Fail when audited docs are stale vs last_validated"
+        description="Fail when audited docs' authored content changed since validation"
     )
     parser.add_argument("--json", action="store_true", help="Emit JSON report")
     parser.add_argument("globs", nargs="*", help="Override default doc globs")
@@ -219,8 +258,9 @@ def main() -> None:
 
     globs = args.globs or DEFAULT_GLOBS
     files = resolve_files(PROJECT_ROOT, globs)
+    manifest = load_manifest()
 
-    stale = []  # (rel, reason, commit_date, validated)
+    stale = []  # (rel, reason, validated_date)
     checked = 0
 
     for filepath in files:
@@ -230,18 +270,15 @@ def main() -> None:
                 content = f.read()
         except (OSError, IOError):
             continue
-
-        validated = last_validated(content)
-        commit = last_content_commit_date(filepath)
-        if not commit:
-            # Untracked / never committed — skip, nothing to compare against.
-            continue
         checked += 1
 
-        if validated is None:
-            stale.append((rel, "missing last_validated", commit, "-"))
-        elif commit > validated:
-            stale.append((rel, "edited after validation", commit, validated))
+        recorded = manifest.get(rel)
+        validated = last_validated(content) or "-"
+
+        if recorded is None:
+            stale.append((rel, "missing from manifest", validated))
+        elif recorded != content_hash(content):
+            stale.append((rel, "content changed since validation", validated))
 
     if args.json:
         print(json.dumps(
@@ -249,24 +286,25 @@ def main() -> None:
                 "checked": checked,
                 "stale_count": len(stale),
                 "stale": [
-                    {"file": r, "reason": why, "commit": c, "last_validated": v}
-                    for (r, why, c, v) in stale
+                    {"file": r, "reason": why, "last_validated": v}
+                    for (r, why, v) in stale
                 ],
             },
             indent=2,
         ))
     else:
         if stale:
-            print(f"Stale docs ({len(stale)}/{checked}) — last_validated is behind git history:\n")
-            for rel, why, commit, validated in stale:
+            print(f"Stale docs ({len(stale)}/{checked}) — authored content changed since validation:\n")
+            for rel, why, validated in stale:
                 print(f"  {rel}")
-                print(f"    {why} (last content change {commit}, last_validated {validated})")
+                print(f"    {why} (last_validated {validated})")
             print(
                 "\nFix: re-check each doc against the code, then run "
-                "`python scripts/add_audit_metadata.py` to stamp today's date."
+                "`python scripts/add_audit_metadata.py` to re-stamp "
+                "last_validated + the manifest hash."
             )
         else:
-            print(f"All {checked} audited docs fresh (last_validated >= last commit date).")
+            print(f"All {checked} audited docs fresh (manifest hash matches authored content).")
 
     sys.exit(1 if stale else 0)
 

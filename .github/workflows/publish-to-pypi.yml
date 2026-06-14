@@ -92,8 +92,9 @@ jobs:
       # Lint/typecheck the two packages this gate installs. The root `task lint`
       # / `task typecheck` also fan out to the dashboard, whose dev tools live in
       # its own (Python 3.12) venv that this 3.11 job never installs — so scope
-      # to server+cli here. The dashboard is gated locally by `task before-push`
-      # (release checklist step 8). `task test` is already server+cli only.
+      # to server+cli here. The dashboard is validated by the `dashboard-gate` job
+      # below (3.12, full doc-sync + parity) and locally by `task before-push`.
+      # `task test` is already server+cli only.
       - name: Run linting
         run: task server:lint cli:lint
 
@@ -108,9 +109,52 @@ jobs:
       - name: Run tests
         run: task test
 
+  dashboard-gate:
+    name: Dashboard Gate
+    runs-on: ubuntu-latest
+
+    # The quality-gate job above runs in a 3.11 server+cli env where the dashboard
+    # is NOT installed, so its doc-sync run skips /dashboard checks and its wrapped
+    # dashboard-parity is skipped. This job installs all three packages in a
+    # Python 3.12 env (the dashboard's required version) and runs the FULL doc-sync
+    # + dashboard-parity gates, so dashboard doc/route/config drift is validated in
+    # CI rather than only by a maintainer's local `task before-push`.
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.43.3
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: 2.4.1
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Install (server + cli + dashboard)
+        env:
+          PYTHON_KEYRING_BACKEND: keyring.backends.null.Keyring
+        run: task install
+
+      - name: Full doc-sync + dashboard parity (dashboard present)
+        env:
+          PYTHON_KEYRING_BACKEND: keyring.backends.null.Keyring
+        run: |
+          task lint:doc-sync
+          task lint:dashboard-parity
+
   publish-server:
     name: Publish brainpalace-rag
-    needs: quality-gate
+    needs: [quality-gate, dashboard-gate]
     runs-on: ubuntu-latest
     environment: pypi
 

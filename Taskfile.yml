@@ -287,7 +287,39 @@ tasks:
       - task: typecheck
       - echo "--- Running tests with coverage ---"
       - task: test:cov
+      # Rehearse the publish/PR-QA gate in its dashboard-absent env so a
+      # dashboard-coupling that passes the gates above can't slip to CI unnoticed.
+      - echo "--- Rehearsing dashboard-absent CI gate ---"
+      - task: release:rehearse-ci
       - echo "--- All checks passed - Ready to push ---"
+
+  release:rehearse-ci:
+    # `before-push` is necessary but not sufficient: the publish workflow re-runs
+    # the gate in a server+cli env with NO dashboard installed, where the dashboard
+    # is unimportable and its venv is absent. Gates green locally have shipped
+    # broken to CI for exactly this reason. This target reproduces that env on a
+    # dev box (where the dashboard usually IS installed) two ways:
+    #   - BRAINPALACE_DOCSYNC_NO_DASHBOARD forces the dashboard-absent path in the
+    #     doc-sync introspection + wrapped dashboard-parity gate;
+    #   - BRAINPALACE_BLOCK_DASHBOARD + PYTHONPATH load scripts/ci_rehearsal's
+    #     sitecustomize, which makes `import brainpalace_dashboard` itself raise —
+    #     catching NEW direct-import coupling, not just doc-sync.
+    # Then it runs the same gates the publish job runs. Run it before cutting a
+    # release (RELEASING.md step 8a).
+    desc: "Reproduce the publish CI gate locally (dashboard-absent) before cutting a release"
+    env:
+      BRAINPALACE_DOCSYNC_NO_DASHBOARD: "1"
+      BRAINPALACE_BLOCK_DASHBOARD: "1"
+      PYTHONPATH: "{{.ROOT_DIR}}/scripts/ci_rehearsal"
+    cmds:
+      - echo "--- Rehearsing publish CI gate (dashboard absent + import-blocked) ---"
+      - task: lint:docs-gates-ci
+      # Server+cli only — the publish gate's scope. The dashboard is treated as
+      # absent here, so its own suite is intentionally NOT run (it has its own
+      # 3.12 job and is covered locally by `task before-push`).
+      - task: test:server
+      - task: test:cli
+      - echo "--- CI rehearsal passed (dashboard-absent gate green) ---"
 
   ci:
     desc: Simulate full CI pipeline locally
