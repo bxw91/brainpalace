@@ -15,6 +15,16 @@ Entries are kept short (≤ 3 sentences and ≤ 320 characters); see
 
 ---
 
+## [26.6.42] - 2026-06-14
+
+### Fixed
+- **Two dashboards (one empty) no longer spawn from a test run.** Reaping is
+  scoped to the active `XDG_STATE_HOME` and launches don't detach under pytest,
+  so a test can't kill or leak your real dashboard; a zombie child now reads as
+  dead so it can't poison the singleton pidfile.
+
+---
+
 ## [26.6.41] - 2026-06-14
 
 ### Added

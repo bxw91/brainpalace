@@ -72,8 +72,36 @@ def delete_dashboard_runtime() -> None:
         path.unlink()
 
 
+def _proc_state(pid: int) -> str | None:
+    """Single-char process state from ``/proc/<pid>/stat`` (Linux), else None.
+
+    ``comm`` (field 2) may itself contain spaces and parentheses, so we slice
+    after the *last* ``)`` before reading the state field.
+    """
+    try:
+        with open(f"/proc/{pid}/stat", "rb") as f:
+            data = f.read()
+    except OSError:
+        return None
+    try:
+        after = data[data.rindex(b")") + 1 :].split()
+    except ValueError:
+        return None
+    return after[0].decode("ascii", "replace") if after else None
+
+
 def _is_alive(pid: int) -> bool:
-    """Return True if a process with ``pid`` exists."""
+    """Return True if ``pid`` exists and is not a zombie.
+
+    A zombie (a child that exited but was never ``wait()``ed for) still answers
+    ``os.kill(pid, 0)`` as alive. The dashboard is spawned by a long-lived
+    project server that may not reap it, so without the zombie check a corpse
+    would poison the singleton pidfile forever — ``dashboard_status`` would keep
+    reporting "running" and self-heal would never relaunch. Treat ``Z``/``X`` as
+    not-alive; fall back to the kill-probe where ``/proc`` is unavailable.
+    """
+    if _proc_state(pid) in ("Z", "X", "x"):
+        return False
     try:
         os.kill(pid, 0)
         return True
@@ -83,15 +111,50 @@ def _is_alive(pid: int) -> bool:
         return True
 
 
+def _proc_state_dir(pid: int) -> Path | None:
+    """Resolve the XDG state dir a process is using, from ``/proc/<pid>/environ``.
+
+    Mirrors ``get_xdg_state_dir`` against the target's own environment so reaping
+    can be scoped to dashboards that share *our* state dir. Returns None when the
+    environment is unreadable (caller treats unknowns as out-of-scope so a test
+    running under a tmp ``XDG_STATE_HOME`` never SIGTERMs the developer's real
+    dashboard, and vice-versa).
+    """
+    try:
+        with open(f"/proc/{pid}/environ", "rb") as f:
+            raw = f.read()
+    except OSError:
+        return None
+    env: dict[str, str] = {}
+    for item in raw.split(b"\x00"):
+        if b"=" in item:
+            key, _, val = item.partition(b"=")
+            env[key.decode("utf-8", "replace")] = val.decode("utf-8", "replace")
+    xdg = env.get("XDG_STATE_HOME")
+    if xdg:
+        return Path(xdg) / "brainpalace"
+    home = env.get("HOME")
+    if home:
+        return Path(home) / ".local" / "state" / "brainpalace"
+    return None
+
+
 def list_dashboard_pids() -> list[int]:
-    """All running dashboard uvicorn PIDs (by ``/proc`` cmdline scan).
+    """Running dashboard uvicorn PIDs that share *our* XDG state dir.
 
     The pidfile tracks a single dashboard, but a lost/overwritten pidfile plus
     the climbing port scan can leave earlier dashboards running and untracked.
     Scanning the process table is the only surface-agnostic way to find them
     (pipx vs source venv share the same XDG state, but a stale pidfile hides
-    the strays). Returns an empty list off Linux (no ``/proc``).
+    the strays).
+
+    Reaping is **scoped to the active state dir**: a dashboard whose
+    ``XDG_STATE_HOME`` resolves elsewhere (e.g. a pytest run under a tmp state
+    dir) belongs to a different fleet and must not be SIGTERMed — that
+    cross-context reaping is exactly how a test run used to kill the developer's
+    real dashboard. Returns an empty list off Linux (no ``/proc``).
     """
+    target = get_xdg_state_dir().resolve()
     pids: list[int] = []
     for cmdline_path in glob.glob("/proc/[0-9]*/cmdline"):
         try:
@@ -99,11 +162,16 @@ def list_dashboard_pids() -> list[int]:
                 cmd = f.read().replace(b"\x00", b" ").decode("utf-8", "replace")
         except OSError:
             continue
-        if DASHBOARD_MARKER in cmd:
-            try:
-                pids.append(int(cmdline_path.split("/")[2]))
-            except (IndexError, ValueError):
-                continue
+        if DASHBOARD_MARKER not in cmd:
+            continue
+        try:
+            pid = int(cmdline_path.split("/")[2])
+        except (IndexError, ValueError):
+            continue
+        state_dir = _proc_state_dir(pid)
+        if state_dir is None or state_dir.resolve() != target:
+            continue  # unknown or foreign state dir -> not ours to reap
+        pids.append(pid)
     return pids
 
 
@@ -275,13 +343,18 @@ def launch_dashboard(
     state_dir = get_xdg_state_dir()
     state_dir.mkdir(parents=True, exist_ok=True)
     log_path = state_dir / "dashboard.log"
+    # Detach into a new session in production so the spawning terminal is freed.
+    # Under pytest, DON'T detach: a real daemon spawned by a test must not
+    # outlive the test process tree (orphaned to init, surviving forever on a
+    # climbed port reading the tmp state dir was the dashboard-leak bug).
+    detach = not os.environ.get("PYTEST_CURRENT_TEST")
     with open(log_path, "a") as log_f:
         process = subprocess.Popen(
             cmd,
             stdin=subprocess.DEVNULL,
             stdout=log_f,
             stderr=subprocess.STDOUT,
-            start_new_session=True,
+            start_new_session=detach,
         )
     write_dashboard_runtime(
         {
@@ -332,8 +405,14 @@ def ensure_running(
             this in a try/except.
     """
     status = dashboard_status()
-    if status.get("status") == "running":
+    if status.get("status") == "running" and status.get("healthy"):
         return {**status, "started": False}
+
+    if status.get("status") == "running":
+        # Tracked but unhealthy (dead socket / hung worker): the pidfile is
+        # poisoned. Clear it so launch_dashboard doesn't see a "live" tracked
+        # dashboard and refuse — then relaunch a working one.
+        delete_dashboard_runtime()
 
     url = launch_dashboard(
         open_browser=open_browser_if_new, foreground=False, timeout=timeout

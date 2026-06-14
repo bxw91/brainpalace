@@ -8,6 +8,11 @@ import pytest
 
 import brainpalace_dashboard.server as srv
 
+#: The real ``list_dashboard_pids`` captured at import — the autouse fixture
+#: below stubs the module attr to ``[]``, so the state-dir-scoping test calls
+#: this saved reference to exercise the genuine /proc scan.
+_REAL_LIST_DASHBOARD_PIDS = srv.list_dashboard_pids
+
 
 @pytest.fixture(autouse=True)
 def _no_stray_dashboards(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -236,3 +241,116 @@ def test_stop_reaps_orphans_with_no_pidfile(
     assert killed == [701, 702]
     assert out["status"] == "stopped"
     assert out["reaped"] == [701, 702]
+
+
+# --- regression coverage for the recurring two-dashboard / empty-list bug ----
+
+
+def test_is_alive_false_for_zombie(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A zombie (exited-but-unreaped) child must read as dead, not alive.
+
+    Otherwise os.kill(pid, 0) reports the corpse alive and the singleton pidfile
+    stays poisoned forever (self-heal never relaunches)."""
+    monkeypatch.setattr(srv, "_proc_state", lambda pid: "Z")
+    killed: list[int] = []
+    monkeypatch.setattr(srv.os, "kill", lambda pid, sig: killed.append(pid))
+
+    assert srv._is_alive(12345) is False
+    assert killed == []  # short-circuits before the os.kill probe
+
+
+def test_is_alive_true_for_running_process(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(srv, "_proc_state", lambda pid: "S")
+    monkeypatch.setattr(srv.os, "kill", lambda pid, sig: None)
+    assert srv._is_alive(1) is True
+
+
+def test_ensure_running_relaunches_when_unhealthy(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: object
+) -> None:
+    """A tracked-but-unhealthy dashboard (dead socket / zombie) is relaunched."""
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+    srv.write_dashboard_runtime(
+        {"pid": 9, "port": 8787, "base_url": "http://127.0.0.1:8787/dashboard/"}
+    )
+    monkeypatch.setattr(
+        srv,
+        "dashboard_status",
+        lambda: {
+            "status": "running",
+            "pid": 9,
+            "port": 8787,
+            "base_url": "http://127.0.0.1:8787/dashboard/",
+            "healthy": False,
+        },
+    )
+    launched: list[int] = []
+
+    def _fake_launch(*, open_browser, foreground, timeout):
+        launched.append(1)
+        srv.write_dashboard_runtime(
+            {"pid": 10, "port": 8787, "base_url": "http://127.0.0.1:8787/dashboard/"}
+        )
+        return "http://127.0.0.1:8787/dashboard/"
+
+    monkeypatch.setattr(srv, "launch_dashboard", _fake_launch)
+
+    out = srv.ensure_running()
+    assert launched == [1]  # relaunched despite status == "running"
+    assert out["started"] is True
+
+
+def test_launch_does_not_detach_under_pytest(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: object
+) -> None:
+    """Under pytest, the spawned dashboard must not start a new session — a
+    detached real daemon would outlive the test and leak on a climbed port."""
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "t_no_detach")
+    seen: dict[str, object] = {}
+
+    class FakeProc:
+        pid = 777
+
+    def _popen(cmd, **kwargs):
+        seen.update(kwargs)
+        return FakeProc()
+
+    monkeypatch.setattr(srv.subprocess, "Popen", _popen)
+    monkeypatch.setattr(srv, "_port_free", lambda host, port: True)
+    monkeypatch.setattr(srv, "_wait_healthy", lambda url, timeout=20: True)
+
+    srv.launch_dashboard(open_browser=False)
+    assert seen["start_new_session"] is False
+
+
+def test_list_dashboard_pids_scoped_to_active_state_dir(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: object
+) -> None:
+    """Only dashboards sharing our XDG state dir are reapable; a process under a
+    different XDG_STATE_HOME (e.g. another pytest run) is left alone."""
+    import io
+
+    state_home = tmp_path / "ours"
+    monkeypatch.setenv("XDG_STATE_HOME", str(state_home))
+
+    marker = b"python\x00-m\x00uvicorn\x00brainpalace_dashboard.app\x00"
+    files = {
+        "/proc/101/cmdline": marker,
+        "/proc/101/environ": f"XDG_STATE_HOME={state_home}\x00".encode(),
+        "/proc/202/cmdline": marker,
+        "/proc/202/environ": b"XDG_STATE_HOME=/tmp/some-other-run\x00",
+    }
+
+    def _fake_open(path, mode="r", *a, **k):
+        key = str(path)
+        if key in files:
+            return io.BytesIO(files[key])
+        raise FileNotFoundError(key)
+
+    monkeypatch.setattr("builtins.open", _fake_open)
+    monkeypatch.setattr(
+        srv.glob, "glob", lambda pat: ["/proc/101/cmdline", "/proc/202/cmdline"]
+    )
+
+    assert _REAL_LIST_DASHBOARD_PIDS() == [101]

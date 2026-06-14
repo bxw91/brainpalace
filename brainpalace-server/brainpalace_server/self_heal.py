@@ -193,6 +193,19 @@ def _heal_dashboard() -> None:
 
         lock_path = get_xdg_state_dir() / "dashboard.launch.lock"
         with file_lock(lock_path):  # serialize launches across project servers
+            # The dashboard is spawned in-process (Popen) by this server, so a
+            # dashboard that exited but wasn't wait()ed for lingers as a zombie
+            # — and a zombie answers os.kill(pid,0) as alive, poisoning the
+            # singleton pidfile so ensure_running would never relaunch. Reap our
+            # tracked dashboard child first if it has exited.
+            rt = dash.read_dashboard_runtime()
+            if rt:
+                child_pid = int(rt.get("pid", -1))
+                if child_pid > 0:
+                    try:
+                        os.waitpid(child_pid, os.WNOHANG)
+                    except (ChildProcessError, OSError):
+                        pass  # not our child / already reaped — fine
             dash.ensure_running(open_browser_if_new=False)
     except Exception as exc:  # noqa: BLE001 — never affect the server
         logger.debug("dashboard heal skipped: %s", exc)
