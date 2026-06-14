@@ -44,3 +44,10 @@ def test_box_shows_unhealthy(monkeypatch: pytest.MonkeyPatch) -> None:
         {"status": "running", "base_url": "http://x:8787", "healthy": False},
     )
     assert "unhealthy" in out
+
+
+def test_box_shows_not_installed(monkeypatch: pytest.MonkeyPatch) -> None:
+    # CLI-only env (no dashboard package, e.g. Python < 3.12).
+    out = _render(monkeypatch, {"status": "not_installed"})
+    assert "Web Dashboard" in out
+    assert "not installed" in out

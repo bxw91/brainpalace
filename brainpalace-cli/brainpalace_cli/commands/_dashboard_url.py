@@ -34,13 +34,15 @@ def render_dashboard_url(
 def dashboard_status_info() -> dict[str, Any]:
     """Best-effort dashboard status probe (does NOT start it).
 
-    Returns the ``dashboard_status()`` dict, or ``{}`` when the dashboard package
-    isn't installed or the probe fails.
+    Returns the ``dashboard_status()`` dict; ``{"status": "not_installed"}`` when
+    the dashboard package isn't installed (e.g. CLI-only on Python < 3.12); or
+    ``{}`` when the probe itself fails. Single source of truth for the renderer,
+    so its branches stay host-independent and testable.
     """
     try:
         from brainpalace_dashboard import server as _dash
     except ImportError:
-        return {}
+        return {"status": "not_installed"}
     try:
         return dict(_dash.dashboard_status() or {})
     except Exception:
@@ -54,9 +56,8 @@ def render_dashboard_status(console: Console | None = None) -> None:
     stopped or not installed — so the box is present either way.
     """
     out = console or _console
-    try:
-        import brainpalace_dashboard  # noqa: F401
-    except ImportError:
+    info = dashboard_status_info()
+    if info.get("status") == "not_installed":
         out.print(
             Panel(
                 "[dim]not installed[/] — ships on Python 3.12+ "
@@ -66,7 +67,6 @@ def render_dashboard_status(console: Console | None = None) -> None:
             )
         )
         return
-    info = dashboard_status_info()
     if info.get("status") == "running":
         url = info.get("base_url") or ""
         health = "[green]healthy[/]" if info.get("healthy") else "[red]unhealthy[/]"
