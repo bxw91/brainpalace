@@ -223,28 +223,59 @@ def wizard(global_: bool, chat_summarizer: str) -> None:
             console.print(format_validation_errors(existing_errors))
             console.print()
 
+    # Prefill prompt defaults from the saved GLOBAL config so re-running the
+    # wizard (e.g. during install/update) keeps current choices on Enter instead
+    # of silently resetting to shipped defaults. Missing keys fall back to the
+    # static default.
+    _global_cfg = get_xdg_config_dir() / "config.yaml"
+    prefill = _load_yaml(_global_cfg) if _global_cfg.is_file() else {}
+
+    def _prev(dotpath: str, fallback: Any) -> Any:
+        node: Any = prefill
+        for seg in dotpath.split("."):
+            if not isinstance(node, dict) or seg not in node:
+                return fallback
+            node = node[seg]
+        return node if node is not None else fallback
+
+    prev_embed_provider = _prev("embedding.provider", "openai")
+    prev_summ_provider = _prev("summarization.provider", None)
+
     embed_provider: str = click.prompt(
         "\nEmbedding provider",
         type=click.Choice(["openai", "ollama", "cohere"]),
-        default="openai",
+        default=(
+            prev_embed_provider
+            if prev_embed_provider in ("openai", "ollama", "cohere")
+            else "openai"
+        ),
     )
     embed_model: str = click.prompt(
         "\nEmbedding model",
-        default=EMBEDDING_DEFAULT_MODELS[embed_provider],
+        default=(
+            _prev("embedding.model", EMBEDDING_DEFAULT_MODELS[embed_provider])
+            if embed_provider == prev_embed_provider
+            else EMBEDDING_DEFAULT_MODELS[embed_provider]
+        ),
     )
 
     batch_size: str | None = None
     request_delay_ms: int | None = None
     if embed_provider == "ollama":
+        prev_batch = str(_prev("embedding.params.batch_size", "10"))
         batch_size = click.prompt(
             "\nBatch size",
             type=click.Choice(["1", "5", "10", "20", "50", "100"]),
-            default="10",
+            default=(
+                prev_batch
+                if prev_batch in ("1", "5", "10", "20", "50", "100")
+                else "10"
+            ),
         )
         request_delay_ms = click.prompt(
             "\nRequest delay between batches (ms, 0=none)",
             type=click.IntRange(min=0),
-            default=0,
+            default=int(_prev("embedding.params.request_delay_ms", 0)),
         )
 
     # Default summarization to the embedding provider when it can also
@@ -260,6 +291,9 @@ def wizard(global_: bool, chat_summarizer: str) -> None:
         summ_default = "gemini"
     else:
         summ_default = "anthropic"
+    # A previously-saved global provider wins over the env/heuristic default.
+    if prev_summ_provider in ("anthropic", "openai", "ollama", "gemini"):
+        summ_default = prev_summ_provider
     # Resolve who handles CHAT/session summaries so we can word the prompt
     # accordingly. The provider below is for CODE either way; the plugin (when
     # present) adds chat summaries FREE via a Haiku subagent. Wording-only — the
@@ -290,9 +324,23 @@ def wizard(global_: bool, chat_summarizer: str) -> None:
     )
     summ_model: str = click.prompt(
         "\nCode summarization model",
-        default=SUMMARIZATION_DEFAULT_MODELS[summ_provider],
+        default=(
+            _prev("summarization.model", SUMMARIZATION_DEFAULT_MODELS[summ_provider])
+            if summ_provider == prev_summ_provider
+            else SUMMARIZATION_DEFAULT_MODELS[summ_provider]
+        ),
     )
 
+    prev_graph = prefill.get("graphrag") if isinstance(prefill, dict) else None
+    if isinstance(prev_graph, dict):
+        if not prev_graph.get("enabled"):
+            prev_graph_mode = "1"
+        elif prev_graph.get("doc_extractor") == "langextract":
+            prev_graph_mode = "2"
+        else:
+            prev_graph_mode = "3"
+    else:
+        prev_graph_mode = "3"
     graphrag_mode: str = click.prompt(
         "\nGraphRAG (relationship-aware search across code + docs)\n"
         "1) Off — vector + keyword search only; no graph\n"
@@ -301,27 +349,30 @@ def wizard(global_: bool, chat_summarizer: str) -> None:
         "3) On, code only — graph from code structure; no extra model usage\n"
         "Select",
         type=click.Choice(["1", "2", "3"]),
-        default="3",
+        default=prev_graph_mode,
     )
 
     embed_sessions = click.confirm(
         "\nEmbed chat sessions for semantic recall? (goes through your embedding "
         "provider)\n  Independent of chat summarization.",
-        default=False,
+        default=bool(_prev("session_indexing.enabled", False)),
     )
     archive_sessions = click.confirm(
         "\nBack up chat sessions locally? (free; stored in .brainpalace/, never "
         "leaves this machine)\n  Full raw transcripts, including any secrets "
         "pasted into chat.",
-        default=True,
+        default=bool(_prev("session_indexing.archive.enabled", True)),
     )
     index_git = click.confirm(
-        "\nIndex git commit history? (commits may contain secrets)", default=False
+        "\nIndex git commit history? (commits may contain secrets)",
+        default=bool(_prev("git_indexing.enabled", False)),
     )
-    git_depth = 5000
+    git_depth = int(_prev("git_indexing.depth", 5000))
     if index_git:
         git_depth = click.prompt(
-            "How many commits back to index? (0 = unlimited)", default=5000, type=int
+            "How many commits back to index? (0 = unlimited)",
+            default=git_depth,
+            type=int,
         )
     from brainpalace_cli import optional_deps
 
@@ -329,19 +380,20 @@ def wizard(global_: bool, chat_summarizer: str) -> None:
         "\nEnable two-stage reranking? (sharper result ordering)\n  "
         f"{optional_deps.REGISTRY['reranker-local'].download_note}\n  "
         "(Skip this and set reranker.provider=ollama later for a torch-free reranker.)",
-        default=False,
+        default=bool(_prev("reranker.enabled", False)),
     )
 
     use_lemma = click.confirm(
         "\nUse lemmatization for BM25 keyword search? (better recall for inflected "
         f"languages{_lemma_languages_hint()})\n  "
         f"{optional_deps.REGISTRY['lemma-hr'].download_note}",
-        default=False,
+        default=_prev("bm25.engine", "stem") == "lemma",
     )
 
     suggested_port = _find_available_api_port(8000, 8300)
     click.echo(f"\nDiscovered available API port in 8000-8300 range: {suggested_port}")
 
+    prev_host = _prev("api.host", "127.0.0.1")
     deployment_mode: str = click.prompt(
         "\nDeployment mode\n"
         "1) Localhost only (127.0.0.1)\n"
@@ -349,7 +401,7 @@ def wizard(global_: bool, chat_summarizer: str) -> None:
         "3) Custom port on localhost\n"
         "Select",
         type=click.Choice(["1", "2", "3"]),
-        default="1",
+        default="2" if prev_host not in ("127.0.0.1", "") else "1",
     )
 
     api_host = "127.0.0.1"
@@ -357,17 +409,17 @@ def wizard(global_: bool, chat_summarizer: str) -> None:
         host_mode: str = click.prompt(
             "\nHost selection\n" "1) 0.0.0.0\n" "2) Custom host/IP",
             type=click.Choice(["1", "2"]),
-            default="1",
+            default="2" if prev_host not in ("0.0.0.0", "127.0.0.1", "") else "1",
         )
         if host_mode == "1":
             api_host = "0.0.0.0"
         else:
-            api_host = click.prompt("\nCustom host", default="0.0.0.0")
+            api_host = click.prompt("\nCustom host", default=prev_host or "0.0.0.0")
 
     api_port: int = click.prompt(
         "\nAPI port",
         type=click.IntRange(min=1, max=65535),
-        default=suggested_port,
+        default=int(_prev("api.port", suggested_port)),
     )
 
     # Dashboard (control-plane) settings are global — they govern the dashboard
@@ -379,12 +431,12 @@ def wizard(global_: bool, chat_summarizer: str) -> None:
     if global_:
         dashboard_autostart = click.confirm(
             "\nAuto-start the web dashboard when you run 'brainpalace start'?",
-            default=True,
+            default=bool(_prev("dashboard.autostart", True)),
         )
         dashboard_port = click.prompt(
             "Dashboard port",
             type=click.IntRange(min=1, max=65535),
-            default=8787,
+            default=int(_prev("dashboard.port", 8787)),
         )
 
     config: dict[str, Any] = {

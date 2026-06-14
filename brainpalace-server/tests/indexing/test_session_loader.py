@@ -68,6 +68,18 @@ def test_first_user_prompt_line_skips_command_wrapper(tmp_path) -> None:
     assert first_user_prompt_line(f) == "Real prompt here"
 
 
+def test_first_user_prompt_line_skips_ide_wrapper_same_turn(tmp_path) -> None:
+    # The real prompt follows an IDE context wrapper on the SAME user turn; the
+    # "<…>" wrapper line must be skipped and the next human line used.
+    f = tmp_path / "s.jsonl"
+    f.write_text(
+        '{"type":"user","message":{"role":"user","content":'
+        '"<ide_opened_file>The user opened a file</ide_opened_file>'
+        '\\nActual typed prompt"}}\n'
+    )
+    assert first_user_prompt_line(f) == "Actual typed prompt"
+
+
 def test_first_user_prompt_line_none_when_unreadable(tmp_path) -> None:
     assert first_user_prompt_line(tmp_path / "nope.jsonl") is None
 

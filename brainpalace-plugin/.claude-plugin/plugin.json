@@ -10,6 +10,18 @@
   "repository": "https://github.com/bxw91/brainpalace",
   "license": "MIT",
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Agent|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/pretooluse-subagent-guard-hook.sh\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
     "SessionStart": [
       {
         "hooks": [

@@ -90,7 +90,7 @@ context: brainpalace
 agent: setup-assistant
 skills:
   - configuring-brainpalace
-last_validated: 2026-06-13
+last_validated: 2026-06-14
 ---
 
 # Initialize BrainPalace Project
@@ -189,6 +189,14 @@ brainpalace init --language hr --bm25-engine lemma
 ```
 
 This creates the `.brainpalace/` directory structure in the project root.
+
+> **Monorepo / nested layouts:** with `--path` absent, `init` **auto-detects the
+> git root or project markers** — in a monorepo that can resolve a level *above*
+> the subproject you meant. Pass `--path <subproject>` to target a specific
+> subproject so each gets its own `.brainpalace/`. `init` flags a monorepo root
+> and refuses to initialize there unless you pass `--force-monorepo-root`. At
+> query time, server discovery then walks up to the nearest *initialized*
+> `.brainpalace/`.
 
 ### Verify Initialization
 

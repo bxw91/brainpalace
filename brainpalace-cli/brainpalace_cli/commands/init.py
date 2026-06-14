@@ -21,9 +21,13 @@ from brainpalace_cli.commands.init_plan import (
     format_init_plan,
     resolve_init_plan,
 )
-from brainpalace_cli.commands.plugin_detect import claude_plugin_installed
+from brainpalace_cli.commands.plugin_detect import (
+    claude_plugin_installed,
+    maybe_plugin_hint,
+)
 from brainpalace_cli.commands.session_hooks import (
     install_session_hooks,
+    prune_cli_session_hooks,
     prune_extraction_hooks,
 )
 from brainpalace_cli.migration import migrate_state_dir
@@ -632,12 +636,13 @@ def migrate_graph_store_to_sqlite(state_dir: Path) -> bool:
 
 
 def _prune_old_extraction_hooks(home: Path) -> None:
-    """Remove any old CLI-installed extraction hooks from ``settings.json``.
+    """Remove all CLI-installed BrainPalace hooks from ``settings.json``.
 
-    They are now owned by the Claude Code plugin; leaving them would double-run
-    with the plugin's SessionEnd/UserPromptSubmit. No-op when settings.json is
-    absent or unparseable. Used on the plugin-present path (where we must NOT
-    install the reminder either, to avoid a double SessionStart).
+    On the plugin-present path the plugin owns every hook (SessionStart reminder +
+    SessionEnd/UserPromptSubmit extraction) via ``plugin.json``; a CLI copy would
+    double-run — most visibly a duplicated SessionStart guidance block. So this
+    prunes both the extraction hooks AND any CLI-installed SessionStart shim,
+    self-healing an older install. No-op when settings.json is absent/unparseable.
     """
     settings_path = home / ".claude" / "settings.json"
     if not settings_path.exists():
@@ -646,9 +651,9 @@ def _prune_old_extraction_hooks(home: Path) -> None:
         data = json.loads(settings_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return
-    settings_path.write_text(
-        json.dumps(prune_extraction_hooks(data), indent=2) + "\n", encoding="utf-8"
-    )
+    data = prune_extraction_hooks(data)
+    data = prune_cli_session_hooks(data)
+    settings_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
 
 def apply_extract_engine(
@@ -948,6 +953,12 @@ def _emit_init_result(
         "\n[dim]AI agents: run [bold]brainpalace ai-guide[/] for search rules "
         "& modes.[/]"
     )
+
+    # If Claude Code is set up but the plugin is missing, the CLI alone does not
+    # wire the Claude Code integration (research agent, subagent guard, guidance).
+    hint = maybe_plugin_hint()
+    if hint:
+        console.print("\n[dim]" + hint + "[/]")
 
 
 def _estimate_and_confirm_local(

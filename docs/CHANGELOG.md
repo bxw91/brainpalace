@@ -15,6 +15,60 @@ Entries are kept short (≤ 3 sentences and ≤ 320 characters); see
 
 ---
 
+## [26.6.43] - 2026-06-14
+
+### Added
+- **Subagent guard.** A new opt-out `PreToolUse` hook (`brainpalace hook
+  pretooluse`) denies (`enforce`, default) or nudges (`advisory`) `Agent`/`Task`
+  spawns whose prompt lacks a `brainpalace query --mode` directive — on by
+  default but active only while the project server runs, with `research-assistant`
+  allowlisted. Disable via `cli.subagent_guard.enabled: false`, `allow_agents`,
+  or `BRAINPALACE_SUBAGENT_GUARD=off`.
+
+### Changed
+- **Dashboard Jobs table shows the content scope.** The "Type" column previously
+  read `index` for every row; it now appends the scope (`code` vs `docs`) so a
+  job's purpose is visible without opening it.
+- **`brainpalace status` shows the server URL + a dashboard box.** The top
+  "Server Status" panel now includes the (clickable) server URL, and a pink
+  "Web Dashboard" box is always shown — a clickable URL when the dashboard is
+  running, or a clear notice when it's stopped/not installed. `--json` gains
+  `health.url` and a `dashboard` block.
+- **`config wizard` pre-fills from the saved global config.** Re-running the
+  wizard (e.g. during install/update) now seeds every prompt default from your
+  existing `~/.config/brainpalace/config.yaml`, so pressing Enter keeps current
+  choices instead of silently resetting to shipped defaults. Falls back to the
+  shipped default per key when absent; first-time runs are unchanged.
+- **`research-assistant` agent is now BrainPalace-only.** `Glob`/`Grep` are
+  disabled (`tools: Bash, Read`) so the research agent cannot fall back to
+  filesystem grep; pair it with the subagent guard for codebase-search subagents.
+  AI guidance now routes code-search subagents to `subagent_type:
+  research-assistant`.
+
+### Fixed
+- **No more double SessionStart when the plugin is installed.** `init` /
+  `install-session-hooks` are now plugin-aware: if the Claude Code plugin is
+  present (it provides hooks via `plugin.json`), the CLI installs no SessionStart
+  shim and removes any CLI shim a prior version left — fixing duplicated
+  session-start guidance. CLI-only users still get the reminder, and `init` prints
+  a short hint to install the plugin for the full integration.
+- **Plugin update needs the qualified name.** `claude plugin update brainpalace`
+  fails with "not found" (and misleadingly exits 0); use
+  `claude plugin update brainpalace@brainpalace-marketplace`. The `init` hint now
+  shows the qualified command.
+- **Dashboard no longer drifts off its configured port on restart.** A reaped
+  dashboard could still hold the port (e.g. 8787) when the relaunch scanned,
+  causing it to climb (8787 → 8789). Launch now waits for the configured port to
+  free — escalating a stubborn reaped process to SIGKILL — so a restart always
+  reclaims the configured default instead of drifting.
+- **Session titles skip IDE/system context wrappers.** The archive list (and
+  dashboard Sessions table) derived a title from the first user line, which could
+  be an injected `<ide_opened_file>…` / `<system-reminder>…` wrapper. Title
+  derivation now skips `<…>` wrapper lines and uses the first real typed line of
+  the turn.
+
+---
+
 ## [26.6.42] - 2026-06-14
 
 ### Fixed

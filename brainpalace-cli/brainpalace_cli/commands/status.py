@@ -14,6 +14,7 @@ from ..client import (
     exit_on_connection_error,
 )
 from ..config import get_server_url
+from ._dashboard_url import dashboard_status_info, render_dashboard_status
 
 console = Console()
 
@@ -199,7 +200,9 @@ def status_command(
                         "status": health.status,
                         "message": health.message,
                         "version": health.version,
+                        "url": resolved_url,
                     },
+                    "dashboard": dashboard_status_info(),
                     "indexing": {
                         "total_documents": indexing.total_documents,
                         "total_chunks": indexing.total_chunks,
@@ -230,6 +233,7 @@ def status_command(
             status_text = f"[bold {status_color}]{health.status.upper()}[/]"
             if health.message:
                 status_text += f"\n{health.message}"
+            status_text += f"\n[bold]URL:[/] [link={resolved_url}]{resolved_url}[/link]"
 
             console.print(
                 Panel(status_text, title="Server Status", border_style=status_color)
@@ -466,7 +470,14 @@ def status_command(
 
             console.print(table)
 
+            # Web dashboard — always show the pink box (running URL or notice).
+            render_dashboard_status(console=console)
+
     except ConnectionError as e:
+        # Dashboard is independent of the project server — surface its box even
+        # when this server is down (human output only).
+        if not json_output:
+            render_dashboard_status(console=console)
         exit_on_connection_error(e, base_url=resolved_url, json_output=json_output)
 
     except ServerError as e:

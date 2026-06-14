@@ -106,7 +106,15 @@ API_KNOWN_FIELDS = {"host", "port"}
 SERVER_KNOWN_FIELDS = {"url", "host", "port", "auto_port", "read_only"}
 PROJECT_KNOWN_FIELDS = {"state_dir", "project_root"}
 QUERY_LOG_KNOWN_FIELDS = {"enabled", "retention_days"}
-CLI_KNOWN_FIELDS = {"show_ai_hint"}
+CLI_KNOWN_FIELDS = {"show_ai_hint", "subagent_guard"}
+# Nested `cli.subagent_guard.*` — gates Agent/Task spawns so subagents are forced
+# to search via BrainPalace instead of grep/find. CLI/plugin-side enforcement
+# (PreToolUse hook); not a server control-plane concern, so it lives under `cli`
+# and is intentionally not surfaced in the dashboard (the parity gate does not
+# enumerate the `cli` section). Default ON but active only in indexed projects;
+# default mode `enforce`. Disable via enabled:false or BRAINPALACE_SUBAGENT_GUARD=off.
+SUBAGENT_GUARD_KNOWN_FIELDS = {"enabled", "mode", "allow_agents"}
+VALID_GUARD_MODES = {"advisory", "enforce"}
 # Control-plane (dashboard process) settings — global only. Mirrors
 # brainpalace_dashboard.config.DashboardConfig.
 DASHBOARD_KNOWN_FIELDS = {
@@ -630,6 +638,63 @@ def validate_config_dict(
                             ),
                         )
                     )
+
+    # 2d-bis. Nested cli.subagent_guard.* key validation.
+    cli_section = config.get("cli")
+    if isinstance(cli_section, dict):
+        guard_data = cli_section.get("subagent_guard")
+        if isinstance(guard_data, dict):
+            for g_key in guard_data:
+                if g_key not in SUBAGENT_GUARD_KNOWN_FIELDS:
+                    errors.append(
+                        ConfigValidationError(
+                            field=f"cli.subagent_guard.{g_key}",
+                            message=f"Unknown key '{g_key}' in cli.subagent_guard",
+                            line_number=None,
+                            suggestion=(
+                                f"Remove '{g_key}' or check for a typo. "
+                                "Known fields: "
+                                f"{', '.join(sorted(SUBAGENT_GUARD_KNOWN_FIELDS))}"
+                            ),
+                        )
+                    )
+            enabled = guard_data.get("enabled")
+            if enabled is not None and not isinstance(enabled, bool):
+                errors.append(
+                    ConfigValidationError(
+                        field="cli.subagent_guard.enabled",
+                        message=(
+                            "cli.subagent_guard.enabled must be a boolean (true/false)"
+                        ),
+                        line_number=None,
+                        suggestion="Change 'enabled' to a bool value.",
+                    )
+                )
+            mode = guard_data.get("mode")
+            if mode is not None and str(mode) not in VALID_GUARD_MODES:
+                errors.append(
+                    ConfigValidationError(
+                        field="cli.subagent_guard.mode",
+                        message=f"Invalid cli.subagent_guard.mode: '{mode}'",
+                        line_number=None,
+                        suggestion=(
+                            f"Use one of: {', '.join(sorted(VALID_GUARD_MODES))}"
+                        ),
+                    )
+                )
+            allow = guard_data.get("allow_agents")
+            if allow is not None and not isinstance(allow, list):
+                errors.append(
+                    ConfigValidationError(
+                        field="cli.subagent_guard.allow_agents",
+                        message=(
+                            "cli.subagent_guard.allow_agents must be a list of "
+                            "agent names"
+                        ),
+                        line_number=None,
+                        suggestion="Use a YAML list, e.g. [research, setup].",
+                    )
+                )
 
     # 2e. Numeric range validation (Phase 5). Skips non-numeric values so a type
     # error (reported above) does not also produce a range error.

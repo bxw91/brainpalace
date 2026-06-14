@@ -148,10 +148,25 @@ def first_user_prompt_line(
                     break
         if not text:
             continue
-        first = next((ln.strip() for ln in text.splitlines() if ln.strip()), "")
-        if not first or first.startswith(_TITLE_SKIP_PREFIXES):
+        # Take the first human line of the turn, scanning past context wrappers:
+        # IDE/system/slash-command injections are not user-typed. They start with
+        # "<" (e.g. "<ide_opened_file>…", "<system-reminder>…") or a known
+        # prefix, and often precede the real prompt on a later line of the SAME
+        # turn — so skip them line-by-line rather than discarding the whole turn.
+        title_line = ""
+        for ln in text.splitlines():
+            s = ln.strip()
+            if not s or s.startswith("<") or s.startswith(_TITLE_SKIP_PREFIXES):
+                continue
+            title_line = s
+            break
+        if not title_line:
             continue
-        return first if len(first) <= max_chars else first[: max_chars - 1] + "…"
+        return (
+            title_line
+            if len(title_line) <= max_chars
+            else title_line[: max_chars - 1] + "…"
+        )
     return None
 
 

@@ -228,6 +228,34 @@ def find_free_port(
     return None
 
 
+def _wait_port_free(
+    host: str, port: int, pids: list[int], *, timeout: float = 5.0
+) -> bool:
+    """Wait until ``host:port`` frees up; escalate reaped ``pids`` to SIGKILL.
+
+    Used right after reaping our own dashboards so a restart reclaims the
+    configured port instead of letting the scan climb. A reaped process still
+    holding the port past the halfway mark is hard-killed. Returns True when the
+    port is free.
+    """
+    deadline = time.monotonic() + timeout
+    escalated = False
+    while time.monotonic() < deadline:
+        if _port_free(host, port):
+            return True
+        # Past halfway, hard-kill any reaped process that won't let go.
+        if not escalated and time.monotonic() >= deadline - timeout / 2:
+            for pid in pids:
+                if _is_alive(pid):
+                    try:
+                        os.kill(pid, signal.SIGKILL)
+                    except (OSError, ProcessLookupError):
+                        pass
+            escalated = True
+        time.sleep(0.1)
+    return _port_free(host, port)
+
+
 def _wait_healthy(url: str, timeout: int = 20) -> bool:
     """Poll the dashboard health endpoint derived from a ``/dashboard/`` URL.
 
@@ -302,11 +330,20 @@ def launch_dashboard(
     # No healthy tracked dashboard. Reap any orphaned dashboards (lost pidfile /
     # climbed-port duplicates) so the scan below reclaims the base port instead
     # of stacking yet another instance on top of the survivors.
-    reap_orphan_dashboards(keep_pid=None)
+    reaped = reap_orphan_dashboards(keep_pid=None)
 
     cfg = load_dashboard_config()
     host = host or cfg.host
     start_port = port or cfg.port
+
+    # A just-reaped dashboard can still hold the configured port for a moment
+    # (SIGTERM in flight / socket teardown). Without waiting, the scan below
+    # would climb to the next port and the dashboard would silently drift off
+    # its configured port (e.g. 8787 → 8789) on every restart. Wait for the
+    # port to free — escalating a stubborn reaped process to SIGKILL — so a
+    # restart always reclaims the configured default.
+    if reaped and not _port_free(host, start_port):
+        _wait_port_free(host, start_port, reaped, timeout=5.0)
 
     # Scan from the requested/configured port upward.
     chosen: int | None = None

@@ -50,6 +50,38 @@ def claude_plugin_installed(
     return any(r.is_dir() for r in roots)
 
 
+def claude_code_present(home: Path | None = None) -> bool:
+    """True when Claude Code is set up for this user (a ``~/.claude`` directory)."""
+    home = home or Path.home()
+    return (home / ".claude").is_dir()
+
+
+#: Short, shown when Claude Code is present but the plugin is not installed. The
+#: plugin is the single delivery vehicle for the Claude Code integration
+#: (subagent guard, research agent, search guidance) — the CLI deliberately does
+#: NOT install those, to avoid a second copy drifting from ``plugin.json``.
+PLUGIN_INSTALL_HINT = (
+    "Tip: install the BrainPalace Claude Code plugin for the full integration "
+    "(research agent, subagent guard, search guidance):\n"
+    "  /plugin marketplace add bxw91/brainpalace\n"
+    "  /plugin install brainpalace\n"
+    "Already installed? Update with the QUALIFIED name (the bare name fails):\n"
+    "  claude plugin update brainpalace@brainpalace-marketplace\n"
+    "The CLI alone does not wire those into Claude Code."
+)
+
+
+def maybe_plugin_hint(home: Path | None = None) -> str:
+    """Return the install hint when Claude Code is present but the plugin is not.
+
+    Empty string otherwise (no Claude Code, or plugin already installed).
+    """
+    home = home or Path.home()
+    if claude_code_present(home) and not claude_plugin_installed(home):
+        return PLUGIN_INSTALL_HINT
+    return ""
+
+
 @click.group("plugin")
 def plugin_group() -> None:
     """Inspect the BrainPalace Claude Code plugin.

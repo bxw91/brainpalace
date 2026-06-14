@@ -21,6 +21,8 @@ from typing import Any
 
 import click
 
+from .plugin_detect import claude_plugin_installed
+
 #: The single event this command installs.
 REMINDER_EVENT = "SessionStart"
 
@@ -159,14 +161,42 @@ def merge_hook_settings(
     return merged
 
 
-def install_session_hooks(home: Path) -> dict[str, Any]:
-    """Write the SessionStart reminder script + register it in ``settings.json``.
+def prune_cli_session_hooks(settings: dict[str, Any]) -> dict[str, Any]:
+    """Remove the CLI-installed SessionStart shim(s) from a settings dict.
 
-    Prunes any old plugin-owned extraction hooks first. Backs up an existing
-    ``settings.json`` to ``settings.json.bak`` before overwriting. Returns the
-    merged settings dict.
+    Used when the Claude Code plugin is installed: the plugin provides
+    SessionStart via ``plugin.json``, so a CLI-installed shim would inject the
+    same guidance twice. Matches by script basename; preserves all other hooks.
     """
-    write_hook_scripts(home)
+    merged = copy.deepcopy(settings)
+    markers = set(_EVENT_SCRIPTS.values())
+    for event, groups in list(merged.get("hooks", {}).items()):
+        kept = []
+        for g in groups:
+            hs = [
+                h
+                for h in g.get("hooks", [])
+                if not any(m in h.get("command", "") for m in markers)
+            ]
+            if hs:
+                kept.append({**g, "hooks": hs})
+        merged["hooks"][event] = kept
+    return merged
+
+
+def install_session_hooks(home: Path) -> dict[str, Any]:
+    """Reconcile BrainPalace's Claude Code hooks in ``settings.json``.
+
+    Plugin-aware to avoid a double-install: the Claude Code plugin already
+    provides SessionStart (+ extraction) via ``plugin.json``. So when the plugin
+    is installed this writes **no** SessionStart shim and removes any CLI shim a
+    prior version left (self-healing the duplicate guidance injection). With no
+    plugin, it writes the SessionStart reminder shim as before. Always prunes old
+    plugin-owned extraction hooks. Backs up an existing ``settings.json``.
+    """
+    plugin = claude_plugin_installed(home)
+    if not plugin:
+        write_hook_scripts(home)
 
     hooks_dir = home / ".claude" / "hooks"
     commands = {
@@ -183,7 +213,11 @@ def install_session_hooks(home: Path) -> dict[str, Any]:
         settings_path.replace(settings_path.with_suffix(".json.bak"))
 
     existing = prune_extraction_hooks(existing)
-    merged = merge_hook_settings(existing, commands)
+    if plugin:
+        # Plugin owns SessionStart — drop any CLI shim instead of adding one.
+        merged = prune_cli_session_hooks(existing)
+    else:
+        merged = merge_hook_settings(existing, commands)
     settings_path.parent.mkdir(parents=True, exist_ok=True)
     settings_path.write_text(json.dumps(merged, indent=2) + "\n", encoding="utf-8")
     return merged
@@ -197,22 +231,31 @@ def install_session_hooks_command(json_output: bool) -> None:
     extraction hooks themselves now ship with the Claude Code plugin."""
     home = Path.home()
     install_session_hooks(home)
+    plugin = claude_plugin_installed(home)
     scripts = sorted(_EVENT_SCRIPTS.values())
     if json_output:
         click.echo(
             json.dumps(
                 {
-                    "status": "installed",
+                    "status": "skipped_plugin" if plugin else "installed",
                     "home": str(home),
-                    "events": sorted(_EVENT_SCRIPTS),
-                    "scripts": scripts,
+                    "events": [] if plugin else sorted(_EVENT_SCRIPTS),
+                    "scripts": [] if plugin else scripts,
                     "note": (
-                        "SessionStart reminder only; "
+                        "plugin provides SessionStart; CLI shim not installed "
+                        "(removed any duplicate)"
+                        if plugin
+                        else "SessionStart reminder only; "
                         "extraction hooks are plugin-owned"
                     ),
                 },
                 indent=2,
             )
+        )
+    elif plugin:
+        click.echo(
+            "BrainPalace plugin is installed — it provides SessionStart, so no "
+            "CLI hook was added (any duplicate was removed)."
         )
     else:
         click.echo(f"Installed SessionStart reminder hook into {home / '.claude'}:")

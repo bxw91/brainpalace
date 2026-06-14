@@ -60,6 +60,49 @@ def test_launch_scans_to_next_free_port(
     assert url == "http://127.0.0.1:8788/dashboard/"
 
 
+def test_launch_reclaims_configured_port_after_reap(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: object
+) -> None:
+    """A restart waits for a reaped dashboard to release 8787 — no port drift."""
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+
+    class FakeProc:
+        pid = 77
+
+    monkeypatch.setattr(srv.subprocess, "Popen", lambda *a, **k: FakeProc())
+    monkeypatch.setattr(srv, "_wait_healthy", lambda url, timeout=20: True)
+    # One stray dashboard is reaped; SIGTERM/alive checks are stubbed.
+    monkeypatch.setattr(srv, "list_dashboard_pids", lambda: [999])
+    monkeypatch.setattr(srv.os, "kill", lambda pid, sig: None)
+    monkeypatch.setattr(srv, "_is_alive", lambda pid: False)
+    # 8787 is held by the dying process for the first couple of probes, then frees.
+    calls = {"n": 0}
+
+    def fake_free(host: str, port: int) -> bool:
+        if port != 8787:
+            return True
+        calls["n"] += 1
+        return calls["n"] >= 3
+
+    monkeypatch.setattr(srv, "_port_free", fake_free)
+
+    url = srv.launch_dashboard(open_browser=False)
+    assert url == "http://127.0.0.1:8787/dashboard/"  # reclaimed, not climbed
+
+
+def test_wait_port_free_escalates_to_sigkill(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    killed: list[tuple[int, int]] = []
+    monkeypatch.setattr(srv, "_port_free", lambda host, port: False)  # never frees
+    monkeypatch.setattr(srv, "_is_alive", lambda pid: True)
+    monkeypatch.setattr(srv.os, "kill", lambda pid, sig: killed.append((pid, sig)))
+
+    ok = srv._wait_port_free("127.0.0.1", 8787, [321], timeout=0.3)
+    assert ok is False
+    assert (321, srv.signal.SIGKILL) in killed
+
+
 def test_stop_signals_pid(monkeypatch: pytest.MonkeyPatch, tmp_path: object) -> None:
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
     srv.write_dashboard_runtime(

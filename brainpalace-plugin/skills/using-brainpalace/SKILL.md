@@ -131,6 +131,20 @@ call the `ai_guide` tool).
 
 ---
 
+## Subagent Dispatch — codebase search
+
+When you delegate codebase search/exploration to a subagent, dispatch the
+`research-assistant` agent (`subagent_type: research-assistant`): it has `Glob`
+and `Grep` disabled and searches via BrainPalace only, so it cannot quietly fall
+back to filesystem grep. Avoid generic search subagents (e.g. `Explore`) for code
+lookup — they retain grep/find and will bypass the index. The PreToolUse subagent
+guard (`cli.subagent_guard`, on by default while the server runs) enforces this by
+denying `Agent`/`Task` spawns whose prompt lacks a `brainpalace query --mode`
+directive; `research-assistant` is allowlisted. For a genuine exemption, open the
+prompt with `# BRAINPALACE_EXEMPT: <reason of 20+ chars>`.
+
+---
+
 ## When Not to Use
 
 This skill focuses on **searching and querying**. Do NOT use for installation,

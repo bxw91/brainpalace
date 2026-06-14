@@ -31,7 +31,7 @@ const jobs: JobsPayload = {
       status: "done",
       folder_path: "/repo/beta",
       operation: "index",
-      include_code: true,
+      include_code: false,
       source: "auto",
       enqueued_at: "2026-06-06T19:00:00Z",
       started_at: "2026-06-06T19:00:01Z",
@@ -67,7 +67,19 @@ describe("Jobs tab", () => {
     expect(await screen.findByText("job_run")).toBeInTheDocument();
     const row = screen.getByTestId("job-row-job_run");
     expect(within(row).getByText(/running/i)).toBeInTheDocument();
-    expect(within(row).getByText(/55/)).toBeInTheDocument();
+    // Exact "55%" — a loose /55/ can also match the running job's live duration.
+    expect(within(row).getByText("55%")).toBeInTheDocument();
+  });
+
+  it("Type column shows the content scope (code vs docs)", async () => {
+    wrap(<Jobs instanceId="a" />);
+    await screen.findByText("job_run");
+    expect(
+      within(screen.getByTestId("job-row-job_run")).getByText("code"),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("job-row-job_done")).getByText("docs"),
+    ).toBeInTheDocument();
   });
 
   it("shows chunk add/remove deltas and a computed duration", async () => {
