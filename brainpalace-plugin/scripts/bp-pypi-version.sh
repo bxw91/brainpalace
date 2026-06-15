@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ab-pypi-version.sh - Resolve latest brainpalace-rag version from PyPI.
+# bp-pypi-version.sh - Resolve latest brainpalace-rag version from PyPI.
 
 set -euo pipefail
 

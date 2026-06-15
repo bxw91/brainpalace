@@ -187,4 +187,4 @@ class TestAllConvertersIntegration:
         assert "settings.json" in template_names
 
         script_names = [s.name for s in bundle.scripts]
-        assert "ab-setup-check.sh" in script_names
+        assert "bp-setup-check.sh" in script_names

@@ -6,7 +6,7 @@ context: brainpalace
 agent: setup-assistant
 skills:
   - configuring-brainpalace
-last_validated: 2026-06-13
+last_validated: 2026-06-15
 ---
 
 # Install BrainPalace Packages
@@ -63,13 +63,13 @@ After receiving the user's installation method choice, resolve the latest versio
 
 ```bash
 # Resolve helper script path (installed plugin or local repo)
-PYPI_VERSION_SCRIPT=$(find ~/.claude/plugins/brainpalace/scripts ~/.claude/skills/brainpalace/scripts brainpalace-plugin/scripts -name "ab-pypi-version.sh" 2>/dev/null | head -1)
+PYPI_VERSION_SCRIPT=$(find ~/.claude/plugins/brainpalace/scripts ~/.claude/skills/brainpalace/scripts brainpalace-plugin/scripts -name "bp-pypi-version.sh" 2>/dev/null | head -1)
 
 if [ -n "$PYPI_VERSION_SCRIPT" ]; then
   VERSION=$("$PYPI_VERSION_SCRIPT")
   echo "Latest available: $VERSION"
 else
-  echo "ab-pypi-version.sh not found — falling back to inline version lookup"
+  echo "bp-pypi-version.sh not found — falling back to inline version lookup"
   VERSION=$(curl -sf https://pypi.org/pypi/brainpalace-rag/json | python3 -c "import sys,json; print(json.load(sys.stdin)['info']['version'])")
   echo "Latest available: $VERSION"
 fi
@@ -153,7 +153,7 @@ Requires Python 3.10+. If lower, tell user to upgrade first.
 
 1. Check/install uv:
    ```bash
-   UV_CHECK_SCRIPT=$(find ~/.claude/plugins/brainpalace/scripts ~/.claude/skills/brainpalace/scripts brainpalace-plugin/scripts -name "ab-uv-check.sh" 2>/dev/null | head -1)
+   UV_CHECK_SCRIPT=$(find ~/.claude/plugins/brainpalace/scripts ~/.claude/skills/brainpalace/scripts brainpalace-plugin/scripts -name "bp-uv-check.sh" 2>/dev/null | head -1)
 
    if [ -n "$UV_CHECK_SCRIPT" ]; then
      UV_CHECK_OUTPUT=$("$UV_CHECK_SCRIPT")

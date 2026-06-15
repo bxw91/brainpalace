@@ -6,7 +6,7 @@ context: brainpalace
 agent: setup-assistant
 skills:
   - using-brainpalace
-last_validated: 2026-06-07
+last_validated: 2026-06-15
 ---
 
 # BrainPalace Dashboard

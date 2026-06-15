@@ -6,7 +6,7 @@ context: brainpalace
 agent: setup-assistant
 skills:
   - configuring-brainpalace
-last_validated: 2026-06-13
+last_validated: 2026-06-15
 ---
 
 # Verify BrainPalace Setup

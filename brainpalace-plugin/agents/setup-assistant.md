@@ -33,7 +33,7 @@ allowed_tools:
   - "Edit(~/.config/brainpalace/**)"
   - "Write(.claude/brainpalace/**)"
   - "Edit(.claude/brainpalace/**)"
-last_validated: 2026-06-12
+last_validated: 2026-06-15
 ---
 
 # Setup Assistant Agent

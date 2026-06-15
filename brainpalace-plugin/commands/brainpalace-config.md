@@ -6,7 +6,7 @@ context: brainpalace
 agent: setup-assistant
 skills:
   - configuring-brainpalace
-last_validated: 2026-06-13
+last_validated: 2026-06-15
 ---
 
 # Configure BrainPalace
@@ -83,12 +83,12 @@ Run the environment detection script once. It consolidates Ollama check, Docker 
 
 ```bash
 # Find the script — adjust path if plugin is installed to ~/.claude/plugins/
-SCRIPT=$(find ~/.claude/plugins/brainpalace/scripts ~/.claude/skills/brainpalace/scripts brainpalace-plugin/scripts -name "ab-setup-check.sh" 2>/dev/null | head -1)
+SCRIPT=$(find ~/.claude/plugins/brainpalace/scripts ~/.claude/skills/brainpalace/scripts brainpalace-plugin/scripts -name "bp-setup-check.sh" 2>/dev/null | head -1)
 if [ -n "$SCRIPT" ]; then
   SETUP_STATE=$("$SCRIPT")
   echo "$SETUP_STATE"
 else
-  echo "ab-setup-check.sh not found — run detection manually (see fallback below)"
+  echo "bp-setup-check.sh not found — run detection manually (see fallback below)"
   SETUP_STATE="{}"
 fi
 ```
@@ -108,7 +108,7 @@ AVAILABLE_PORT=$(echo "$SETUP_STATE" | python3 -c "import sys,json; d=json.load(
 - `docker_available: true` → Docker is installed; PostgreSQL setup is possible
 - `config_file_path: "..."` → Edit THAT config file (project-level takes priority)
 
-**Fallback (if ab-setup-check.sh not found):** Use the manual methods below — but `ab-setup-check.sh` should always be present if the plugin is installed.
+**Fallback (if bp-setup-check.sh not found):** Use the manual methods below — but `bp-setup-check.sh` should always be present if the plugin is installed.
 
 <details>
 <summary>Manual fallback (not needed when plugin is installed)</summary>

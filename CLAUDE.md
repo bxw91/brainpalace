@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-14
+last_validated: 2026-06-15
 ---
 
 # BrainPalace — repo guide for Claude

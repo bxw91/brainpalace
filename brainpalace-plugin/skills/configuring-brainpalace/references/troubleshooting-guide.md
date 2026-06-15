@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-02
+last_validated: 2026-06-15
 ---
 
 # BrainPalace Troubleshooting Guide

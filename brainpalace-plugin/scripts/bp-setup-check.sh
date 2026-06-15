@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# ab-setup-check.sh — BrainPalace pre-flight detection
-# Usage: bash /path/to/ab-setup-check.sh
+# bp-setup-check.sh — BrainPalace pre-flight detection
+# Usage: bash /path/to/bp-setup-check.sh
 # Output: JSON object with current environment state
 #
 # When the brainpalace CLI is installed, the canonical source of truth is
@@ -13,16 +13,16 @@
 set -uo pipefail
 
 # --- BrainPalace installation ---
-AB_VERSION=$(brainpalace --version 2>/dev/null | head -1 | tr -d '\n' || true)
-if [ -n "$AB_VERSION" ]; then
-  AB_INSTALLED="true"
+BP_VERSION=$(brainpalace --version 2>/dev/null | head -1 | tr -d '\n' || true)
+if [ -n "$BP_VERSION" ]; then
+  BP_INSTALLED="true"
 else
-  AB_INSTALLED="false"
+  BP_INSTALLED="false"
 fi
 
 # --- Doctor report (delegates to CLI when available) ---
 DOCTOR_JSON="null"
-if [ "$AB_INSTALLED" = "true" ]; then
+if [ "$BP_INSTALLED" = "true" ]; then
   # brainpalace doctor exits non-zero on critical failures but always emits
   # a JSON body on --json; capture it either way.
   DOCTOR_OUTPUT=$(brainpalace doctor --json 2>/dev/null || true)
@@ -140,8 +140,8 @@ fi
 # Construct manually (no jq dependency required for output)
 cat <<JSON
 {
-  "brainpalace_installed": $AB_INSTALLED,
-  "brainpalace_version": "$AB_VERSION",
+  "brainpalace_installed": $BP_INSTALLED,
+  "brainpalace_version": "$BP_VERSION",
   "config_file_found": $CONFIG_FOUND,
   "config_file_path": "$CONFIG_FILE",
   "ollama_running": $OLLAMA_RUNNING,

@@ -38,7 +38,7 @@ def test_arg_or_prose_mention_not_an_invocation(tmp_path):
     doc.write_text(
         "```bash\n"
         "conda create -n brainpalace python=3.12 -y\n"
-        'echo "Using brainpalace at: $AB_BIN"\n'
+        'echo "Using brainpalace at: $BP_BIN"\n'
         "```\n"
     )
     recs = referential_drift([doc], {"index"})

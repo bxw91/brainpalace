@@ -4,7 +4,7 @@ description: Inspect the BrainPalace Claude Code plugin (installation status)
 parameters:
 skills:
   - using-brainpalace
-last_validated: 2026-06-13
+last_validated: 2026-06-15
 ---
 
 # BrainPalace Plugin

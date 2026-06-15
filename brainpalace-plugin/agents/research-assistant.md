@@ -14,7 +14,7 @@ triggers:
     type: message_pattern
 skills:
   - using-brainpalace
-last_validated: 2026-06-14
+last_validated: 2026-06-15
 ---
 
 # Research Assistant Agent

@@ -36,7 +36,7 @@ set -uo pipefail   # NOTE: no -e — we want to continue past a failed sub-step.
 if [[ ! -e /dev/tty ]] || ! { : >/dev/tty; } 2>/dev/null; then
     echo "ERROR: this script is interactive and needs a terminal." >&2
     echo "If you piped through curl in a non-interactive shell, run:" >&2
-    echo "    curl -sSL <url>/uninstall.sh -o /tmp/ab-uninstall.sh && bash /tmp/ab-uninstall.sh" >&2
+    echo "    curl -sSL <url>/uninstall.sh -o /tmp/bp-uninstall.sh && bash /tmp/bp-uninstall.sh" >&2
     exit 1
 fi
 
@@ -68,10 +68,10 @@ confirm() {
 # pipx venv (PyYAML guaranteed) *while it still exists*; fall back to python3.
 # -----------------------------------------------------------------------------
 
-AB_PY="$(pipx environment --value PIPX_LOCAL_VENVS 2>/dev/null)/brainpalace-cli/bin/python"
-[[ -x "$AB_PY" ]] || AB_PY="$(command -v python3 || true)"
+BP_PY="$(pipx environment --value PIPX_LOCAL_VENVS 2>/dev/null)/brainpalace-cli/bin/python"
+[[ -x "$BP_PY" ]] || BP_PY="$(command -v python3 || true)"
 
-AB_BIN="$(command -v brainpalace || true)"
+BP_BIN="$(command -v brainpalace || true)"
 
 # -----------------------------------------------------------------------------
 # Banner + capture the project list NOW (registry survives binary removal).
@@ -88,7 +88,7 @@ ${c_yel}Heads up:${c_reset} per-project state includes ARCHIVED RAW CHAT TRANSCR
 which may contain secrets. Deletions are irreversible.
 
 EOF
-[[ -z "$AB_BIN" ]] && warn "'brainpalace' not on PATH — CLI-driven steps (stop/plugin/package) will be skipped; file cleanup still runs."
+[[ -z "$BP_BIN" ]] && warn "'brainpalace' not on PATH — CLI-driven steps (stop/plugin/package) will be skipped; file cleanup still runs."
 confirm "Continue?" "y" || { say "Aborted. Nothing changed."; exit 0; }
 
 # Discover global state dirs (honour XDG overrides).
@@ -106,10 +106,10 @@ done
 
 # Collect candidate project roots (registry keys) into PROJECTS[].
 declare -a PROJECTS=()
-if [[ -n "$REGISTRY" && -n "$AB_PY" ]]; then
+if [[ -n "$REGISTRY" && -n "$BP_PY" ]]; then
     while IFS= read -r line; do
         [[ -n "$line" ]] && PROJECTS+=("$line")
-    done < <("$AB_PY" - "$REGISTRY" <<'PY' 2>/dev/null
+    done < <("$BP_PY" - "$REGISTRY" <<'PY' 2>/dev/null
 import json, sys
 try:
     d = json.load(open(sys.argv[1]))
@@ -127,16 +127,16 @@ fi
 
 step "Step 1/7 — Stop running servers"
 
-if [[ -n "$AB_BIN" ]]; then
-    "$AB_BIN" list >/dev/tty 2>&1 || true
+if [[ -n "$BP_BIN" ]]; then
+    "$BP_BIN" list >/dev/tty 2>&1 || true
     if confirm "Stop all running BrainPalace servers?" "y"; then
         if [[ ${#PROJECTS[@]} -gt 0 ]]; then
             for p in "${PROJECTS[@]}"; do
                 say "Stopping server for: $p"
-                "$AB_BIN" stop --path "$p" >/dev/tty 2>&1 || warn "  (no live server / already stopped)"
+                "$BP_BIN" stop --path "$p" >/dev/tty 2>&1 || warn "  (no live server / already stopped)"
             done
         else
-            "$AB_BIN" stop >/dev/tty 2>&1 || warn "  (no live server for cwd)"
+            "$BP_BIN" stop >/dev/tty 2>&1 || warn "  (no live server for cwd)"
         fi
         ok "Servers stopped."
     else
@@ -214,7 +214,7 @@ step "Step 3/7 — Clean MCP client configs (surgical — keeps your other serve
 declare -a MCP_BASES=("$HOME")
 for p in "${PROJECTS[@]}"; do MCP_BASES+=("$p"); done
 
-if [[ -z "$AB_PY" ]]; then
+if [[ -z "$BP_PY" ]]; then
     warn "No python available — skipping surgical MCP cleanup. Remove 'brainpalace' entries by hand:"
     warn "  .vscode/mcp.json .cursor/mcp.json .zed/settings.json .cline/mcp.json .continue/mcp.yaml .kilo/kilo.jsonc"
 elif confirm "Scan configs and remove the 'brainpalace' MCP entry (backs up each file first)?" "y"; then
@@ -227,7 +227,7 @@ elif confirm "Scan configs and remove the 'brainpalace' MCP entry (backs up each
             "$base/.continue/mcp.yaml:yaml:mcpServers" ; do
             f="${spec%%:*}"; rest="${spec#*:}"; kind="${rest%%:*}"; key="${rest##*:}"
             [[ -f "$f" ]] || continue
-            "$AB_PY" - "$f" "$kind" "$key" <<'PY' >/dev/tty 2>&1
+            "$BP_PY" - "$f" "$kind" "$key" <<'PY' >/dev/tty 2>&1
 import json, sys, pathlib, time
 path, kind, key = pathlib.Path(sys.argv[1]), sys.argv[2], sys.argv[3]
 try:

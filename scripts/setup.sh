@@ -34,7 +34,7 @@ REF="main"
 if [[ ! -e /dev/tty ]] || ! { : >/dev/tty; } 2>/dev/null; then
     echo "ERROR: this script is interactive and needs a terminal." >&2
     echo "If you piped through curl in a non-interactive shell, run:" >&2
-    echo "    curl -sSL <url>/setup.sh -o /tmp/ab-setup.sh && bash /tmp/ab-setup.sh" >&2
+    echo "    curl -sSL <url>/setup.sh -o /tmp/bp-setup.sh && bash /tmp/bp-setup.sh" >&2
     exit 1
 fi
 
@@ -288,7 +288,7 @@ if [[ "$DO_INSTALL" -eq 1 ]]; then
     ok "Installed: $(brainpalace --version)"
 fi
 
-AB_BIN="$(command -v brainpalace)"
+BP_BIN="$(command -v brainpalace)"
 
 # -----------------------------------------------------------------------------
 # Step 2 — chat/session summaries (Claude Code plugin). Decided BEFORE the
@@ -308,7 +308,7 @@ CHAT_SUMM="provider"
 if command -v claude >/dev/null 2>&1; then
     PLUGIN_INSTALLED="false"
     # Single source of truth: the CLI's own detection, surfaced as JSON.
-    if PLUGIN_JSON="$("$AB_BIN" plugin status --json 2>/dev/null)"; then
+    if PLUGIN_JSON="$("$BP_BIN" plugin status --json 2>/dev/null)"; then
         case "$PLUGIN_JSON" in
             *'"installed": true'*|*'"installed":true'*) PLUGIN_INSTALLED="true" ;;
         esac
@@ -317,6 +317,21 @@ if command -v claude >/dev/null 2>&1; then
         say "Claude Code plugin detected — chat/session summaries run FREE on your"
         say "Claude Code subscription. The provider you pick next is for code only."
         CHAT_SUMM="plugin"
+        # Surface installed-vs-latest plugin version (parity with the
+        # `brainpalace update` tail). The version/latest/update_available keys are
+        # already in the JSON we fetched above, so this adds no extra work. We
+        # only PRINT the update command — driving `claude plugins …` from a
+        # script can hang on its process scan, so Claude Code runs it itself.
+        PLUGIN_VER="$(printf '%s' "$PLUGIN_JSON" | sed -n 's/.*"version": *"\([^"]*\)".*/\1/p')"
+        PLUGIN_LATEST="$(printf '%s' "$PLUGIN_JSON" | sed -n 's/.*"latest": *"\([^"]*\)".*/\1/p')"
+        [[ -n "$PLUGIN_VER" ]] && say "Plugin version: $PLUGIN_VER"
+        case "$PLUGIN_JSON" in
+            *'"update_available": true'*|*'"update_available":true'*)
+                say "Plugin update available: ${PLUGIN_LATEST:-newer} — update from inside"
+                say "Claude Code: claude plugin update brainpalace@brainpalace-marketplace"
+                say "(then restart Claude Code to load the new plugin)."
+                ;;
+        esac
     else
         # We no longer install the plugin from here. Claude Code manages its own
         # plugins, and driving 'claude plugins …' from a script can hang on its
@@ -392,7 +407,7 @@ case "$PROVIDER" in
         ;;
     wizard)
         say "Launching brainpalace config wizard (global) ..."
-        (cd "$HOME" && "$AB_BIN" config wizard --global --chat-summarizer "$CHAT_SUMM") </dev/tty >/dev/tty
+        (cd "$HOME" && "$BP_BIN" config wizard --global --chat-summarizer "$CHAT_SUMM") </dev/tty >/dev/tty
         ;;
     ollama)
         OLLAMA_URL="$(ask "Ollama base URL" "${OLLAMA_BASE_URL:-http://127.0.0.1:11434}")"
@@ -402,7 +417,7 @@ case "$PROVIDER" in
             warn "Could not reach $OLLAMA_URL — wizard will still let you continue."
         fi
         say "Launching wizard (global) with OLLAMA_BASE_URL=$OLLAMA_URL"
-        (cd "$HOME" && OLLAMA_BASE_URL="$OLLAMA_URL" "$AB_BIN" config wizard --global --chat-summarizer "$CHAT_SUMM") </dev/tty >/dev/tty
+        (cd "$HOME" && OLLAMA_BASE_URL="$OLLAMA_URL" "$BP_BIN" config wizard --global --chat-summarizer "$CHAT_SUMM") </dev/tty >/dev/tty
         ;;
     *)
         VAR="${PROVIDER_ENV[$PROVIDER]:-}"
@@ -425,7 +440,7 @@ case "$PROVIDER" in
             fi
         fi
         say "Launching brainpalace config wizard (global) ..."
-        (cd "$HOME" && "$AB_BIN" config wizard --global --chat-summarizer "$CHAT_SUMM") </dev/tty >/dev/tty
+        (cd "$HOME" && "$BP_BIN" config wizard --global --chat-summarizer "$CHAT_SUMM") </dev/tty >/dev/tty
         ;;
 esac
 
@@ -443,9 +458,9 @@ CFG="$(xdg_config_yaml)"
 if [[ -f "$CFG" && "$PROVIDER" != "skip" ]]; then
     # Use the brainpalace pipx venv's python (PyYAML guaranteed there).
     # Fall back to system python3 only if pipx env lookup fails.
-    AB_PY="$(pipx environment --value PIPX_LOCAL_VENVS 2>/dev/null)/brainpalace-cli/bin/python"
-    [[ -x "$AB_PY" ]] || AB_PY="python3"
-    "$AB_PY" - "$CFG" <<'PY' >/dev/tty 2>&1 || warn "config.yaml api_key_env patch failed — set manually if you picked cohere/gemini/grok"
+    BP_PY="$(pipx environment --value PIPX_LOCAL_VENVS 2>/dev/null)/brainpalace-cli/bin/python"
+    [[ -x "$BP_PY" ]] || BP_PY="python3"
+    "$BP_PY" - "$CFG" <<'PY' >/dev/tty 2>&1 || warn "config.yaml api_key_env patch failed — set manually if you picked cohere/gemini/grok"
 import sys, pathlib
 try:
     import yaml
@@ -573,7 +588,7 @@ if [[ "$MCP_CLIENT" != "none" ]]; then
   "servers": {
     "brainpalace": {
       "type": "stdio",
-      "command": "$AB_BIN",
+      "command": "$BP_BIN",
       "args": ["mcp", "--ensure-server"]
     }
   }
@@ -585,7 +600,7 @@ EOF
 {
   "mcpServers": {
     "brainpalace": {
-      "command": "$AB_BIN",
+      "command": "$BP_BIN",
       "args": ["mcp", "--ensure-server"]
     }
   }
@@ -597,7 +612,7 @@ EOF
 {
   "mcpServers": {
     "brainpalace": {
-      "command": "$AB_BIN",
+      "command": "$BP_BIN",
       "args": ["mcp", "--ensure-server"],
       "disabled": false
     }
@@ -610,7 +625,7 @@ EOF
             write_file "$BASE/.continue/mcp.yaml" "$(cat <<EOF
 mcpServers:
   - name: brainpalace
-    command: $AB_BIN
+    command: $BP_BIN
     args: ["mcp", "--ensure-server"]
 EOF
 )" ;;
@@ -620,7 +635,7 @@ EOF
   "mcp": {
     "brainpalace": {
       "type": "local",
-      "command": ["$AB_BIN", "mcp", "--ensure-server"],
+      "command": ["$BP_BIN", "mcp", "--ensure-server"],
       "enabled": true,
       "timeout": 30000
     }
@@ -634,7 +649,7 @@ EOF
   "context_servers": {
     "brainpalace": {
       "command": {
-        "path": "$AB_BIN",
+        "path": "$BP_BIN",
         "args": ["mcp", "--ensure-server"]
       }
     }
@@ -643,7 +658,7 @@ EOF
 EOF
 )" ;;
     esac
-    ok "Absolute path $AB_BIN baked into the config (avoids PATH-inheritance failures)."
+    ok "Absolute path $BP_BIN baked into the config (avoids PATH-inheritance failures)."
 fi
 
 # -----------------------------------------------------------------------------
@@ -669,7 +684,7 @@ if confirm "Set up and index a project now?" "n"; then
 
     # init --start inherits the global provider config written in Step 3.
     say "Running: brainpalace init --start $WATCH_FLAG"
-    (cd "$PROJECT" && "$AB_BIN" init --start $WATCH_FLAG) >/dev/tty
+    (cd "$PROJECT" && "$BP_BIN" init --start $WATCH_FLAG) >/dev/tty
     ok "Server initialised and started."
     # init enables session summarization and auto-picks the engine (printed
     # above): plugin → subagent (free on your Claude Code subscription, Haiku —
@@ -684,7 +699,7 @@ if confirm "Set up and index a project now?" "n"; then
         CODE_FLAG=""
         confirm "Include code (AST chunking)? (no = docs only)" "y" || CODE_FLAG="--no-code"
         say "Running: brainpalace index $INDEX_PATH $CODE_FLAG"
-        (cd "$PROJECT" && "$AB_BIN" index "$INDEX_PATH" $CODE_FLAG) >/dev/tty
+        (cd "$PROJECT" && "$BP_BIN" index "$INDEX_PATH" $CODE_FLAG) >/dev/tty
         INDEXED_TARGET="$INDEX_PATH"
     else
         INDEXED_TARGET="skipped"
@@ -703,11 +718,11 @@ fi
 step "Step 6/6 — Verify"
 
 if [[ -n "$PROJECT" ]]; then
-    (cd "$PROJECT" && "$AB_BIN" status) >/dev/tty || warn "status returned non-zero"
+    (cd "$PROJECT" && "$BP_BIN" status) >/dev/tty || warn "status returned non-zero"
 
     if confirm "Run a sample query now?" "y"; then
         Q="$(ask "Query" "how does authentication work")"
-        (cd "$PROJECT" && "$AB_BIN" query "$Q" --mode hybrid) >/dev/tty \
+        (cd "$PROJECT" && "$BP_BIN" query "$Q" --mode hybrid) >/dev/tty \
             || warn "Query failed — check provider config and index status."
     fi
 else
@@ -719,12 +734,28 @@ fi
 # Summary
 # -----------------------------------------------------------------------------
 
+# Dashboard install/run state — the "not installed" hint is the reliable signal
+# (status exit codes don't distinguish absent-package from stopped).
+DASH_RAW="$("$BP_BIN" dashboard status 2>&1 || true)"
+case "$DASH_RAW" in
+    *"not installed"*)     DASH_LINE="not installed (Python < 3.12?)" ;;
+    *"Dashboard running"*) DASH_LINE="installed (running)" ;;
+    *)                     DASH_LINE="installed (stopped)" ;;
+esac
+# Plugin install state + installed-vs-latest version, straight from the CLI's
+# own `plugin status` (strip its label; blank -> unknown).
+PLUGIN_RAW="$("$BP_BIN" plugin status 2>&1 || true)"
+PLUGIN_LINE="$(printf '%s' "$PLUGIN_RAW" | sed -n 's/^BrainPalace Claude Code plugin: //p' | head -1)"
+[[ -z "$PLUGIN_LINE" ]] && PLUGIN_LINE="unknown"
+
 cat >/dev/tty <<EOF
 
 ${c_gr}Setup complete.${c_reset}
-  Binary:    $AB_BIN  ($("$AB_BIN" --version 2>/dev/null || echo "?"))
+  Binary:    $BP_BIN  ($("$BP_BIN" --version 2>/dev/null || echo "?"))
   Provider:  $PROVIDER (global — $(xdg_config_yaml))
   MCP wire:  $MCP_CLIENT
+  Dashboard: $DASH_LINE
+  Plugin:    $PLUGIN_LINE
 EOF
 
 if [[ -n "$PROJECT" ]]; then

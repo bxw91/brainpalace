@@ -15,8 +15,8 @@ COMMAND_PATHS = [
 ]
 CONFIG_COMMAND_PATH = PLUGIN_DIR / "commands" / "brainpalace-config.md"
 INSTALL_COMMAND_PATH = PLUGIN_DIR / "commands" / "brainpalace-install.md"
-PYPI_VERSION_SCRIPT_PATH = PLUGIN_DIR / "scripts" / "ab-pypi-version.sh"
-UV_CHECK_SCRIPT_PATH = PLUGIN_DIR / "scripts" / "ab-uv-check.sh"
+PYPI_VERSION_SCRIPT_PATH = PLUGIN_DIR / "scripts" / "bp-pypi-version.sh"
+UV_CHECK_SCRIPT_PATH = PLUGIN_DIR / "scripts" / "bp-uv-check.sh"
 
 
 def _read(path: Path) -> str:
@@ -52,8 +52,8 @@ def test_config_uses_direct_setup_check_script_call() -> None:
 def test_install_references_script_backed_helpers() -> None:
     content = _read(INSTALL_COMMAND_PATH)
 
-    assert "ab-pypi-version.sh" in content
-    assert "ab-uv-check.sh" in content
+    assert "bp-pypi-version.sh" in content
+    assert "bp-uv-check.sh" in content
 
 
 def test_helper_scripts_exist_and_are_executable() -> None:

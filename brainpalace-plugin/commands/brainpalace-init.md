@@ -90,7 +90,7 @@ context: brainpalace
 agent: setup-assistant
 skills:
   - configuring-brainpalace
-last_validated: 2026-06-14
+last_validated: 2026-06-15
 ---
 
 # Initialize BrainPalace Project

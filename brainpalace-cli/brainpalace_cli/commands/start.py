@@ -556,6 +556,7 @@ def start_command(
                 )
             else:
                 console.print(f"[green]Reusing running server:[/] {reusable}")
+                _print_dashboard(dash)
             return
 
         # Check for existing runtime. A live server must never be replaced by a

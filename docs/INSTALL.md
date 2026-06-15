@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-05
+last_validated: 2026-06-15
 ---
 
 # Install — alternative paths
@@ -221,8 +221,8 @@ either use the manual four-step install above, or download `setup.sh`
 first and feed it a TTY some other way:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/bxw91/brainpalace/main/scripts/setup.sh -o /tmp/ab-setup.sh
-bash /tmp/ab-setup.sh
+curl -sSL https://raw.githubusercontent.com/bxw91/brainpalace/main/scripts/setup.sh -o /tmp/bp-setup.sh
+bash /tmp/bp-setup.sh
 ```
 
 For purely scripted CI, prefer the manual `install.sh` + explicit

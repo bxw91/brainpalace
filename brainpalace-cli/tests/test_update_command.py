@@ -25,12 +25,22 @@ def runner() -> CliRunner:
 def _hermetic_reapers(monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep restart tests from touching real processes: the orphan reaper and
     the process-scan default to no-ops. Tests that assert reaping override them.
+
+    Also neutralize the post-upgrade plugin flow. It reads the live Claude Code
+    registry and fetches the latest plugin version from GitHub, so on a host with
+    the plugin installed AND a newer plugin release available it fires a real
+    ``claude plugin update`` subprocess — making these update-ordering/restart
+    tests pass or fail by host state (exactly the trap docs/RELEASING.md step 8
+    flags). The plugin flow has its own tests in test_plugin_version.py.
     """
     monkeypatch.setattr(
         "brainpalace_cli.commands.update._reap_orphan_servers", lambda: None
     )
     monkeypatch.setattr(
         "brainpalace_cli.commands.update._dashboard_orphan_pids", lambda: []
+    )
+    monkeypatch.setattr(
+        "brainpalace_cli.commands.update._plugin_update_flow", lambda *a, **k: None
     )
 
 

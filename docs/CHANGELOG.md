@@ -15,6 +15,15 @@ Entries are kept short (≤ 3 sentences and ≤ 320 characters); see
 
 ---
 
+## [26.6.46] - 2026-06-15
+
+### Fixed
+- **`start` reuse-live-server path now shows the dashboard URL box.** When a
+  running server was reused, the dashboard URL panel was skipped; it is restored
+  so the URL surfaces on every start path.
+
+---
+
 ## [26.6.45] - 2026-06-15
 
 ### Fixed

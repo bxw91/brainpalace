@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ab-uv-check.sh - Report uv availability and install hint when missing.
+# bp-uv-check.sh - Report uv availability and install hint when missing.
 
 set -euo pipefail
 

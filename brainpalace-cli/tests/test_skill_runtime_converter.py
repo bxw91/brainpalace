@@ -87,7 +87,7 @@ def sample_bundle(
         ],
         scripts=[
             PluginScript(
-                name="ab-setup-check.sh",
+                name="bp-setup-check.sh",
                 content="#!/bin/bash\necho ok",
             ),
         ],
@@ -189,7 +189,7 @@ class TestSkillRuntimeConverter:
         # Scripts
         assert (target / "brainpalace-verify" / "SKILL.md").exists()
         assert (
-            target / "brainpalace-verify" / "scripts" / "ab-setup-check.sh"
+            target / "brainpalace-verify" / "scripts" / "bp-setup-check.sh"
         ).exists()
 
         # Check all files are tracked

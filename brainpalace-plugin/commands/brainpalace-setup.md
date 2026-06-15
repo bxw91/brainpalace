@@ -6,7 +6,7 @@ context: brainpalace
 agent: setup-assistant
 skills:
   - configuring-brainpalace
-last_validated: 2026-06-13
+last_validated: 2026-06-15
 ---
 
 # Complete BrainPalace Setup
@@ -88,7 +88,7 @@ If not installed, run `/brainpalace-install` first.
 **Environment pre-flight:** After confirming installation, run the detection script to collect environment state for all subsequent steps:
 
 ```bash
-SCRIPT=$(find ~/.claude/plugins/brainpalace/scripts ~/.claude/skills/brainpalace/scripts brainpalace-plugin/scripts -name "ab-setup-check.sh" 2>/dev/null | head -1)
+SCRIPT=$(find ~/.claude/plugins/brainpalace/scripts ~/.claude/skills/brainpalace/scripts brainpalace-plugin/scripts -name "bp-setup-check.sh" 2>/dev/null | head -1)
 SETUP_STATE=$( [ -n "$SCRIPT" ] && bash "$SCRIPT" || echo "{}" )
 echo "$SETUP_STATE"
 ```
@@ -407,15 +407,15 @@ Options:
 Resolve the absolute binary path:
 
 ```bash
-AB_BIN="$(command -v brainpalace)"
-echo "Using brainpalace at: $AB_BIN"
+BP_BIN="$(command -v brainpalace)"
+echo "Using brainpalace at: $BP_BIN"
 ```
 
 Then use the Write tool to create the client's config file under `$HOME` (user
 scope) — or under the project root if the user chose project scope AND a project
-path is known. Use the absolute `$AB_BIN` path.
+path is known. Use the absolute `$BP_BIN` path.
 
-**Per-client config templates** (replace `<AB_BIN>` with the resolved path):
+**Per-client config templates** (replace `<BP_BIN>` with the resolved path):
 
 **VS Code** → `$HOME/.vscode/mcp.json`
 ```json
@@ -423,7 +423,7 @@ path is known. Use the absolute `$AB_BIN` path.
   "servers": {
     "brainpalace": {
       "type": "stdio",
-      "command": "<AB_BIN>",
+      "command": "<BP_BIN>",
       "args": ["mcp", "--ensure-server"]
     }
   }
@@ -435,7 +435,7 @@ path is known. Use the absolute `$AB_BIN` path.
 {
   "mcpServers": {
     "brainpalace": {
-      "command": "<AB_BIN>",
+      "command": "<BP_BIN>",
       "args": ["mcp", "--ensure-server"]
     }
   }
@@ -447,7 +447,7 @@ path is known. Use the absolute `$AB_BIN` path.
 {
   "mcpServers": {
     "brainpalace": {
-      "command": "<AB_BIN>",
+      "command": "<BP_BIN>",
       "args": ["mcp", "--ensure-server"],
       "disabled": false
     }
@@ -459,7 +459,7 @@ path is known. Use the absolute `$AB_BIN` path.
 ```yaml
 mcpServers:
   - name: brainpalace
-    command: <AB_BIN>
+    command: <BP_BIN>
     args: ["mcp", "--ensure-server"]
 ```
 
@@ -469,7 +469,7 @@ mcpServers:
   "mcp": {
     "brainpalace": {
       "type": "local",
-      "command": ["<AB_BIN>", "mcp", "--ensure-server"],
+      "command": ["<BP_BIN>", "mcp", "--ensure-server"],
       "enabled": true,
       "timeout": 30000
     }
@@ -483,7 +483,7 @@ mcpServers:
   "context_servers": {
     "brainpalace": {
       "command": {
-        "path": "<AB_BIN>",
+        "path": "<BP_BIN>",
         "args": ["mcp", "--ensure-server"]
       }
     }
