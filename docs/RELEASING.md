@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-14
+last_validated: 2026-06-15
 ---
 
 # Releasing BrainPalace
@@ -72,10 +72,18 @@ The version lives in **one place per package**: `pyproject.toml`.
 3. **Bump `version` in all three** `brainpalace-cli/pyproject.toml`,
    `brainpalace-server/pyproject.toml`, **and** `brainpalace-dashboard/pyproject.toml`
    — plus the dashboard's hardcoded `brainpalace_dashboard/__init__.py`
-   `__version__` (the dashboard does **not** derive it from metadata). The cli +
-   server derive `__version__`, so nothing else needs touching there. The
-   `test_version_consistency.py` guard enforces all three pyprojects **and** the
-   dashboard `__version__` moved together.
+   `__version__` (the dashboard does **not** derive it from metadata) — **and the
+   Claude Code plugin**: `brainpalace-plugin/.claude-plugin/plugin.json` `version`
+   **and** the `plugins[0].version` entry in `.claude-plugin/marketplace.json`.
+   The plugin tracks cli/server in lockstep **regardless of whether plugin files
+   changed** — `plugin.json`'s `version` is the freshness key that drives Claude
+   Code plugin-update detection (`brainpalace plugin status` / the `update` tail
+   read the manifest at the latest release tag), so a frozen field means the
+   user is never offered `claude plugin update`. The cli + server derive
+   `__version__`, so nothing else needs touching there. The
+   `test_version_consistency.py` guard enforces all three pyprojects, the
+   dashboard `__version__`, **and** the plugin manifest + marketplace entry moved
+   together.
 4. **Reinstall** so editable `--version` reflects the bump: `task install`.
 5. **Changelog** — add the `[YY.M.N]` section in `docs/CHANGELOG.md`. Keep each
    entry ≤ 3 sentences (see [DEVELOPERS_GUIDE.md → Changelog style](DEVELOPERS_GUIDE.md#changelog-style-docschangelogmd)).

@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-14
+last_validated: 2026-06-15
 ---
 
 # Changelog
@@ -12,6 +12,21 @@ month (the counter resets monthly). It looks like SemVer but is not.
 
 Entries are kept short (≤ 3 sentences and ≤ 320 characters); see
 [DEVELOPERS_GUIDE.md → Changelog style](DEVELOPERS_GUIDE.md#changelog-style-docschangelogmd).
+
+---
+
+## [26.6.45] - 2026-06-15
+
+### Fixed
+- **Plugin version now tracks cli/server in lockstep.** `plugin.json`'s `version`
+  (the freshness key `brainpalace plugin status` / the `update` tail read at the
+  release tag) was frozen, so users were never offered `claude plugin update` even
+  when plugin hooks changed. The release now bumps the plugin manifest + the
+  marketplace entry too, guarded by `test_version_consistency.py`.
+- **`brainpalace update` verifies shutdown before upgrading.** The pre-upgrade
+  stop was fire-and-forget SIGTERM and returned before processes died, so the
+  install ran over still-live old code. It now polls for real exit, escalates to
+  SIGKILL, and on a stubborn survivor warns and offers retry-or-continue.
 
 ---
 

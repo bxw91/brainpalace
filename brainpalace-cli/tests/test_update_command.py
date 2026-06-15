@@ -512,6 +512,72 @@ class TestUpdateOrdering:
         assert "heads up" not in result.output.lower()
 
 
+class TestStopAllInstancesVerification:
+    """`_stop_all_instances` must VERIFY death and escalate to SIGKILL — a
+    fire-and-forget SIGTERM let the upgrade run while old code was still alive."""
+
+    def _patch_survivors(
+        self, monkeypatch: pytest.MonkeyPatch, sequence: list[tuple[list, list]]
+    ) -> None:
+        """Make `_live_survivors` return each entry of `sequence` in turn (last
+        value sticks), so a test can script 'alive, then dead'."""
+        from itertools import chain, repeat
+
+        it = chain(sequence, repeat(sequence[-1]))
+        monkeypatch.setattr(
+            "brainpalace_cli.commands.update._live_survivors", lambda: next(it)
+        )
+
+    def test_returns_true_when_stop_takes_immediately(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from brainpalace_cli.commands import update as u
+
+        monkeypatch.setattr(u, "_issue_stops", lambda *a, **k: None)
+        self._patch_survivors(monkeypatch, [([], [])])
+        killed: list[int] = []
+        monkeypatch.setattr(u, "_sigkill_pids", lambda pids: killed.extend(pids))
+
+        assert u._stop_all_instances([], argv=["bp"], home="/tmp") is True
+        assert killed == []  # nothing alive → never escalate
+
+    def test_escalates_to_sigkill_then_succeeds(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from brainpalace_cli.commands import update as u
+
+        monkeypatch.setattr(u, "_issue_stops", lambda *a, **k: None)
+        monkeypatch.setattr(u, "_STOP_GRACE_SECS", 0.0)
+        monkeypatch.setattr(u, "_STOP_KILL_GRACE_SECS", 0.0)
+        monkeypatch.setattr(u, "_server_pids", lambda roots: [4242])
+        # alive after SIGTERM, dead after SIGKILL.
+        self._patch_survivors(monkeypatch, [(["/proj"], []), ([], [])])
+        killed: list[int] = []
+        monkeypatch.setattr(u, "_sigkill_pids", lambda pids: killed.extend(pids))
+
+        assert u._stop_all_instances(["/proj"], argv=["bp"], home="/tmp") is True
+        assert killed == [4242]  # escalated
+
+    def test_yes_warns_and_continues_when_sigkill_fails(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from brainpalace_cli.commands import update as u
+
+        monkeypatch.setattr(u, "_issue_stops", lambda *a, **k: None)
+        monkeypatch.setattr(u, "_STOP_GRACE_SECS", 0.0)
+        monkeypatch.setattr(u, "_STOP_KILL_GRACE_SECS", 0.0)
+        monkeypatch.setattr(u, "_server_pids", lambda roots: [99])
+        monkeypatch.setattr(u, "_sigkill_pids", lambda pids: None)
+        # never dies.
+        self._patch_survivors(monkeypatch, [(["/proj"], [7])])
+
+        # --yes must not prompt and must return False (proceeding with survivors).
+        assert (
+            u._stop_all_instances(["/proj"], argv=["bp"], home="/tmp", yes=True)
+            is False
+        )
+
+
 class TestUpdateRegistration:
     def test_command_registered(self, runner: CliRunner) -> None:
         result = runner.invoke(cli, ["update", "--help"])

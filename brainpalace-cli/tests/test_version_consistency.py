@@ -14,7 +14,9 @@ is exactly what this guard covers.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
+from typing import Any
 
 import tomllib
 
@@ -27,6 +29,14 @@ def _pyproject_version(rel_path: str) -> str:
     if "version" in poetry:
         return str(poetry["version"])
     return str(data["project"]["version"])
+
+
+def _json_at(rel_path: str, *keys: Any) -> str:
+    """Read a nested value from a JSON file by a path of dict keys / list indexes."""
+    node: Any = json.loads((REPO_ROOT / rel_path).read_text(encoding="utf-8"))
+    for k in keys:
+        node = node[k]
+    return str(node)
 
 
 def test_cli_and_server_pyproject_versions_match() -> None:
@@ -62,4 +72,39 @@ def test_dashboard_version_matches_cli_and_server() -> None:
     assert dashboard_module == server_version, (
         f"Version drift: brainpalace_dashboard.__version__={dashboard_module} "
         f"server={server_version}. Keep __init__.py __version__ in lockstep."
+    )
+
+
+def test_plugin_manifest_version_matches_server() -> None:
+    """The Claude Code plugin ships in lockstep with cli/server.
+
+    ``plugin.json``'s ``version`` is the freshness key that
+    ``plugin_detect.available_plugin_version()`` reads at the latest release tag
+    to decide whether the installed plugin is behind. If a release doesn't bump
+    it, ``brainpalace plugin status`` / the ``brainpalace update`` tail report
+    "up to date" forever — even when the plugin's hooks/skills changed — and the
+    user is never offered ``claude plugin update``. Lockstep + this guard prevent
+    that.
+    """
+    server_version = _pyproject_version("brainpalace-server/pyproject.toml")
+    plugin_version = _json_at(
+        "brainpalace-plugin/.claude-plugin/plugin.json", "version"
+    )
+    assert plugin_version == server_version, (
+        f"Version drift: plugin.json={plugin_version} server={server_version}. "
+        "Bump brainpalace-plugin/.claude-plugin/plugin.json in lockstep "
+        "(see docs/RELEASING.md) — it drives Claude Code plugin-update detection."
+    )
+
+
+def test_marketplace_plugin_entry_version_matches_server() -> None:
+    """The marketplace's plugin entry must match the plugin it lists, so the
+    catalog never advertises a stale version. (The marketplace catalog's own
+    top-level ``version`` is a separate concept and is not guarded here.)"""
+    server_version = _pyproject_version("brainpalace-server/pyproject.toml")
+    entry_version = _json_at(".claude-plugin/marketplace.json", "plugins", 0, "version")
+    assert entry_version == server_version, (
+        f"Version drift: marketplace.json plugin entry={entry_version} "
+        f"server={server_version}. Bump the plugins[0].version entry in lockstep "
+        "(see docs/RELEASING.md)."
     )

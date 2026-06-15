@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "brainpalace-rag"
-version = "26.6.44"
+version = "26.6.45"
 description = "BrainPalace RAG - Intelligent document indexing and semantic search server that gives AI agents long-term memory"
 authors = ["bxw91"]
 readme = "README.md"

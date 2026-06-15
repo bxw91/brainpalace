@@ -186,14 +186,82 @@ def _run_cmd(cmd: list[str], home: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(cmd, cwd=home, capture_output=True, text=True)
 
 
-def _stop_all_instances(servers: list[str], *, argv: list[str], home: str) -> None:
-    """Stop EVERY running instance before the upgrade.
+#: How long to wait for SIGTERM'd processes to actually exit before escalating
+#: to SIGKILL, and the poll interval while waiting. SIGTERM is asynchronous —
+#: a server/dashboard is mid-teardown (socket close, flush) when ``stop``
+#: returns, so we must poll for real death, not trust the stop command's exit.
+_STOP_GRACE_SECS = 5.0
+_STOP_KILL_GRACE_SECS = 2.0
+_STOP_POLL_SECS = 0.25
 
-    Registry servers are stopped by path; orphan servers (another install
-    surface) and every dashboard (tracked + climbed-port strays) are reaped via
-    the process-scan reapers. After this returns nothing BrainPalace is running,
-    so the upgrade can't silently leave old code serving.
-    """
+
+def _live_survivors() -> tuple[list[str], list[int]]:
+    """``(alive server roots, alive dashboard pids)`` right now (best-effort)."""
+    try:
+        servers = running_servers()
+    except Exception:
+        servers = []
+    return servers, _dashboard_orphan_pids()
+
+
+def _server_pids(roots: list[str]) -> list[int]:
+    """``runtime.json`` pids for the given still-alive server roots (when known)."""
+    try:
+        from brainpalace_cli.commands.list_cmd import (  # noqa: PLC0415
+            get_registry,
+            read_runtime,
+        )
+    except Exception:
+        return []
+    pids: list[int] = []
+    for root, entry in get_registry().items():
+        if root not in roots:
+            continue
+        runtime = read_runtime(Path(entry.get("state_dir", ""))) or {}
+        pid = runtime.get("pid")
+        if pid:
+            try:
+                pids.append(int(pid))
+            except (TypeError, ValueError):
+                continue
+    return pids
+
+
+def _wait_until_stopped(grace: float) -> tuple[list[str], list[int]]:
+    """Poll until nothing is alive or ``grace`` seconds elapse; return survivors."""
+    import time  # noqa: PLC0415
+
+    deadline = time.monotonic() + grace
+    servers, dash_pids = _live_survivors()
+    while (servers or dash_pids) and time.monotonic() < deadline:
+        time.sleep(_STOP_POLL_SECS)
+        servers, dash_pids = _live_survivors()
+    return servers, dash_pids
+
+
+def _sigkill_pids(pids: list[int]) -> None:
+    """SIGKILL each pid, ignoring already-dead / permission errors."""
+    import os  # noqa: PLC0415
+    import signal  # noqa: PLC0415
+
+    for pid in pids:
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except OSError:
+            pass
+
+
+def _warn_survivors(servers: list[str], dash_pids: list[int]) -> None:
+    """Loud warning naming the processes that refused to die."""
+    console.print("  [red]Still alive after SIGKILL:[/]")
+    for root in servers:
+        console.print(f"    [red]server[/] {root}")
+    for pid in dash_pids:
+        console.print(f"    [red]dashboard pid[/] {pid}")
+
+
+def _issue_stops(servers: list[str], *, argv: list[str], home: str) -> None:
+    """Fire the graceful (SIGTERM) stop for every server + the dashboard."""
     for project_root in servers:
         console.print(f"  [dim]stopping server[/] {project_root}")
         _run_cmd([*argv, "stop", "--path", project_root, "--json"], home)
@@ -201,6 +269,46 @@ def _stop_all_instances(servers: list[str], *, argv: list[str], home: str) -> No
     console.print("  [dim]stopping dashboard[/]")
     # `dashboard stop` reaps every dashboard (tracked + strays).
     _run_cmd([*argv, "dashboard", "stop"], home)
+
+
+def _stop_all_instances(
+    servers: list[str], *, argv: list[str], home: str, yes: bool = False
+) -> bool:
+    """Stop EVERY running instance before the upgrade, and VERIFY it stuck.
+
+    Registry servers are stopped by path; orphan servers (another install
+    surface) and every dashboard (tracked + climbed-port strays) are reaped via
+    the process-scan reapers. ``stop`` only sends SIGTERM and returns before the
+    process has finished exiting, so we then **poll for real death** and, if
+    anything is still alive, **escalate to SIGKILL** — otherwise the upgrade
+    would silently install over old code that's still serving.
+
+    On a process that survives even SIGKILL: warn, then (interactive) offer to
+    retry the whole stop cycle or continue anyway; under ``--yes`` warn and
+    continue. Returns ``True`` when everything is confirmed stopped, ``False``
+    when the caller is proceeding with survivors still alive.
+    """
+    _issue_stops(servers, argv=argv, home=home)
+    while True:
+        srv, dash_pids = _wait_until_stopped(_STOP_GRACE_SECS)
+        if not srv and not dash_pids:
+            return True
+
+        console.print("  [yellow]still alive after SIGTERM — escalating to SIGKILL[/]")
+        _sigkill_pids(_server_pids(srv) + dash_pids)
+        srv, dash_pids = _wait_until_stopped(_STOP_KILL_GRACE_SECS)
+        if not srv and not dash_pids:
+            return True
+
+        _warn_survivors(srv, dash_pids)
+        if yes:
+            console.print("  [yellow]--yes: continuing despite survivors.[/]")
+            return False
+        if not click.confirm(
+            "Retry stopping the survivor(s)? (No = upgrade anyway)", default=True
+        ):
+            return False
+        _issue_stops(srv, argv=argv, home=home)
 
 
 def _restart_and_verify(
@@ -408,7 +516,12 @@ def update_command(yes: bool, no_restart: bool) -> None:
 
     if servers or dashboard_live:
         console.print("[bold]Stopping all instances…[/]")
-        _stop_all_instances(servers, argv=bp, home=home)
+        if not _stop_all_instances(servers, argv=bp, home=home, yes=yes):
+            console.print(
+                "[yellow]Proceeding with the upgrade while some processes are "
+                "still alive — they keep the OLD code until you stop them "
+                "manually and restart.[/]"
+            )
 
     # Run from $HOME so pipx doesn't mistake 'brainpalace-cli' for a local path
     # when the cwd happens to contain a matching subdirectory.
