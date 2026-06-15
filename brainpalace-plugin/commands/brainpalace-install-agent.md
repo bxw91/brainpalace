@@ -73,13 +73,16 @@ brainpalace install-agent --agent <runtime> [--project|--global] [--plugin-dir <
 
 ### Install Directories
 
-| Runtime | Project Scope | Global Scope |
-|---------|---------------|--------------|
-| Claude | `.claude/plugins/brainpalace/` | `~/.claude/plugins/brainpalace/` |
-| OpenCode | `.opencode/plugins/brainpalace/` | `~/.config/opencode/plugins/brainpalace/` |
-| Gemini | `.gemini/plugins/brainpalace/` | `~/.config/gemini/plugins/brainpalace/` |
-| Codex | `.codex/skills/brainpalace/` | `~/.codex/skills/brainpalace/` |
-| skill-runtime | Requires `--dir` | Requires `--dir` |
+<!--GENERATED:install-dirs-->
+| Runtime | Project dir | Global dir |
+|---------|-------------|------------|
+| `claude` | `.claude/plugins/brainpalace` | `~/.claude/plugins/brainpalace` |
+| `opencode` | `.opencode/plugins/brainpalace` | `~/.config/opencode/plugins/brainpalace` |
+| `gemini` | `.gemini/plugins/brainpalace` | `~/.config/gemini/plugins/brainpalace` |
+| `codex` | `.codex/skills/brainpalace` | `~/.codex/skills/brainpalace` |
+<!--/GENERATED-->
+
+`skill-runtime` has no fixed install dir — it requires `--dir /path/to/skills`.
 
 ## Execution
 

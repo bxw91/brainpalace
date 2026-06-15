@@ -39,10 +39,14 @@ import sys
 # Project root: where this script lives is scripts/, so go up one level
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
-# Same audited doc set as add_audit_metadata.py / check_doc_links.py
+# Same audited doc set as add_audit_metadata.py / check_doc_links.py. Skill
+# SKILL.md files are GLOBBED so a brand-new skill is registered automatically by
+# `add_audit_metadata.py` — no manual edit. The one generated, ai-guidance-gated
+# SKILL.md is removed by FRESHNESS_EXEMPT below (it must not be double-gated).
 DEFAULT_GLOBS = [
     "docs/*.md",
     "brainpalace-plugin/commands/*.md",
+    "brainpalace-plugin/skills/*/SKILL.md",
     "brainpalace-plugin/skills/*/references/*.md",
     "brainpalace-plugin/agents/*.md",
 ]
@@ -52,7 +56,20 @@ STANDALONE_FILES = [
     "CLAUDE.md",
     "AGENTS.md",
     ".claude/CLAUDE.md",
+    # Plugin README is a single fixed file (not glob-varying); register it here.
+    "brainpalace-plugin/README.md",
 ]
+
+# SKILL.md files owned by ANOTHER gate and excluded from freshness (repo-relative).
+# Single-sourced from the doc-sync allowlist; fall back to the known path when
+# brainpalace_cli isn't importable in an ad-hoc run.
+try:
+    sys.path.insert(0, os.path.join(PROJECT_ROOT, "brainpalace-cli"))
+    from brainpalace_cli.doc_sync.allowlist import PLUGIN_DOC_GATE_EXEMPT
+
+    FRESHNESS_EXEMPT = set(PLUGIN_DOC_GATE_EXEMPT)
+except Exception:  # noqa: BLE001 — best-effort import; fall back to the known path
+    FRESHNESS_EXEMPT = {"brainpalace-plugin/skills/using-brainpalace/SKILL.md"}
 
 #: Sidecar manifest of authored-content hashes (kept out of doc frontmatter so
 #: docs render clean on GitHub). Maps repo-relative path -> sha256 hex.
@@ -90,6 +107,11 @@ def resolve_files(root: str, globs: list) -> list:
         if os.path.isfile(full):
             files.add(os.path.abspath(full))
     files = {f for f in files if "/plans/" not in f and "/design/" not in f}
+    files = {
+        f
+        for f in files
+        if os.path.relpath(f, root).replace(os.sep, "/") not in FRESHNESS_EXEMPT
+    }
     return sorted(files)
 
 

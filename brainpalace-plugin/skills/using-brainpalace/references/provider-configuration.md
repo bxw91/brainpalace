@@ -12,23 +12,36 @@ BrainPalace supports pluggable providers for embeddings and summarization. This 
 
 Embeddings convert text into vector representations for semantic search.
 
-| Provider | Models | API Key | Characteristics |
-|----------|--------|---------|-----------------|
-| OpenAI | text-embedding-3-large, text-embedding-3-small, text-embedding-ada-002 | OPENAI_API_KEY | High quality, 3072 dimensions (large), industry standard |
-| Cohere | embed-english-v3.0, embed-multilingual-v3.0, embed-english-light-v3.0 | COHERE_API_KEY | Multi-language, 1024 dimensions, good for international content |
-| Ollama | nomic-embed-text, mxbai-embed-large, all-minilm | None (local) | Privacy-first, no API costs, runs on your machine |
+<!--GENERATED:providers-embedding-->
+| Provider | API key env var | Models (default first) |
+|----------|-----------------|------------------------|
+| `openai` | `OPENAI_API_KEY` | `text-embedding-3-large`, `text-embedding-3-small` |
+| `cohere` | `COHERE_API_KEY` | `embed-english-v3.0`, `embed-multilingual-v3.0` |
+| `ollama` | _(none — local)_ | `nomic-embed-text`, `mxbai-embed-large` |
+<!--/GENERATED-->
+
+Characteristics: OpenAI is highest-quality (3072 dims for `-large`, industry standard);
+Cohere is multi-language (1024 dims); Ollama runs locally, privacy-first, no API cost.
+Other supported models (not the recommended defaults): `text-embedding-ada-002` (OpenAI,
+legacy), `embed-english-light-v3.0` (Cohere), `all-minilm` (Ollama).
 
 ### Summarization Providers
 
 Summarization generates concise descriptions of code and documents during indexing.
 
-| Provider | Models | API Key | Characteristics |
-|----------|--------|---------|-----------------|
-| Anthropic | claude-haiku-4-5-20251001, claude-sonnet-4-5-20250514, claude-opus-4-5-20251101 | ANTHROPIC_API_KEY | High quality, code-aware, fast |
-| OpenAI | gpt-5, gpt-5-mini | OPENAI_API_KEY | Versatile, good code understanding |
-| Gemini | gemini-3.1-flash-lite, gemini-3.5-flash | GOOGLE_API_KEY | Fast, good for large contexts |
-| Grok | grok-4 | XAI_API_KEY | xAI's model, conversational style |
-| Ollama | llama4:scout, mistral-small3.2, qwen3-coder, gemma3 | None (local) | Privacy-first, no API costs |
+<!--GENERATED:providers-summarization-->
+| Provider | API key env var | Models (default first) |
+|----------|-----------------|------------------------|
+| `anthropic` | `ANTHROPIC_API_KEY` | `claude-haiku-4-5-20251001`, `claude-sonnet-4-5-20250514` |
+| `openai` | `OPENAI_API_KEY` | `gpt-5-mini`, `gpt-5` |
+| `gemini` | `GEMINI_API_KEY` | `gemini-3.1-flash-lite`, `gemini-3.5-flash` |
+| `grok` | `XAI_API_KEY` | `grok-4`, `grok-4-fast` |
+| `ollama` | _(none — local)_ | `llama4:scout`, `mistral-small3.2`, `qwen3-coder` |
+<!--/GENERATED-->
+
+Characteristics: Anthropic is code-aware and fast; OpenAI is versatile; Gemini is fast on
+large contexts; Grok is conversational; Ollama runs locally, no API cost. Other supported
+models: `claude-opus-4-5-20251101` (Anthropic), `gemma3` (Ollama).
 
 ## Configuration Methods
 
@@ -288,7 +301,7 @@ ANTHROPIC_API_KEY=sk-ant-...
 ```bash
 SUMMARIZATION_PROVIDER=gemini
 SUMMARIZATION_MODEL=gemini-3.1-flash-lite
-GOOGLE_API_KEY=...
+GEMINI_API_KEY=...
 ```
 
 **Available Models:**
@@ -317,10 +330,15 @@ RERANKER_MAX_CANDIDATES=100   # Cap on Stage 1 results
 
 **Reranker Providers:**
 
-| Provider | Models | API Key | Characteristics |
-|----------|--------|---------|-----------------|
-| SentenceTransformers | cross-encoder/ms-marco-MiniLM-L-6-v2 | None (local) | Fast local cross-encoder, no API costs |
-| Ollama | (reranker-compatible models) | None (local) | Uses Ollama for reranking |
+<!--GENERATED:providers-reranker-->
+| Provider | API key env var | Models (default first) |
+|----------|-----------------|------------------------|
+| `sentence-transformers` | _(none — local)_ | `cross-encoder/ms-marco-MiniLM-L-6-v2`, `cross-encoder/ms-marco-MiniLM-L-12-v2` |
+| `ollama` | _(none — local)_ | `llama3.2:1b` |
+<!--/GENERATED-->
+
+Both run locally with no API cost: sentence-transformers uses a fast local
+cross-encoder; Ollama reranks via a local Ollama model.
 
 **YAML Configuration:**
 ```yaml
@@ -343,11 +361,8 @@ brainpalace config show
 # Verify providers are working
 brainpalace verify
 
-# Test embedding provider
-brainpalace test-embedding "sample text"
-
-# Test summarization provider
-brainpalace test-summarize "sample code content"
+# Diagnose provider config + required API keys (embedding & summarization)
+brainpalace doctor
 ```
 
 ## Switching Providers

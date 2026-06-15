@@ -179,12 +179,29 @@ def config_dotpaths() -> list[str]:
     return sorted(out)
 
 
+def provider_registry() -> dict[str, dict[str, dict[str, object]]]:
+    """The canonical provider registry (kind -> provider -> info). Single source of
+    truth for which models / api-key env var each provider supports."""
+    from brainpalace_cli.providers import descriptor
+
+    return descriptor()
+
+
+def install_dir_map() -> dict[str, dict[str, str]]:
+    """runtime -> scope -> install path, from the install-agent command's map."""
+    from brainpalace_cli.commands.install_agent import INSTALL_DIRS
+
+    return {rt: dict(scopes) for rt, scopes in INSTALL_DIRS.items()}
+
+
 def live_snapshot() -> InterfaceSnapshot:
     from brainpalace_cli.cli import cli  # lightweight import: Click group only
 
     snap = snapshot_from_group(cli, source_version=_pkg_version("brainpalace-cli"))
     snap.config_keys = config_dotpaths()
     snap.mcp_tools = mcp_tool_names()
+    snap.providers = provider_registry()
+    snap.install_dirs = install_dir_map()
     return snap  # endpoints stay opt-in (Task 5), not loaded here
 
 

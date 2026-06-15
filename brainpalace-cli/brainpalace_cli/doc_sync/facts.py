@@ -81,6 +81,11 @@ class InterfaceSnapshot:
     config_keys: list[str] = field(default_factory=list)
     mcp_tools: list[str] = field(default_factory=list)
     endpoints: list[str] = field(default_factory=list)
+    # kind -> provider -> {models, needs_base_url, default_api_key_env}
+    # (from brainpalace_cli.providers.PROVIDERS — the canonical provider registry).
+    providers: dict[str, dict[str, dict[str, Any]]] = field(default_factory=dict)
+    # runtime -> scope -> install path (from install_agent.INSTALL_DIRS).
+    install_dirs: dict[str, dict[str, str]] = field(default_factory=dict)
 
 
 class DriftKind(str, Enum):

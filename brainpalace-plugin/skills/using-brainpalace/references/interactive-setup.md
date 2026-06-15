@@ -90,7 +90,7 @@ Choose embedding and summarization providers independently.
 | OpenAI | `OPENAI_API_KEY` | https://platform.openai.com/api-keys |
 | Anthropic | `ANTHROPIC_API_KEY` | https://console.anthropic.com/ |
 | Cohere | `COHERE_API_KEY` | https://dashboard.cohere.com/api-keys |
-| Gemini | `GOOGLE_API_KEY` | https://aistudio.google.com/apikey |
+| Gemini | `GEMINI_API_KEY` | https://aistudio.google.com/apikey |
 | Grok | `XAI_API_KEY` | https://console.x.ai/ |
 
 ### Setting Environment Variables

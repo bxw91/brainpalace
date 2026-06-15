@@ -317,13 +317,17 @@ brainpalace install-agent --agent claude --global
 
 ### Supported Runtimes
 
-| Runtime | Install Dir (project) | Format |
-|---------|----------------------|--------|
-| `claude` | `.claude/plugins/brainpalace` | Claude plugin |
-| `opencode` | `.opencode/plugins/brainpalace` | OpenCode plugin |
-| `gemini` | `.gemini/plugins/brainpalace` | Gemini plugin |
-| `codex` | `.codex/skills/brainpalace` | Skill dirs + AGENTS.md |
-| `skill-runtime` | (requires `--dir`) | Generic skill dirs |
+<!--GENERATED:install-dirs-->
+| Runtime | Project dir | Global dir |
+|---------|-------------|------------|
+| `claude` | `.claude/plugins/brainpalace` | `~/.claude/plugins/brainpalace` |
+| `opencode` | `.opencode/plugins/brainpalace` | `~/.config/opencode/plugins/brainpalace` |
+| `gemini` | `.gemini/plugins/brainpalace` | `~/.config/gemini/plugins/brainpalace` |
+| `codex` | `.codex/skills/brainpalace` | `~/.codex/skills/brainpalace` |
+<!--/GENERATED-->
+
+`skill-runtime` is also supported for any generic skill-based runtime; it has no
+fixed install dir, so it requires `--dir /path/to/skills`.
 
 ---
 
@@ -331,30 +335,36 @@ brainpalace install-agent --agent claude --global
 
 Guide users through configuring all supported providers:
 
-### Embedding Providers (3)
+### Embedding Providers
 
-| Provider | Env Var | Models |
-|----------|---------|--------|
-| OpenAI | `OPENAI_API_KEY` | text-embedding-3-large, text-embedding-3-small |
-| Cohere | `COHERE_API_KEY` | embed-english-v3.0, embed-multilingual-v3.0 |
-| Ollama | (none - local) | nomic-embed-text, mxbai-embed-large |
+<!--GENERATED:providers-embedding-->
+| Provider | API key env var | Models (default first) |
+|----------|-----------------|------------------------|
+| `openai` | `OPENAI_API_KEY` | `text-embedding-3-large`, `text-embedding-3-small` |
+| `cohere` | `COHERE_API_KEY` | `embed-english-v3.0`, `embed-multilingual-v3.0` |
+| `ollama` | _(none — local)_ | `nomic-embed-text`, `mxbai-embed-large` |
+<!--/GENERATED-->
 
-### Summarization Providers (5)
+### Summarization Providers
 
-| Provider | Env Var | Models |
-|----------|---------|--------|
-| Anthropic | `ANTHROPIC_API_KEY` | claude-haiku-4-5-20251001 |
-| OpenAI | `OPENAI_API_KEY` | gpt-5, gpt-5-mini |
-| Gemini | `GOOGLE_API_KEY` | gemini-3.1-flash-lite, gemini-3.5-flash |
-| Grok | `XAI_API_KEY` | grok-4 |
-| Ollama | (none - local) | llama4:scout, qwen3-coder |
+<!--GENERATED:providers-summarization-->
+| Provider | API key env var | Models (default first) |
+|----------|-----------------|------------------------|
+| `anthropic` | `ANTHROPIC_API_KEY` | `claude-haiku-4-5-20251001`, `claude-sonnet-4-5-20250514` |
+| `openai` | `OPENAI_API_KEY` | `gpt-5-mini`, `gpt-5` |
+| `gemini` | `GEMINI_API_KEY` | `gemini-3.1-flash-lite`, `gemini-3.5-flash` |
+| `grok` | `XAI_API_KEY` | `grok-4`, `grok-4-fast` |
+| `ollama` | _(none — local)_ | `llama4:scout`, `mistral-small3.2`, `qwen3-coder` |
+<!--/GENERATED-->
 
-### Reranker Providers (2, v8.0+)
+### Reranker Providers
 
-| Provider | Env Var | Models |
-|----------|---------|--------|
-| SentenceTransformers | (none - local) | cross-encoder/ms-marco-MiniLM-L-6-v2 |
-| Ollama | (none - local) | (reranker models) |
+<!--GENERATED:providers-reranker-->
+| Provider | API key env var | Models (default first) |
+|----------|-----------------|------------------------|
+| `sentence-transformers` | _(none — local)_ | `cross-encoder/ms-marco-MiniLM-L-6-v2`, `cross-encoder/ms-marco-MiniLM-L-12-v2` |
+| `ollama` | _(none — local)_ | `llama3.2:1b` |
+<!--/GENERATED-->
 
 ---
 

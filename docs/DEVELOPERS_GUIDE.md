@@ -209,8 +209,35 @@ Enforcement is automated. `task lint:doc-freshness` (run as part of
 `task before-push`) fails if any audited doc's authored content differs from its
 manifest hash, or has no manifest entry. The audited set is the same globs used
 by the audit scripts: `docs/*.md`, `brainpalace-plugin/commands/*.md`,
-`brainpalace-plugin/skills/*/references/*.md`, `brainpalace-plugin/agents/*.md`,
-plus `README.md`, `CLAUDE.md`, `AGENTS.md`.
+`brainpalace-plugin/skills/*/SKILL.md`, `brainpalace-plugin/skills/*/references/*.md`,
+`brainpalace-plugin/agents/*.md`, plus the standalone files `README.md`,
+`CLAUDE.md`, `AGENTS.md`, and `brainpalace-plugin/README.md`. The generated
+`skills/using-brainpalace/SKILL.md` is removed via `FRESHNESS_EXEMPT` (single-sourced
+from `PLUGIN_DOC_GATE_EXEMPT`) — it is emitted from `ai_guidance.md` and gated by
+`lint:ai-guidance-parity`, so it must not be double-gated here.
+
+**Generated provider/install tables.** Provider tables (models + API-key env var
+per provider) and the runtime install-dir table are machine-owned `<!--GENERATED-->`
+blocks rendered from the LIVE registries — `brainpalace_cli.providers.PROVIDERS`
+and `install_agent.INSTALL_DIRS`. Change the registry in code, run
+`brainpalace sync-docs --fix`, and every block regenerates; `lint:doc-sync`
+(`ProviderTablesChecker`) fails if a block drifts. Block names: `providers-embedding`,
+`providers-summarization`, `providers-reranker`, `install-dirs`. To put a table
+under code control, drop the empty markers where it belongs and run `--fix`. Note:
+**only tables whose content equals the registry** (provider/env/models) should be
+generated — richer curated tables (e.g. the cost/dimension table in
+`docs/PROVIDER_CONFIGURATION.md`) carry facts not in the registry and stay
+human-authored + freshness-gated.
+
+This manifest doubles as the **registry for the `lint:doc-sync` plugin-docs
+gate** (`PluginDocsChecker`): that gate folder-scans `agents/*.md`,
+`skills/*/SKILL.md`, `skills/*/references/*.md`, and the plugin `README.md` for
+dangling command/skill references, and **fails closed** on any scanned doc that
+is neither in this manifest nor in `PLUGIN_DOC_GATE_EXEMPT`. Because both the gate
+and the freshness scripts glob those folders, a brand-new agent, reference, **or
+skill** is covered automatically: the normal `add_audit_metadata.py` stamp
+registers it — no manual file-list edit. The only manual step is for a doc that
+must *not* be gated (rare): add it to `PLUGIN_DOC_GATE_EXEMPT` with a reason.
 
 To clear staleness after actually re-reading the docs:
 ```bash

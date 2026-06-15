@@ -1,3 +1,7 @@
+---
+last_validated: 2026-06-15
+---
+
 # BrainPalace Plugin
 
 A Claude Code plugin for document search with hybrid BM25/semantic retrieval. Index your documentation and source code, then search using keyword matching, semantic similarity, or combined hybrid mode.

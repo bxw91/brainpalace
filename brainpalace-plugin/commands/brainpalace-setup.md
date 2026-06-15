@@ -106,8 +106,7 @@ Options:
 1. Ollama (FREE, local) - nomic-embed-text, runs on your machine, no API key needed
 2. OpenAI - text-embedding-3-large, best quality cloud embeddings, requires OPENAI_API_KEY
 3. Cohere - embed-multilingual-v3.0, multi-language support, requires COHERE_API_KEY
-4. Google Gemini - text-embedding-004, Google's cloud embeddings, requires GOOGLE_API_KEY
-5. Custom - specify your own provider, model, and base_url
+4. Custom - specify your own provider, model, and base_url
 ```
 
 Record the selection as `embedding.provider` and `embedding.model`. If a cloud provider is selected, ask for the API key or `api_key_env` reference:
@@ -136,7 +135,7 @@ Use AskUserQuestion to ask which summarization provider to use. **Default** to
 the provider chosen for embedding in Step 2 when it can also summarize
 (`openai` → OpenAI, `ollama` → Ollama); otherwise default to whichever
 summarization API key is already set in the environment (`OPENAI_API_KEY` →
-OpenAI, `ANTHROPIC_API_KEY` → Anthropic, `GOOGLE_API_KEY` → Gemini), falling back
+OpenAI, `ANTHROPIC_API_KEY` → Anthropic, `GEMINI_API_KEY` → Gemini), falling back
 to Anthropic. (Mirrors the CLI `config wizard` behavior — keep them aligned.)
 
 ```
@@ -147,7 +146,7 @@ Options:
 2. Ollama + Mistral (FREE, local) - mistral-small3.2, better summarization quality, no API key needed
 3. Anthropic - claude-haiku-4-5-20251001, fast and cost-effective, requires ANTHROPIC_API_KEY
 4. OpenAI - gpt-5-mini, OpenAI summarization, requires OPENAI_API_KEY
-5. Google Gemini - gemini-3.1-flash-lite, Google's model, requires GOOGLE_API_KEY
+5. Google Gemini - gemini-3.1-flash-lite, Google's model, requires GEMINI_API_KEY
 6. Grok (xAI) - grok-4-fast, xAI's fast model, requires XAI_API_KEY
 ```
 

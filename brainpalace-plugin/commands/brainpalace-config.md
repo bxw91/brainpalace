@@ -136,7 +136,7 @@ Which provider setup would you like for BrainPalace?
 Options:
 1. Ollama (Local) - FREE, no API keys required. Uses nomic-embed-text + llama3.2
 2. OpenAI + Anthropic - Best quality cloud providers. Requires OPENAI_API_KEY and ANTHROPIC_API_KEY
-3. Google Gemini - Google's models. Requires GOOGLE_API_KEY
+3. Google Gemini - Google's models. Requires GEMINI_API_KEY
 4. Custom Mix - Choose different providers for embedding vs summarization
 5. Ollama + Mistral - FREE, uses nomic-embed-text + mistral-small3.2 (better summarization)
 ```
@@ -241,7 +241,7 @@ No API keys needed!
 === Google Gemini Setup ===
 
 1. Get key: https://aistudio.google.com/apikey
-2. Set: export GOOGLE_API_KEY="AIza..."
+2. Set: export GEMINI_API_KEY="AIza..."
 
 Create config file (~/.config/brainpalace/config.yaml):
 
@@ -265,7 +265,7 @@ export EMBEDDING_PROVIDER=gemini
 export EMBEDDING_MODEL=text-embedding-004
 export SUMMARIZATION_PROVIDER=gemini
 export SUMMARIZATION_MODEL=gemini-3.1-flash-lite
-export GOOGLE_API_KEY="AIza..."
+export GEMINI_API_KEY="AIza..."
 ```
 
 **For Custom Mix (Option 4):**
@@ -341,7 +341,7 @@ Provider Options:
 
 3. GOOGLE GEMINI (Cloud)
    - Google's models (summarization only — Gemini embeddings are not supported)
-   - Requires: GOOGLE_API_KEY
+   - Requires: GEMINI_API_KEY
    - Models: gemini-3.1-flash-lite (summarization)
 
 4. CUSTOM MIX
@@ -424,7 +424,7 @@ Cloud provider selected but API key not set.
 
 For OpenAI:    export OPENAI_API_KEY="sk-proj-..."
 For Anthropic: export ANTHROPIC_API_KEY="sk-ant-..."
-For Google:    export GOOGLE_API_KEY="AIza..."
+For Google:    export GEMINI_API_KEY="AIza..."
 For xAI:       export XAI_API_KEY="xai-..."
 ```
 

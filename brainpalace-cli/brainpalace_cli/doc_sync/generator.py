@@ -8,7 +8,7 @@ import re
 import subprocess
 from pathlib import Path
 
-from brainpalace_cli.doc_sync.facts import CommandFact
+from brainpalace_cli.doc_sync.facts import CommandFact, InterfaceSnapshot
 from brainpalace_cli.doc_sync.markers import (
     CLOSE,
     OPEN_FMT,
@@ -115,3 +115,25 @@ def regenerate_query_modes(path: Path, modes: list[str]) -> None:
             + f"{OPEN_FMT.format(name='modes')}\n{table}\n{CLOSE}\n"
         )
     path.write_text(text, encoding="utf-8")
+
+
+def regenerate_provider_tables(path: Path, snap: InterfaceSnapshot) -> bool:
+    """Refresh every provider/install GENERATED block PRESENT in ``path`` from the
+    live registry. Only existing blocks are rewritten (these tables are placed by a
+    human where they belong, never auto-appended). Returns True if the file changed.
+    """
+    from brainpalace_cli.doc_sync.checkers.provider_tables import GENERATED_RENDERERS
+
+    text = path.read_text(encoding="utf-8")
+    original = text
+    for name, render in GENERATED_RENDERERS.items():
+        if OPEN_FMT.format(name=name) not in text:
+            continue
+        try:
+            text = replace_block(text, name, render(snap))
+        except MarkerError:
+            continue  # malformed markers — the checker reports it as INVALID
+    if text != original:
+        path.write_text(text, encoding="utf-8")
+        return True
+    return False

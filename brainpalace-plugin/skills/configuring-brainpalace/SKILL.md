@@ -17,6 +17,7 @@ metadata:
   category: ai-tools
   author: bxw91
   last_validated: 2026-06-13
+last_validated: 2026-06-15
 ---
 
 # Configuring BrainPalace
@@ -168,7 +169,7 @@ The wizard asks the following questions in sequence:
 | Ollama + Mistral (FREE, local) | `ollama` | `mistral-small3.2` | Better summarization quality |
 | Anthropic | `anthropic` | `claude-haiku-4-5-20251001` | Requires `ANTHROPIC_API_KEY` |
 | OpenAI | `openai` | `gpt-5-mini` | Requires `OPENAI_API_KEY` |
-| Google Gemini | `gemini` | `gemini-3.1-flash-lite` (cheapest; premium e.g. `gemini-3.5-flash` or `gemini-3.1-pro-preview` can be set manually) | Requires `GOOGLE_API_KEY` |
+| Google Gemini | `gemini` | `gemini-3.1-flash-lite` (cheapest; premium e.g. `gemini-3.5-flash` or `gemini-3.1-pro-preview` can be set manually) | Requires `GEMINI_API_KEY` |
 | Grok (xAI) | `grok` | `grok-4-fast` | Requires `XAI_API_KEY` |
 
 ### Config.yaml Written by Wizard
@@ -546,7 +547,7 @@ issues: `brainpalace doctor`.
 | `SUMMARIZATION_MODEL` | No | `claude-haiku-4-5-20251001` | Model name |
 | `OPENAI_API_KEY` | Conditional | - | Required if using OpenAI |
 | `ANTHROPIC_API_KEY` | Conditional | - | Required if using Anthropic |
-| `GOOGLE_API_KEY` | Conditional | - | Required if using Gemini |
+| `GEMINI_API_KEY` | Conditional | - | Required if using Gemini |
 | `XAI_API_KEY` | Conditional | - | Required if using Grok |
 | `COHERE_API_KEY` | Conditional | - | Required if using Cohere |
 | `EMBEDDING_CACHE_MAX_MEM_ENTRIES` | No | 1000 | Max in-memory LRU entries (~12 MB at 3072 dims per 1000 entries) |

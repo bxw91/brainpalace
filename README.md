@@ -50,7 +50,7 @@ same prerequisites and end with the same `brainpalace` CLI on your `PATH`.
 | Python 3.12+ | **Only for the web dashboard** — it's auto-included on 3.12+; on 3.10/3.11 the dashboard is skipped and the CLI/server still install and run |
 | `pipx` | Isolated install for the CLI (`apt install pipx` or `brew install pipx`, then `pipx ensurepath`) |
 | `git` | The installer fetches BrainPalace from GitHub |
-| One provider — cloud key **or** Ollama | Cloud: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `COHERE_API_KEY`, `GEMINI_API_KEY`, `GROK_API_KEY`. Local-only: a running Ollama with an embedding model pulled |
+| One provider — cloud key **or** Ollama | Cloud: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `COHERE_API_KEY`, `GEMINI_API_KEY`, `XAI_API_KEY`. Local-only: a running Ollama with an embedding model pulled |
 | Claude Code CLI | **Only** for the Claude Code plugin path below |
 
 ---
@@ -382,26 +382,32 @@ Found 2 results in 540ms
 > first model in each row is the recommended default.
 
 ### Embedding Providers
-| Provider | Models | Local |
-|----------|--------|-------|
-| OpenAI | text-embedding-3-large, text-embedding-3-small | No |
-| Cohere | embed-english-v3.0, embed-multilingual-v3.0 | No |
-| Ollama | nomic-embed-text, mxbai-embed-large | Yes |
+<!--GENERATED:providers-embedding-->
+| Provider | API key env var | Models (default first) |
+|----------|-----------------|------------------------|
+| `openai` | `OPENAI_API_KEY` | `text-embedding-3-large`, `text-embedding-3-small` |
+| `cohere` | `COHERE_API_KEY` | `embed-english-v3.0`, `embed-multilingual-v3.0` |
+| `ollama` | _(none — local)_ | `nomic-embed-text`, `mxbai-embed-large` |
+<!--/GENERATED-->
 
 ### Summarisation Providers
-| Provider | Models | Local |
-|----------|--------|-------|
-| Anthropic | claude-haiku-4-5-20251001, claude-sonnet-4-5-20250514 | No |
-| OpenAI | gpt-5-mini, gpt-5 | No |
-| Gemini | gemini-3.1-flash-lite, gemini-3.5-flash | No |
-| Grok | grok-4, grok-4-fast | No |
-| Ollama | llama4:scout, mistral-small3.2, qwen3-coder | Yes |
+<!--GENERATED:providers-summarization-->
+| Provider | API key env var | Models (default first) |
+|----------|-----------------|------------------------|
+| `anthropic` | `ANTHROPIC_API_KEY` | `claude-haiku-4-5-20251001`, `claude-sonnet-4-5-20250514` |
+| `openai` | `OPENAI_API_KEY` | `gpt-5-mini`, `gpt-5` |
+| `gemini` | `GEMINI_API_KEY` | `gemini-3.1-flash-lite`, `gemini-3.5-flash` |
+| `grok` | `XAI_API_KEY` | `grok-4`, `grok-4-fast` |
+| `ollama` | _(none — local)_ | `llama4:scout`, `mistral-small3.2`, `qwen3-coder` |
+<!--/GENERATED-->
 
 ### Reranker Providers
-| Provider | Models | Local |
-|----------|--------|-------|
-| sentence-transformers | cross-encoder/ms-marco-MiniLM-L-6-v2, cross-encoder/ms-marco-MiniLM-L-12-v2 | Yes |
-| Ollama | llama3.2:1b | Yes |
+<!--GENERATED:providers-reranker-->
+| Provider | API key env var | Models (default first) |
+|----------|-----------------|------------------------|
+| `sentence-transformers` | _(none — local)_ | `cross-encoder/ms-marco-MiniLM-L-6-v2`, `cross-encoder/ms-marco-MiniLM-L-12-v2` |
+| `ollama` | _(none — local)_ | `llama3.2:1b` |
+<!--/GENERATED-->
 
 ### Fully Local Mode
 

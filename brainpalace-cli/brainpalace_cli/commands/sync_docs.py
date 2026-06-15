@@ -15,9 +15,11 @@ from brainpalace_cli.doc_sync.checkers.mcp import CANONICAL as MCP_CANONICAL
 from brainpalace_cli.doc_sync.checkers.mcp import McpChecker
 from brainpalace_cli.doc_sync.checkers.modes import CANONICAL as MODES_CANONICAL
 from brainpalace_cli.doc_sync.checkers.modes import ModesChecker
+from brainpalace_cli.doc_sync.checkers.provider_tables import ProviderTablesChecker
 from brainpalace_cli.doc_sync.checkers.skills import SkillsChecker
 from brainpalace_cli.doc_sync.generator import (
     regenerate_mcp_tools,
+    regenerate_provider_tables,
     regenerate_query_modes,
 )
 from brainpalace_cli.doc_sync.introspect import (
@@ -32,18 +34,40 @@ from brainpalace_cli.doc_sync.orchestrator import render_report, run_check, run_
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _DOCS_DIR = _REPO_ROOT / "brainpalace-plugin" / "commands"
 _SKILLS_DIR = _REPO_ROOT / "brainpalace-plugin" / "skills"
+# Dev-only skills (e.g. authoring-brainpalace-docs) live in repo project scope, not
+# the shipped plugin; the SkillsChecker must still count them as live.
+_CLAUDE_SKILLS_DIR = _REPO_ROOT / ".claude" / "skills"
 _DOCS = _REPO_ROOT / "docs"
 _CFG_REFS = _SKILLS_DIR / "configuring-brainpalace" / "references"
+_PLUGIN = _REPO_ROOT / "brainpalace-plugin"
+# Roots scanned for provider/install GENERATED blocks (whole plugin tree + docs +
+# both READMEs). Recursive — a new doc that adds a block is covered automatically.
+_PROVIDER_DOC_ROOTS = [_PLUGIN, _DOCS, _REPO_ROOT / "README.md"]
+
+
+def _provider_doc_files() -> list[Path]:
+    out: set[Path] = set()
+    for root in _PROVIDER_DOC_ROOTS:
+        if root.is_file() and root.suffix == ".md":
+            out.add(root)
+        elif root.is_dir():
+            out.update(root.rglob("*.md"))
+    return sorted(out)
 
 
 def _checkers() -> list[Any]:
     return [
         CliCommandsChecker(docs_dir=_DOCS_DIR),
         ModesChecker(docs_dir=_DOCS_DIR),
-        SkillsChecker(skills_dir=_SKILLS_DIR, docs_dir=_DOCS_DIR),
+        SkillsChecker(
+            skills_dir=_SKILLS_DIR,
+            docs_dir=_DOCS_DIR,
+            extra_skills_dirs=[_CLAUDE_SKILLS_DIR],
+        ),
         ConfigChecker(doc_roots=[_DOCS_DIR, _DOCS, _CFG_REFS]),
         McpChecker(docs_dir=_DOCS_DIR),
         EndpointsChecker(doc_roots=[_DOCS]),
+        ProviderTablesChecker(doc_roots=_PROVIDER_DOC_ROOTS),
     ]
 
 
@@ -84,6 +108,8 @@ def sync_docs_command(mode_check: bool, mode_fix: bool) -> None:
     if mode_fix:
         regenerate_query_modes(_DOCS_DIR / MODES_CANONICAL, snap.modes)
         regenerate_mcp_tools(_DOCS_DIR / MCP_CANONICAL, snap.mcp_tools)
+        for doc in _provider_doc_files():
+            regenerate_provider_tables(doc, snap)
         prose_needed = run_fix(checkers, snap)
         for item in prose_needed:
             click.echo(

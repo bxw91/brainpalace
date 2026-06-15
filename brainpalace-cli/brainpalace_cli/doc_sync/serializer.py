@@ -5,6 +5,8 @@ shape so output never depends on a dumper's defaults."""
 
 from __future__ import annotations
 
+from typing import Any
+
 from brainpalace_cli.doc_sync.facts import CommandFact
 from brainpalace_cli.doc_sync.markers import CLOSE, OPEN_FMT
 
@@ -71,4 +73,35 @@ def render_modes_table(modes: list[str]) -> str:
         rows.append(
             f"| `{m}` |  |"
         )  # description is human prose, left blank by generator
+    return "\n".join(rows)
+
+
+def render_provider_table(
+    providers: dict[str, dict[str, dict[str, Any]]], kind: str
+) -> str:
+    """Provider table for one kind (embedding/summarization/reranker) from the
+    canonical PROVIDERS registry. Provider order = registry order; the first model
+    is the recommended default."""
+    rows = [
+        "| Provider | API key env var | Models (default first) |",
+        "|----------|-----------------|------------------------|",
+    ]
+    for provider, info in providers.get(kind, {}).items():
+        env = info.get("default_api_key_env")
+        env_cell = f"`{env}`" if env else "_(none — local)_"
+        models = ", ".join(f"`{m}`" for m in info.get("models", [])) or "—"
+        rows.append(f"| `{provider}` | {env_cell} | {models} |")
+    return "\n".join(rows)
+
+
+def render_install_dirs_table(install_dirs: dict[str, dict[str, str]]) -> str:
+    """Runtime install-path table from install_agent.INSTALL_DIRS (runtime order)."""
+    rows = [
+        "| Runtime | Project dir | Global dir |",
+        "|---------|-------------|------------|",
+    ]
+    for runtime, scopes in install_dirs.items():
+        project = scopes.get("project", "—")
+        glob = scopes.get("global", "—")
+        rows.append(f"| `{runtime}` | `{project}` | `{glob}` |")
     return "\n".join(rows)

@@ -232,7 +232,7 @@ export ANTHROPIC_API_KEY="sk-ant-..."
 
 | Provider | Config Field | Environment Variable |
 |----------|-------------|---------------------|
-| Google Gemini | `api_key` | `GOOGLE_API_KEY` |
+| Google Gemini | `api_key` | `GEMINI_API_KEY` |
 | Grok (xAI) | `api_key` | `XAI_API_KEY` |
 | Cohere | `api_key` | `COHERE_API_KEY` |
 | Ollama | (not needed) | (not needed) |
@@ -249,7 +249,7 @@ export ANTHROPIC_API_KEY="sk-ant-..."
 | `BRAINPALACE_MODE` | No | `project` | Instance mode: `project` or `shared` |
 | `OPENAI_API_KEY` | Conditional | - | OpenAI API key |
 | `ANTHROPIC_API_KEY` | Conditional | - | Anthropic API key |
-| `GOOGLE_API_KEY` | Conditional | - | Google/Gemini API key |
+| `GEMINI_API_KEY` | Conditional | - | Google/Gemini API key |
 | `XAI_API_KEY` | Conditional | - | Grok API key |
 | `COHERE_API_KEY` | Conditional | - | Cohere API key |
 | `EMBEDDING_PROVIDER` | No | `openai` | Embedding provider |

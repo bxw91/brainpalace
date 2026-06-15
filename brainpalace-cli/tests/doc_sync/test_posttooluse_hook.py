@@ -43,16 +43,26 @@ def test_never_blocks_on_garbage_input():
 
 
 def test_shim_is_thin_and_delegates():
-    shim = REPO / "brainpalace-plugin" / "hooks" / "posttooluse-docsync-hook.sh"
+    # Dev-only doc-sync nudge: repo project scope, NOT the shipped plugin.
+    shim = REPO / ".claude" / "hooks" / "posttooluse-docsync-hook.sh"
     assert shim.exists()
     text = shim.read_text()
     assert "brainpalace hook posttooluse" in text  # delegates to CLI
     assert "additionalContext" not in text  # no fat logic in the shim
 
 
-def test_plugin_json_registers_posttooluse():
-    plugin = REPO / "brainpalace-plugin" / ".claude-plugin" / "plugin.json"
-    data = json.loads(plugin.read_text())
+def test_repo_settings_register_posttooluse():
+    # Registered in repo .claude/settings.json (project hook), so it never ships
+    # to end users — its interface-source globs only match the brainpalace tree.
+    settings = REPO / ".claude" / "settings.json"
+    data = json.loads(settings.read_text())
     assert "PostToolUse" in data.get("hooks", {})
     cmd = json.dumps(data["hooks"]["PostToolUse"])
     assert "posttooluse-docsync-hook.sh" in cmd
+
+
+def test_plugin_json_does_not_ship_posttooluse():
+    # The dev-only doc-sync hook must NOT be in the distributed plugin.
+    plugin = REPO / "brainpalace-plugin" / ".claude-plugin" / "plugin.json"
+    data = json.loads(plugin.read_text())
+    assert "PostToolUse" not in data.get("hooks", {})

@@ -15,6 +15,37 @@ Entries are kept short (≤ 3 sentences and ≤ 320 characters); see
 
 ---
 
+## [Unreleased]
+
+## [26.6.47] - 2026-06-15
+
+### Added
+- **Plugin-docs doc-sync gate.** `lint:doc-sync` now folder-scans plugin agents,
+  skills (`SKILL.md` + references) and the plugin `README.md` for dangling
+  command/skill references and **fails closed** on any unregistered new doc, so a
+  new agent/skill can't enter ungated.
+- **Generated provider/install tables.** Provider and runtime install-dir tables
+  now regenerate from the live registries via `<!--GENERATED-->` blocks;
+  `lint:doc-sync` fails on drift. Converted across README, user/plugin guides,
+  setup-assistant + install-agent (fixed stale `GOOGLE_API_KEY`/`GROK_API_KEY`).
+
+### Changed
+- **Doc-sync dev tooling no longer ships to end users.** The
+  `authoring-brainpalace-docs` skill and the PostToolUse doc-sync nudge moved from
+  the distributed plugin to repo project scope (`.claude/skills`,
+  `.claude/settings.json`); the gate's `SkillsChecker` now also scans
+  `.claude/skills` so refs still resolve.
+
+### Fixed
+- **Dead provider-test commands in docs.** `using-brainpalace/references/provider-configuration.md`
+  showed the non-existent `brainpalace test-embedding` / `test-summarize`; replaced
+  with `brainpalace doctor` (the live provider check). Caught by the new plugin-docs gate.
+- **Wrong Gemini env var across plugin docs.** Corrected `GOOGLE_API_KEY` →
+  `GEMINI_API_KEY` (the var the code reads) everywhere in the plugin, and removed a
+  bogus "Gemini embeddings" setup option (Gemini is summarization-only here).
+
+---
+
 ## [26.6.46] - 2026-06-15
 
 ### Fixed

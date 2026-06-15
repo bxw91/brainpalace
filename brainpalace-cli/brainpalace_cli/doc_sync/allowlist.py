@@ -30,3 +30,12 @@ PLUGIN_ONLY_COMMAND_DOCS: dict[str, str] = {
     "verify": "plugin slash-command /brainpalace-verify (setup-assistant agent); "
     "no CLI subcommand — guided install/config verification",
 }
+
+# Plugin docs the PluginDocsChecker (plugin-docs surface) must NOT gate, keyed by
+# repo-relative path. Every entry names the gate that already owns the file, so an
+# exemption is reviewable and goes stale loudly if that other gate is removed.
+PLUGIN_DOC_GATE_EXEMPT: dict[str, str] = {
+    "brainpalace-plugin/skills/using-brainpalace/SKILL.md": "generated from "
+    "brainpalace-cli/brainpalace_cli/data/ai_guidance.md; gated by "
+    "lint:ai-guidance-parity (must not be hand-edited or double-owned here)",
+}

@@ -321,7 +321,9 @@ class TestParseRealPluginDir:
         bundle = parse_plugin_dir(real_plugin_dir)
         assert len(bundle.commands) >= 29
         assert len(bundle.agents) >= 3
-        assert len(bundle.skills) >= 3
+        # Plugin ships 2 skills (using-brainpalace, configuring-brainpalace);
+        # authoring-brainpalace-docs is dev-only, moved to repo .claude/skills.
+        assert len(bundle.skills) >= 2
         assert bundle.manifest.name == "brainpalace"
 
 

@@ -342,11 +342,14 @@ Install BrainPalace plugin for a specific AI coding runtime. Converts the canoni
 
 **Supported Runtimes:**
 
-| Runtime | Project Directory | Global Directory |
-|---------|-------------------|------------------|
-| Claude Code | `.claude/plugins/brainpalace/` | `~/.claude/plugins/brainpalace/` |
-| OpenCode | `.opencode/plugins/brainpalace/` | `~/.config/opencode/plugins/brainpalace/` |
-| Gemini CLI | `.gemini/plugins/brainpalace/` | `~/.config/gemini/plugins/brainpalace/` |
+<!--GENERATED:install-dirs-->
+| Runtime | Project dir | Global dir |
+|---------|-------------|------------|
+| `claude` | `.claude/plugins/brainpalace` | `~/.claude/plugins/brainpalace` |
+| `opencode` | `.opencode/plugins/brainpalace` | `~/.config/opencode/plugins/brainpalace` |
+| `gemini` | `.gemini/plugins/brainpalace` | `~/.config/gemini/plugins/brainpalace` |
+| `codex` | `.codex/skills/brainpalace` | `~/.codex/skills/brainpalace` |
+<!--/GENERATED-->
 
 Use `--dry-run` to preview files that would be created without writing them.
 
@@ -624,21 +627,25 @@ Provides Claude with knowledge about:
 
 ### Embedding Providers
 
-| Provider | Models | Local | API Key |
-|----------|--------|-------|---------|
-| OpenAI | text-embedding-3-large, text-embedding-3-small | No | OPENAI_API_KEY |
-| Ollama | nomic-embed-text, mxbai-embed-large | Yes | None |
-| Cohere | embed-english-v3.0, embed-multilingual-v3.0 | No | COHERE_API_KEY |
+<!--GENERATED:providers-embedding-->
+| Provider | API key env var | Models (default first) |
+|----------|-----------------|------------------------|
+| `openai` | `OPENAI_API_KEY` | `text-embedding-3-large`, `text-embedding-3-small` |
+| `cohere` | `COHERE_API_KEY` | `embed-english-v3.0`, `embed-multilingual-v3.0` |
+| `ollama` | _(none — local)_ | `nomic-embed-text`, `mxbai-embed-large` |
+<!--/GENERATED-->
 
 ### Summarization Providers
 
-| Provider | Models | Local | API Key |
-|----------|--------|-------|---------|
-| Anthropic | claude-haiku-4-5-20251001, claude-sonnet-4-5-20250514 | No | ANTHROPIC_API_KEY |
-| OpenAI | gpt-5, gpt-5-mini | No | OPENAI_API_KEY |
-| Gemini | gemini-3.1-flash-lite, gemini-3.5-flash | No | GOOGLE_API_KEY |
-| Grok | grok-4, grok-4-fast | No | GROK_API_KEY |
-| Ollama | llama4:scout, mistral-small3.2, qwen3-coder | Yes | None |
+<!--GENERATED:providers-summarization-->
+| Provider | API key env var | Models (default first) |
+|----------|-----------------|------------------------|
+| `anthropic` | `ANTHROPIC_API_KEY` | `claude-haiku-4-5-20251001`, `claude-sonnet-4-5-20250514` |
+| `openai` | `OPENAI_API_KEY` | `gpt-5-mini`, `gpt-5` |
+| `gemini` | `GEMINI_API_KEY` | `gemini-3.1-flash-lite`, `gemini-3.5-flash` |
+| `grok` | `XAI_API_KEY` | `grok-4`, `grok-4-fast` |
+| `ollama` | _(none — local)_ | `llama4:scout`, `mistral-small3.2`, `qwen3-coder` |
+<!--/GENERATED-->
 
 ### Fully Local Mode
 

@@ -3,9 +3,8 @@ from pathlib import Path
 import yaml
 
 REPO = Path(__file__).resolve().parents[3]
-SKILL = (
-    REPO / "brainpalace-plugin" / "skills" / "authoring-brainpalace-docs" / "SKILL.md"
-)
+# Dev-only skill: repo project scope (.claude/skills), NOT the shipped plugin.
+SKILL = REPO / ".claude" / "skills" / "authoring-brainpalace-docs" / "SKILL.md"
 
 
 def test_skill_exists_with_valid_frontmatter():
@@ -17,9 +16,15 @@ def test_skill_exists_with_valid_frontmatter():
 
 
 def test_skill_is_seen_by_skills_checker():
-    # The new skill must be discoverable so SkillsChecker can validate refs to it.
+    # The dev-only skill lives outside the plugin, so SkillsChecker must pick it up
+    # via extra_skills_dirs — otherwise prose/`skills:` refs to it false-positive.
     from brainpalace_cli.doc_sync.checkers.skills import SkillsChecker
 
-    skills = REPO / "brainpalace-plugin" / "skills"
-    live = SkillsChecker(skills_dir=skills, docs_dir=skills)._live_skills()
+    plugin_skills = REPO / "brainpalace-plugin" / "skills"
+    claude_skills = REPO / ".claude" / "skills"
+    live = SkillsChecker(
+        skills_dir=plugin_skills,
+        docs_dir=plugin_skills,
+        extra_skills_dirs=[claude_skills],
+    )._live_skills()
     assert "authoring-brainpalace-docs" in live

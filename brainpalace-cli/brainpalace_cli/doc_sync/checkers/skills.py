@@ -5,6 +5,7 @@ naming convention (avoids false-positiving 'this skill')."""
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
@@ -40,15 +41,25 @@ def _read_frontmatter(path: Path) -> dict[str, Any]:
 class SkillsChecker:
     surface = SURFACE
 
-    def __init__(self, skills_dir: Path, docs_dir: Path) -> None:
+    def __init__(
+        self,
+        skills_dir: Path,
+        docs_dir: Path,
+        extra_skills_dirs: Iterable[Path] = (),
+    ) -> None:
         self.skills_dir = Path(skills_dir)
         self.docs_dir = Path(docs_dir)
+        # Dev-only skills live in the repo's project scope (`.claude/skills`), not
+        # the shipped plugin — e.g. `authoring-brainpalace-docs`. They must still
+        # count as "live" so prose/`skills:` refs to them don't false-positive.
+        self.extra_skills_dirs = tuple(Path(d) for d in extra_skills_dirs)
 
     def _live_skills(self) -> set[str]:
         out: set[str] = set()
-        for skill_md in self.skills_dir.glob("*/SKILL.md"):
-            fm = _read_frontmatter(skill_md)
-            out.add(str(fm.get("name") or skill_md.parent.name))
+        for base in (self.skills_dir, *self.extra_skills_dirs):
+            for skill_md in base.glob("*/SKILL.md"):
+                fm = _read_frontmatter(skill_md)
+                out.add(str(fm.get("name") or skill_md.parent.name))
         return out
 
     def check(self, snap: InterfaceSnapshot) -> list[DriftRecord]:

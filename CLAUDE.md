@@ -91,7 +91,11 @@ the dump/checker `schema_version` and wraps the ai-guidance + dashboard parity
 gates as one entry point. The residual **human prose** is authored in-session via
 the `authoring-brainpalace-docs` skill; editing an interface-source file fires a
 PostToolUse soft-nudge (`brainpalace hook posttooluse`, thin shim) to run
-`sync-docs --fix`. The nudge never blocks.
+`sync-docs --fix`. The nudge never blocks. Both the skill and the hook are
+**dev-only** — they live in the repo's project scope (`.claude/skills`,
+`.claude/settings.json`), not the distributed plugin, so end users never load
+them; the doc-sync gate's `SkillsChecker` scans `.claude/skills` too (via
+`extra_skills_dirs`) so refs to the skill still resolve.
 
 ## Build / test
 

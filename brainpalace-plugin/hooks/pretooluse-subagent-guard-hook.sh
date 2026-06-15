@@ -4,7 +4,7 @@
 # All behavior + text live in the CLI (`brainpalace hook pretooluse`), so a
 # `pip`/CLI upgrade propagates every change without rewriting this file — the
 # shim contains nothing version-specific and cannot go stale. See
-# CLAUDE.md → "AI-guidance parity" and posttooluse-docsync-hook.sh for the pattern.
+# CLAUDE.md → "AI-guidance parity" and sessionstart-hook.sh for the pattern.
 #
 # Gates Agent/Task spawns: a spawn whose prompt lacks a `brainpalace query --mode`
 # directive (or the equivalent MCP query-tool `mode:` argument) is nudged

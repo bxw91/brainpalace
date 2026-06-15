@@ -16,14 +16,37 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "brainpalace-cli"))
 
+import json  # noqa: E402
+
 from brainpalace_cli.doc_sync import SCHEMA_VERSION  # noqa: E402
 from brainpalace_cli.doc_sync.checkers import cli_commands  # noqa: E402
+from brainpalace_cli.doc_sync.checkers.plugin_docs import (
+    PluginDocsChecker,  # noqa: E402
+)
+from brainpalace_cli.doc_sync.checkers.provider_tables import (
+    ProviderTablesChecker,  # noqa: E402
+)
 from brainpalace_cli.doc_sync.introspect import live_snapshot  # noqa: E402
 from brainpalace_cli.doc_sync.orchestrator import render_report, run_check  # noqa: E402
 
 CliCommandsChecker = cli_commands.CliCommandsChecker
 
 _DOCS = REPO / "brainpalace-plugin" / "commands"
+_PLUGIN = REPO / "brainpalace-plugin"
+# Roots scanned for provider/install GENERATED blocks (whole plugin tree + docs +
+# repo README). Recursive — a new doc that adds a block is covered automatically.
+_PROVIDER_DOC_ROOTS = [_PLUGIN, REPO / "docs", REPO / "README.md"]
+#: The plugin-docs registry == the freshness manifest (a doc is "registered" iff it
+#: is stamped + freshness-gated). Dev-only skills live in the repo project scope.
+_FRESHNESS_MANIFEST = REPO / "scripts" / "doc_freshness.json"
+_EXTRA_SKILLS_DIRS = (REPO / ".claude" / "skills",)
+
+
+def _registered_docs() -> set[str]:
+    try:
+        return set(json.loads(_FRESHNESS_MANIFEST.read_text(encoding="utf-8")))
+    except (OSError, ValueError):
+        return set()
 
 
 def assert_schema_version(dumped: dict) -> None:
@@ -94,7 +117,17 @@ def main() -> int:
 
     snap = live_snapshot()
     assert_schema_version({"schema_version": snap.schema_version})
-    code, records = run_check([CliCommandsChecker(docs_dir=_DOCS)], snap)
+    checkers = [
+        CliCommandsChecker(docs_dir=_DOCS),
+        PluginDocsChecker(
+            plugin_dir=_PLUGIN,
+            repo_root=REPO,
+            registered=_registered_docs(),
+            extra_skills_dirs=_EXTRA_SKILLS_DIRS,
+        ),
+        ProviderTablesChecker(doc_roots=_PROVIDER_DOC_ROOTS),
+    ]
+    code, records = run_check(checkers, snap)
     print(render_report(records))
     gates_rc = run_wrapped_gates()
     if args.mode == "warn":

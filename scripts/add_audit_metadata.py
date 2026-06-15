@@ -29,6 +29,7 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 DEFAULT_GLOBS = [
     "docs/*.md",
     "brainpalace-plugin/commands/*.md",
+    "brainpalace-plugin/skills/*/SKILL.md",
     "brainpalace-plugin/skills/*/references/*.md",
     "brainpalace-plugin/agents/*.md",
 ]
@@ -38,6 +39,9 @@ STANDALONE_FILES = [
     "CLAUDE.md",
     "AGENTS.md",
     ".claude/CLAUDE.md",
+    # Plugin README is a single fixed file (not glob-varying); register it here.
+    # Skill SKILL.md files are globbed above, so a new skill auto-registers.
+    "brainpalace-plugin/README.md",
 ]
 
 # Frontmatter boundary pattern
@@ -61,6 +65,15 @@ def resolve_files(root: str) -> list:
         f
         for f in files
         if "/plans/" not in f and "/design/" not in f
+    }
+    # Drop SKILL.md files owned by another gate (single-sourced via the freshness
+    # checker, which derives them from the doc-sync allowlist).
+    from check_doc_freshness import FRESHNESS_EXEMPT
+
+    files = {
+        f
+        for f in files
+        if os.path.relpath(f, root).replace(os.sep, "/") not in FRESHNESS_EXEMPT
     }
     return sorted(files)
 

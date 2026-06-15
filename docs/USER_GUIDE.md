@@ -911,21 +911,25 @@ BrainPalace supports pluggable providers for embeddings and summarization.
 
 ### Embedding Providers
 
-| Provider | Models | Local |
-|----------|--------|-------|
-| OpenAI | text-embedding-3-large, text-embedding-3-small | No |
-| Ollama | nomic-embed-text, mxbai-embed-large | Yes |
-| Cohere | embed-english-v3.0, embed-multilingual-v3.0 | No |
+<!--GENERATED:providers-embedding-->
+| Provider | API key env var | Models (default first) |
+|----------|-----------------|------------------------|
+| `openai` | `OPENAI_API_KEY` | `text-embedding-3-large`, `text-embedding-3-small` |
+| `cohere` | `COHERE_API_KEY` | `embed-english-v3.0`, `embed-multilingual-v3.0` |
+| `ollama` | _(none — local)_ | `nomic-embed-text`, `mxbai-embed-large` |
+<!--/GENERATED-->
 
 ### Summarization Providers
 
-| Provider | Models | Local |
-|----------|--------|-------|
-| Anthropic | claude-haiku-4-5-20251001, claude-sonnet-4-5-20250514 | No |
-| OpenAI | gpt-5, gpt-5-mini | No |
-| Gemini | gemini-3.1-flash-lite, gemini-3.5-flash | No |
-| Grok | grok-4, grok-4-fast | No |
-| Ollama | llama4:scout, mistral-small3.2, qwen3-coder | Yes |
+<!--GENERATED:providers-summarization-->
+| Provider | API key env var | Models (default first) |
+|----------|-----------------|------------------------|
+| `anthropic` | `ANTHROPIC_API_KEY` | `claude-haiku-4-5-20251001`, `claude-sonnet-4-5-20250514` |
+| `openai` | `OPENAI_API_KEY` | `gpt-5-mini`, `gpt-5` |
+| `gemini` | `GEMINI_API_KEY` | `gemini-3.1-flash-lite`, `gemini-3.5-flash` |
+| `grok` | `XAI_API_KEY` | `grok-4`, `grok-4-fast` |
+| `ollama` | _(none — local)_ | `llama4:scout`, `mistral-small3.2`, `qwen3-coder` |
+<!--/GENERATED-->
 
 ### Fully Local Mode
 
