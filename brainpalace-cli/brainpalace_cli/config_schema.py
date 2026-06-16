@@ -106,7 +106,14 @@ API_KNOWN_FIELDS = {"host", "port"}
 SERVER_KNOWN_FIELDS = {"url", "host", "port", "auto_port", "read_only"}
 PROJECT_KNOWN_FIELDS = {"state_dir", "project_root"}
 QUERY_LOG_KNOWN_FIELDS = {"enabled", "retention_days"}
-CLI_KNOWN_FIELDS = {"show_ai_hint", "subagent_guard"}
+CLI_KNOWN_FIELDS = {"show_ai_hint", "subagent_guard", "session_autostart"}
+# `cli.session_autostart` (bool, default True) — when a Claude Code session starts
+# in an indexed project whose server is down, the SessionStart hook spawns
+# `brainpalace start --json` detached (server + headless dashboard, no browser).
+# CLI/plugin-side behavior, not a control-plane concern, so it lives under `cli`
+# and is not surfaced in the dashboard (the parity gate does not enumerate the
+# `cli` section). Disable via session_autostart:false or
+# BRAINPALACE_SESSION_AUTOSTART=off.
 # Nested `cli.subagent_guard.*` — gates Agent/Task spawns so subagents are forced
 # to search via BrainPalace instead of grep/find. CLI/plugin-side enforcement
 # (PreToolUse hook); not a server control-plane concern, so it lives under `cli`
@@ -351,6 +358,10 @@ _SECTION_SCHEMA: dict[str, dict[str, Any]] = {
             "show_ai_hint": (
                 bool,
                 "cli.show_ai_hint must be a boolean (true/false)",
+            ),
+            "session_autostart": (
+                bool,
+                "cli.session_autostart must be a boolean (true/false)",
             ),
         },
     },

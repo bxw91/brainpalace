@@ -45,6 +45,25 @@ _PLUGIN = _REPO_ROOT / "brainpalace-plugin"
 _PROVIDER_DOC_ROOTS = [_PLUGIN, _DOCS, _REPO_ROOT / "README.md"]
 
 
+def _require_repo() -> None:
+    """Fail clearly when run outside a BrainPalace source checkout.
+
+    `sync-docs` / `dump-interface` are repo-development commands: they read plugin
+    sources (`brainpalace-plugin/`) that are NOT shipped in the installed wheel.
+    When the CLI is invoked from a pipx/site-packages install, `parents[3]` points
+    into the venv, so `_DOCS_DIR` does not exist — raise a clear error instead of a
+    bare `FileNotFoundError` deep in the generator. No path walk can recover the
+    plugin sources (they aren't installed), so failing cleanly is the fix.
+    """
+    if not _DOCS_DIR.is_dir():
+        raise click.ClickException(
+            "sync-docs / dump-interface are repo-development commands — run them "
+            "from a BrainPalace source checkout (`poetry run …` / `task`), not an "
+            f"installed CLI. Expected plugin commands at {_DOCS_DIR}, which does "
+            "not exist (the plugin sources are not part of the installed package)."
+        )
+
+
 def _provider_doc_files() -> list[Path]:
     out: set[Path] = set()
     for root in _PROVIDER_DOC_ROOTS:
@@ -81,6 +100,7 @@ def dump_interface_command(include_endpoints: bool) -> None:
     """Emit a versioned JSON snapshot of the live interface (CLI surface)."""
     import json as _json
 
+    _require_repo()
     payload = _json.loads(dump_interface_json())
     if include_endpoints:
         payload["endpoints"] = endpoint_paths()
@@ -102,6 +122,7 @@ def sync_docs_command(mode_check: bool, mode_fix: bool) -> None:
 
     Deterministic; never calls an LLM.
     """
+    _require_repo()
     snap = live_snapshot()
     snap.endpoints = endpoint_paths()  # opt-in: endpoints checker needs them
     checkers = _checkers()

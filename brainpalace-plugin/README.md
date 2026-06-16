@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-15
+last_validated: 2026-06-16
 ---
 
 # BrainPalace Plugin
@@ -47,19 +47,23 @@ brainpalace index /path/to/docs
 Once installed, use these slash commands in Claude Code:
 
 ```
-/brainpalace-search "authentication flow"    # Hybrid search (recommended)
-/brainpalace-semantic "how does auth work"   # Conceptual search
-/brainpalace-keyword "AuthenticationError"   # Exact term search
+/brainpalace-query "authentication flow"                 # Hybrid search (default)
+/brainpalace-query "how does auth work" --mode vector    # Conceptual search
+/brainpalace-query "AuthenticationError" --mode bm25     # Exact term search
 ```
 
 ## Commands
 
-### Search Commands
-| Command | Description |
-|---------|-------------|
-| `/brainpalace-search` | Hybrid search (BM25 + semantic) |
-| `/brainpalace-semantic` | Semantic vector search |
-| `/brainpalace-keyword` | BM25 keyword search |
+### Search Command
+All retrieval is one command, `/brainpalace-query`, with a `--mode` flag:
+
+| Mode flag | Description |
+|-----------|-------------|
+| `/brainpalace-query` (default `--mode hybrid`) | Hybrid search (BM25 + semantic) |
+| `/brainpalace-query --mode vector` | Semantic vector search |
+| `/brainpalace-query --mode bm25` | BM25 keyword search |
+| `/brainpalace-query --mode graph` | Knowledge-graph relationships |
+| `/brainpalace-query --mode multi` | Fusion of all modes |
 
 ### Setup Commands
 | Command | Description |
@@ -84,11 +88,6 @@ Once installed, use these slash commands in Claude Code:
 | `/brainpalace-index` | Index documents |
 | `/brainpalace-reset` | Clear all indexed content |
 
-### Help
-| Command | Description |
-|---------|-------------|
-| `/brainpalace-help` | Show all commands |
-
 ## Search Modes
 
 | Mode | Speed | Best For | Example Query |
@@ -108,7 +107,7 @@ Once installed, use these slash commands in Claude Code:
 This plugin includes two skills:
 
 1. **using-brainpalace**: Search mode guidance and API reference
-2. **brainpalace-setup**: Installation, configuration, and troubleshooting
+2. **configuring-brainpalace**: Installation, configuration, and troubleshooting
 
 ## Optional: Conditional SessionStart Reminder
 
@@ -118,7 +117,7 @@ This plugin ships a conditional SessionStart hook template that gates the remind
 
 ```bash
 # Copy the template
-cp <plugin-install-dir>/templates/sessionstart-hook.sh \
+cp <plugin-install-dir>/hooks/sessionstart-hook.sh \
    ~/.claude/hooks/brainpalace-sessionstart.sh
 chmod +x ~/.claude/hooks/brainpalace-sessionstart.sh
 ```
@@ -145,7 +144,7 @@ Then add this to `~/.claude/settings.json`:
 
 Restart Claude Code. The reminder will now fire only in projects with a `.brainpalace/` index. In non-indexed projects, the hook silently no-ops and the AI uses native search tools.
 
-See `templates/sessionstart-hook.sh` for full inline documentation.
+See `hooks/sessionstart-hook.sh` for full inline documentation.
 
 ## License
 

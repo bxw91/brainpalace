@@ -515,14 +515,14 @@ uvicorn = ">=0.32.0,<0.33.0"
 
 [[package]]
 name = "brainpalace-rag"
-version = "26.6.46"
+version = "26.6.47"
 description = "BrainPalace RAG - Intelligent document indexing and semantic search server that gives AI agents long-term memory"
 optional = false
 python-versions = "<4.0,>=3.10"
 groups = ["main"]
 files = [
-    {file = "brainpalace_rag-26.6.46-py3-none-any.whl", hash = "sha256:fc23c0512a5fddc73dbe2a50f61efe74db8621e778066d0e1b68fa5b1ae9de36"},
-    {file = "brainpalace_rag-26.6.46.tar.gz", hash = "sha256:ca96795c62191260c8c54fb00b3348580285a21d8b9fb9b2b22c004cf17b1653"},
+    {file = "brainpalace_rag-26.6.47-py3-none-any.whl", hash = "sha256:779b1e4325d2f02878f8cea8a334cf5be6d6fbfbd898a51de753898bf6a8bbc0"},
+    {file = "brainpalace_rag-26.6.47.tar.gz", hash = "sha256:55bc8eada8a45f7fb440c562b478547a7c7fd22a9bd65be90ad2ac31e98b9997"},
 ]
 
 [package.dependencies]

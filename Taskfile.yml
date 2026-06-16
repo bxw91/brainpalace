@@ -78,6 +78,14 @@ tasks:
       - task: server:install:global
       - task: cli:install:global
 
+  install:from-source:
+    desc: >-
+      Reinstall CLI+server+dashboard from THIS local tree over the pipx install,
+      auto-stopping running servers + dashboard and restoring them exactly as
+      before. Flags: -- --dry-run (plan only), -- --no-restart (leave stopped).
+    cmds:
+      - bash scripts/dev-install-from-source.sh {{.CLI_ARGS}}
+
   # ===================
   # Development
   # ===================
@@ -227,6 +235,15 @@ tasks:
     cmds:
       - "{{.POETRY}} run python ../scripts/check_doc_sync.py --mode block"
 
+  lint:doc-verify:
+    desc: "Fail if doc prose (Layer B) was not verified for the current diff (marker gate; no model call)"
+    dir: ./{{.CLI_DIR}}
+    cmds:
+      # Process gate ONLY: asserts the doc-verifier agent was run for THIS diff
+      # (records a per-diff marker). Never calls a model, never gates on an LLM
+      # verdict. Satisfy it in-session: `/brainpalace-verify-docs --changed`.
+      - "{{.POETRY}} run brainpalace verify-docs --check"
+
   lint:docs-gates-ci:
     # NB: doc-freshness is intentionally NOT here. It is git-history based, but
     # CI only ever sees `main` — the squashed one-commit-per-release mirror (the
@@ -283,6 +300,13 @@ tasks:
       - task: lint:ai-guidance-parity
       - echo "--- Checking interface doc-sync ---"
       - task: lint:doc-sync
+      # NB: Layer B prose verification (lint:doc-verify) is intentionally NOT a
+      # push gate. It is advisory + probabilistic + costs subscription, and Layer
+      # A (doc-sync, above) already hard-gates every machine-owned fact (flags,
+      # commands, modes, providers, MCP tools, endpoints). Prose drift is surfaced
+      # on a WEEKLY cadence instead: the SessionStart reminder hook
+      # (.claude/hooks/sessionstart-docverify-sweep.sh) offers a sweep at most once
+      # a week. Run on demand any time: `task lint:doc-verify` / `/brainpalace-verify-docs`.
       - echo "--- Type checking ---"
       - task: typecheck
       - echo "--- Running tests with coverage ---"

@@ -1,20 +1,21 @@
 ---
-last_validated: 2026-06-15
+last_validated: 2026-06-16
 ---
 
 # BrainPalace Plugin Guide
 
-Complete reference for the BrainPalace Claude Code plugin - 30 commands, 3 agents, and 2 skills for intelligent document and code search.
+Complete reference for the BrainPalace Claude Code plugin - 33 commands, 5 agents, and 2 skills for intelligent document and code search.
 
 ## Table of Contents
 
 - [Installation](#installation)
 - [Quick Setup](#quick-setup)
-- [Search Commands](#search-commands)
+- [Search Command](#search-command)
 - [Server Commands](#server-commands)
 - [Index Management Commands](#index-management-commands)
-- [Setup Commands](#setup-commands)
-- [Provider Commands](#provider-commands)
+- [Setup & Config Commands](#setup--config-commands)
+- [Memory & Session Commands](#memory--session-commands)
+- [Diagnostics & Lifecycle Commands](#diagnostics--lifecycle-commands)
 - [Intelligent Agents](#intelligent-agents)
 - [Skills](#skills)
 - [Search Modes](#search-modes)
@@ -33,14 +34,14 @@ claude plugins install github:bxw91/brainpalace
 ```
 
 This provides:
-- **30 slash commands** for all operations
-- **3 intelligent agents** for complex tasks
+- **33 slash commands** for all operations
+- **5 intelligent agents** for complex tasks
 - **2 skills** for context-aware assistance
 
 ### SessionStart hook
 
 The plugin ships a SessionStart hook
-(`brainpalace-plugin/templates/sessionstart-hook.sh`) that emits a context
+(`brainpalace-plugin/hooks/sessionstart-hook.sh`) that emits a context
 reminder (and, when enabled, an injected project-context block) when Claude
 Code opens a directory that has a `.brainpalace/` index.
 
@@ -65,7 +66,7 @@ Or step-by-step:
 
 ```
 /brainpalace-install     # Install packages
-/brainpalace-providers   # Configure API keys
+/brainpalace-config      # Configure providers + API keys (wizard)
 /brainpalace-init        # Initialize project
 /brainpalace-start       # Start server
 /brainpalace-index .     # Index documents
@@ -87,95 +88,50 @@ Code's own start hook covers that case.
 
 ---
 
-## Search Commands
+## Search Command
 
-### `/brainpalace-search`
+All retrieval goes through a single command, `/brainpalace-query`, with a
+`--mode` flag selecting the strategy. (Earlier releases shipped a separate slash
+command per mode — those have been consolidated.)
 
-Smart hybrid search - the recommended default for general questions.
+### `/brainpalace-query`
 
-```
-/brainpalace-search "how does authentication work"
-/brainpalace-search "error handling patterns" --top-k 10
-```
-
-### `/brainpalace-semantic`
-
-Pure vector/semantic search for conceptual queries.
+Search indexed documents with a natural-language or keyword query.
 
 ```
-/brainpalace-semantic "explain the overall architecture"
-/brainpalace-semantic "what is the purpose of this module"
+/brainpalace-query "how does authentication work"
+/brainpalace-query "NullPointerException" --mode bm25
+/brainpalace-query "explain the overall architecture" --mode vector
+/brainpalace-query "what calls AuthService" --mode graph
+/brainpalace-query "complete authentication flow" --mode multi --top-k 10
 ```
 
-### `/brainpalace-keyword`
+**Modes (`--mode`, default `hybrid`):**
 
-BM25 keyword search for exact terms, function names, error codes.
+| Mode | Best for |
+|------|----------|
+| `hybrid` | General questions (vector + BM25, the default) |
+| `vector` | Conceptual / semantic queries |
+| `bm25` | Exact terms, function names, error codes |
+| `graph` | Dependencies and relationships (needs `ENABLE_GRAPH_INDEX=true`) |
+| `multi` | Maximum recall (fusion of vector + bm25 + graph) |
 
-```
-/brainpalace-keyword "NullPointerException"
-/brainpalace-keyword "getUserById"
-```
-
-### `/brainpalace-bm25`
-
-Alias for keyword search.
-
-```
-/brainpalace-bm25 "AuthenticationError"
-```
-
-### `/brainpalace-vector`
-
-Alias for semantic search.
-
-```
-/brainpalace-vector "how does caching improve performance"
-```
-
-### `/brainpalace-hybrid`
-
-Hybrid search with explicit alpha control.
-
-```
-/brainpalace-hybrid "OAuth implementation" --alpha 0.7
-/brainpalace-hybrid "database connection" --alpha 0.3
-```
-
-**Alpha Parameter:**
-- `1.0` = Pure semantic search
-- `0.5` = Balanced (default)
-- `0.0` = Pure keyword search
-
-### `/brainpalace-graph`
-
-Knowledge graph search for relationships and dependencies.
-
-```
-/brainpalace-graph "what calls AuthService"
-/brainpalace-graph "classes that extend BaseController"
-/brainpalace-graph "modules that import jwt"
-```
-
-### `/brainpalace-multi`
-
-All modes combined with Reciprocal Rank Fusion for maximum recall.
-
-```
-/brainpalace-multi "complete authentication flow"
-/brainpalace-multi "everything about data validation"
-```
-
-### Common Search Options
-
-All search commands support:
+**Options:**
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--top-k` | 5 | Number of results |
-| `--threshold` | 0.7 | Minimum similarity (0.0-1.0) |
-| `--source-types` | all | Filter: doc, code, or both |
+| `--mode`, `-m` | `hybrid` | Retrieval mode (see table above) |
+| `--top-k`, `-k` | 5 | Number of results |
+| `--threshold`, `-t` | 0.3 | Minimum similarity (0.0-1.0) |
+| `--alpha`, `-a` | 0.5 | Hybrid weight: `1.0` = pure vector, `0.0` = pure bm25 |
+| `--source-types` | all | Filter: `doc`, `code`, `test` (comma-separated) |
 | `--languages` | all | Filter by programming language |
-| `--scores` | false | Show component scores |
+| `--file-paths` | all | Filter by path patterns (wildcards supported) |
+| `--scores` | false | Show individual vector/BM25 scores |
+| `--full` | false | Show full text content |
+| `--json` | false | Output as JSON |
+| `--no-time-decay` | false | Disable age-weighted ranking for this query |
+| `--language` | "" | BM25 query language override (ISO 639-1, e.g. `en`, `de`, `hr`) |
 
 ---
 
@@ -223,6 +179,14 @@ List all running BrainPalace instances across projects.
 
 ```
 /brainpalace-list
+```
+
+### `/brainpalace-whoami`
+
+Show which BrainPalace project and server own the current directory.
+
+```
+/brainpalace-whoami
 ```
 
 ### `/brainpalace-index`
@@ -329,6 +293,15 @@ View embedding cache metrics or clear the cache. The embedding cache avoids redu
 | `status` | Show hit rate, entry counts, and cache size |
 | `clear` | Flush all cached embeddings (prompts for confirmation unless `--yes`) |
 
+### `/brainpalace-jobs`
+
+Monitor and manage async indexing jobs in the queue. Large indexing runs are
+dispatched to a background job worker.
+
+```
+/brainpalace-jobs
+```
+
 ### `/brainpalace-install-agent`
 
 Install BrainPalace plugin for a specific AI coding runtime. Converts the canonical plugin format into the target runtime's native format.
@@ -355,7 +328,7 @@ Use `--dry-run` to preview files that would be created without writing them.
 
 ---
 
-## Setup Commands
+## Setup & Config Commands
 
 ### `/brainpalace-setup`
 
@@ -389,83 +362,64 @@ Creates `.brainpalace/` with project configuration.
 
 ### `/brainpalace-config`
 
-View or edit configuration.
+The 12-step configuration wizard — providers (embedding + summarization),
+storage backend, GraphRAG, reranking, caching, file watcher, chunking, and
+server deployment. This is also where embedding/summarization **providers and
+API keys** are configured (there is no separate `providers`/`embeddings`/`summarizer`
+command).
 
 ```
 /brainpalace-config
-/brainpalace-config --set default_mode=hybrid
+```
+
+The underlying `brainpalace config` CLI group exposes `show`, `path`, `wizard`,
+`validate`, `migrate`, `diff`, and `unset <dotpath>` subcommands. (There is no
+`--set` flag — edit config via the wizard or `config unset` to drop a project
+override so a key re-inherits from global.)
+
+### `/brainpalace-doctor`
+
+Diagnose your setup — Python, config, API keys, and server reachability.
+
+```
+/brainpalace-doctor
 ```
 
 ### `/brainpalace-verify`
 
-Verify configuration and connectivity.
+Verify installation and configuration.
 
 ```
 /brainpalace-verify
 ```
 
-Checks:
-- Package installation
-- API key configuration
-- Server connectivity
-- Provider setup
+Checks package installation, API key configuration, server connectivity, and
+provider setup.
 
-### `/brainpalace-help`
+### `/brainpalace-install-agent`
 
-Show help information.
+Install the plugin into another AI coding runtime (see the runtime table under
+[Index Management Commands](#index-management-commands)).
 
-```
-/brainpalace-help
-/brainpalace-help search
-```
+### `/brainpalace-install-session-hooks`
 
-### `/brainpalace-version`
-
-Show version information.
+Install BrainPalace's Claude Code SessionStart reminder hook.
 
 ```
-/brainpalace-version
+/brainpalace-install-session-hooks
 ```
 
----
-
-## Provider Commands
-
-### `/brainpalace-providers`
-
-List and configure embedding/summarization providers.
-
-```
-/brainpalace-providers
-```
-
-Interactive wizard for selecting:
-- Embedding provider (OpenAI, Ollama, Cohere)
-- Summarization provider (Anthropic, OpenAI, Gemini, Grok, Ollama)
-
-### `/brainpalace-embeddings`
-
-Configure embedding provider specifically.
-
-```
-/brainpalace-embeddings
-/brainpalace-embeddings --provider ollama --model nomic-embed-text
-```
-
-### `/brainpalace-summarizer`
-
-Configure summarization provider specifically.
-
-```
-/brainpalace-summarizer
-/brainpalace-summarizer --provider anthropic --model claude-haiku-4-5-20251001
-```
+> Help and version are not plugin commands — use Claude Code's own `/help` and
+> the CLI's `brainpalace --version`.
 
 ---
 
 ## Intelligent Agents
 
-The plugin includes three agents that handle complex, multi-step tasks autonomously.
+The plugin includes five agents that handle complex, multi-step tasks
+autonomously. Three are interactive (below); the other two —
+**Chat Session Extractor** and **Memory Curator** — drive session capture and
+curated memory and are documented under [Session Memory](#session-memory-phases-070--080).
 
 ### Search Assistant
 
@@ -558,12 +512,111 @@ emits the extraction JSON, and submits it.
 |---|---|
 | `agents/chat-session-extractor.md` | Subagent that extracts + submits a finished session (read-only tools + submit). |
 | `agents/memory-curator.md` | Distils recent decisions into curated memory; prunes/merges. |
-| `templates/sessionstart-hook.sh` | Drains the queue → runs the extractor subagent (free, in-session model). |
+| `hooks/sessionstart-hook.sh` | Drains the queue → runs the extractor subagent (free, in-session model). |
 | `templates/daily-distill-hook.sh` / `weekly-curate-hook.sh` | Opt-in periodic curation. |
 
 Auto-extraction is **best-effort** (runs at the next session start); the manual
 command is always available. All opt-in; only indexed projects with session
 indexing enabled extract.
+
+---
+
+## Memory & Session Commands
+
+The curated-memory namespace (`BRAINPALACE_MEMORY.md`) is separate from the
+document index — durable facts and decisions you choose to keep.
+
+### `/brainpalace-remember`
+
+Save a curated fact to the project's memory.
+
+```
+/brainpalace-remember "We use ChromaDB by default; Postgres is opt-in"
+```
+
+### `/brainpalace-recall`
+
+Recall curated memories matching a query (memory namespace only).
+
+```
+/brainpalace-recall "storage backend"
+```
+
+### `/brainpalace-memories`
+
+Manage the curated memory namespace — list, show, delete, obsolete.
+
+```
+/brainpalace-memories list
+```
+
+### `/brainpalace-context`
+
+Print the session-start context block (project facts + curated memory).
+
+```
+/brainpalace-context
+```
+
+---
+
+## Diagnostics & Lifecycle Commands
+
+### `/brainpalace-ai-guide`
+
+Print the canonical AI usage guidance (search modes, query rules, gotchas).
+
+```
+/brainpalace-ai-guide
+```
+
+### `/brainpalace-dashboard`
+
+Launch, stop, or inspect the BrainPalace web control-plane dashboard.
+
+```
+/brainpalace-dashboard
+```
+
+### `/brainpalace-mcp`
+
+Serve BrainPalace over stdio for MCP-aware AI clients.
+
+```
+/brainpalace-mcp
+```
+
+### `/brainpalace-plugin`
+
+Inspect the BrainPalace Claude Code plugin (installation status).
+
+```
+/brainpalace-plugin
+```
+
+### `/brainpalace-read-only`
+
+Enable/disable read-only mode (disables embedding, summarization, and writes).
+
+```
+/brainpalace-read-only
+```
+
+### `/brainpalace-update`
+
+Upgrade BrainPalace (CLI + server + dashboard) to the latest version.
+
+```
+/brainpalace-update
+```
+
+### `/brainpalace-uninstall`
+
+Uninstall BrainPalace (guided teardown, or global-only with `--yes`/`--json`).
+
+```
+/brainpalace-uninstall
+```
 
 ---
 
@@ -604,11 +657,11 @@ Provides Claude with knowledge about:
 
 | Mode | Command | Best For | Speed |
 |------|---------|----------|-------|
-| HYBRID | `/brainpalace-search` | General questions | Medium |
-| VECTOR | `/brainpalace-semantic` | Conceptual queries | Slow |
-| BM25 | `/brainpalace-keyword` | Exact terms, function names | Fast |
-| GRAPH | `/brainpalace-graph` | Dependencies, relationships | Medium |
-| MULTI | `/brainpalace-multi` | Maximum recall | Slowest |
+| HYBRID | `/brainpalace-query` (default) | General questions | Medium |
+| VECTOR | `/brainpalace-query --mode vector` | Conceptual queries | Slow |
+| BM25 | `/brainpalace-query --mode bm25` | Exact terms, function names | Fast |
+| GRAPH | `/brainpalace-query --mode graph` | Dependencies, relationships | Medium |
+| MULTI | `/brainpalace-query --mode multi` | Maximum recall | Slowest |
 
 ### Mode Selection Guide
 
@@ -652,7 +705,7 @@ Provides Claude with knowledge about:
 Run completely offline with Ollama:
 
 ```
-/brainpalace-providers
+/brainpalace-config
 # Select Ollama for embeddings
 # Select Ollama for summarization
 ```
@@ -727,15 +780,17 @@ async with httpx.AsyncClient() as client:
 
 1. Check document count: `/brainpalace-status`
 2. If 0 documents: `/brainpalace-index ./docs`
-3. Lower threshold: `/brainpalace-search "term" --threshold 0.3`
-4. Try keyword search: `/brainpalace-keyword "exact term"`
+3. Lower threshold: `/brainpalace-query "term" --threshold 0.1`
+4. Try keyword search: `/brainpalace-query "exact term" --mode bm25`
 
 ### GraphRAG Not Working
 
-GraphRAG requires explicit enablement:
+GraphRAG requires explicit enablement. Enable it via the config wizard (GraphRAG
+step) or set `ENABLE_GRAPH_INDEX=true`, then restart and re-index:
 
 ```
-/brainpalace-config --set enable_graph_index=true
+/brainpalace-config
+# enable GraphRAG at the GraphRAG step
 /brainpalace-stop
 /brainpalace-start
 /brainpalace-index .
@@ -745,7 +800,7 @@ GraphRAG requires explicit enablement:
 
 ```
 /brainpalace-verify
-/brainpalace-providers
+/brainpalace-config
 ```
 
 Verify API keys are set correctly for your selected provider.

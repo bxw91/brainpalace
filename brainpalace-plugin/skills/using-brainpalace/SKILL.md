@@ -22,10 +22,10 @@ allowed-tools:
   - Bash
   - Read
 metadata:
-  version: 7.3.0
+  version: 7.4.0
   category: ai-tools
   author: bxw91
-  last_validated: 2026-06-13
+  last_validated: 2026-06-16
 ---
 
 # BrainPalace Expert Skill
@@ -38,12 +38,14 @@ injection, jobs, cache, server lifecycle, per-mode deep dives) lives in the
 **Reference Documentation** table at the end — look it up on demand; the CLI's
 own `--help` is authoritative for flags.
 
-**BrainPalace is indexed for this project — prefer `brainpalace query` over
-Glob/Grep for codebase search.** If the server is not running, start it with
-`brainpalace start`. `brainpalace query --json` result keys are
+**BrainPalace is indexed for this project — search via `brainpalace query`, not
+Glob/Grep.** Route by query type: exact symbol/token/path → `--mode bm25`
+(keyword index, **no embedding round-trip** — ms latency, as fast as grep);
+concept → `--mode vector`/`hybrid`; relationships → `--mode graph`. Server down?
+Start it: `brainpalace start`. `brainpalace query --json` keys are
 `text`/`source`/`score`/`chunk_id` (no `file_path`, no line numbers); on failure
-stdout is `{"error": ...}` with no `results` key and a non-zero exit — check for
-it, and never append `2>/dev/null` to brainpalace commands.
+stdout is `{"error": ...}` with no `results` key and a non-zero exit — check it,
+never append `2>/dev/null`.
 
 ## Mode Decision Table — Quick Reference
 
@@ -82,7 +84,10 @@ If the `brainpalace` CLI is not installed (command not found), treat as exit `1`
 
 When the check passed, BrainPalace is the first entry point for codebase search.
 Never use Glob, Grep, or Bash `find`/`rg` against indexed project source — even
-when you think you know the path or token. Pick a mode, then:
+when you think you know the path or token. This is not a latency trade: an exact
+symbol/token/path lookup goes to `--mode bm25`, which queries the local keyword
+index with **no embedding round-trip**, returning in milliseconds (vector/hybrid
+pay the embed call, so reserve them for conceptual queries). Pick a mode, then:
 
 ```bash
 brainpalace query "..." --mode <picked> --top-k 8 --json

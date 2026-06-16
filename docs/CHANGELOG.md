@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-15
+last_validated: 2026-06-16
 ---
 
 # Changelog
@@ -15,7 +15,24 @@ Entries are kept short (≤ 3 sentences and ≤ 320 characters); see
 
 ---
 
-## [Unreleased]
+## [26.6.48] - 2026-06-16
+
+### Added
+- **Auto-start the server on Claude Code session start.** When a session opens in
+  an indexed project whose server is down, the SessionStart hook spawns
+  `brainpalace start` detached (server + headless dashboard, no browser). On by
+  default; disable with `cli.session_autostart: false`; fail-soft, never blocks
+  the session.
+
+### Changed
+- **AI-guidance directive routes by query type, not a blanket "prefer brainpalace
+  over grep".** Exact symbol/token/path lookups now point at `--mode bm25`, so
+  brainpalace-first costs no latency vs grep; vector/hybrid stay for conceptual
+  queries. Regenerated `SKILL.md`; bumped `ai_guidance.md` to 7.4.0.
+- **Plugin-update command shown in a red-bordered box during `scripts/setup.sh`.**
+  The `claude plugin update brainpalace@brainpalace-marketplace` line now stands
+  out in Step 2/6 and is repeated in a box at the end of the install summary so it
+  survives a long scroll instead of blending into the `==>` log.
 
 ## [26.6.47] - 2026-06-15
 
@@ -35,14 +52,6 @@ Entries are kept short (≤ 3 sentences and ≤ 320 characters); see
   the distributed plugin to repo project scope (`.claude/skills`,
   `.claude/settings.json`); the gate's `SkillsChecker` now also scans
   `.claude/skills` so refs still resolve.
-
-### Fixed
-- **Dead provider-test commands in docs.** `using-brainpalace/references/provider-configuration.md`
-  showed the non-existent `brainpalace test-embedding` / `test-summarize`; replaced
-  with `brainpalace doctor` (the live provider check). Caught by the new plugin-docs gate.
-- **Wrong Gemini env var across plugin docs.** Corrected `GOOGLE_API_KEY` →
-  `GEMINI_API_KEY` (the var the code reads) everywhere in the plugin, and removed a
-  bogus "Gemini embeddings" setup option (Gemini is summarization-only here).
 
 ---
 

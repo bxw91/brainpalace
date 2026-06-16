@@ -45,6 +45,7 @@ from .commands import (
     types_group,
     uninstall_command,
     update_command,
+    verify_docs_command,
     whoami_command,
 )
 
@@ -153,6 +154,7 @@ cli.add_command(drain_tick_command, name="drain-tick")
 # Register doc-sync maintenance commands (hidden; deterministic, never call an LLM)
 cli.add_command(sync_docs_command, name="sync-docs")
 cli.add_command(dump_interface_command, name="dump-interface")
+cli.add_command(verify_docs_command, name="verify-docs")
 
 # Register MCP server (opt-in stdio shim for non-Claude-Code AI clients)
 cli.add_command(mcp_command, name="mcp")

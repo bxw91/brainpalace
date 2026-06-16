@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-15
+last_validated: 2026-06-16
 ---
 
 # BrainPalace — repo guide for Claude
@@ -17,6 +17,26 @@ servers with auto-discovery. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) fo
 | [docs/](docs/), [e2e/](e2e/), [e2e-cli/](e2e-cli/), [integration/](integration/) | Docs, end-to-end and integration tests. |
 
 Root is an organizational container + `Taskfile.yml` task runner. Each subpackage builds/tests independently.
+
+## Shipped plugin vs repo-dev tooling — keep them separate (MANDATORY)
+
+[brainpalace-plugin/](brainpalace-plugin/) is the **distributed plugin** — every
+skill, command, agent, and hook in it ships to end users and loads in *their*
+projects. **Never put repo-development-only tooling there.** Anything that exists
+to build/test/document/maintain *this* repo (doc-sync, doc-verifier, the
+`authoring-brainpalace-docs` skill, dev hooks, one-off maintenance agents/commands)
+belongs in the repo's **project scope**:
+
+- skills → `.claude/skills/`, commands → `.claude/commands/`,
+  agents → `.claude/agents/`, hooks → `.claude/hooks/` + `.claude/settings.json`.
+
+Litmus test: *would an end user installing the plugin ever want this, in their own
+project?* If no — it is dev tooling and goes in `.claude/`, not
+`brainpalace-plugin/`. (E.g. `doc-verifier` verifies BrainPalace's own
+`last_validated`-audited docs — a concept end users don't have — so it lives in
+`.claude/agents/` + `.claude/commands/`, with only the hidden `brainpalace
+verify-docs` plumbing in the CLI, exactly like `sync-docs`.) Putting dev tooling
+in `brainpalace-plugin/` is a bug: fix the placement, don't allowlist around it.
 
 ## Setup-surface parity — CLI · plugin · MCP (MANDATORY)
 

@@ -12,6 +12,8 @@ UNDOCUMENTED_COMMANDS: dict[str, str] = {
     "session-path": "internal path helper",
     "dump-interface": "doc-sync introspection helper, not user-facing",
     "sync-docs": "doc-sync maintenance command, not a plugin command",
+    "verify-docs": "doc-verifier (Layer B) maintenance command, repo-dev only "
+    "(its agent + command live in .claude/, not the shipped plugin)",
 }
 
 # Intentionally documented deprecated aliases (resolution I): alias -> canonical.
@@ -29,6 +31,9 @@ PLUGIN_ONLY_COMMAND_DOCS: dict[str, str] = {
     "no CLI subcommand — guided install flow",
     "verify": "plugin slash-command /brainpalace-verify (setup-assistant agent); "
     "no CLI subcommand — guided install/config verification",
+    "extract-session": "plugin slash-command /brainpalace-extract-session "
+    "(chat-session-extractor agent); manual runtime-agnostic session extraction — "
+    "no CLI subcommand, submits via `brainpalace submit-session`",
 }
 
 # Plugin docs the PluginDocsChecker (plugin-docs surface) must NOT gate, keyed by

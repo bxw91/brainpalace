@@ -33,6 +33,7 @@ from .sync_docs import dump_interface_command, sync_docs_command
 from .types import types_group
 from .uninstall import uninstall_command
 from .update import update_command
+from .verify_docs import verify_docs_command
 from .whoami import whoami_command
 
 __all__ = [
@@ -68,6 +69,7 @@ __all__ = [
     "stop_command",
     "dump_interface_command",
     "sync_docs_command",
+    "verify_docs_command",
     "types_group",
     "uninstall_command",
     "update_command",

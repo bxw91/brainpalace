@@ -131,5 +131,9 @@ CLI_DASHBOARD_COVERAGE: dict[str, str] = {
     "types": "Folders (type presets)",
     "uninstall": "cli_only: package management",
     "update": "cli_only: package management",
+    "verify-docs": (
+        "cli_only: hidden Layer-B doc-verification machinery (resolve/record), "
+        "agent-driven + repo-only, not a UI surface"
+    ),
     "whoami": "cli_only: CWD-context helper, irrelevant in a fleet UI",
 }

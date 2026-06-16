@@ -150,6 +150,8 @@ tmp/
 # Local tool state
 .claude/projects/
 .claude/scheduled_tasks.lock
+# Weekly doc-verify sweep cadence (per-machine; not shared — avoids commit churn)
+.claude/.doc-verify-sweep.json
 brainpalace-server/.brainpalace/
 .brainpalace/
 .brainpalace-backup/

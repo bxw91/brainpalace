@@ -103,6 +103,10 @@ def test_hook_sessionstart_indexed_server_down(monkeypatch: pytest.MonkeyPatch) 
 
     monkeypatch.setattr(hook, "discover_project_dir", lambda _=None: Path("/proj"))
     monkeypatch.setattr(hook, "discover_server_url", lambda _=None: None)  # down
+    # Autostart defaults ON; stub the detached spawn so the test never launches a
+    # real server. Assert it fires for an indexed-but-down project.
+    spawned: list[Path] = []
+    monkeypatch.setattr(hook, "_spawn_autostart", lambda p: spawned.append(p))
     runner = CliRunner()
     res = runner.invoke(cli, ["hook", "sessionstart"])
     assert res.exit_code == 0
@@ -110,6 +114,45 @@ def test_hook_sessionstart_indexed_server_down(monkeypatch: pytest.MonkeyPatch) 
     ctx = payload["hookSpecificOutput"]["additionalContext"]
     assert payload["hookSpecificOutput"]["hookEventName"] == "SessionStart"
     assert ctx == ai_guidance.nudge()  # NUDGE only when server down
+    assert spawned == [Path("/proj")]  # server down + autostart on → spawn fired
+
+
+def test_hook_sessionstart_autostart_disabled_no_spawn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from brainpalace_cli.commands import hook
+
+    monkeypatch.setattr(hook, "discover_project_dir", lambda _=None: Path("/proj"))
+    monkeypatch.setattr(hook, "discover_server_url", lambda _=None: None)  # down
+    monkeypatch.setenv("BRAINPALACE_SESSION_AUTOSTART", "off")
+    spawned: list[Path] = []
+    monkeypatch.setattr(hook, "_spawn_autostart", lambda p: spawned.append(p))
+    runner = CliRunner()
+    res = runner.invoke(cli, ["hook", "sessionstart"])
+    assert res.exit_code == 0
+    assert spawned == []  # env off → no autostart, still emits NUDGE
+    assert json.loads(res.output)["hookSpecificOutput"]["additionalContext"]
+
+
+def test_spawn_autostart_is_detached_fire_and_forget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from brainpalace_cli.commands import hook
+
+    calls: list[dict] = []
+
+    def fake_popen(argv, **kwargs):  # noqa: ANN001, ANN202
+        calls.append({"argv": argv, "kwargs": kwargs})
+        return object()
+
+    monkeypatch.setattr(hook.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(hook.shutil, "which", lambda _: "/usr/bin/brainpalace")
+    hook._spawn_autostart(Path("/proj"))
+    assert len(calls) == 1
+    assert calls[0]["argv"] == ["/usr/bin/brainpalace", "start", "--json"]
+    assert calls[0]["kwargs"]["cwd"] == "/proj"
+    assert calls[0]["kwargs"]["start_new_session"] is True  # own session → detached
+    # Never waited on (fire-and-forget): Popen handle is discarded, no .wait().
 
 
 def test_hook_sessionstart_not_indexed_is_silent(

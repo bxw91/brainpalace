@@ -1,0 +1,727 @@
+{
+  "0128ea68f41895244b56d614ab56f549184356e5c07bc4d1a76e836e65e51482": {
+    "doc": "docs/PLUGIN_GUIDE.md",
+    "claim": "/brainpalace-search /brainpalace-semantic /brainpalace-keyword /brainpalace-bm25 /brainpalace-vector /brainpalace-hybrid /brainpalace-graph /brainpalace-multi exist as commands",
+    "grounding": "brainpalace-plugin/commands/",
+    "verdict": "CONTRADICTED",
+    "evidence": "no such command files; only brainpalace-query.md exists, mode via --mode"
+  },
+  "02b12dff2848054acbfb19992355a5cd580e4fe44c25ea5e2ec60bf536df40e4": {
+    "doc": "docs/DEVELOPERS_GUIDE.md",
+    "claim": "AI guidance source at brainpalace-cli/brainpalace_cli/data/ai_guidance.md",
+    "grounding": "brainpalace-cli/brainpalace_cli/data/ai_guidance.md",
+    "verdict": "SUPPORTED",
+    "evidence": "File exists at that path"
+  },
+  "02b4b158aed1c8270c9be721ddc0ad03463558aaeab50ef67d759cd89d9b2422": {
+    "doc": "docs/PLUGIN_GUIDE.md",
+    "claim": "agents/chat-session-extractor.md and agents/memory-curator.md exist in the plugin",
+    "grounding": "brainpalace-plugin/agents/",
+    "verdict": "SUPPORTED",
+    "evidence": "ls brainpalace-plugin/agents/ shows chat-session-extractor.md and memory-curator.md"
+  },
+  "05069d8f5b60774e524d46db22d589f0c539460cd0cd2a547928bf0aa80fdaa1": {
+    "doc": "docs/PLUGIN_GUIDE.md",
+    "claim": "/brainpalace-cache has subcommands status and clear (clear prompts unless --yes)",
+    "grounding": "brainpalace-plugin/commands/brainpalace-cache.md",
+    "verdict": "SUPPORTED",
+    "evidence": "cache command source documents status and clear subcommands"
+  },
+  "056bcc50291651efc60bfaa0e63e3367a28d6a12f2444b9d056bdd303a2ca22c": {
+    "doc": "docs/USER_GUIDE.md",
+    "claim": "RuntimeConverter protocol at brainpalace_cli.runtime.converter_base with convert_command, convert_agent, convert_skill, install methods",
+    "grounding": "brainpalace-cli/brainpalace_cli/runtime/converter_base.py",
+    "verdict": "SUPPORTED",
+    "evidence": "class RuntimeConverter(Protocol) at line 16 with all four method signatures confirmed"
+  },
+  "065391b274edd9d52aea4dc278c2a2f23977a59bd0ac9d525b8526404f2db4e4": {
+    "doc": "docs/USER_GUIDE.md",
+    "claim": "CONVERTERS dict in install_agent.py",
+    "grounding": "brainpalace-cli/brainpalace_cli/commands/install_agent.py",
+    "verdict": "SUPPORTED",
+    "evidence": "CONVERTERS: dict[str, ConverterType] = { at line 52 of install_agent.py"
+  },
+  "0a6017e330ab6aad5402cd88362fc8f3d5671f94b6b0ef9a0a735b50bf8019db": {
+    "doc": "brainpalace-plugin/README.md",
+    "claim": "AST-aware indexing for Python, TypeScript, JavaScript, Java, Go, Rust, C, C++",
+    "grounding": "docs/CODE_INDEXING.md",
+    "verdict": "SUPPORTED",
+    "evidence": "CODE_INDEXING.md lists 11 AST-aware languages including all 8 listed (plus C#, Kotlin, Swift)"
+  },
+  "1229b55e614bc989e1ba9185dfb3e5a73a8b260d0d566fe500748111bdfd27be": {
+    "doc": "docs/DEVELOPERS_GUIDE.md",
+    "claim": "CODE_EXTENSIONS and EXTENSION_TO_LANGUAGE in document_loader.py",
+    "grounding": "brainpalace-server/brainpalace_server/indexing/document_loader.py",
+    "verdict": "SUPPORTED",
+    "evidence": "CODE_EXTENSIONS at line 275 and EXTENSION_TO_LANGUAGE at line 51 exist in document_loader.py"
+  },
+  "13b1fcc09bac3e4a9606994647464062dbc3e365275a6f064b4859821632cae7": {
+    "doc": "brainpalace-plugin/README.md",
+    "claim": "Plugin includes skill named using-brainpalace (search mode guidance and API reference)",
+    "grounding": "docs/PLUGIN_GUIDE.md",
+    "verdict": "SUPPORTED",
+    "evidence": "2 skills for context-aware assistance: using-brainpalace (search-mode selection, query optimisation, API knowledge)"
+  },
+  "15c41fb8be267af6ddf6c0cebcf743c9705840a6531196c5151b6c70abb20773": {
+    "doc": "brainpalace-plugin/README.md",
+    "claim": "SessionStart hook is at hooks/sessionstart-hook.sh",
+    "grounding": "brainpalace-plugin/hooks/sessionstart-hook.sh",
+    "verdict": "SUPPORTED",
+    "evidence": "cached \u2014 file exists at that path"
+  },
+  "1ae8605c7ba1c8b7f4fd88b71debe49c36a5bb2d1e63b9c06edc4057536fe9a2": {
+    "doc": "brainpalace-plugin/commands/brainpalace-extract-session.md",
+    "claim": "Both the manual command and chat-session-extractor agent submit via brainpalace submit-session",
+    "grounding": "brainpalace-cli/brainpalace_cli/commands/sessions.py",
+    "verdict": "SUPPORTED",
+    "evidence": "sessions.py line 25: @click.command('submit-session'); agent doc also references same command"
+  },
+  "1b8245339e0ae0f32e601ef4a1d6e450fff766573b068fbdeff9d3aa3b6d5874": {
+    "doc": "docs/PLUGIN_GUIDE.md",
+    "claim": "/brainpalace-graph command exists",
+    "grounding": "brainpalace-plugin/commands/",
+    "verdict": "CONTRADICTED",
+    "evidence": "no brainpalace-graph.md; use /brainpalace-query --mode graph"
+  },
+  "22b14f89d78f76a3749579aa1cffa39fe7152c63ba0abfc8611a20feddf69aff": {
+    "doc": "docs/PLUGIN_GUIDE.md",
+    "claim": "No /brainpalace-providers, -embeddings, -summarizer, -help, -version commands exist",
+    "grounding": "brainpalace-plugin/commands/",
+    "verdict": "SUPPORTED",
+    "evidence": "none of brainpalace-providers/-embeddings/-summarizer/-help/-version .md exist in commands dir"
+  },
+  "24262b903b618a09e4bf542d066042962a6c30c25d8d4d1321e4462f6cf65ba1": {
+    "doc": "docs/PLUGIN_GUIDE.md",
+    "claim": "The plugin includes five agents: Search Assistant, Research Assistant, Setup Assistant (interactive) plus Chat Session Extractor and Memory Curator",
+    "grounding": "brainpalace-plugin/agents/",
+    "verdict": "SUPPORTED",
+    "evidence": "5 agent md files with names search-assistant, research-assistant, setup-assistant, chat-session-extractor, memory-curator"
+  },
+  "25d47203b3d1fb2d96abe8628f9b1d33426ed58ec7d368a47444b4ffdde5324e": {
+    "doc": "brainpalace-plugin/commands/brainpalace-extract-session.md",
+    "claim": "brainpalace submit-session <session_id> --json - reads payload from stdin",
+    "grounding": "brainpalace-cli/brainpalace_cli/commands/sessions.py",
+    "verdict": "SUPPORTED",
+    "evidence": "sessions.py lines 28-48: --json option with help 'Path to the extraction JSON, or - to read from stdin'; reads sys.stdin when path is -"
+  },
+  "2b92c988aaccbe92a57a772c82b2f9660a83d2d4bbe864ee0e31c21b312c8608": {
+    "doc": "docs/PLUGIN_GUIDE.md",
+    "claim": "The plugin provides 2 skills",
+    "grounding": "brainpalace-plugin/skills/ (using-brainpalace, configuring-brainpalace)",
+    "verdict": "SUPPORTED",
+    "evidence": "2 skill dirs present"
+  },
+  "2eb62c32ad712396a0f5033169a3c83b023a0f51d6dd4a74debe81ec97cadf9a": {
+    "doc": "docs/PLUGIN_GUIDE.md",
+    "claim": "MCP config snippet is at templates/mcp-config-claude-code.json",
+    "grounding": "brainpalace-plugin/templates/mcp-config-claude-code.json",
+    "verdict": "SUPPORTED",
+    "evidence": "File confirmed present via ls brainpalace-plugin/templates/"
+  },
+  "301b35caa7799ab8801b3e1ddff86354782162914d0bb656bc06fc69e3c7c1a0": {
+    "doc": "brainpalace-plugin/README.md",
+    "claim": "AST-aware indexing for Python, TypeScript, JavaScript, Java, Go, Rust, C, C++",
+    "grounding": "brainpalace-server/brainpalace_server/indexing/ast_chunker.py",
+    "verdict": "SUPPORTED",
+    "evidence": "cached \u2014 AST chunker confirmed for those languages"
+  },
+  "3aab5090999dad867adfb6477ce9cc5edb313aa3d88124e35354514388ba7f28": {
+    "doc": "docs/PLUGIN_GUIDE.md",
+    "claim": "The three agents are Search Assistant, Research Assistant, Setup Assistant",
+    "grounding": "brainpalace-plugin/agents/",
+    "verdict": "CONTRADICTED",
+    "evidence": "5 agents exist; doc omits chat-session-extractor and memory-curator"
+  },
+  "3b00c71f287bbe86233a492ba83bbc4ad4f2e953ffe9cc2c718a4ca34c7bbe79": {
+    "doc": "docs/USER_GUIDE.md",
+    "claim": "Plugin overview: 30 Commands, 3 Agents, 2 Skills",
+    "grounding": "brainpalace-plugin/agents/",
+    "verdict": "CONTRADICTED",
+    "evidence": "Live plugin has 5 agents (chat-session-extractor, memory-curator, research-assistant, search-assistant, setup-assistant), not 3. Many listed commands do not exist."
+  },
+  "3b616717ea46675e212469e48b6c410971f159cb26cdda5b692de639a0f8df98": {
+    "doc": "docs/PLUGIN_GUIDE.md",
+    "claim": "hybrid alpha 1.0=semantic 0.5=default 0.0=keyword",
+    "grounding": "brainpalace-plugin/commands/brainpalace-query.md:87",
+    "verdict": "SUPPORTED",
+    "evidence": "alpha 1.0=pure vector 0.0=pure bm25 default 0.5"
+  },
+  "3ff7d98f75e8234bdc2d7573eecb665b5e4d3554a863db5d7cfe1982b77c58cc": {
+    "doc": "docs/DEVELOPERS_GUIDE.md",
+    "claim": "Step 3 for adding a language: register in brainpalace_server/indexing/code_chunker.py CodeChunker.SUPPORTED_LANGUAGES",
+    "grounding": "brainpalace-server/brainpalace_server/indexing/chunking.py",
+    "verdict": "CONTRADICTED",
+    "evidence": "File code_chunker.py does not exist. CodeChunker is in chunking.py and has no SUPPORTED_LANGUAGES class attribute \u2014 languages are detected via EXTENSION_TO_LANGUAGE in document_loader.py"
+  },
+  "405da49705690e47515e928e86f2285d62b3d434e61ad60cf46408cb23a147f9": {
+    "doc": "docs/PLUGIN_GUIDE.md",
+    "claim": "/brainpalace-inject options --script (process_chunk), --folder-metadata, --dry-run; at least one of --script/--folder-metadata required",
+    "grounding": "brainpalace-plugin/commands/brainpalace-inject.md",
+    "verdict": "SUPPORTED",
+    "evidence": "inject source params: script, folder-metadata, dry-run; text: 'At least one of --script or --folder-metadata is required.'"
+  },
+  "415b5c5e23c5f3c7a0e749d4948786df9e7923a0efb1d341f0609dce0a2f1f92": {
+    "doc": "brainpalace-plugin/commands/brainpalace-extract-session.md",
+    "claim": "Triplet relations closed vocabulary: touches, fixed-by, superseded-by, ran-in, depends-on, decided",
+    "grounding": "docs/GRAPH_TAXONOMY.md",
+    "verdict": "SUPPORTED",
+    "evidence": "GRAPH_TAXONOMY.md and SESSION_INDEXING.md confirm exactly these 6 relations"
+  },
+  "44155891767ea93e3118287c7568606e04b8bcfa87be58392d7b286c511e5789": {
+    "doc": "docs/PLUGIN_GUIDE.md",
+    "claim": "Three agents only (Search/Research/Setup assistant)",
+    "grounding": "brainpalace-plugin/agents/ (5 files)",
+    "verdict": "CONTRADICTED",
+    "evidence": "5 agents: adds chat-session-extractor, memory-curator"
+  },
+  "44b31eb9c091c976714f382e5fddf93c5e3bca52345cd42e15dd6828ab8ea27e": {
+    "doc": "docs/DEVELOPERS_GUIDE.md",
+    "claim": "Loader/renderer at brainpalace_cli/ai_guidance.py with nudge/core/full functions",
+    "grounding": "brainpalace-cli/brainpalace_cli/ai_guidance.py",
+    "verdict": "SUPPORTED",
+    "evidence": "ai_guidance.py defines nudge(), core(), full() slice functions and load_source()"
+  },
+  "458e88a8b67fb76797cd53b6c36abdfec860316d09bc070e6055d68a58ac0d13": {
+    "doc": "docs/PLUGIN_GUIDE.md",
+    "claim": "/brainpalace-providers command exists",
+    "grounding": "brainpalace-plugin/commands/",
+    "verdict": "CONTRADICTED",
+    "evidence": "no brainpalace-providers.md; providers configured via /brainpalace-config wizard (config.py interactive wizard)"
+  },
+  "4814ba82b35edafe81dc63f3ce449f0df6fc7baf0b9232877f7fd96b3aa32a65": {
+    "doc": "brainpalace-plugin/README.md",
+    "claim": "SessionStart hook gates the reminder on brainpalace whoami exit code so non-indexed projects are never forced to use BrainPalace",
+    "grounding": "brainpalace-plugin/README.md (chunk_3fcfcd797943b4c1)",
+    "verdict": "SUPPORTED",
+    "evidence": "conditional SessionStart hook template that gates the reminder on brainpalace whoami exit code, so non-indexed projects are never forced to use BrainPalace"
+  },
+  "4e31f7519024fb3e0bf1dc39641e504ed7b6ee7ee54919b0d4b7f78a9f411259": {
+    "doc": "docs/PLUGIN_GUIDE.md",
+    "claim": "Search commands default --threshold is 0.7",
+    "grounding": "brainpalace-plugin/commands/brainpalace-query.md:16,85",
+    "verdict": "CONTRADICTED",
+    "evidence": "query.md default threshold 0.3"
+  },
+  "4f92097c75c7fd3b0bfea5ef92b78a270928fc5dd2235717b1b1a0d0857da216": {
+    "doc": "docs/PLUGIN_GUIDE.md",
+    "claim": "Auto-extraction asset table lists hooks/sessionstart-hook.sh (not templates/)",
+    "grounding": "brainpalace-plugin/hooks/sessionstart-hook.sh",
+    "verdict": "SUPPORTED",
+    "evidence": "File exists at hooks/sessionstart-hook.sh; git commit 602d73a confirms templates->hooks rename"
+  },
+  "5105b46e114b1fc437dbf70f2f398896994642774ff9e2ee6ad0f9bb827d96a7": {
+    "doc": "docs/PLUGIN_GUIDE.md",
+    "claim": "/brainpalace-bm25 command exists",
+    "grounding": "brainpalace-plugin/commands/",
+    "verdict": "CONTRADICTED",
+    "evidence": "no brainpalace-bm25.md; use /brainpalace-query --mode bm25"
+  },
+  "52ed3abef5271a8dc001acaf4bc3fdeb33386bf2c1f8f513248879dd1b5e178e": {
+    "doc": "docs/PLUGIN_GUIDE.md",
+    "claim": "install-agent supports claude/opencode/gemini/codex/skill-runtime with listed dirs",
+    "grounding": "brainpalace-plugin/commands/brainpalace-install-agent.md:48-85",
+    "verdict": "SUPPORTED",
+    "evidence": "GENERATED install-dirs block matches"
+  },
+  "56dec295adb6b9d3a55f72fdc3e2894bf46b9d8c034c62ecf89d7736885b65d1": {
+    "doc": "docs/PLUGIN_GUIDE.md",
+    "claim": "The plugin provides 30 slash commands",
+    "grounding": "brainpalace-plugin/commands/ (filesystem)",
+    "verdict": "CONTRADICTED",
+    "evidence": "33 command .md files exist in brainpalace-plugin/commands/"
+  },
+  "58de34279b756c803a7451901ffc6a9dd8671b07337cdec66f959689a54aead1": {
+    "doc": "brainpalace-plugin/commands/brainpalace-extract-session.md",
+    "claim": "Extraction schema: session_id, project_path, branch, started_at, ended_at, summary, open_threads[], decisions[{text,rationale,files[],supersedes}], files_touched[{path,action}], tools_used[], triplets[{subject,relation,object,evidence_turn}]",
+    "grounding": "brainpalace-server/tests/test_session_extract_models.py",
+    "verdict": "SUPPORTED",
+    "evidence": "test_session_extract_models.py and docs/GRAPH_TAXONOMY.md confirm all listed fields"
+  },
+  "5a82d614ad5c68dd2af16170824429e670c7eea2433a14f9d0647fe21497116c": {
+    "doc": "docs/USER_GUIDE.md",
+    "claim": "Embedding cache Layer 2 disk default 500MB",
+    "grounding": "brainpalace-server/brainpalace_server/services/embedding_cache.py",
+    "verdict": "SUPPORTED",
+    "evidence": "_MAX_DISK_MB_DEFAULT = 500 at line 67"
+  },
+  "635236370e8a3dc6bcbac571836371e0d64397bbd783cba50d86537974780d74": {
+    "doc": "docs/USER_GUIDE.md",
+    "claim": "Embedding cache Layer 1 (Memory) default capacity 1,000 entries",
+    "grounding": "brainpalace-server/brainpalace_server/services/embedding_cache.py",
+    "verdict": "CONTRADICTED",
+    "evidence": "_MEM_LRU_DEFAULT = 10_000 at line 66 \u2014 10x larger than stated 1,000"
+  },
+  "6addf023e9102b553e5275fba67853633d01dfae5e9b8bfd0f3f01747e1db007": {
+    "doc": "CLAUDE.md",
+    "claim": "doc-verifier lives in .claude/agents/ and .claude/commands/ (as doc-verifier.md and brainpalace-verify-docs.md)",
+    "grounding": ".claude/agents/doc-verifier.md",
+    "verdict": "SUPPORTED",
+    "evidence": "ls .claude/agents/ shows doc-verifier.md; ls .claude/commands/ shows brainpalace-verify-docs.md"
+  },
+  "6c8b2d43f8c0db39b256700933c8865dab2b59e8a95b8cf3332e5a1e0ec4d9f2": {
+    "doc": "docs/USER_GUIDE.md",
+    "claim": "MCP tool surface read-only: query, status, whoami, folders_list, jobs_list (5 tools)",
+    "grounding": "brainpalace-cli/brainpalace_cli/mcp_server/tools.py",
+    "verdict": "CONTRADICTED",
+    "evidence": "Live code has 9 tool handlers including memorize_tool, recall_tool, session_context_tool, ai_guide_tool. memorize is not read-only."
+  },
+  "6cca9fc55999bcd4eb6126d46e1e9cf3e39e6d4f7635bfe39445b750f55b0af8": {
+    "doc": "docs/USER_GUIDE.md",
+    "claim": "BM25 ~27 Snowball/PyStemmer languages supported plus custom Croatian stemmer",
+    "grounding": "brainpalace-server/brainpalace_server/indexing/text_analysis/snowball.py",
+    "verdict": "SUPPORTED",
+    "evidence": "SNOWBALL dict has exactly 27 entries. Croatian handled separately in croatian.py with CroatianStemAnalyzer."
+  },
+  "6cee4cd4fb541371d07e38f049373c90164bf527202045605c4c315b53ab9fda": {
+    "doc": "docs/PLUGIN_GUIDE.md",
+    "claim": "The plugin provides 30 slash commands, 3 agents, 2 skills",
+    "grounding": "brainpalace-plugin/commands/ (33 files), agents/ (5), skills/ (2)",
+    "verdict": "CONTRADICTED",
+    "evidence": "filesystem: 33 command files, 5 agents, 2 skills"
+  },
+  "6d277a7f9e6edc7451b877ee1c38f5238a0cbce82f40159d402fe1a478af1800": {
+    "doc": "brainpalace-plugin/README.md",
+    "claim": "/brainpalace-semantic command exists",
+    "grounding": "brainpalace-plugin/commands/",
+    "verdict": "CONTRADICTED",
+    "evidence": "No brainpalace-semantic.md in commands/; consolidated into /brainpalace-query --mode vector"
+  },
+  "6dd4806e093f3781dee6e9de17b21fbc51b12a3a5ec3f391d39b62be30a5a05d": {
+    "doc": "brainpalace-plugin/README.md",
+    "claim": "/brainpalace-query supports --mode graph (knowledge-graph relationships) and --mode multi (fusion of all modes)",
+    "grounding": "brainpalace-plugin/commands/brainpalace-query.md",
+    "verdict": "SUPPORTED",
+    "evidence": "--mode choices: hybrid, vector, bm25, graph (knowledge graph relationships), multi (fusion of vector+bm25+graph)"
+  },
+  "74c35c6488b03e6d182cd0d48247bb51900014ccd6bfc46b232b8d1b90417eac": {
+    "doc": "docs/USER_GUIDE.md",
+    "claim": "Commands /brainpalace-search, /brainpalace-semantic, /brainpalace-keyword, /brainpalace-bm25, /brainpalace-vector, /brainpalace-hybrid, /brainpalace-graph, /brainpalace-multi exist",
+    "grounding": "brainpalace-plugin/commands/",
+    "verdict": "CONTRADICTED",
+    "evidence": "None of these 8 command files exist in brainpalace-plugin/commands/. The plugin has brainpalace-query.md for search instead."
+  },
+  "76ba0c9f19d4a6f23f0e75870d23db5150de2a198f5e6f30ee0994318e9ed065": {
+    "doc": "docs/PLUGIN_GUIDE.md",
+    "claim": "/brainpalace-query --threshold default is 0.3",
+    "grounding": "brainpalace-plugin/commands/brainpalace-query.md",
+    "verdict": "SUPPORTED",
+    "evidence": "GENERATED flags: | --threshold | float | 0.3 | Minimum similarity threshold 0-1 (default: 0.3) |; param default 0.3"
+  },
+  "780110c03dc2576f8a1487af486d8ec0ac0d6c38e8973a8f008c79587f72c7f3": {
+    "doc": "docs/PLUGIN_GUIDE.md",
+    "claim": "configuring-brainpalace skill covers 7 providers: OpenAI, Anthropic, Ollama, Cohere, Gemini, Grok, SentenceTransformers",
+    "grounding": "brainpalace-server/brainpalace_server/providers/",
+    "verdict": "SUPPORTED",
+    "evidence": "provider impls: embedding {openai,cohere,ollama}, summarization {anthropic,gemini,grok,ollama,openai}, reranker {ollama,sentence_transformers} => distinct set of 7 names matches"
+  },
+  "7a0a0022065828dc700e3ea6786b4a233cae260cd6a89d27928972ce6c4d7cbf": {
+    "doc": "docs/PLUGIN_GUIDE.md",
+    "claim": "Common search option --threshold default is 0.7",
+    "grounding": "brainpalace-plugin/commands/brainpalace-query.md",
+    "verdict": "CONTRADICTED",
+    "evidence": "brainpalace-query.md parameters: threshold default 0.3 (not 0.7)"
+  },
+  "7a8570feea0a462c00e73c364fc812fda16c47ca6dea23c155782ac410982ac0": {
+    "doc": "docs/DEVELOPERS_GUIDE.md",
+    "claim": "MCP subpackage is named mcp_server (not mcp) in brainpalace-cli/brainpalace_cli/mcp_server/",
+    "grounding": "brainpalace-cli/brainpalace_cli/mcp_server/tools.py",
+    "verdict": "SUPPORTED",
+    "evidence": "Directory brainpalace_cli/mcp_server/ exists with tools.py, server.py, schemas.py etc."
+  },
+  "7c8a5707a4e8922bb24c26656e62b50fd7f52b761da5303759878a714758233d": {
+    "doc": "docs/PLUGIN_GUIDE.md",
+    "claim": "Session extraction is free on your subscription model (no metered API)",
+    "grounding": "docs/SESSION_INDEXING.md",
+    "verdict": "SUPPORTED",
+    "evidence": "SESSION_INDEXING.md line 271: 'free on your subscription; the server never calls a paid provider'; line 437: subagent mode marked 'free'"
+  },
+  "7def68b066a2bdf856cab3f708ae4ce7dd5c9f60807204dbca7a8e1c94c1e40d": {
+    "doc": "docs/PLUGIN_GUIDE.md",
+    "claim": "/brainpalace-query --alpha default 0.5, 1.0=pure vector 0.0=pure bm25; --mode default hybrid with modes hybrid/vector/bm25/graph/multi",
+    "grounding": "brainpalace-plugin/commands/brainpalace-query.md",
+    "verdict": "SUPPORTED",
+    "evidence": "--alpha float 0.5 (1.0 = pure vector, 0.0 = pure bm25); --mode choice hybrid; modes vector/bm25/hybrid/graph/multi"
+  },
+  "7ff15d3792692e40bee95bb7a9c97457f2e71a186b405a102839ec568504ef69": {
+    "doc": "docs/PLUGIN_GUIDE.md",
+    "claim": "The plugin provides 2 skills",
+    "grounding": "brainpalace-plugin/skills/ (filesystem)",
+    "verdict": "SUPPORTED",
+    "evidence": "2 skill dirs: configuring-brainpalace, using-brainpalace"
+  },
+  "8279a0a16696934fa26b8d1143902fc67a1db4f8c788b5a035c1c33a6a3d01b3": {
+    "doc": "docs/PLUGIN_GUIDE.md",
+    "claim": "/brainpalace-multi command exists",
+    "grounding": "brainpalace-plugin/commands/",
+    "verdict": "CONTRADICTED",
+    "evidence": "no brainpalace-multi.md; use /brainpalace-query --mode multi"
+  },
+  "8316754fb4dce4b95aacc73befca8e7aa8171e0df203ddd99dcfaff3e490d3b9": {
+    "doc": "docs/PLUGIN_GUIDE.md",
+    "claim": "/brainpalace-vector command exists",
+    "grounding": "brainpalace-plugin/commands/",
+    "verdict": "CONTRADICTED",
+    "evidence": "no brainpalace-vector.md; use /brainpalace-query --mode vector"
+  },
+  "8522d454ba5ab6870613338d80d14d8c12feb46655a2180a74a85ffba37b2f95": {
+    "doc": "docs/PLUGIN_GUIDE.md",
+    "claim": "The plugin ships a SessionStart hook at brainpalace-plugin/hooks/sessionstart-hook.sh",
+    "grounding": "brainpalace-plugin/hooks/sessionstart-hook.sh",
+    "verdict": "SUPPORTED",
+    "evidence": "File exists at brainpalace-plugin/hooks/sessionstart-hook.sh; git commit log shows {templates => hooks}/sessionstart-hook.sh rename"
+  },
+  "85495c854d86feea4ec31247821caa15137ceade9a09fcb40274d2c4d7e52de9": {
+    "doc": "docs/DEVELOPERS_GUIDE.md",
+    "claim": "FRESHNESS_EXEMPT single-sourced from PLUGIN_DOC_GATE_EXEMPT",
+    "grounding": "scripts/check_doc_freshness.py",
+    "verdict": "SUPPORTED",
+    "evidence": "FRESHNESS_EXEMPT = set(PLUGIN_DOC_GATE_EXEMPT) at line 70 of check_doc_freshness.py"
+  },
+  "89433921ddb5fbe73dd58a124c94146f03aca2425218cf8a5cfdf99b9bb4224b": {
+    "doc": "docs/PLUGIN_GUIDE.md",
+    "claim": "All retrieval goes through a single command /brainpalace-query with a --mode flag; no per-mode slash commands remain",
+    "grounding": "brainpalace-plugin/commands/",
+    "verdict": "SUPPORTED",
+    "evidence": "brainpalace-query.md present; no brainpalace-search/-semantic/-keyword/-bm25/-vector/-hybrid/-graph/-multi .md files exist"
+  },
+  "8a71fea965f5e76bfc8038e2e9a8a176df0bb009edb5e9a532872848d07c3958": {
+    "doc": "docs/DEVELOPERS_GUIDE.md",
+    "claim": "brainpalace_cli.providers.PROVIDERS registry",
+    "grounding": "brainpalace-cli/brainpalace_cli/providers.py",
+    "verdict": "SUPPORTED",
+    "evidence": "PROVIDERS: dict[str, dict[str, ProviderInfo]] = { at line 33 of providers.py"
+  },
+  "8a9c92f226f29193092c420f2aa3508645b4df3d86d7c9359de9c05d36187d0a": {
+    "doc": "docs/PLUGIN_GUIDE.md",
+    "claim": "install-agent supports runtimes claude, opencode, gemini, codex (and skill-runtime)",
+    "grounding": "brainpalace-plugin/commands/brainpalace-install-agent.md",
+    "verdict": "SUPPORTED",
+    "evidence": "--agent target runtime: claude, opencode, gemini, skill-runtime, or codex; GENERATED install-dirs table lists claude/opencode/gemini/codex"
+  },
+  "97dba3eb9aa84dd9f73adc05d207e5eb96ab45780351a8c1aaad9eb104386bee": {
+    "doc": "docs/DEVELOPERS_GUIDE.md",
+    "claim": "ConfigService.effective() returns inherited field for project-set keys",
+    "grounding": "brainpalace-dashboard/brainpalace_dashboard/services/config_svc.py",
+    "verdict": "SUPPORTED",
+    "evidence": "ConfigService.effective() at line 169 returns dict with 'inherited' key per docstring and code at lines 196-197"
+  },
+  "98a9c47951297ee2236d79ea58fa2ee6a92139d2321a12f89fb7b30c5d55441e": {
+    "doc": "docs/PLUGIN_GUIDE.md",
+    "claim": "/brainpalace-hybrid command exists",
+    "grounding": "brainpalace-plugin/commands/",
+    "verdict": "CONTRADICTED",
+    "evidence": "no brainpalace-hybrid.md; use /brainpalace-query --mode hybrid --alpha"
+  },
+  "9bdccfbc5e7d6c263e5a32fdc558ab99574985b2f4588afb4b4d193d3d8290fa": {
+    "doc": "README.md",
+    "claim": "Plugin ships 33 slash commands, 5 agents, 2 skills",
+    "grounding": "brainpalace-plugin/commands/",
+    "verdict": "SUPPORTED",
+    "evidence": "ls commands/ = 33; ls agents/ = 5; ls skills/ = 2"
+  },
+  "9c055205a1957b255cf362b1c1bc86b926a5bebc780a3dd19f6852638b629c6e": {
+    "doc": "brainpalace-plugin/README.md",
+    "claim": "/brainpalace-help command exists",
+    "grounding": "brainpalace-plugin/commands/",
+    "verdict": "CONTRADICTED",
+    "evidence": "No brainpalace-help.md in commands/; use Claude Code /help and CLI brainpalace --version per PLUGIN_GUIDE.md"
+  },
+  "9dd42fa27b5f8e1f84a5439397d129a8fa415425304c4af4664335b7f1642bb6": {
+    "doc": "docs/PLUGIN_GUIDE.md",
+    "claim": "templates/daily-distill-hook.sh and weekly-curate-hook.sh exist in the plugin",
+    "grounding": "brainpalace-plugin/templates/",
+    "verdict": "SUPPORTED",
+    "evidence": "ls brainpalace-plugin/templates/ shows daily-distill-hook.sh and weekly-curate-hook.sh"
+  },
+  "9f8e5d7c47a8d0999b26e1e25fa1373de8df751afff3a2965c9cc6bb13f3efd6": {
+    "doc": "docs/USER_GUIDE.md",
+    "claim": "Jobs stored in .brainpalace/jobs/index_queue.jsonl",
+    "grounding": "brainpalace-server/brainpalace_server/job_queue/job_store.py",
+    "verdict": "SUPPORTED",
+    "evidence": "QUEUE_FILE = 'index_queue.jsonl' at line 129; job_store.py comment confirms path .brainpalace/jobs/index_queue.jsonl"
+  },
+  "__marker__": {
+    "base": "main",
+    "fingerprint": "ec1bc667ae97105fffc6b2dcb2814f2a6df0d56dde546ab930812bdbeae3a861"
+  },
+  "a073f659e48a8e2b8ebd238518f1a6dc66a6c9f42df5b483c2999b4160741788": {
+    "doc": "docs/PLUGIN_GUIDE.md",
+    "claim": "/brainpalace-version command exists",
+    "grounding": "brainpalace-plugin/commands/",
+    "verdict": "CONTRADICTED",
+    "evidence": "no brainpalace-version.md; /brainpalace-update and /brainpalace-doctor exist instead"
+  },
+  "a1601f8945d02a17af06f8ae5bee4f22ce9d6b4df90f7d3050bd4a5295b2394e": {
+    "doc": "README.md",
+    "claim": "Use /brainpalace-config to pick Ollama for both embeddings and summarisation (not /brainpalace-providers)",
+    "grounding": "brainpalace-plugin/commands/brainpalace-config.md",
+    "verdict": "SUPPORTED",
+    "evidence": "brainpalace-config.md exists; no brainpalace-providers.md in commands/"
+  },
+  "a2c5e3588cae652dc0ce2f488c422e94320fab2bdebdbde37756b07d243f9569": {
+    "doc": "docs/PLUGIN_GUIDE.md",
+    "claim": "/brainpalace-extract-session command exists",
+    "grounding": "brainpalace-plugin/commands/brainpalace-extract-session.md",
+    "verdict": "SUPPORTED",
+    "evidence": "brainpalace-extract-session.md exists in commands/"
+  },
+  "a737048817df16dadf74adcde8a06121f07a07b13485a4282c7049f8466fbc51": {
+    "doc": "docs/USER_GUIDE.md",
+    "claim": "GET /query/history and GET /query/history/{qid} endpoints",
+    "grounding": "brainpalace-server/brainpalace_server/api/routers/query.py",
+    "verdict": "SUPPORTED",
+    "evidence": "Routes at lines 156 and 207 in query.py, prefixed at /query in main.py"
+  },
+  "aaedd5acbb4a715410befe6c94b4a805c95c237e53f2db3e2cbf85a886110676": {
+    "doc": "brainpalace-plugin/commands/brainpalace-extract-session.md",
+    "claim": "brainpalace session-path <session_id> prints the archived session path",
+    "grounding": "brainpalace-cli/brainpalace_cli/commands/sessions.py",
+    "verdict": "SUPPORTED",
+    "evidence": "sessions.py line 82: @click.command('session-path')"
+  },
+  "b05e118417aa02b3eec24ab9e28daf594c06e4954bb1400ef88bd2152636992a": {
+    "doc": "docs/PLUGIN_GUIDE.md",
+    "claim": "install-agent supported runtimes include Claude, OpenCode, Gemini",
+    "grounding": "brainpalace-plugin/commands/brainpalace-install-agent.md",
+    "verdict": "SUPPORTED",
+    "evidence": "install-agent.md lists claude, opencode, gemini, skill-runtime, codex"
+  },
+  "b07f453ee99c7c99a2c5d21ea0ac0e56db88066248edfd21c0114470e01e0152": {
+    "doc": "docs/PLUGIN_GUIDE.md",
+    "claim": "graph mode needs ENABLE_GRAPH_INDEX=true",
+    "grounding": "brainpalace-plugin/skills/configuring-brainpalace/references/configuration-guide.md",
+    "verdict": "SUPPORTED",
+    "evidence": "ENABLE_GRAPH_INDEX is the master switch to enable graph indexing; brainpalace-query.md describes graph mode requiring ENABLE_GRAPH_INDEX=true"
+  },
+  "b6755661002155fff27e8336c74352ac58d8f290c98e1e9b5adc0b341a6c3fa7": {
+    "doc": "docs/PLUGIN_GUIDE.md",
+    "claim": "/brainpalace-index --chunk-size default 512; code indexed by default with --no-code to skip; --generate-summaries available",
+    "grounding": "brainpalace-plugin/commands/brainpalace-index.md",
+    "verdict": "SUPPORTED",
+    "evidence": "GENERATED flags: --chunk-size 512; --include-code default true (Use --no-code for doc-only)"
+  },
+  "b7ecdfeef83b053a5fd08ed5521031a41ad9a436ae58dd200b6edb216b9d561b": {
+    "doc": "docs/DEVELOPERS_GUIDE.md",
+    "claim": "claude_plugin_installed() can be mocked at brainpalace_cli.commands.config.claude_plugin_installed",
+    "grounding": "brainpalace-cli/brainpalace_cli/commands/config.py",
+    "verdict": "SUPPORTED",
+    "evidence": "config.py imports claude_plugin_installed from plugin_detect and uses it at line 302"
+  },
+  "b93d9d0c4e3964609ab950156005e010ec3a2be86f48745cd342505b258595a8": {
+    "doc": "docs/DEVELOPERS_GUIDE.md",
+    "claim": "MCP exposes 5 read-only tools: query, status, whoami, folders_list, jobs_list",
+    "grounding": "brainpalace-cli/brainpalace_cli/mcp_server/tools.py",
+    "verdict": "CONTRADICTED",
+    "evidence": "Live code has 9 tool handlers: query_tool, status_tool, whoami_tool, folders_list_tool, jobs_list_tool, memorize_tool, recall_tool, session_context_tool, ai_guide_tool \u2014 not 5, and memorize is not read-only"
+  },
+  "bc319bc0f1defd8391f5ba1c41bb6b71fe3c780a7ae64f05abea877e6f262da1": {
+    "doc": "CLAUDE.md",
+    "claim": "verify-docs plumbing exists in the CLI (like sync-docs)",
+    "grounding": "brainpalace-cli/brainpalace_cli/commands/verify_docs.py",
+    "verdict": "SUPPORTED",
+    "evidence": "verify_docs.py confirmed at brainpalace-cli/brainpalace_cli/commands/verify_docs.py"
+  },
+  "bcf418b76cba51ba1be899a11c04f67f760aa65bc34a486efb38daa80227a847": {
+    "doc": "docs/DEVELOPERS_GUIDE.md",
+    "claim": "MCP tests at brainpalace-cli/tests/mcp_server/",
+    "grounding": "brainpalace-cli/tests/mcp_server/test_tools.py",
+    "verdict": "SUPPORTED",
+    "evidence": "tests/mcp_server/test_tools.py exists and imports from brainpalace_cli.mcp_server"
+  },
+  "bd21a9ddb8a78cc9fd20ab330bba6390614f8184a566407a666daf2ec912572f": {
+    "doc": "docs/PLUGIN_GUIDE.md",
+    "claim": "The plugin provides 33 slash commands",
+    "grounding": "brainpalace-plugin/commands/",
+    "verdict": "SUPPORTED",
+    "evidence": "ls brainpalace-plugin/commands/ | wc -l = 33"
+  },
+  "c3d8100c9a248921fad0cdb3be69c3c43a669bac4660ab72498366c331c04b32": {
+    "doc": "docs/USER_GUIDE.md",
+    "claim": "Commands /brainpalace-help, /brainpalace-version, /brainpalace-providers, /brainpalace-embeddings, /brainpalace-summarizer exist",
+    "grounding": "brainpalace-plugin/commands/",
+    "verdict": "CONTRADICTED",
+    "evidence": "None of these 5 command files exist in brainpalace-plugin/commands/"
+  },
+  "c5b36c7253cf341985f4610e9c3183b2d82d60b0b98c7497597b91f3384e44f0": {
+    "doc": "docs/PLUGIN_GUIDE.md",
+    "claim": "GraphRAG requires ENABLE_GRAPH_INDEX enablement",
+    "grounding": "brainpalace-server/.../index.py settings.ENABLE_GRAPH_INDEX",
+    "verdict": "SUPPORTED",
+    "evidence": "ENABLE_GRAPH_INDEX gates graph; but doc uses config --set which is wrong mechanism"
+  },
+  "cb5b9509bc5a2b1959094fc1d54cdf579a11078e65ffd1f616fd97d0a5839316": {
+    "doc": "brainpalace-plugin/README.md",
+    "claim": "Plugin includes skill named configuring-brainpalace (installation, configuration, troubleshooting)",
+    "grounding": "docs/PLUGIN_GUIDE.md",
+    "verdict": "SUPPORTED",
+    "evidence": "2 skills: using-brainpalace and configuring-brainpalace (installation, configuration, troubleshooting)"
+  },
+  "cfc0341251cfec598965a0cf61cbaeabeda5d6eb03be90a3defbc2c2af161632": {
+    "doc": "docs/DEVELOPERS_GUIDE.md",
+    "claim": "provider_config.load_merged_config_dict and load_raw_config merge global and project config",
+    "grounding": "brainpalace-server/brainpalace_server/config/provider_config.py",
+    "verdict": "SUPPORTED",
+    "evidence": "Both load_merged_config_dict and load_raw_config defined in provider_config.py"
+  },
+  "d07457578a1fd7b5b1b96480c8bc4875a164fe34e81b3f45ba68261997819f44": {
+    "doc": "docs/PLUGIN_GUIDE.md",
+    "claim": "The plugin provides 5 intelligent agents",
+    "grounding": "brainpalace-plugin/agents/ (5 *.md files)",
+    "verdict": "SUPPORTED",
+    "evidence": "agents: chat-session-extractor, memory-curator, research-assistant, search-assistant, setup-assistant"
+  },
+  "d11a00cc61c97b1f708b78115a6cb36632cf0b95c7303e6261ebbf912625872d": {
+    "doc": "docs/DEVELOPERS_GUIDE.md",
+    "claim": "AST-aware code chunking for 9+ programming languages: Python, TypeScript, JavaScript, Java, Go, Rust, C, C++, C#",
+    "grounding": "brainpalace-server/brainpalace_server/indexing/document_loader.py",
+    "verdict": "CONTRADICTED",
+    "evidence": "CodeAwareLoader docstring says 10 languages; EXTENSION_TO_LANGUAGE has 11 entries including Kotlin and Swift, which are omitted from the DEVELOPERS_GUIDE list. CODE_INDEXING.md authoritatively states 11 languages."
+  },
+  "d1c670f75d4b79b35441b21fd91e1196a25c69de6a4b95dbb5b770ce36d861ae": {
+    "doc": "brainpalace-plugin/README.md",
+    "claim": "/brainpalace-search command exists",
+    "grounding": "brainpalace-plugin/commands/",
+    "verdict": "CONTRADICTED",
+    "evidence": "No brainpalace-search.md in commands/; all retrieval consolidated into /brainpalace-query with --mode flag"
+  },
+  "d39cf49edfb2e742d265487232a3e5a62a617c8e42f65860dffcf952e6fcdb54": {
+    "doc": "brainpalace-plugin/README.md",
+    "claim": "Three search modes: BM25 (fast keywords), Vector (semantic), Hybrid (combined)",
+    "grounding": "brainpalace-plugin/commands/brainpalace-query.md",
+    "verdict": "SUPPORTED",
+    "evidence": "cached \u2014 brainpalace-query.md lists hybrid, vector, bm25, graph, multi modes"
+  },
+  "deb4d00998b68cc11099f5bc39c37e4290ef1525f1215460e616a2f4a13cc522": {
+    "doc": "docs/DEVELOPERS_GUIDE.md",
+    "claim": "dashboard_status_info() in brainpalace_cli.commands._dashboard_url",
+    "grounding": "brainpalace-cli/brainpalace_cli/commands/_dashboard_url.py",
+    "verdict": "SUPPORTED",
+    "evidence": "def dashboard_status_info() at line 34 of _dashboard_url.py"
+  },
+  "e1df263240f059a6fc61900a92763015533aa060b6d33a938941afe1e62d4fb3": {
+    "doc": "docs/DEVELOPERS_GUIDE.md",
+    "claim": "AI guidance tier sizes: NUDGE ~440 bytes, CORE ~3.8K, FULL ~6.4K",
+    "grounding": "brainpalace-cli/brainpalace_cli/data/ai_guidance.md",
+    "verdict": "CONTRADICTED",
+    "evidence": "Actual sizes from live renderer: NUDGE=567 bytes, CORE=4193 bytes (4.1K), FULL=7668 bytes (7.5K) \u2014 all materially larger than stated approximations"
+  },
+  "e6d5d03ea21d9530bc471329fcfe30fd8a1f02338a6bf3f1a3a678b912be9130": {
+    "doc": "docs/PLUGIN_GUIDE.md",
+    "claim": "The plugin ships a SessionStart hook at brainpalace-plugin/templates/sessionstart-hook.sh, also listed in the Session Memory asset table as templates/sessionstart-hook.sh",
+    "grounding": "brainpalace-plugin/hooks/sessionstart-hook.sh and brainpalace-plugin/.claude-plugin/plugin.json",
+    "verdict": "CONTRADICTED",
+    "evidence": "The active SessionStart hook is brainpalace-plugin/hooks/sessionstart-hook.sh (referenced in plugin.json: bash ${CLAUDE_PLUGIN_ROOT}/hooks/sessionstart-hook.sh). No file exists at brainpalace-plugin/templates/sessionstart-hook.sh (templates/ contains only daily-distill-hook.sh, weekly-curate-hook.sh, docker-compose.postgres.yml, mcp-config-claude-code.json, settings.json)."
+  },
+  "e75a2424a51eb2a3d41b3ed1c56103526d953ee69ee2b5bc5d5f70b2f5fc07f4": {
+    "doc": "docs/PLUGIN_GUIDE.md",
+    "claim": "/brainpalace-folders has actions list, add, remove (add supports --include-type/--force, remove needs --yes)",
+    "grounding": "brainpalace-plugin/commands/brainpalace-folders.md",
+    "verdict": "SUPPORTED",
+    "evidence": "folders command source documents list/add/remove actions and flags"
+  },
+  "e7c7189affff9b383b0e6ca1e5b13086cd04dda02c9b11244efd5b2c3d7f1c9d": {
+    "doc": "docs/PLUGIN_GUIDE.md",
+    "claim": "/brainpalace-summarizer command exists",
+    "grounding": "brainpalace-plugin/commands/",
+    "verdict": "CONTRADICTED",
+    "evidence": "no brainpalace-summarizer.md; summarizer set via /brainpalace-config"
+  },
+  "e827f2c73e0287a1af13c97fc2d6719dcd282b41a099ea4eaa06fdb9f05eceb5": {
+    "doc": "docs/PLUGIN_GUIDE.md",
+    "claim": "The plugin provides 3 intelligent agents",
+    "grounding": "brainpalace-plugin/agents/ (filesystem)",
+    "verdict": "CONTRADICTED",
+    "evidence": "5 agent files: chat-session-extractor, memory-curator, research-assistant, search-assistant, setup-assistant"
+  },
+  "e8757dabfefceaaaf0b83e62c72e369cfd2be2388f41608ea36b48ac3420a3dd": {
+    "doc": "docs/USER_GUIDE.md",
+    "claim": "GET /health/logs endpoint",
+    "grounding": "brainpalace-server/brainpalace_server/api/routers/health.py",
+    "verdict": "SUPPORTED",
+    "evidence": "/logs route at line 471 in health.py, prefixed at /health in main.py"
+  },
+  "ea05e9c3e90ee6ab3712af9039810e8af8f82465adc236ea5a18c64a46cca9c9": {
+    "doc": "docs/PLUGIN_GUIDE.md",
+    "claim": "/brainpalace-config --set default_mode=hybrid sets config",
+    "grounding": "brainpalace config --help; config.py",
+    "verdict": "CONTRADICTED",
+    "evidence": "config has show/path/wizard/validate/migrate/diff/unset; no --set flag, no default_mode key"
+  },
+  "ea617d0dfe0d904c0fad9ed3d00e8c50ea815e434712f699d5a3c6737381988e": {
+    "doc": "brainpalace-plugin/README.md",
+    "claim": "All retrieval is one command, /brainpalace-query, with a --mode flag",
+    "grounding": "docs/PLUGIN_GUIDE.md",
+    "verdict": "SUPPORTED",
+    "evidence": "All retrieval goes through a single command, /brainpalace-query, with a --mode flag selecting the strategy. (Earlier releases shipped a separate slash command per mode \u2014 those have been consolidated.)"
+  },
+  "f1701dc1653ed5c21c7cae2c701fc0cb53ed1e442f89656f25ba2e9e0bf819a0": {
+    "doc": "docs/PLUGIN_GUIDE.md",
+    "claim": "/brainpalace-config has no --set flag and no default_mode key; subcommands are show/path/wizard/validate/migrate/diff/unset",
+    "grounding": "brainpalace config CLI Click group (brainpalace_cli/commands/config.py) and brainpalace-plugin/commands/brainpalace-config.md",
+    "verdict": "SUPPORTED",
+    "evidence": "LIVE 'brainpalace config --help' lists exactly: diff, migrate, path, show, unset, validate, wizard. No set subcommand/flag, no default_mode."
+  },
+  "f42b7d1897a51ed7a7da01d20a5f68ba8a7c1f9ef5be3bd062019780a5e1dcb5": {
+    "doc": "README.md",
+    "claim": "Update plugin with: claude plugin update brainpalace@brainpalace-marketplace",
+    "grounding": "scripts/setup.sh",
+    "verdict": "SUPPORTED",
+    "evidence": "scripts/setup.sh lines 346 and 783: box_red 'claude plugin update brainpalace@brainpalace-marketplace'"
+  },
+  "f465706095dd62d06902a4573c5c8a2d4ad978f502e70f63fccd5cac7b63fe8b": {
+    "doc": "brainpalace-plugin/README.md",
+    "claim": "Plugin install command is: claude plugins install github:bxw91/brainpalace",
+    "grounding": "docs/PLUGIN_GUIDE.md",
+    "verdict": "SUPPORTED",
+    "evidence": "Install the BrainPalace plugin in Claude Code: claude plugins install github:bxw91/brainpalace"
+  },
+  "f596b5ac8025fb9ddc8ae7fa85549ce89c82f4cbf08952f487caf47bb8587bf0": {
+    "doc": "docs/PLUGIN_GUIDE.md",
+    "claim": "/brainpalace-query --source-types filter values are doc, code, test",
+    "grounding": "brainpalace-plugin/commands/brainpalace-query.md",
+    "verdict": "SUPPORTED",
+    "evidence": "--source-types | text | Comma-separated source types to filter by (doc,code,test)"
+  },
+  "f9636a2ad8360903f03b7843b0053b8e2d1bde10b717410132ff861537a13db9": {
+    "doc": "brainpalace-plugin/README.md",
+    "claim": "/brainpalace-keyword command exists",
+    "grounding": "brainpalace-plugin/commands/",
+    "verdict": "CONTRADICTED",
+    "evidence": "No brainpalace-keyword.md in commands/; consolidated into /brainpalace-query --mode bm25"
+  },
+  "fc541c8ae17fa2c67b9a4e0c30c07c076a8b0ce40aaa88a44dbd9d916a1f2dac": {
+    "doc": "brainpalace-plugin/README.md",
+    "claim": "Plugin includes a skill named brainpalace-setup",
+    "grounding": "brainpalace-plugin/skills/",
+    "verdict": "CONTRADICTED",
+    "evidence": "skills/ has using-brainpalace and configuring-brainpalace; no brainpalace-setup skill"
+  },
+  "fc58bf7198b74f33572f0bb07104f5a49729c339bd09dcbc5d79de9bb58d9e90": {
+    "doc": "docs/PLUGIN_GUIDE.md",
+    "claim": "/brainpalace-providers /brainpalace-embeddings /brainpalace-summarizer /brainpalace-verify /brainpalace-help /brainpalace-version /brainpalace-reset exist",
+    "grounding": "brainpalace-plugin/commands/",
+    "verdict": "CONTRADICTED",
+    "evidence": "none of these command files exist; real: brainpalace-config, brainpalace-verify exists, brainpalace-reset exists"
+  },
+  "fcd8cd36ce24f77dc2565f8253d53ce8f558cc06bf0aec7cada77da3356903b9": {
+    "doc": "docs/PLUGIN_GUIDE.md",
+    "claim": "The plugin provides 33 slash commands",
+    "grounding": "brainpalace-plugin/commands/ (33 *.md files)",
+    "verdict": "SUPPORTED",
+    "evidence": "ls brainpalace-plugin/commands/*.md = 33 files"
+  },
+  "fd0b793d93e71c5b4d0be02db025ebed49ec41bf57bc05555fe5f67dc842dd73": {
+    "doc": "docs/PLUGIN_GUIDE.md",
+    "claim": "/brainpalace-embeddings command exists",
+    "grounding": "brainpalace-plugin/commands/",
+    "verdict": "CONTRADICTED",
+    "evidence": "no brainpalace-embeddings.md; embedding provider set via /brainpalace-config"
+  },
+  "ff982d3408d30820dd13593a7fda0f3cacce92a996740b672f21aaf781ed2162": {
+    "doc": "docs/DEVELOPERS_GUIDE.md",
+    "claim": "tests/test_dashboard_parity.py for dashboard parity gate",
+    "grounding": "brainpalace-dashboard/tests/test_dashboard_parity.py",
+    "verdict": "SUPPORTED",
+    "evidence": "File exists at brainpalace-dashboard/tests/test_dashboard_parity.py"
+  }
+}

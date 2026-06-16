@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-15
+last_validated: 2026-06-16
 ---
 
 <div align="center">
@@ -62,7 +62,7 @@ same prerequisites and end with the same `brainpalace` CLI on your `PATH`.
 > bill; it draws on your subscription's usage limits). Pick this over the CLI
 > install if you're a Claude Code user — it installs the CLI + server for you.
 
-Richest UX — 30 slash commands, 3 agents, 2 skills. The setup wizard inside
+Richest UX — 33 slash commands, 5 agents, 2 skills. The setup wizard inside
 Claude Code installs the CLI + server, configures provider keys, initialises
 the project, starts the server, and runs the first index — all from one
 slash command.
@@ -81,6 +81,12 @@ slash command.
 
    ```
    /brainpalace-setup
+   ```
+
+3. **Update the plugin** later, from inside Claude Code (then restart):
+
+   ```bash
+   claude plugin update brainpalace@brainpalace-marketplace
    ```
 
 Full Claude Code reference: [`docs/PLUGIN_GUIDE.md`](docs/PLUGIN_GUIDE.md).
@@ -177,7 +183,7 @@ with optional cloud providers for embeddings and summarisation.
 | **Server** (`brainpalace-rag`) | FastAPI backend — indexing pipeline, BM25 + vector + GraphRAG stores, REST API |
 | **CLI** (`brainpalace-cli`) | Click-based command-line client; primary interface for automation, mono-repos, and standalone use |
 | **MCP server** (`brainpalace mcp`) | Opt-in stdio shim for non-Claude-Code AI clients (VS Code / Copilot, Cursor, Kilo Code, Cline, Continue, Zed) |
-| **Claude Code plugin** | 30 slash commands, 3 agents, 2 skills for Claude Code users |
+| **Claude Code plugin** | 33 slash commands, 5 agents, 2 skills for Claude Code users |
 | **Web dashboard** (`brainpalace dashboard`) | Standalone browser control plane — manage every project server from one tab (instances, config, stats, jobs, cache, graph, sessions, logs, query history). Included with the CLI on Python 3.12+. See [DASHBOARD](docs/DASHBOARD.md) |
 
 ## Features
@@ -414,29 +420,32 @@ Found 2 results in 540ms
 Run completely offline with Ollama for both embeddings and summarisation:
 
 ```
-/brainpalace-providers
-# Pick Ollama for both
+/brainpalace-config
+# Pick Ollama for both embeddings and summarisation
 ```
 
 Or via the CLI: [docs/PROVIDER_CONFIGURATION.md](docs/PROVIDER_CONFIGURATION.md).
 
 ## Claude Code Plugin
 
-The plugin ships **30 slash commands**, **3 agents**, and **2 skills**.
+The plugin ships **33 slash commands**, **5 agents**, and **2 skills**.
 Full reference: [docs/PLUGIN_GUIDE.md](docs/PLUGIN_GUIDE.md).
 
 | Category | Commands |
 |---|---|
-| Search | `/brainpalace-search`, `/brainpalace-semantic`, `/brainpalace-vector`, `/brainpalace-keyword`, `/brainpalace-bm25`, `/brainpalace-hybrid`, `/brainpalace-graph`, `/brainpalace-multi` |
+| Search | `/brainpalace-query` (all modes — `bm25`, `vector`, `hybrid`, `graph`, `multi` — via `--mode`) |
 | Server | `/brainpalace-start`, `/brainpalace-stop`, `/brainpalace-status`, `/brainpalace-list` |
 | Index | `/brainpalace-index`, `/brainpalace-folders`, `/brainpalace-inject`, `/brainpalace-reset`, `/brainpalace-types` |
-| Setup | `/brainpalace-setup`, `/brainpalace-install`, `/brainpalace-init`, `/brainpalace-verify`, `/brainpalace-providers` |
+| Memory | `/brainpalace-remember`, `/brainpalace-recall`, `/brainpalace-memories`, `/brainpalace-context`, `/brainpalace-extract-session` |
+| Setup | `/brainpalace-setup`, `/brainpalace-install`, `/brainpalace-init`, `/brainpalace-verify`, `/brainpalace-config` |
 
 | Agent | Role |
 |---|---|
 | Search Assistant | Multi-step search across modes; synthesises answers with citations |
 | Research Assistant | Deep exploration with follow-up queries |
 | Setup Assistant | Guided installation and troubleshooting |
+| Memory Curator | Distil session decisions into curated memory; prune/merge stale entries (subscription model) |
+| Chat Session Extractor | Extract summary, decisions, and graph triplets from a finished session and submit to BrainPalace |
 
 | Skill | Purpose |
 |---|---|
@@ -448,8 +457,8 @@ Full reference: [docs/PLUGIN_GUIDE.md](docs/PLUGIN_GUIDE.md).
 ```
 brainpalace/
 ├── brainpalace-plugin/                     # Claude Code plugin
-│   ├── commands/                            # 30 slash commands
-│   ├── agents/                              # 3 intelligent agents
+│   ├── commands/                            # 33 slash commands
+│   ├── agents/                              # 5 agents
 │   ├── skills/                              # 2 context skills
 │   └── templates/                           # mcp-config-claude-code.json + sessionstart hook
 ├── brainpalace-server/                     # FastAPI backend (REST API)

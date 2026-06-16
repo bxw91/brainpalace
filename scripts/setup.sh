@@ -52,6 +52,21 @@ warn() { printf '%sWARN:%s %s\n' "$c_yel" "$c_reset" "$*" >/dev/tty; }
 ok()   { printf '%s%s%s\n' "$c_gr" "$*" "$c_reset" >/dev/tty; }
 errx() { printf '%sERROR:%s %s\n' "$c_red" "$c_reset" "$*" >/dev/tty; exit 2; }
 
+# box_red "line" ["line" ...] — draw a red-bordered box around the given lines so
+# an action the user must run by hand (e.g. the plugin update command) stands out
+# from the surrounding `==>` log. Lines must be plain (no embedded ANSI) so the
+# byte length matches the rendered width.
+box_red() {
+    local line maxw=0
+    for line in "$@"; do (( ${#line} > maxw )) && maxw=${#line}; done
+    local border; border=$(printf '─%.0s' $(seq 1 $((maxw + 2))))
+    printf '%s┌%s┐%s\n' "$c_red" "$border" "$c_reset" >/dev/tty
+    for line in "$@"; do
+        printf '%s│%s %-*s %s│%s\n' "$c_red" "$c_reset" "$maxw" "$line" "$c_red" "$c_reset" >/dev/tty
+    done
+    printf '%s└%s┘%s\n' "$c_red" "$border" "$c_reset" >/dev/tty
+}
+
 ask() {
     # ask "Prompt" "default" -> echoes user answer (or default if blank)
     local prompt="$1" default="${2:-}" reply
@@ -327,8 +342,8 @@ if command -v claude >/dev/null 2>&1; then
         [[ -n "$PLUGIN_VER" ]] && say "Plugin version: $PLUGIN_VER"
         case "$PLUGIN_JSON" in
             *'"update_available": true'*|*'"update_available":true'*)
-                say "Plugin update available: ${PLUGIN_LATEST:-newer} — update from inside"
-                say "Claude Code: claude plugin update brainpalace@brainpalace-marketplace"
+                say "Plugin update available: ${PLUGIN_LATEST:-newer} — run this inside Claude Code:"
+                box_red "claude plugin update brainpalace@brainpalace-marketplace"
                 say "(then restart Claude Code to load the new plugin)."
                 ;;
         esac
@@ -757,6 +772,18 @@ ${c_gr}Setup complete.${c_reset}
   Dashboard: $DASH_LINE
   Plugin:    $PLUGIN_LINE
 EOF
+
+# When the plugin line reports a newer version, repeat the update command in a
+# red box here at the end so it survives a long install scroll and the user can
+# act on it without hunting back up to Step 2.
+case "$PLUGIN_LINE" in
+    *available*)
+        printf '\n' >/dev/tty
+        say "Plugin update available — run this inside Claude Code:"
+        box_red "claude plugin update brainpalace@brainpalace-marketplace"
+        say "(then restart Claude Code to load the new plugin)."
+        ;;
+esac
 
 if [[ -n "$PROJECT" ]]; then
     cat >/dev/tty <<EOF

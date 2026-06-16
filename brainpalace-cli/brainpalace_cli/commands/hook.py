@@ -18,6 +18,8 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -324,6 +326,49 @@ def _guard_config_sources() -> list[dict[str, Any]]:
     return sources
 
 
+def _session_autostart_enabled() -> bool:
+    """Resolve ``cli.session_autostart`` (global XDG + project, project wins).
+
+    Env override ``BRAINPALACE_SESSION_AUTOSTART`` (off|on) takes top precedence.
+    Default ``True``. Best-effort: any failure returns the default so the hook
+    fails toward the documented on-by-default behavior.
+    """
+    env = os.getenv("BRAINPALACE_SESSION_AUTOSTART", "").strip().lower()
+    if env in ("off", "false", "0", "disabled"):
+        return False
+    if env in ("on", "true", "1", "enabled"):
+        return True
+    enabled = True
+    for raw in _guard_config_sources():
+        cli = raw.get("cli")
+        if isinstance(cli, dict) and isinstance(cli.get("session_autostart"), bool):
+            enabled = cli["session_autostart"]
+    return enabled
+
+
+def _spawn_autostart(project: Path) -> None:
+    """Launch ``brainpalace start --json`` fully detached, never waiting on it.
+
+    ``brainpalace start`` daemonizes the server but blocks on a health-wait; the
+    SessionStart hook must NEVER block, so we fire-and-forget in a new session
+    with all stdio discarded. `--json` keeps the dashboard headless (no browser).
+    Fail-soft: any error is swallowed — a failed autostart must not break the
+    session, the NUDGE still tells the AI the project is indexed.
+    """
+    try:
+        prog = shutil.which("brainpalace") or sys.argv[0]
+        subprocess.Popen(  # noqa: S603 — fixed argv, no shell
+            [prog, "start", "--json"],
+            cwd=str(project),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except Exception:  # noqa: BLE001 — autostart is best-effort; never blocks
+        pass
+
+
 def _emit_sessionstart() -> None:
     project = discover_project_dir(None)
     if project is None:
@@ -334,6 +379,10 @@ def _emit_sessionstart() -> None:
         return  # bundled guidance unavailable → fail soft, emit nothing.
 
     url = discover_server_url(None)
+    if url is None and _session_autostart_enabled():
+        # Indexed project, server down → bring it up (server + headless dashboard)
+        # in the background so this session can search without a manual `start`.
+        _spawn_autostart(project)
     if url:
         # Server up: append the frozen-snapshot context block (project facts +
         # curated memory). Fail soft — a context error must not drop the NUDGE.

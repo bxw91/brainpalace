@@ -35,3 +35,24 @@ def _isolate_global_config(tmp_path_factory, monkeypatch):
         _dash.stop_dashboard()
     except Exception:
         pass
+
+
+@pytest.fixture(autouse=True)
+def _pin_server_url(monkeypatch):
+    """Pin ``BRAINPALACE_URL`` so command tests never probe the real CWD.
+
+    ``get_server_url()`` walks up from the CWD to ``.brainpalace/`` and, when an
+    initialized project owns the directory but no live server validates, raises
+    ``ServerNotReachableError`` rather than guess at a URL. ``.brainpalace/`` is
+    gitignored, so CI checkouts lack it and the probe falls through harmlessly —
+    but a developer's working tree IS an initialized project, so the probe fires
+    and every command test that only mocks the API client dies with
+    "server isn't reachable". Pinning an explicit URL makes the env-var branch
+    win first, so the outcome no longer depends on ambient server state.
+
+    Discovery tests that exercise the resolution order itself
+    (``test_server_url_discovery``, ``test_discovery``) clear or set the env via
+    their own ``monkeypatch`` in the test body, which runs after this fixture and
+    overrides it.
+    """
+    monkeypatch.setenv("BRAINPALACE_URL", "http://127.0.0.1:8000")

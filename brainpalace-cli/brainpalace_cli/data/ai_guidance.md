@@ -6,7 +6,7 @@ Edit HERE only. Do NOT hand-edit generated copies:
   - SessionStart hook additionalContext                     (reads CORE tier, via `brainpalace hook`)
 See CLAUDE.md → "AI-guidance parity". Verified against code on the date below.
 
-meta: version=7.3.0 last_validated=2026-06-13
+meta: version=7.4.0 last_validated=2026-06-16
 
 Tiers:
   CORE = the marked slice below (between the CORE open/close HTML markers). The
@@ -30,12 +30,14 @@ own `--help` is authoritative for flags.
 
 <!--CORE-->
 <!--NUDGE-->
-**BrainPalace is indexed for this project — prefer `brainpalace query` over
-Glob/Grep for codebase search.** If the server is not running, start it with
-`brainpalace start`. `brainpalace query --json` result keys are
+**BrainPalace is indexed for this project — search via `brainpalace query`, not
+Glob/Grep.** Route by query type: exact symbol/token/path → `--mode bm25`
+(keyword index, **no embedding round-trip** — ms latency, as fast as grep);
+concept → `--mode vector`/`hybrid`; relationships → `--mode graph`. Server down?
+Start it: `brainpalace start`. `brainpalace query --json` keys are
 `text`/`source`/`score`/`chunk_id` (no `file_path`, no line numbers); on failure
-stdout is `{"error": ...}` with no `results` key and a non-zero exit — check for
-it, and never append `2>/dev/null` to brainpalace commands.
+stdout is `{"error": ...}` with no `results` key and a non-zero exit — check it,
+never append `2>/dev/null`.
 <!--/NUDGE-->
 
 ## Mode Decision Table — Quick Reference
@@ -75,7 +77,10 @@ If the `brainpalace` CLI is not installed (command not found), treat as exit `1`
 
 When the check passed, BrainPalace is the first entry point for codebase search.
 Never use Glob, Grep, or Bash `find`/`rg` against indexed project source — even
-when you think you know the path or token. Pick a mode, then:
+when you think you know the path or token. This is not a latency trade: an exact
+symbol/token/path lookup goes to `--mode bm25`, which queries the local keyword
+index with **no embedding round-trip**, returning in milliseconds (vector/hybrid
+pay the embed call, so reserve them for conceptual queries). Pick a mode, then:
 
 ```bash
 brainpalace query "..." --mode <picked> --top-k 8 --json
