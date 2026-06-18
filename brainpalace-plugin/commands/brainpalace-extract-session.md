@@ -6,7 +6,7 @@ context: brainpalace
 agent: chat-session-extractor
 skills:
   - using-brainpalace
-last_validated: 2026-06-16
+last_validated: 2026-06-18
 ---
 
 # Extract Session to Memory

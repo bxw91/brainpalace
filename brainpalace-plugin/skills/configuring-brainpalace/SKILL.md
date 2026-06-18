@@ -17,7 +17,7 @@ metadata:
   category: ai-tools
   author: bxw91
   last_validated: 2026-06-13
-last_validated: 2026-06-15
+last_validated: 2026-06-18
 ---
 
 # Configuring BrainPalace

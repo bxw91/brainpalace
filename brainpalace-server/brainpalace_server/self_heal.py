@@ -115,6 +115,14 @@ MAX_WORKER_RESTARTS = 5
 # nothing is indexing.
 DEEP_CLEAN_EVERY_TICKS = 10
 
+# Consecutive heartbeats a *live* dashboard must fail its health probe before we
+# tear it down and relaunch. The probe is a tight 2s GET (dashboard_status); a
+# single miss under load is a false negative, and relaunching on it caused a
+# kill/relaunch flap that drifted the dashboard off its configured port
+# (8787 → 8788 → …). A genuinely dead dashboard reports `not_running` (pid gone)
+# and is relaunched immediately — only the alive-but-unhealthy case is debounced.
+DASHBOARD_UNHEALTHY_STRIKES = 3
+
 
 class HealState:
     """Carries cross-tick counters (worker restart budget + deep-clean cadence)."""
@@ -122,6 +130,9 @@ class HealState:
     def __init__(self) -> None:
         self.worker_restarts = 0
         self.tick = 0
+        # Consecutive heartbeats the dashboard was alive-but-unhealthy. Reset on
+        # any healthy probe or after a relaunch; gates the flap-prone teardown.
+        self.dashboard_unhealthy_strikes = 0
 
 
 async def _heal_watcher(app: FastAPI) -> None:
@@ -179,7 +190,7 @@ async def _heal_index(app: FastAPI) -> None:
             logger.warning("%s index heal failed: %s", label, exc)
 
 
-def _heal_dashboard() -> None:
+def _heal_dashboard(healer: HealState | None = None) -> None:
     try:
         from brainpalace_dashboard import server as dash  # optional, guarded
         from brainpalace_dashboard.config import load_dashboard_config
@@ -206,6 +217,34 @@ def _heal_dashboard() -> None:
                         os.waitpid(child_pid, os.WNOHANG)
                     except (ChildProcessError, OSError):
                         pass  # not our child / already reaped — fine
+
+            # Debounce the relaunch decision instead of calling ensure_running
+            # blindly: a live dashboard that merely *missed* its 2s health probe
+            # under load must NOT be torn down, or it flaps (kill → relaunch →
+            # port climb 8787→8788→…). Only relaunch when the dashboard is truly
+            # down (pid gone) OR it has been alive-but-unhealthy for
+            # DASHBOARD_UNHEALTHY_STRIKES consecutive heartbeats.
+            status = dash.dashboard_status()
+            running = status.get("status") == "running"
+            healthy = bool(status.get("healthy"))
+            if running and healthy:
+                if healer is not None:
+                    healer.dashboard_unhealthy_strikes = 0
+                return
+            if running and not healthy and healer is not None:
+                healer.dashboard_unhealthy_strikes += 1
+                if healer.dashboard_unhealthy_strikes < DASHBOARD_UNHEALTHY_STRIKES:
+                    logger.debug(
+                        "dashboard alive but unhealthy (strike %d/%d) — deferring "
+                        "relaunch to avoid a transient-probe flap",
+                        healer.dashboard_unhealthy_strikes,
+                        DASHBOARD_UNHEALTHY_STRIKES,
+                    )
+                    return
+            # Confirmed down, or unhealthy past the strike budget: relaunch and
+            # reset the counter. ensure_running clears a poisoned pidfile itself.
+            if healer is not None:
+                healer.dashboard_unhealthy_strikes = 0
             dash.ensure_running(open_browser_if_new=False)
     except Exception as exc:  # noqa: BLE001 — never affect the server
         logger.debug("dashboard heal skipped: %s", exc)
@@ -302,7 +341,7 @@ async def heal_once(app: FastAPI, healer: HealState) -> None:
     await _heal_worker(app, healer)
     await _heal_index(app)
     await _deep_clean(app, healer)
-    await asyncio.to_thread(_heal_dashboard)
+    await asyncio.to_thread(_heal_dashboard, healer)
 
 
 async def heartbeat_loop(app: FastAPI) -> None:

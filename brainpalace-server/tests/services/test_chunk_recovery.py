@@ -279,23 +279,81 @@ async def test_recover_restores_missing_chunk_with_cache_vector(tmp_path):
     assert await store.get_count() == 2
 
 
-async def test_recover_count_precheck_skips_probe_when_counts_match(tmp_path):
-    # Fast path: when the store already holds exactly `len(wanted)` chunks, skip
-    # the per-id probe entirely. Here the store has 1 chunk and the manifest
-    # claims 1 (different) id; the count matches so recovery is a no-op.
+async def test_recover_presence_baseline_saved_then_skips_probe(tmp_path):
+    # First run with all wanted present writes a presence baseline; a second run
+    # with the SAME wanted set and a non-shrunk store takes the fast-path and
+    # never probes — even after an ORPHAN chunk is added (store_count > wanted),
+    # which the old `== len(wanted)` check could never tolerate.
     persist = await _seed_live(tmp_path)  # store has 1 chunk: chunk_keep
+    state = tmp_path / "recovery_presence.json"
     store = VectorStoreManager(persist_dir=persist, collection_name="testcol")
     await store.initialize()
-    summary = await recover_lost_chunks(
+
+    s1 = await recover_lost_chunks(
         vector_store=store,
-        wanted_ids={"chunk_other"},  # 1 id, absent — but count (1) matches
+        wanted_ids={"chunk_keep"},
         chroma_sqlite_path=Path(persist) / "chroma.sqlite3",
         cache_db_path=None,
         target_dimensions=4,
-        dry_run=False,
+        presence_state_path=state,
     )
-    assert summary.wanted == 0  # probe skipped by the count pre-check
-    assert summary.complete
+    assert s1.wanted == 0 and s1.complete
+    assert state.exists()  # baseline persisted
+
+    # Add an orphan chunk (e.g. a git_commit kept by the --all keep-set): the
+    # store now holds MORE than wanted. The fast-path must still skip the probe.
+    await store.upsert_documents(
+        ids=["orphan_git"],
+        embeddings=[[1.0, 1.0, 1.0, 1.0]],
+        documents=["orphan"],
+        metadatas=[{"source_type": "git_commit"}],
+    )
+    probed = {"n": 0}
+    orig = store.get_existing_ids
+
+    async def counting_probe(ids):
+        probed["n"] += 1
+        return await orig(ids)
+
+    store.get_existing_ids = counting_probe  # type: ignore[method-assign]
+    s2 = await recover_lost_chunks(
+        vector_store=store,
+        wanted_ids={"chunk_keep"},
+        chroma_sqlite_path=Path(persist) / "chroma.sqlite3",
+        cache_db_path=None,
+        target_dimensions=4,
+        presence_state_path=state,
+    )
+    assert s2.wanted == 0 and s2.complete
+    assert probed["n"] == 0  # per-id probe skipped via the presence baseline
+
+
+async def test_recover_reprobes_when_wanted_changes(tmp_path):
+    # A changed wanted set (new commit/file) must invalidate the baseline so the
+    # probe runs again — here the new id is absent, so it's detected as missing.
+    persist = await _seed_live(tmp_path)
+    state = tmp_path / "recovery_presence.json"
+    store = VectorStoreManager(persist_dir=persist, collection_name="testcol")
+    await store.initialize()
+    await recover_lost_chunks(
+        vector_store=store,
+        wanted_ids={"chunk_keep"},
+        chroma_sqlite_path=Path(persist) / "chroma.sqlite3",
+        cache_db_path=None,
+        target_dimensions=4,
+        presence_state_path=state,
+    )
+    # wanted grew: chunk_new is not in the store -> baseline fingerprint differs
+    # -> probe runs -> missing detected.
+    s = await recover_lost_chunks(
+        vector_store=store,
+        wanted_ids={"chunk_keep", "chunk_new"},
+        chroma_sqlite_path=Path(persist) / "chroma.sqlite3",
+        cache_db_path=None,
+        target_dimensions=4,
+        presence_state_path=state,
+    )
+    assert s.wanted == 1  # chunk_new detected missing (no false skip)
 
 
 async def test_recover_dry_run_writes_nothing(tmp_path):

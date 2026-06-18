@@ -336,14 +336,19 @@ def launch_dashboard(
     host = host or cfg.host
     start_port = port or cfg.port
 
-    # A just-reaped dashboard can still hold the configured port for a moment
-    # (SIGTERM in flight / socket teardown). Without waiting, the scan below
-    # would climb to the next port and the dashboard would silently drift off
-    # its configured port (e.g. 8787 → 8789) on every restart. Wait for the
-    # port to free — escalating a stubborn reaped process to SIGKILL — so a
-    # restart always reclaims the configured default.
-    if reaped and not _port_free(host, start_port):
-        _wait_port_free(host, start_port, reaped, timeout=5.0)
+    # A just-reaped (or straggling) dashboard can still hold the configured port
+    # for a moment (SIGTERM in flight / socket teardown). Without waiting, the
+    # scan below would climb to the next port and the dashboard would silently
+    # drift off its configured port (e.g. 8787 → 8788) on every restart — the
+    # observed self-heal flap. So whenever the configured port is occupied by one
+    # of OUR OWN dashboards (the just-reaped set ∪ any live dashboard sharing our
+    # state dir), wait for it to release — escalating a stubborn holder to
+    # SIGKILL — instead of climbing. Climbing is reserved for a genuinely foreign
+    # listener (another app actually using the port).
+    if not _port_free(host, start_port):
+        own_holders = sorted(set(reaped) | set(list_dashboard_pids()))
+        if own_holders:
+            _wait_port_free(host, start_port, own_holders, timeout=8.0)
 
     # Scan from the requested/configured port upward.
     chosen: int | None = None

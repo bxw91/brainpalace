@@ -117,18 +117,12 @@ export function Jobs({ instanceId }: { instanceId?: string }) {
     {
       key: "operation",
       header: "Type",
-      // Show the content scope (code vs docs) alongside the operation so the
-      // column says what the job was actually about — the table previously read
-      // "index" for every row; the scope is the distinguishing bit.
       cell: (j) => (
-        <span className="flex items-center gap-1.5">
-          <span className="text-fg-muted">{j.operation}</span>
-          <span className="rounded-md bg-ink-600 px-1.5 py-0.5 font-mono text-[0.66rem] text-fg-muted">
-            {j.include_code ? "code" : "docs"}
-          </span>
+        <span className="rounded-md bg-ink-600 px-1.5 py-0.5 font-mono text-[0.66rem] text-fg-muted">
+          {j.include_code ? "code" : "docs"}
         </span>
       ),
-      sortValue: (j) => `${j.operation} ${j.include_code ? "code" : "docs"}`,
+      sortValue: (j) => (j.include_code ? "code" : "docs"),
     },
     {
       // Status + progress merged: the badge alone for finished jobs (their

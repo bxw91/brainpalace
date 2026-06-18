@@ -270,6 +270,55 @@ def _recovery_events_path(persist_dir: str | Path) -> Path | None:
     return persist.parent.parent / "recovery-events.jsonl"
 
 
+def _wanted_fingerprint(wanted: set[str]) -> str:
+    """Order-independent fingerprint of the wanted-id set, so the presence
+    fast-path can tell "same wanted set as last verified" from "it grew/shrank"
+    (a new commit or a new file changes this; orphan churn in the store does not).
+    """
+    h = hashlib.sha256()
+    for cid in sorted(wanted):
+        h.update(cid.encode("utf-8"))
+        h.update(b"\x00")
+    return h.hexdigest()
+
+
+def load_presence_state(path: str | Path | None) -> dict[str, Any] | None:
+    """Read the recovery presence baseline (``{wanted_fp, store_count}``) written
+    after a run that verified every wanted id present, or None if absent/corrupt."""
+    if path is None:
+        return None
+    import json
+
+    try:
+        p = Path(path)
+        if not p.exists():
+            return None
+        data = json.loads(p.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else None
+    except Exception:  # noqa: BLE001 — a missing/corrupt baseline just forces a probe
+        return None
+
+
+def save_presence_state(
+    path: str | Path | None, wanted_fp: str, store_count: int
+) -> None:
+    """Persist the presence baseline so the next start can skip the per-id probe
+    when the wanted set is unchanged and the store hasn't shrunk. Never raises."""
+    if path is None:
+        return
+    import json
+
+    try:
+        p = Path(path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(
+            json.dumps({"wanted_fp": wanted_fp, "store_count": store_count}),
+            encoding="utf-8",
+        )
+    except Exception as exc:  # noqa: BLE001 — caching must never block startup
+        logger.warning("save_presence_state failed: %s", exc)
+
+
 def record_recovery_event(persist_dir: str | Path, event: dict[str, Any]) -> None:
     """Append one self-heal recovery event to ``recovery-events.jsonl`` (audit).
 
@@ -376,6 +425,7 @@ async def recover_lost_chunks(
     cache_db_path: str | Path | None,
     target_dimensions: int,
     dry_run: bool = False,
+    presence_state_path: str | Path | None = None,
 ) -> RecoverySummary:
     """Restore wanted chunks the live store has lost, from dead segments + cache.
 
@@ -392,22 +442,39 @@ async def recover_lost_chunks(
         if not wanted:
             return summary
 
-        # Fast pre-check: if the collection already holds exactly `len(wanted)`
-        # chunks, assume healthy and skip the ~0.6s per-id probe. A loss always
-        # lowers the count, so the probe still fires exactly when it matters.
-        # (A coincidental count match with swapped ids is the only miss — the
-        # periodic heartbeat still catches that.)
         try:
             store_count = await vector_store.get_count()
         except Exception:  # noqa: BLE001 — count probe must never crash heal
             store_count = None
-        if store_count is not None and store_count == len(wanted):
+
+        # Fast pre-check (orphan-tolerant). The store legitimately holds MORE than
+        # `wanted` — e.g. orphan git_commit chunks for commits reachable only on
+        # other branches / before a history rewrite, kept by the `rev-list --all`
+        # deep-clean keep-set — so the old `store_count == len(wanted)` could never
+        # pass and the per-id probe ran every start. Instead, skip the probe when
+        # the wanted set is UNCHANGED since we last verified every id present AND
+        # the store has not shrunk below that point. A real loss always lowers the
+        # count, so this never skips an actual loss; new commits/files change the
+        # fingerprint and force a re-probe; orphan churn only raises the count (or
+        # at worst triggers a harmless extra probe).
+        wanted_fp = _wanted_fingerprint(wanted)
+        baseline = load_presence_state(presence_state_path)
+        if (
+            store_count is not None
+            and baseline is not None
+            and baseline.get("wanted_fp") == wanted_fp
+            and store_count >= int(baseline.get("store_count", -1))
+        ):
             return summary
 
         present = await vector_store.get_existing_ids(list(wanted))
         missing = wanted - set(present)
         summary.wanted = len(missing)
         if not missing:
+            # All wanted ids present — record the baseline so the next start can
+            # take the fast-path above (until wanted changes or the store shrinks).
+            if store_count is not None:
+                save_presence_state(presence_state_path, wanted_fp, store_count)
             return summary
 
         recovered = read_recoverable_chunks(chroma_sqlite_path, missing)

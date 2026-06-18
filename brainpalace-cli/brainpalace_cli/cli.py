@@ -8,7 +8,7 @@ import click
 
 from brainpalace_cli.commands.read_only import read_only_command
 
-from . import __version__
+from . import version_display
 from .commands import (
     ai_guide_command,
     backfill_command,
@@ -51,7 +51,7 @@ from .commands import (
 
 
 @click.group()
-@click.version_option(version=__version__, prog_name="brainpalace")
+@click.version_option(version=version_display(), prog_name="brainpalace")
 def cli() -> None:
     """BrainPalace CLI - Manage and query the BrainPalace RAG server.
 

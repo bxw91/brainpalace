@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-15
+last_validated: 2026-06-18
 ---
 
 # BrainPalace Quick Start
@@ -14,7 +14,7 @@ Install the BrainPalace plugin in Claude Code:
 claude plugins install github:bxw91/brainpalace
 ```
 
-This gives you access to 30 commands, 3 intelligent agents, and 2 skills for working with BrainPalace.
+This gives you access to 33 commands, 5 intelligent agents, and 2 skills for working with BrainPalace.
 
 ## Step 2: Install the Server and CLI
 
@@ -44,7 +44,7 @@ Installed packages:
 Configure your embedding and summarization providers:
 
 ```
-/brainpalace-providers
+/brainpalace-config
 ```
 
 Choose from:
@@ -114,18 +114,18 @@ Check indexing status:
 
 ## Step 7: Search Your Knowledge Base
 
-Now you can search! Use the smart search command:
+Now you can search! Use the query command (hybrid mode by default):
 
 ```
-/brainpalace-search "how does authentication work"
+/brainpalace-query "how does authentication work"
 ```
 
-Or use specific search modes:
+Or pick a specific search mode with `--mode`:
 
 ```
-/brainpalace-semantic "explain the architecture"
-/brainpalace-keyword "getUserById"
-/brainpalace-graph "what calls AuthService"
+/brainpalace-query --mode vector "explain the architecture"
+/brainpalace-query --mode bm25 "getUserById"
+/brainpalace-query --mode graph "what calls AuthService"
 ```
 
 ---
@@ -190,12 +190,12 @@ The Setup Assistant guides you through:
 
 | Command | Best For | Example |
 |---------|----------|---------|
-| `/brainpalace-search` | General questions | "how does caching work" |
-| `/brainpalace-semantic` | Conceptual queries | "explain the data flow" |
-| `/brainpalace-keyword` | Exact terms, errors | "NullPointerException" |
-| `/brainpalace-hybrid` | Fine-tuned search | "API authentication" |
-| `/brainpalace-graph` | Dependencies | "what uses UserService" |
-| `/brainpalace-multi` | Maximum recall | "everything about validation" |
+| `/brainpalace-query` | General questions | "how does caching work" |
+| `/brainpalace-query --mode vector` | Conceptual queries | "explain the data flow" |
+| `/brainpalace-query --mode bm25` | Exact terms, errors | "NullPointerException" |
+| `/brainpalace-query --mode hybrid --alpha 0.7` | Fine-tuned search | "API authentication" |
+| `/brainpalace-query --mode graph` | Dependencies | "what uses UserService" |
+| `/brainpalace-query --mode multi` | Maximum recall | "everything about validation" |
 
 ---
 
@@ -240,5 +240,5 @@ brainpalace doctor --fix    # also apply safe, offline fixes
 ## Next Steps
 
 - [User Guide](USER_GUIDE.md) - Detailed usage patterns
-- [Plugin Guide](PLUGIN_GUIDE.md) - All 30 commands documented
+- [Plugin Guide](PLUGIN_GUIDE.md) - All 33 commands documented
 - [Provider Configuration](../brainpalace-plugin/skills/using-brainpalace/references/provider-configuration.md) - Configure embedding and summarization providers

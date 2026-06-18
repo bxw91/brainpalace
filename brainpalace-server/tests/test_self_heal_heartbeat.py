@@ -1,9 +1,73 @@
+import sys
+import types
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 import brainpalace_server.self_heal as sh
+
+
+def _install_fake_dashboard(monkeypatch, tmp_path, *, status, autostart=True):
+    """Inject fake `brainpalace_dashboard` modules (the package isn't installed in
+    the server env) so `_heal_dashboard` exercises its real debounce logic against
+    a stubbed `dashboard_status`/`ensure_running`. Returns the fake server module
+    (its `ensure_running` is a MagicMock to assert relaunch calls)."""
+    dash = types.ModuleType("brainpalace_dashboard.server")
+    dash.read_dashboard_runtime = lambda: {"pid": -1}  # no live child to waitpid
+    dash.dashboard_status = lambda: status
+    dash.ensure_running = MagicMock()
+    pkg = types.ModuleType("brainpalace_dashboard")
+    pkg.server = dash
+    cfg = types.ModuleType("brainpalace_dashboard.config")
+    cfg.load_dashboard_config = lambda: SimpleNamespace(autostart=autostart)
+    monkeypatch.setitem(sys.modules, "brainpalace_dashboard", pkg)
+    monkeypatch.setitem(sys.modules, "brainpalace_dashboard.server", dash)
+    monkeypatch.setitem(sys.modules, "brainpalace_dashboard.config", cfg)
+    # Lock under tmp so the real file_lock works without touching XDG state.
+    monkeypatch.setattr(
+        "brainpalace_server.registry.get_xdg_state_dir", lambda: tmp_path
+    )
+    return dash
+
+
+def test_heal_dashboard_healthy_no_relaunch(monkeypatch, tmp_path):
+    dash = _install_fake_dashboard(
+        monkeypatch, tmp_path, status={"status": "running", "healthy": True}
+    )
+    healer = sh.HealState()
+    healer.dashboard_unhealthy_strikes = 2  # prior strikes must reset on healthy
+    sh._heal_dashboard(healer)
+    dash.ensure_running.assert_not_called()
+    assert healer.dashboard_unhealthy_strikes == 0
+
+
+def test_heal_dashboard_debounces_transient_unhealthy(monkeypatch, tmp_path):
+    """A live-but-unhealthy dashboard is NOT relaunched until it fails
+    DASHBOARD_UNHEALTHY_STRIKES consecutive heartbeats (no single-probe flap)."""
+    dash = _install_fake_dashboard(
+        monkeypatch, tmp_path, status={"status": "running", "healthy": False}
+    )
+    healer = sh.HealState()
+    for _ in range(sh.DASHBOARD_UNHEALTHY_STRIKES - 1):
+        sh._heal_dashboard(healer)
+        dash.ensure_running.assert_not_called()
+    assert healer.dashboard_unhealthy_strikes == sh.DASHBOARD_UNHEALTHY_STRIKES - 1
+    # The strike that hits the budget triggers the relaunch and resets the count.
+    sh._heal_dashboard(healer)
+    dash.ensure_running.assert_called_once_with(open_browser_if_new=False)
+    assert healer.dashboard_unhealthy_strikes == 0
+
+
+def test_heal_dashboard_relaunches_immediately_when_down(monkeypatch, tmp_path):
+    """A truly dead dashboard (pid gone -> not_running) is relaunched at once,
+    with no strike debounce."""
+    dash = _install_fake_dashboard(
+        monkeypatch, tmp_path, status={"status": "not_running"}
+    )
+    healer = sh.HealState()
+    sh._heal_dashboard(healer)
+    dash.ensure_running.assert_called_once_with(open_browser_if_new=False)
 
 
 @pytest.mark.asyncio

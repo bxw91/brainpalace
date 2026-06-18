@@ -534,3 +534,30 @@ def test_range_skips_wrong_type_no_double_error():
     errs = validate_config_dict({"api": {"port": "nope"}})
     assert "api.port" in _fields(errs)
     assert sum(1 for e in errs if e.field == "api.port") == 1
+
+
+# ---------------------------------------------------------------------------
+# Tests for nested cli.search_guard.* key validation
+# ---------------------------------------------------------------------------
+
+
+def test_search_guard_valid_no_errors():
+    cfg = {"cli": {"search_guard": {"enabled": True, "mode": "enforce"}}}
+    assert validate_config_dict(cfg) == []
+
+
+def test_search_guard_unknown_key_error():
+    errs = validate_config_dict({"cli": {"search_guard": {"bogus": 1}}})
+    err = next((e for e in errs if e.field == "cli.search_guard.bogus"), None)
+    assert err is not None, f"expected unknown-key error, got: {errs}"
+    assert "Known fields:" in err.suggestion
+
+
+def test_search_guard_bad_mode_error():
+    errs = validate_config_dict({"cli": {"search_guard": {"mode": "loud"}}})
+    assert "cli.search_guard.mode" in _fields(errs)
+
+
+def test_search_guard_enabled_wrong_type_error():
+    errs = validate_config_dict({"cli": {"search_guard": {"enabled": "yes"}}})
+    assert "cli.search_guard.enabled" in _fields(errs)

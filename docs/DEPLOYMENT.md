@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-15
+last_validated: 2026-06-18
 ---
 
 # Deployment Guide
@@ -35,7 +35,7 @@ cd /path/to/your/project
 brainpalace init
 
 # 4. Start server
-brainpalace start --daemon
+brainpalace start
 
 # 5. Index documents
 brainpalace index ./docs
@@ -58,8 +58,8 @@ PATH-inheritance gotcha.
 ### Development Server Options
 
 ```bash
-# Start with auto-reload for development
-brainpalace start --reload
+# Start in the foreground for development
+brainpalace start --foreground
 
 # Start with debug logging
 DEBUG=true brainpalace start
@@ -577,7 +577,7 @@ tar -czf $BACKUP_DIR/brainpalace-$DATE.tar.gz \
     /data/brainpalace/graph
 
 # Restart server
-brainpalace start --daemon
+brainpalace start
 
 # Cleanup old backups (keep 7 days)
 find $BACKUP_DIR -name "*.tar.gz" -mtime +7 -delete
@@ -593,7 +593,7 @@ brainpalace stop
 tar -xzf /backups/brainpalace/brainpalace-20240115.tar.gz -C /
 
 # Restart server
-brainpalace start --daemon
+brainpalace start
 ```
 
 ### Re-indexing

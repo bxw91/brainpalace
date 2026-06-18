@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-16
+last_validated: 2026-06-18
 ---
 
 # Changelog
@@ -12,6 +12,48 @@ month (the counter resets monthly). It looks like SemVer but is not.
 
 Entries are kept short (≤ 3 sentences and ≤ 320 characters); see
 [DEVELOPERS_GUIDE.md → Changelog style](DEVELOPERS_GUIDE.md#changelog-style-docschangelogmd).
+
+---
+
+## [26.6.49] - 2026-06-18
+
+### Added
+- **Doc-verifier code-first grounding (repo-dev).** A prose claim supportable only
+  via an unverified doc is `BLOCKED` and deferred until that dependency verifies;
+  cross-dependent cycles surface once in `.claude/doc-verify-blocked.md` instead of
+  being re-queued every batch.
+- **Doc-verifier stops on a dead server (repo-dev).** Before judging, the sweep
+  pre-flights the index server and attempts one restart; if it stays unreachable it
+  aborts (records nothing) instead of grounding against nothing. The agent likewise
+  treats a query error as abort-not-`UNVERIFIABLE`.
+- **Doc-verifier grounding hardened (repo-dev).** Tier classification fails closed
+  (only a real source path earns `code`; unknown `.md`/empty grounding can't);
+  CHANGELOG, ORIGINAL_SPEC, `docs/superpowers/`, `.planning/` are excluded as
+  grounding sources; verdict cache writes are atomic and refuse to silent-wipe.
+- **Search guard.** A PreToolUse hook steers the main thread's `Grep`/`Glob`
+  toward `brainpalace query` (advisory nudge by default; opt into `enforce` to
+  deny) when the project is indexed and its server is up. Knobs
+  `cli.search_guard.*` / `BRAINPALACE_SEARCH_GUARD`; Bash unguarded (escape hatch).
+- **Source builds flagged across surfaces.** `brainpalace --version`, `brainpalace
+  status` / the dashboard "Server version" (server `/health`), and the dashboard
+  footer append `(from source)` for a local-path install; the Status tab also
+  surfaces the control-plane dashboard version. Released wheels show plain numbers.
+
+### Fixed
+- **Hook shims fail soft under version skew.** When the plugin is newer than the
+  installed CLI (no `hook` command yet), the SessionStart/UserPromptSubmit/
+  PreToolUse shims now no-op silently instead of surfacing an error that blocked
+  every prompt and tool spawn.
+- **`/health` version assertion tolerates the source-build suffix.** The health
+  test pinned `version == __version__`, which broke on editable/source checkouts
+  that append `(from source)`; it now matches the prefix.
+
+### Docs
+- **Full audited-doc prose-verification pass.** Re-grounded the audited doc set
+  against live code and corrected drift: `init` session-embedding is opt-in (not
+  "both ON"); MCP-client/timeout and graph-load notes degated from ungroundable
+  specifics; USER_GUIDE/CONFIGURATION/QUICK_START counts, modes, and presets
+  refreshed.
 
 ---
 

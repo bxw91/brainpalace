@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-16
+last_validated: 2026-06-18
 ---
 
 # BrainPalace — repo guide for Claude
@@ -185,8 +185,9 @@ Modes: `bm25` (exact terms), `vector` (semantic/concepts), `hybrid` (default), `
   `.brainpalace/`, free, durable backup) and **index** (embed them, billable). Gated by the
   presence of each config/flag; `retain_days <= 0` = forever. **Absent `session_indexing` block
   (existing projects): archive ON, index OFF** — back up transcripts without surprise embedding
-  cost. `brainpalace init` writes both ON; `--no-sessions` / `--no-archive` disable each
-  independently. Kill-switches: `SESSION_INDEXING_ENABLED=false`, `SESSION_ARCHIVE_ENABLED=false`.
+  cost. `brainpalace init` writes archive ON, index OFF — embedding is opt-in: `--sessions`
+  enables it non-interactively (`--yes` = archive + summarize, no embed); `--no-sessions` /
+  `--no-archive` force each off. Kill-switches: `SESSION_INDEXING_ENABLED=false`, `SESSION_ARCHIVE_ENABLED=false`.
   Archive folders are tool-tagged `YYYY-MM-DD-<tool>` (today `claude-code`). ⚠️ The raw archive
   holds **full transcripts incl. user turns/secrets**.
 - **`brainpalace status`** shows a per-feature view: document indexing, file watcher (with a

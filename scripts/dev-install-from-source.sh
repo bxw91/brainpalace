@@ -8,7 +8,8 @@
 #   1. snapshot which project servers + the dashboard are currently running
 #   2. stop them all (force) and VERIFY everything is down before touching files
 #   3. pipx install --force the local CLI, then inject the local server + dashboard
-#      (the published brainpalace-rag / brainpalace-dashboard deps are overridden)
+#      (the published brainpalace-rag / brainpalace-dashboard deps are overridden),
+#      then re-pin the local CLI last (--no-deps) so the inject can't downgrade it
 #   4. restart exactly what was running before — servers first, then the dashboard
 #      if (and only if) it was up before
 #
@@ -100,10 +101,21 @@ if [ "$DRY_RUN" -eq 0 ]; then
 fi
 
 # --- 4. install from source ----------------------------------------------------
+# Run pipx from a neutral dir: if cwd contains a 'brainpalace-cli' folder (e.g.
+# the repo root), pipx misreads the venv-name arg as a path and aborts.
+cd /
 log "Installing local CLI (pipx install --force)…"
 run pipx install --force "$CLI_DIR"
 log "Injecting local server + dashboard (pipx inject --force)…"
 run pipx inject --force brainpalace-cli "$SERVER_DIR" "$DASH_DIR"
+# Reinstall the local CLI LAST, with --no-deps. The inject above re-resolves
+# brainpalace-cli as a dependency of the server/dashboard; when the local version
+# is UNRELEASED, pip downgrades it to the latest PUBLISHED CLI — silently dropping
+# new subcommands like `hook`, which breaks every Claude Code hook shim. Pinning
+# the local CLI back here (deps untouched, so the injected server/dashboard stay)
+# guarantees the venv ends on the local build regardless of what inject resolved.
+log "Pinning local CLI last (pipx runpip --no-deps) so the inject can't downgrade it…"
+run pipx runpip brainpalace-cli install --no-deps --force-reinstall "$CLI_DIR"
 [ "$DRY_RUN" -eq 0 ] && log "Now installed: $(brainpalace --version 2>/dev/null || echo '?')"
 
 # --- 5. restart exactly what was running --------------------------------------

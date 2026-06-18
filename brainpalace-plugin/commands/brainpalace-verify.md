@@ -6,7 +6,7 @@ context: brainpalace
 agent: setup-assistant
 skills:
   - configuring-brainpalace
-last_validated: 2026-06-15
+last_validated: 2026-06-18
 ---
 
 # Verify BrainPalace Setup
@@ -101,7 +101,7 @@ Verification Complete!
 All checks passed. BrainPalace is ready to use.
 
 Quick commands:
-  Search: /brainpalace:brainpalace-search "your query"
+  Search: /brainpalace:brainpalace-query "your query"
   Index:  /brainpalace:brainpalace-index /path/to/docs
   Status: /brainpalace:brainpalace-status
 ```

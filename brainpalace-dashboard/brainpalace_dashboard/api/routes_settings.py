@@ -14,7 +14,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from brainpalace_dashboard import __version__
+from brainpalace_dashboard import version_display
 from brainpalace_dashboard.config import (
     TOKEN_MASK,
     DashboardConfigError,
@@ -45,7 +45,7 @@ def get_settings() -> dict[str, Any]:
         # echoes back the mask to keep it unchanged.
         "token_set": cfg.token is not None,
         "token": TOKEN_MASK if cfg.token is not None else "",
-        "version": __version__,
+        "version": version_display(),
         "runtime": {
             "running": bool(runtime.get("pid")),
             "port": runtime.get("port"),

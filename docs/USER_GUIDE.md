@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-15
+last_validated: 2026-06-18
 ---
 
 # BrainPalace User Guide
@@ -39,8 +39,8 @@ BrainPalace is a RAG (Retrieval-Augmented Generation) system that indexes and se
 
 | Component | Count | Description |
 |-----------|-------|-------------|
-| **Commands** | 30 | Slash commands for all operations |
-| **Agents** | 3 | Intelligent assistants for complex tasks |
+| **Commands** | 33 | Slash commands for all operations |
+| **Agents** | 5 | Intelligent assistants for complex tasks |
 | **Skills** | 2 | Context for optimal search and configuration |
 
 ### How It Works
@@ -56,16 +56,16 @@ BrainPalace is a RAG (Retrieval-Augmented Generation) system that indexes and se
 
 ### Search Commands
 
+All retrieval is one command, `/brainpalace-query`, with a `--mode` flag:
+
 | Command | Description | Best For |
 |---------|-------------|----------|
-| `/brainpalace-search` | Smart hybrid search | General questions |
-| `/brainpalace-semantic` | Pure vector search | Conceptual queries |
-| `/brainpalace-keyword` | BM25 keyword search | Exact terms, function names |
-| `/brainpalace-bm25` | Alias for keyword search | Error messages, symbols |
-| `/brainpalace-vector` | Alias for semantic search | "How does X work?" |
-| `/brainpalace-hybrid` | Hybrid with alpha control | Fine-tuned searches |
-| `/brainpalace-graph` | Knowledge graph search | Dependencies, relationships |
-| `/brainpalace-multi` | All modes with RRF fusion | Maximum recall |
+| `/brainpalace-query` | Hybrid search (default) | General questions |
+| `/brainpalace-query --mode vector` | Pure vector search | Conceptual queries |
+| `/brainpalace-query --mode bm25` | BM25 keyword search | Exact terms, function names |
+| `/brainpalace-query --mode hybrid --alpha 0.7` | Hybrid with alpha control | Fine-tuned searches |
+| `/brainpalace-query --mode graph` | Knowledge graph search | Dependencies, relationships |
+| `/brainpalace-query --mode multi` | All modes with RRF fusion | Maximum recall |
 
 **Time-decay (recency).** All search modes rank **newer** content higher by
 default — fresh sessions, recent commits, and just-edited code beat stale matches
@@ -84,7 +84,6 @@ Curated, git-tracked facts that get boosted into search results. Full guide:
 | `brainpalace remember "<fact>" [--tags] [--section]` | Save a durable fact |
 | `brainpalace recall "<query>"` | Search the memory namespace only |
 | `brainpalace memories list\|show\|delete\|obsolete` | Manage memories |
-| `brainpalace query "..." --no-memory` | Disable the memory boost for a query |
 | `brainpalace context` | Print the session-start context block (for a SessionStart hook) — see [SESSION_CONTEXT.md](SESSION_CONTEXT.md) |
 
 ### Server Commands
@@ -118,16 +117,11 @@ Curated, git-tracked facts that get boosted into search results. Full guide:
 | `/brainpalace-init` | Initialize project directory |
 | `/brainpalace-config` | View/edit configuration |
 | `/brainpalace-verify` | Verify configuration |
-| `/brainpalace-help` | Show help information |
-| `/brainpalace-version` | Show version information |
 
-### Provider Commands
+### Provider Configuration
 
-| Command | Description |
-|---------|-------------|
-| `/brainpalace-providers` | List and configure providers |
-| `/brainpalace-embeddings` | Configure embedding provider |
-| `/brainpalace-summarizer` | Configure summarization provider |
+Embedding and summarization providers are configured through the
+`/brainpalace-config` wizard (there are no separate per-provider commands).
 
 ### Diagnosing setup problems — `brainpalace doctor`
 
@@ -178,7 +172,7 @@ init`) automatically.
 
 ## Plugin Agents
 
-BrainPalace includes three intelligent agents that handle complex, multi-step tasks:
+BrainPalace includes five intelligent agents that handle complex, multi-step tasks:
 
 ### Search Assistant
 
@@ -232,6 +226,21 @@ Setup Assistant:
 5. Reports success or guides through fixes
 ```
 
+### Chat Session Extractor
+
+Extracts durable knowledge — a summary, decisions, and knowledge-graph triplets —
+from a finished AI-coding session and submits it to BrainPalace memory.
+
+**Triggers**: runs over a completed session transcript (e.g. via the session
+extraction hook), not by a conversational request.
+
+### Memory Curator
+
+Distils recent session decisions into curated memory and prunes or merges stale
+or duplicate memories, on the subscription model.
+
+**Triggers**: scheduled/curation runs over the memory namespace.
+
 ---
 
 ## Search Modes
@@ -241,7 +250,7 @@ Setup Assistant:
 Combines semantic similarity with keyword matching. Best for general questions.
 
 ```
-/brainpalace-search "how does the caching system work"
+/brainpalace-query "how does the caching system work"
 ```
 
 Adjust the balance with `--alpha`:
@@ -249,7 +258,7 @@ Adjust the balance with `--alpha`:
 - `--alpha 0.3` - More keyword (specific terms)
 
 ```
-/brainpalace-hybrid "authentication flow" --alpha 0.7
+/brainpalace-query --mode hybrid "authentication flow" --alpha 0.7
 ```
 
 ### VECTOR (Semantic)
@@ -257,7 +266,7 @@ Adjust the balance with `--alpha`:
 Pure embedding-based search. Best for conceptual understanding.
 
 ```
-/brainpalace-semantic "explain the overall architecture"
+/brainpalace-query --mode vector "explain the overall architecture"
 ```
 
 ### BM25 (Keyword)
@@ -265,8 +274,8 @@ Pure embedding-based search. Best for conceptual understanding.
 TF-IDF based search. Best for exact terms, function names, error codes.
 
 ```
-/brainpalace-keyword "NullPointerException"
-/brainpalace-bm25 "getUserById"
+/brainpalace-query --mode bm25 "NullPointerException"
+/brainpalace-query --mode bm25 "getUserById"
 ```
 
 BM25 tokenizes each document in **its own natural language** (stemming +
@@ -278,8 +287,8 @@ stopwords), so keyword search works precisely for non-English content. See
 Traverses entity relationships. Best for dependency and relationship queries.
 
 ```
-/brainpalace-graph "what classes use AuthService"
-/brainpalace-graph "what calls the validate function"
+/brainpalace-query --mode graph "what classes use AuthService"
+/brainpalace-query --mode graph "what calls the validate function"
 ```
 
 ### MULTI (Fusion)
@@ -287,7 +296,7 @@ Traverses entity relationships. Best for dependency and relationship queries.
 Combines all modes using Reciprocal Rank Fusion. Best for maximum recall.
 
 ```
-/brainpalace-multi "everything about data validation"
+/brainpalace-query --mode multi "everything about data validation"
 ```
 
 ---
@@ -463,9 +472,10 @@ BrainPalace supports AST-aware chunking for:
 - **C** (.c, .h)
 - **C++** (.cpp, .hpp, .cc)
 - **C#** (.cs, .csx)
-- **Swift** (.swift)
+- **Object Pascal** (.pas, .pp, .lpr, .dpr, .dpk)
 
-Other languages use intelligent text-based chunking.
+Other languages (including Kotlin and Swift, which are detected and indexed) use
+intelligent text-based chunking.
 
 ### Check Index Status
 
@@ -556,6 +566,8 @@ File type presets are named groups of glob patterns that simplify indexing. Inst
 | `rust` | `*.rs` |
 | `java` | `*.java` |
 | `csharp` | `*.cs` |
+| `pascal` | `*.pas`, `*.pp`, `*.lpr`, `*.dpr`, `*.dpk` |
+| `object-pascal` | `*.pas`, `*.pp`, `*.lpr`, `*.dpr`, `*.dpk` |
 | `c` | `*.c`, `*.h` |
 | `cpp` | `*.cpp`, `*.hpp`, `*.cc`, `*.hh` |
 | `web` | `*.html`, `*.css`, `*.scss`, `*.jsx`, `*.tsx` |
@@ -748,7 +760,7 @@ BrainPalace automatically caches embeddings in a two-layer architecture to avoid
 
 ### Architecture
 
-- **Layer 1 (Memory)**: In-memory LRU cache with fixed capacity (default: 1,000 entries). Sub-millisecond lookups with zero I/O.
+- **Layer 1 (Memory)**: In-memory LRU cache with fixed capacity (default: 10,000 entries). Sub-millisecond lookups with zero I/O.
 - **Layer 2 (Disk)**: aiosqlite SQLite database in WAL mode. Single-digit millisecond lookups. Persists across server restarts. Default limit: 500 MB (~42,000 entries at 3,072 dimensions).
 
 ### Cache Key Format
@@ -906,7 +918,7 @@ BrainPalace supports pluggable providers for embeddings and summarization.
 ### Configure Providers Interactively
 
 ```
-/brainpalace-providers
+/brainpalace-config
 ```
 
 ### Embedding Providers
@@ -936,7 +948,7 @@ BrainPalace supports pluggable providers for embeddings and summarization.
 Run completely offline with Ollama:
 
 ```
-/brainpalace-providers
+/brainpalace-config
 # Select Ollama for embeddings
 # Select Ollama for summarization
 ```
@@ -1117,10 +1129,11 @@ Then register it in `install_agent.py`'s `CONVERTERS` dict.
 
 Non-Claude-Code AI clients can talk to BrainPalace through the Model Context
 Protocol. BrainPalace ships an opt-in stdio MCP server — `brainpalace mcp` — that
-forwards calls to the existing HTTP server. Tool surface in v1 is read-only:
-`query`, `status`, `whoami`, `folders_list`, `jobs_list`. Every tool except
-`whoami` accepts an optional `path` argument so the long-lived shim is not
-pinned to its spawn-time directory.
+forwards calls to the existing HTTP server. The v1 tool surface is nine tools:
+`query`, `status`, `whoami`, `folders_list`, `jobs_list`, `recall`,
+`session_context`, and `ai_guide` are read-only; `memorize` writes a curated
+memory. Most tools accept an optional `path` argument so the long-lived shim is
+not pinned to its spawn-time directory.
 
 Supported clients with copy-paste config snippets:
 
@@ -1316,8 +1329,8 @@ If not running:
 
 1. Check document count: `/brainpalace-status`
 2. If 0 documents, re-index: `/brainpalace-index ./docs`
-3. Try lowering threshold: `/brainpalace-search "term" --threshold 0.3`
-4. Try different search mode: `/brainpalace-keyword "exact term"`
+3. Try lowering threshold: `/brainpalace-query "term" --threshold 0.3`
+4. Try different search mode: `/brainpalace-query --mode bm25 "exact term"`
 
 ### Configuration Issues
 
@@ -1334,7 +1347,7 @@ This checks:
 ### Provider Errors
 
 ```
-/brainpalace-providers
+/brainpalace-config
 ```
 
 Verify your API keys are set correctly for the selected provider.
@@ -1408,7 +1421,7 @@ brainpalace index .
 ## Next Steps
 
 - [Quick Start](QUICK_START.md) - Get running in minutes
-- [Plugin Guide](PLUGIN_GUIDE.md) - All 30 commands in detail
+- [Plugin Guide](PLUGIN_GUIDE.md) - All 33 commands in detail
 - [API Reference](API_REFERENCE.md) - REST API documentation
 - [GraphRAG Guide](GRAPHRAG_GUIDE.md) - Knowledge graph features
 - [Provider Configuration](../brainpalace-plugin/skills/using-brainpalace/references/provider-configuration.md) - Provider setup

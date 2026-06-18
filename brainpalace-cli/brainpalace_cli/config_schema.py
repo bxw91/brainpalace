@@ -106,7 +106,12 @@ API_KNOWN_FIELDS = {"host", "port"}
 SERVER_KNOWN_FIELDS = {"url", "host", "port", "auto_port", "read_only"}
 PROJECT_KNOWN_FIELDS = {"state_dir", "project_root"}
 QUERY_LOG_KNOWN_FIELDS = {"enabled", "retention_days"}
-CLI_KNOWN_FIELDS = {"show_ai_hint", "subagent_guard", "session_autostart"}
+CLI_KNOWN_FIELDS = {
+    "show_ai_hint",
+    "subagent_guard",
+    "search_guard",
+    "session_autostart",
+}
 # `cli.session_autostart` (bool, default True) — when a Claude Code session starts
 # in an indexed project whose server is down, the SessionStart hook spawns
 # `brainpalace start --json` detached (server + headless dashboard, no browser).
@@ -122,6 +127,14 @@ CLI_KNOWN_FIELDS = {"show_ai_hint", "subagent_guard", "session_autostart"}
 # default mode `advisory` (nudge) — opt into `enforce` (deny) per project. Disable
 # via enabled:false or BRAINPALACE_SUBAGENT_GUARD=off.
 SUBAGENT_GUARD_KNOWN_FIELDS = {"enabled", "mode", "allow_agents"}
+# Nested `cli.search_guard.*` — sibling of subagent_guard, gating the main
+# thread's own Grep/Glob (PreToolUse hook) so it searches via BrainPalace instead
+# of grep/glob. CLI/plugin-side enforcement, not a server control-plane concern,
+# so it lives under `cli` and is not surfaced in the dashboard. Default ON,
+# active only in indexed projects with a live server; default mode `advisory`
+# (nudge) — opt into `enforce` (deny). Disable via enabled:false or
+# BRAINPALACE_SEARCH_GUARD=off. Bash is not guarded (escape hatch for raw search).
+SEARCH_GUARD_KNOWN_FIELDS = {"enabled", "mode"}
 VALID_GUARD_MODES = {"advisory", "enforce"}
 # Control-plane (dashboard process) settings — global only. Mirrors
 # brainpalace_dashboard.config.DashboardConfig.
@@ -705,6 +718,48 @@ def validate_config_dict(
                         ),
                         line_number=None,
                         suggestion="Use a YAML list, e.g. [research, setup].",
+                    )
+                )
+
+        # 2d-ter. Nested cli.search_guard.* key validation (sibling of above).
+        search_data = cli_section.get("search_guard")
+        if isinstance(search_data, dict):
+            for s_key in search_data:
+                if s_key not in SEARCH_GUARD_KNOWN_FIELDS:
+                    errors.append(
+                        ConfigValidationError(
+                            field=f"cli.search_guard.{s_key}",
+                            message=f"Unknown key '{s_key}' in cli.search_guard",
+                            line_number=None,
+                            suggestion=(
+                                f"Remove '{s_key}' or check for a typo. "
+                                "Known fields: "
+                                f"{', '.join(sorted(SEARCH_GUARD_KNOWN_FIELDS))}"
+                            ),
+                        )
+                    )
+            s_enabled = search_data.get("enabled")
+            if s_enabled is not None and not isinstance(s_enabled, bool):
+                errors.append(
+                    ConfigValidationError(
+                        field="cli.search_guard.enabled",
+                        message=(
+                            "cli.search_guard.enabled must be a boolean (true/false)"
+                        ),
+                        line_number=None,
+                        suggestion="Change 'enabled' to a bool value.",
+                    )
+                )
+            s_mode = search_data.get("mode")
+            if s_mode is not None and str(s_mode) not in VALID_GUARD_MODES:
+                errors.append(
+                    ConfigValidationError(
+                        field="cli.search_guard.mode",
+                        message=f"Invalid cli.search_guard.mode: '{s_mode}'",
+                        line_number=None,
+                        suggestion=(
+                            f"Use one of: {', '.join(sorted(VALID_GUARD_MODES))}"
+                        ),
                     )
                 )
 

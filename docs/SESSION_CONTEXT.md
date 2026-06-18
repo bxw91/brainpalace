@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-15
+last_validated: 2026-06-18
 ---
 
 # Session-Start Context
@@ -33,12 +33,12 @@ The response reports `sections` (what's actually included), `token_estimate`,
 
 ## Wiring it (Claude Code SessionStart hook)
 
-The plugin ships `templates/sessionstart-hook.sh`. When the project is indexed
+The plugin ships `hooks/sessionstart-hook.sh`. When the project is indexed
 and the server is up, it appends `brainpalace context` output to the session's
 `additionalContext`. Install:
 
 ```bash
-cp brainpalace-plugin/templates/sessionstart-hook.sh \
+cp brainpalace-plugin/hooks/sessionstart-hook.sh \
    ~/.claude/hooks/brainpalace-sessionstart.sh
 chmod +x ~/.claude/hooks/brainpalace-sessionstart.sh
 # reference it under hooks.SessionStart in ~/.claude/settings.json (see the

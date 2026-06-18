@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-15
+last_validated: 2026-06-18
 ---
 
 # BrainPalace Developer Guide
@@ -97,7 +97,7 @@ flowchart TB
 
 | Module | Path | Description |
 |---|---|---|
-| `brainpalace_cli.mcp_server` | `brainpalace-cli/brainpalace_cli/mcp_server/` | Opt-in stdio MCP shim invoked as `brainpalace mcp`. Thin wrapper over `DocServeClient` + `discovery.py` exposing 5 read-only tools (`query`, `status`, `whoami`, `folders_list`, `jobs_list`) to MCP-aware AI clients. Tests at `brainpalace-cli/tests/mcp_server/`. **Named `mcp_server`, not `mcp`** — the original `mcp` name collided with the SDK's top-level `mcp` package under `coverage --cov=brainpalace_cli` instrumentation, so renaming the sub-package was the surgical fix. CLI subcommand `mcp` (user-facing) is unchanged. |
+| `brainpalace_cli.mcp_server` | `brainpalace-cli/brainpalace_cli/mcp_server/` | Opt-in stdio MCP shim invoked as `brainpalace mcp`. Thin wrapper over `DocServeClient` + `discovery.py` exposing 9 tools (`query`, `status`, `whoami`, `folders_list`, `jobs_list`, `recall`, `session_context`, `ai_guide` are read-only; `memorize` writes a curated memory) to MCP-aware AI clients. Tests at `brainpalace-cli/tests/mcp_server/`. **Named `mcp_server`, not `mcp`** — the original `mcp` name collided with the SDK's top-level `mcp` package under `coverage --cov=brainpalace_cli` instrumentation, so renaming the sub-package was the surgical fix. CLI subcommand `mcp` (user-facing) is unchanged. |
 
 ---
 
@@ -549,9 +549,9 @@ nested, marker-delimited tiers — **NUDGE ⊂ CORE ⊂ FULL**:
 
 | Tier | Bytes (approx) | Consumer | Why this size |
 |------|----------------|----------|---------------|
-| **NUDGE** | ~440 | SessionStart hook `additionalContext` | Plugin users already load FULL via the skill; the hook only nudges. |
-| **CORE** | ~3.8 K | MCP `Server(instructions=...)` | MCP clients have no skill/hook — they need the whole decision contract at connect. |
-| **FULL** | ~6.4 K | generated SKILL.md, `ai-guide --tier full`, `ai_guide` MCP tool | The complete guide; pulled on demand. |
+| **NUDGE** | ~580 | SessionStart hook `additionalContext` | Plugin users already load FULL via the skill; the hook only nudges. |
+| **CORE** | ~4.2 K | MCP `Server(instructions=...)` | MCP clients have no skill/hook — they need the whole decision contract at connect. |
+| **FULL** | ~7.7 K | generated SKILL.md, `ai-guide --tier full`, `ai_guide` MCP tool | The complete guide; pulled on demand. |
 
 CORE is a literal slice of FULL; NUDGE a literal slice of CORE — never
 hand-maintained copies. The loader/renderer is `brainpalace_cli/ai_guidance.py`;
@@ -597,7 +597,7 @@ punctuation like `—` `…` `⊂` is allowed; accented/Cyrillic letters fail).
 
 ## Code Ingestion & Language Support
 
-BrainPalace supports AST-aware code chunking for 9+ programming languages using tree-sitter. The current implementation includes: **Python, TypeScript, JavaScript, Java, Go, Rust, C, C++, C#**.
+BrainPalace supports AST-aware code chunking for 10 programming languages using tree-sitter. The current implementation includes: **Python, TypeScript, JavaScript, Java, Go, Rust, C, C++, C#, and Object Pascal**. (Kotlin and Swift are also detected and indexed, but chunked without AST metadata.)
 
 Adding support for new programming languages is straightforward:
 
@@ -660,28 +660,28 @@ EXTENSION_TO_LANGUAGE = {
 }
 ```
 
-**Step 3: Register with CodeChunker**
+**Step 3: Register the tree-sitter grammar in CodeChunker**
 
-In `brainpalace_server/indexing/code_chunker.py`:
-
-```python
-class CodeChunker:
-    SUPPORTED_LANGUAGES = [
-        "python", "typescript", "javascript",
-        "ruby",  # NEW
-    ]
-```
-
-**Step 4: Add language-specific config (optional)**
+In `brainpalace_server/indexing/chunking.py`, add the language to the `lang_map`
+in `CodeChunker._setup_language()` so AST-aware chunking picks it up (a language
+not in this map is still indexed, but chunked without AST metadata):
 
 ```python
-LANGUAGE_CHUNK_CONFIG = {
-    "python": {"chunk_lines": 50, "overlap": 20},
-    "ruby": {"chunk_lines": 50, "overlap": 20},  # NEW
-    "java": {"chunk_lines": 80, "overlap": 30},  # Verbose
-    "c": {"chunk_lines": 40, "overlap": 15},
-}
+def _setup_language(self) -> None:
+    lang_map = {
+        "python": "python",
+        "typescript": "typescript",
+        # ... existing mappings ...
+        "ruby": "ruby",  # NEW
+    }
 ```
+
+**Step 4: Tune chunk sizing (optional)**
+
+`CodeChunker` takes per-instance `chunk_lines`, `chunk_lines_overlap`, and
+`max_chars` arguments (defaults: 40 / 15 / 1500). Pass language-appropriate
+values when constructing it for a verbose or terse grammar — there is no global
+per-language config table.
 
 ### C# Language Support
 

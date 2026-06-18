@@ -1,6 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { FileText, Boxes, FolderTree, Share2, GitCommit, Lock } from "lucide-react";
-import { getInstanceStatus, getInstanceHealth, getConfig } from "../api/client";
+import {
+  getInstanceStatus,
+  getInstanceHealth,
+  getConfig,
+  getSettings,
+} from "../api/client";
 import { StatCard } from "../components/StatCard";
 import { useOptionalSelectedInstance } from "../state/selectedInstance";
 import { useDisplayFormat } from "../format/datetime";
@@ -65,6 +70,12 @@ export function Status({ instanceId }: { instanceId?: string }) {
     queryKey: ["config", id],
     queryFn: () => getConfig(id!),
     enabled: !!id,
+    retry: false,
+  });
+  // Control-plane (dashboard's own) version — fleet-wide, not per-instance.
+  const settingsQ = useQuery({
+    queryKey: ["dashboard-settings"],
+    queryFn: getSettings,
     retry: false,
   });
 
@@ -200,6 +211,10 @@ export function Status({ instanceId }: { instanceId?: string }) {
         </div>
         <div className="divide-y divide-line/60">
           <Row label="Server version" value={healthQ.data?.version ?? "—"} />
+          <Row
+            label="Dashboard version (control plane)"
+            value={settingsQ.data?.version ?? "—"}
+          />
           <Row label="Indexing" value={indexing} />
           <Row
             label="Indexed folders"

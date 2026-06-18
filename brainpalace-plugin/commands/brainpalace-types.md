@@ -4,7 +4,7 @@ description: List available file type presets for indexing
 parameters:
 skills:
   - using-brainpalace
-last_validated: 2026-06-15
+last_validated: 2026-06-18
 ---
 
 # File Type Presets
@@ -49,6 +49,8 @@ go           *.go
 rust         *.rs
 java         *.java
 csharp       *.cs
+pascal       *.pas, *.pp, *.lpr, *.dpr, *.dpk
+object-pascal *.pas, *.pp, *.lpr, *.dpr, *.dpk
 c            *.c, *.h
 cpp          *.cpp, *.hpp, *.cc, *.hh
 web          *.html, *.css, *.scss, *.jsx, *.tsx

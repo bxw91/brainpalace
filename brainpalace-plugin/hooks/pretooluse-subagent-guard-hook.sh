@@ -6,14 +6,22 @@
 # shim contains nothing version-specific and cannot go stale. See
 # CLAUDE.md → "AI-guidance parity" and sessionstart-hook.sh for the pattern.
 #
-# Gates Agent/Task spawns: a spawn whose prompt lacks a `brainpalace query --mode`
-# directive (or the equivalent MCP query-tool `mode:` argument) is nudged
-# (advisory) or denied (enforce). ON by default in `advisory` mode, but ONLY
-# while this project's BrainPalace server is running (no live server → no-op).
-# Opt into hard blocking with `cli.subagent_guard.mode: enforce` (or
-# `BRAINPALACE_SUBAGENT_GUARD=enforce`); disable entirely with
-# `cli.subagent_guard.enabled: false` / `BRAINPALACE_SUBAGENT_GUARD=off`.
+# Two sibling guards dispatched by tool name (matcher Agent|Task|Grep|Glob):
+#   - subagent guard (Agent/Task): a spawn whose prompt lacks a `brainpalace
+#     query --mode` directive (or the MCP query-tool `mode:` arg) is nudged
+#     (advisory) or denied (enforce). Knobs: `cli.subagent_guard.*` /
+#     `BRAINPALACE_SUBAGENT_GUARD`.
+#   - search guard (Grep/Glob): the main thread's own Grep/Glob is steered to
+#     `brainpalace query` the same way. Knobs: `cli.search_guard.*` /
+#     `BRAINPALACE_SEARCH_GUARD`. (Bash is not matched — escape hatch for raw
+#     search of non-indexed files.)
+# Both ON by default in `advisory` mode, but ONLY while this project's
+# BrainPalace server is running (no live server → no-op). Opt into hard blocking
+# with the relevant `*.mode: enforce`; disable with `*.enabled: false` / `=off`.
 #
-# Fail-soft: if the CLI is not on PATH, no-op silently (never block a spawn).
+# Fail-soft: never block a spawn. CLI absent from PATH — or present but too old to
+# have the `hook` command (plugin newer than the installed CLI) — must no-op
+# silently, not surface an error this PreToolUse hook turns into a block. So
+# swallow a failing `hook` call (stderr hidden) and exit 0.
 command -v brainpalace >/dev/null 2>&1 || exit 0
-exec brainpalace hook pretooluse "$@"
+brainpalace hook pretooluse "$@" 2>/dev/null || exit 0

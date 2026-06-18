@@ -7,7 +7,7 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Request
 
-from brainpalace_server import __version__
+from brainpalace_server import version_display
 from brainpalace_server.config.provider_config import (
     _find_config_file,
     load_provider_settings,
@@ -97,7 +97,7 @@ async def health_check(request: Request) -> HealthStatus:
         status=status,
         message=message,
         timestamp=datetime.now(timezone.utc),
-        version=__version__,
+        version=version_display(),
         mode=mode,
         instance_id=instance_id,
         project_id=project_id,

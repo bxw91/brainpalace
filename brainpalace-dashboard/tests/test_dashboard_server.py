@@ -90,6 +90,65 @@ def test_launch_reclaims_configured_port_after_reap(
     assert url == "http://127.0.0.1:8787/dashboard/"  # reclaimed, not climbed
 
 
+def test_launch_reclaims_when_reap_returned_nothing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: object
+) -> None:
+    """Reclaim 8787 whenever an OWN dashboard holds it — even if the reap call
+    returned no PIDs. The old `if reaped` guard would climb to 8788 here; the fix
+    keys the wait on the live own-dashboard set, so a self-relaunch never drifts
+    off the configured port."""
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+
+    class FakeProc:
+        pid = 88
+
+    monkeypatch.setattr(srv.subprocess, "Popen", lambda *a, **k: FakeProc())
+    monkeypatch.setattr(srv, "_wait_healthy", lambda url, timeout=20: True)
+    # reap finds nothing to SIGTERM, yet a live own dashboard still holds 8787.
+    monkeypatch.setattr(srv, "reap_orphan_dashboards", lambda **k: [])
+    monkeypatch.setattr(srv, "list_dashboard_pids", lambda: [999])
+    monkeypatch.setattr(srv.os, "kill", lambda pid, sig: None)
+    monkeypatch.setattr(srv, "_is_alive", lambda pid: False)
+
+    calls = {"n": 0}
+
+    def fake_free(host: str, port: int) -> bool:
+        if port != 8787:
+            return True
+        calls["n"] += 1
+        return calls["n"] >= 3  # held for the first couple probes, then frees
+
+    monkeypatch.setattr(srv, "_port_free", fake_free)
+
+    url = srv.launch_dashboard(open_browser=False)
+    assert url == "http://127.0.0.1:8787/dashboard/"  # reclaimed, not climbed
+
+
+def test_launch_climbs_when_holder_is_foreign(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: object
+) -> None:
+    """When NO own dashboard holds the configured port (a genuinely foreign app
+    is on 8787), the scan climbs to 8788 rather than waiting/killing."""
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+
+    class FakeProc:
+        pid = 43
+
+    monkeypatch.setattr(srv.subprocess, "Popen", lambda *a, **k: FakeProc())
+    monkeypatch.setattr(srv, "_wait_healthy", lambda url, timeout=20: True)
+    monkeypatch.setattr(srv, "reap_orphan_dashboards", lambda **k: [])
+    monkeypatch.setattr(srv, "list_dashboard_pids", lambda: [])  # none of ours
+
+    def _no_wait(*a: object, **k: object) -> bool:
+        raise AssertionError("must not wait/kill for a foreign port holder")
+
+    monkeypatch.setattr(srv, "_wait_port_free", _no_wait)
+    monkeypatch.setattr(srv, "_port_free", lambda host, port: port != 8787)
+
+    url = srv.launch_dashboard(open_browser=False)
+    assert url == "http://127.0.0.1:8788/dashboard/"
+
+
 def test_wait_port_free_escalates_to_sigkill(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

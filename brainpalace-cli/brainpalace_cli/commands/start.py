@@ -700,6 +700,7 @@ def start_command(
             # Daemonize the server — single source of truth lives in launch_server.
             if not json_output:
                 console.print("[dim]Starting server...[/]")
+            dash = _ensure_dashboard(no_dashboard=no_dashboard, json_output=json_output)
             try:
                 runtime_state = launch_server(
                     project_root=project_root,
@@ -712,9 +713,6 @@ def start_command(
             except ServerAlreadyRunningError as e:
                 # A healthy server for this project was found mid-launch (runtime
                 # state was missing/stale). Report it instead of duplicating.
-                dash = _ensure_dashboard(
-                    no_dashboard=no_dashboard, json_output=json_output
-                )
                 if json_output:
                     click.echo(
                         json.dumps(
@@ -760,7 +758,6 @@ def start_command(
             stdout_log = runtime_state.get(
                 "log_file", str(state_dir / "logs" / "server.log")
             )
-            dash = _ensure_dashboard(no_dashboard=no_dashboard, json_output=json_output)
             if json_output:
                 click.echo(
                     json.dumps(
@@ -779,21 +776,14 @@ def start_command(
                 console.print(
                     Panel(
                         f"[green]Server started successfully![/]\n\n"
-                        f"[bold]URL:[/] {base_url}\n"
                         f"[bold]PID:[/] {pid}\n"
-                        f"[bold]Project:[/] {project_root}\n"
-                        f"[bold]Log:[/] {stdout_log}",
+                        f"[bold]URL:[/] {base_url}\n"
+                        f"[bold]Project:[/] {project_root}",
                         title="BrainPalace Server Running",
                         border_style="green",
                     )
                 )
-                console.print("\n[dim]Next steps:[/]")
-                console.print(
-                    f"  - Query: [bold]brainpalace query 'search term' "
-                    f"--url {base_url}[/]"
-                )
                 _print_dashboard(dash)
-                console.print("  - Stop: [bold]brainpalace stop[/]")
 
     except PermissionError as e:
         if json_output:

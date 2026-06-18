@@ -71,12 +71,16 @@ if since_verify >= period and since_prompt >= period:
                 "WEEKLY DOC-VERIFY SWEEP DUE (repo-dev, advisory). Doc prose has "
                 f"not been verified vs live code in >= {period} days (last: {last}). "
                 "ASK THE USER (one question, AskUserQuestion) whether to run the "
-                "Layer B prose sweep now via `/brainpalace-verify-docs --changed` "
-                "(dispatch the Sonnet-pinned doc-verifier; the verdict cache keeps "
-                "it cheap). If YES, run it — `verify-docs --record` re-stamps the "
-                "weekly clock. If NO, do nothing: this reminder will repeat next "
-                "week. Do not run it without asking, and do not block the user's "
-                "current task on it."
+                "Layer B prose sweep now via `/brainpalace-verify-docs --all` — the "
+                "FULL baseline, the only mode that catches latent drift already in "
+                "main with no current diff (`--changed` structurally cannot). "
+                "`--skip-fresh` (default 6d) + the verdict cache keep it cheap: it "
+                "re-judges only docs >= 6 days stale and reuses cached verdicts for "
+                "unchanged claims, so an all-fresh empty packet is normal. Dispatch "
+                "the Sonnet-pinned doc-verifier, walking the set in small batches. "
+                "If YES, run it — `verify-docs --record` re-stamps the weekly clock. "
+                "If NO, do nothing: this reminder will repeat next week. Do not run "
+                "it without asking, and do not block the user's current task on it."
             ),
         }
     }))

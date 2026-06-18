@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-15
+last_validated: 2026-06-18
 ---
 
 # BrainPalace API Reference
@@ -14,7 +14,7 @@ cat .brainpalace/runtime.json | jq -r '.base_url'
 
 Default (single instance): `http://127.0.0.1:8000`
 
-Override via environment: `DOC_SERVE_URL`
+Override via environment: `BRAINPALACE_URL`
 
 ---
 

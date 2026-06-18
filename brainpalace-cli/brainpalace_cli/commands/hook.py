@@ -196,68 +196,103 @@ _GUARD_DEFAULTS: dict[str, Any] = {
 }
 
 
+# --- search guard (PreToolUse, main thread) -------------------------------
+
+# The main thread's own search tools. Bash is intentionally absent: the
+# PreToolUse matcher fires per tool *name*, so guarding Bash would spawn this
+# hook on EVERY shell command (~0.3s cold start each) — far too costly for an
+# on-by-default feature. Grep/Glob are dedicated, always-a-search tools that
+# fire rarely, and dropping to `grep`/`find` via Bash is the deliberate escape
+# hatch for raw search of non-indexed files.
+_SEARCH_GUARD_TOOLS = ("Grep", "Glob")
+_SEARCH_GUARD_DEFAULTS: dict[str, Any] = {
+    # On by default, but advisory (nudge, never deny) — same rationale as the
+    # subagent guard: an on-by-default guard that silently DENIED every Grep/Glob
+    # would be far too blunt (it also fires on other plugins' searches). Advisory
+    # keeps the BrainPalace nudge without breaking workflows. Opt into hard
+    # blocking with ``cli.search_guard.mode: enforce`` or
+    # ``BRAINPALACE_SEARCH_GUARD=enforce``.
+    "enabled": True,
+    "mode": "advisory",
+}
+_SEARCH_DENY_REASON = (
+    "BrainPalace is indexed and running for this project — search it instead of "
+    'Grep/Glob: `brainpalace query "..." --mode bm25` for exact '
+    "symbols/tokens/paths (no embedding round-trip, ms latency) or `--mode "
+    "hybrid` for concepts. For raw search of non-indexed files, run `grep`/`find` "
+    "via Bash (not guarded). Disable with `cli.search_guard.enabled: false` or "
+    "`BRAINPALACE_SEARCH_GUARD=off`."
+)
+
+
 @hook_group.command("pretooluse")
 def hook_pretooluse() -> None:
-    """Gate Agent/Task spawns so subagents are forced to search via BrainPalace.
+    """Steer the session toward BrainPalace search instead of grep/glob/find.
 
-    ON by default, but ONLY when this project's BrainPalace server is actually
-    running (``discover_server_url`` validates runtime.json + a live PID +
-    ``GET /health/``). No live server → no denial: it is pointless to force
-    BrainPalace-only search when BrainPalace cannot answer, so subagents may fall
-    back to grep until the server is up. When a guarded spawn's prompt carries
-    no ``brainpalace query --mode`` directive (or opens with a bypass
-    instruction), the guard reacts per ``cli.subagent_guard.mode``:
-      - ``advisory`` (default) → allow but inject a nudge;
-      - ``enforce`` → deny the spawn with a fix hint (more teeth, since subagents
-        often ignore a nudge — opt in when every project agent should search via
-        BrainPalace).
-    Disable with ``cli.subagent_guard.enabled: false`` or
-    ``BRAINPALACE_SUBAGENT_GUARD=off``.
+    Two sibling guards share this one PreToolUse entry point, dispatched by
+    ``tool_name``:
+      - **subagent guard** (``Agent``/``Task``) — gate spawns so subagents are
+        forced to search via BrainPalace (``cli.subagent_guard.*``);
+      - **search guard** (``Grep``/``Glob``) — steer the main thread's own search
+        the same way (``cli.search_guard.*``).
+    Both are ON by default, but ONLY when this project's BrainPalace server is
+    actually running (``discover_server_url`` validates runtime.json + a live PID
+    + ``GET /health/``). No live server → no action: pointless to force
+    BrainPalace-only search when BrainPalace cannot answer. Each guard's
+    ``mode`` decides the reaction — ``advisory`` (default) injects a nudge,
+    ``enforce`` denies with a fix hint. Disable per guard via its
+    ``enabled: false`` or env kill-switch.
     Fail-soft: any error → allow (emit nothing). Never blocks on a crash.
     """
     try:
         payload = json.loads(sys.stdin.read() or "{}")
-        if payload.get("tool_name") not in ("Agent", "Task"):
-            return
-        # Only police when a live server can actually serve queries. No running
-        # server → not our concern (don't block grep when BrainPalace is down).
-        if discover_server_url(None) is None:
-            return
-        cfg = _load_guard_config()
-        if not cfg["enabled"]:
-            return
-        tool_input = payload.get("tool_input") or {}
-        subagent = tool_input.get("subagent_type") or "general-purpose"
-        if subagent in cfg["allow_agents"]:
-            return
-        prompt = tool_input.get("prompt") or ""
-        if _guard_prompt_ok(prompt):
-            return
-        if cfg["mode"] == "advisory":
-            click.echo(
-                json.dumps(
-                    {
-                        "hookSpecificOutput": {
-                            "hookEventName": "PreToolUse",
-                            "additionalContext": _GUARD_DENY_REASON,
-                        }
-                    }
-                )
-            )
-            return
-        click.echo(
-            json.dumps(
-                {
-                    "hookSpecificOutput": {
-                        "hookEventName": "PreToolUse",
-                        "permissionDecision": "deny",
-                        "permissionDecisionReason": _GUARD_DENY_REASON,
-                    }
-                }
-            )
-        )
+        tool = payload.get("tool_name")
+        if tool in ("Agent", "Task"):
+            _subagent_guard(payload)
+        elif tool in _SEARCH_GUARD_TOOLS:
+            _search_guard()
     except Exception:  # noqa: BLE001 — a hook must NEVER crash/block a session
         pass
+
+
+def _emit_pretooluse(mode: str, reason: str) -> None:
+    """Emit the PreToolUse decision: advisory → nudge, else → deny."""
+    hso: dict[str, Any] = {"hookEventName": "PreToolUse"}
+    if mode == "advisory":
+        hso["additionalContext"] = reason
+    else:
+        hso["permissionDecision"] = "deny"
+        hso["permissionDecisionReason"] = reason
+    click.echo(json.dumps({"hookSpecificOutput": hso}))
+
+
+def _subagent_guard(payload: dict[str, Any]) -> None:
+    """Gate an Agent/Task spawn: prompt must carry a BrainPalace query directive."""
+    # Only police when a live server can actually serve queries. No running
+    # server → not our concern (don't block grep when BrainPalace is down).
+    if discover_server_url(None) is None:
+        return
+    cfg = _load_guard_config()
+    if not cfg["enabled"]:
+        return
+    tool_input = payload.get("tool_input") or {}
+    subagent = tool_input.get("subagent_type") or "general-purpose"
+    if subagent in cfg["allow_agents"]:
+        return
+    prompt = tool_input.get("prompt") or ""
+    if _guard_prompt_ok(prompt):
+        return
+    _emit_pretooluse(cfg["mode"], _GUARD_DENY_REASON)
+
+
+def _search_guard() -> None:
+    """Steer a main-thread Grep/Glob toward BrainPalace search (when server up)."""
+    if discover_server_url(None) is None:
+        return
+    cfg = _load_search_guard_config()
+    if not cfg["enabled"]:
+        return
+    _emit_pretooluse(cfg["mode"], _SEARCH_DENY_REASON)
 
 
 def _guard_prompt_ok(prompt: str) -> bool:
@@ -279,31 +314,59 @@ def _guard_prompt_ok(prompt: str) -> bool:
     return True
 
 
-def _load_guard_config() -> dict[str, Any]:
-    """Resolve ``cli.subagent_guard`` from global XDG + project config (project wins).
+def _resolve_enabled_mode(
+    config_key: str, env_var: str, defaults: dict[str, Any]
+) -> dict[str, Any]:
+    """Resolve a guard's ``enabled``/``mode`` from global XDG + project config.
 
-    Env override ``BRAINPALACE_SUBAGENT_GUARD`` (off|advisory|enforce) takes top
-    precedence. Best-effort: returns defaults on any failure so the hook fails open.
+    Project overrides global; env override (off|advisory|enforce) takes top
+    precedence. Shared by both PreToolUse guards. Best-effort: returns defaults on
+    any failure so the hook fails open.
     """
-    cfg: dict[str, Any] = dict(_GUARD_DEFAULTS)
-    cfg["allow_agents"] = list(_GUARD_DEFAULTS["allow_agents"])
+    cfg: dict[str, Any] = {"enabled": defaults["enabled"], "mode": defaults["mode"]}
     for raw in _guard_config_sources():
-        guard = (raw.get("cli") or {}).get("subagent_guard")
+        guard = (raw.get("cli") or {}).get(config_key)
         if not isinstance(guard, dict):
             continue
         if isinstance(guard.get("enabled"), bool):
             cfg["enabled"] = guard["enabled"]
         if guard.get("mode") in ("advisory", "enforce"):
             cfg["mode"] = guard["mode"]
-        if isinstance(guard.get("allow_agents"), list):
-            cfg["allow_agents"] = [str(a) for a in guard["allow_agents"]]
-    env = os.getenv("BRAINPALACE_SUBAGENT_GUARD", "").strip().lower()
+    env = os.getenv(env_var, "").strip().lower()
     if env in ("off", "false", "0", "disabled"):
         cfg["enabled"] = False
     elif env in ("advisory", "enforce"):
         cfg["enabled"] = True
         cfg["mode"] = env
     return cfg
+
+
+def _load_guard_config() -> dict[str, Any]:
+    """Resolve ``cli.subagent_guard`` from global XDG + project config (project wins).
+
+    Env override ``BRAINPALACE_SUBAGENT_GUARD`` (off|advisory|enforce) takes top
+    precedence. Best-effort: returns defaults on any failure so the hook fails open.
+    """
+    cfg = _resolve_enabled_mode(
+        "subagent_guard", "BRAINPALACE_SUBAGENT_GUARD", _GUARD_DEFAULTS
+    )
+    cfg["allow_agents"] = list(_GUARD_DEFAULTS["allow_agents"])
+    for raw in _guard_config_sources():
+        guard = (raw.get("cli") or {}).get("subagent_guard")
+        if isinstance(guard, dict) and isinstance(guard.get("allow_agents"), list):
+            cfg["allow_agents"] = [str(a) for a in guard["allow_agents"]]
+    return cfg
+
+
+def _load_search_guard_config() -> dict[str, Any]:
+    """Resolve ``cli.search_guard`` from global XDG + project config (project wins).
+
+    Env override ``BRAINPALACE_SEARCH_GUARD`` (off|advisory|enforce) takes top
+    precedence. Best-effort: returns defaults on any failure so the hook fails open.
+    """
+    return _resolve_enabled_mode(
+        "search_guard", "BRAINPALACE_SEARCH_GUARD", _SEARCH_GUARD_DEFAULTS
+    )
 
 
 def _guard_config_sources() -> list[dict[str, Any]]:

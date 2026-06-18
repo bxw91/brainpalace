@@ -697,6 +697,8 @@ async def self_heal_on_startup(
             chroma_sqlite_path=chroma_sqlite,
             cache_db_path=cache_db_path,
             target_dimensions=target_dimensions,
+            presence_state_path=Path(vector_store.persist_dir)
+            / "recovery_presence.json",
         )
     report["recovery"] = summary
 

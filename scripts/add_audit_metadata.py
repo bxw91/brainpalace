@@ -3,6 +3,13 @@
 
 Usage:
     python scripts/add_audit_metadata.py [--date YYYY-MM-DD] [--dry-run]
+    python scripts/add_audit_metadata.py docs/CHANGELOG.md [more.md ...]
+
+With no file arguments the run is repo-wide and REBUILDS the manifest (orphan
+entries pruned) — stamping every audited doc with today's date. Pass explicit
+paths to stamp ONLY those docs and preserve every other manifest entry; use this
+after editing a single doc, so you don't re-claim validation on docs you didn't
+touch.
 
 For every audited documentation file:
   - writes `last_validated: YYYY-MM-DD` into the YAML frontmatter (human-readable
@@ -76,6 +83,48 @@ def resolve_files(root: str) -> list:
         if os.path.relpath(f, root).replace(os.sep, "/") not in FRESHNESS_EXEMPT
     }
     return sorted(files)
+
+
+def resolve_targets(all_files: list, requested: list, root: str) -> list:
+    """Map requested paths (relative-to-root or absolute) to audited abspaths.
+
+    Every requested path MUST be in the audited set ``all_files`` — stamping a
+    non-audited file is meaningless (the freshness gate only tracks audited docs).
+    Exits non-zero listing any path that is not an audited doc. Order-preserving,
+    de-duplicated.
+    """
+    audited = set(all_files)
+    targets: list = []
+    seen: set = set()
+    bad: list = []
+    for r in requested:
+        candidates = {os.path.abspath(r), os.path.abspath(os.path.join(root, r))}
+        match = next((c for c in candidates if c in audited), None)
+        if match is None:
+            bad.append(r)
+        elif match not in seen:
+            seen.add(match)
+            targets.append(match)
+    if bad:
+        print(
+            "Error: not audited doc(s): " + ", ".join(bad) + "\n"
+            "Pass paths within the audited set (docs/*.md, plugin "
+            "command/skill/agent docs, README/CLAUDE).",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    return targets
+
+
+def build_new_manifest(old_manifest: dict, targeted: bool) -> dict:
+    """Seed the manifest for this run.
+
+    Full run (``targeted=False``) starts empty so orphan entries are pruned as the
+    resolved set is rebuilt. A targeted run starts from a COPY of the old manifest
+    so every untargeted doc's entry is preserved (only the named docs are
+    re-stamped) — otherwise targeting one doc would wipe the rest of the manifest.
+    """
+    return dict(old_manifest) if targeted else {}
 
 
 def has_frontmatter(content: str) -> bool:
@@ -159,6 +208,15 @@ def main() -> None:
         action="store_true",
         help="Print what would change without writing files",
     )
+    parser.add_argument(
+        "files",
+        nargs="*",
+        help=(
+            "Specific audited doc paths to stamp (default: all audited docs). "
+            "Targeting preserves every other doc's manifest entry instead of "
+            "rebuilding the whole manifest."
+        ),
+    )
     args = parser.parse_args()
 
     # Validate date format
@@ -184,9 +242,13 @@ def main() -> None:
         per_file_date = last_content_commit_date
 
     audit_date = args.date
-    files = resolve_files(PROJECT_ROOT)
+    all_files = resolve_files(PROJECT_ROOT)
+    targeted = bool(args.files)
+    files = resolve_targets(all_files, args.files, PROJECT_ROOT) if targeted else all_files
     old_manifest = load_manifest()
-    new_manifest = {}  # rebuilt from the resolved set (prunes orphan entries)
+    # Full run: rebuild from the resolved set (prunes orphans). Targeted run: seed
+    # from old so untargeted entries survive (only named docs are re-stamped).
+    new_manifest = build_new_manifest(old_manifest, targeted)
 
     updated = 0
     added = 0

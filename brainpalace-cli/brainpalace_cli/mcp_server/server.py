@@ -1,8 +1,12 @@
 """MCP server wiring for BrainPalace.
 
-Registers the five read-only v1 tools with the official ``mcp`` SDK,
-parses each call's arguments through the matching Pydantic schema, and
-dispatches to the matching handler in :mod:`brainpalace_cli.mcp.tools`.
+Registers the nine v1 tools with the official ``mcp`` SDK (``query``,
+``status``, ``whoami``, ``folders_list``, ``jobs_list``, ``recall``,
+``session_context``, ``ai_guide`` are read-only; ``memorize`` writes a
+curated memory), parses each call's arguments through the matching
+Pydantic schema, and dispatches to the matching handler in
+:mod:`brainpalace_cli.mcp.tools`. The authoritative tool list is the
+``TOOL_REGISTRY`` dict below — keep this docstring in sync with it.
 Transport is stdio — clients spawn ``brainpalace mcp`` as a child
 process and speak MCP over the process's stdin/stdout.
 

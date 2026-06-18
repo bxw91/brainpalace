@@ -320,11 +320,21 @@ def main() -> None:
             for rel, why, validated in stale:
                 print(f"  {rel}")
                 print(f"    {why} (last_validated {validated})")
+            new_surface = any(why == "missing from manifest" for _, why, _ in stale)
             print(
-                "\nFix: re-check each doc against the code, then run "
+                "\nFix (real doc): re-check each against the code, then run "
                 "`python scripts/add_audit_metadata.py` to re-stamp "
                 "last_validated + the manifest hash."
             )
+            if new_surface:
+                print(
+                    "Fix (NOT a doc — e.g. plugin plan/scratch files that landed "
+                    "under a tracked glob): exclude it instead of stamping it — add "
+                    "the file/prefix to `_EXCLUDE_FILES`/`_EXCLUDE_PREFIXES` in "
+                    "brainpalace-cli/brainpalace_cli/commands/verify_docs.py (and, if "
+                    "it should not be freshness-tracked either, narrow the glob in "
+                    "DEFAULT_GLOBS). Don't stamp scratch as a verifiable doc."
+                )
         else:
             print(f"All {checked} audited docs fresh (manifest hash matches authored content).")
 

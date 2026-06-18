@@ -4,7 +4,7 @@ description: Manage indexed folders — list, add, or remove
 parameters:
 skills:
   - using-brainpalace
-last_validated: 2026-06-15
+last_validated: 2026-06-18
 ---
 
 # Manage Indexed Folders

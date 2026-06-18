@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-15
+last_validated: 2026-06-18
 ---
 
 # MCP setup — connecting AI clients to BrainPalace
@@ -18,7 +18,7 @@ indexing, and storage live; the MCP shim just forwards calls.
 > Re-verify against your client's current docs before publishing config to a
 > team.
 
-## Tool surface (v1 — read-only)
+## Tool surface (v1)
 
 | Tool          | What it does                                                                                                |
 | ------------- | ----------------------------------------------------------------------------------------------------------- |
@@ -27,8 +27,12 @@ indexing, and storage live; the MCP shim just forwards calls.
 | `whoami`      | Resolve project root and server URL for a given path (or the MCP process CWD).                              |
 | `folders_list`| List registered indexed folders with last-indexed timestamps.                                               |
 | `jobs_list`   | List queued, running, and completed indexing jobs.                                                          |
+| `memorize`        | Save a durable curated fact to the project memory namespace.                    |
+| `recall`          | Recall curated facts from the project memory namespace only.                    |
+| `session_context` | Session-start context block: project facts + curated memory.                    |
+| `ai_guide`        | BrainPalace usage guide (modes, rules, gotchas); `tier=full` for the full guide. |
 
-Every tool except `whoami` accepts an optional **`path`** argument. Pass the
+Every tool except `whoami` and `ai_guide` accepts an optional **`path`** argument. Pass the
 workspace or file path to override CWD-based server discovery — required for
 multi-root workspaces or any editor that lets the user switch projects within a
 single session. Without `path`, the long-lived MCP process is pinned to the
@@ -211,9 +215,9 @@ Format notes vs the old Cline format:
 - `enabled: true` replaces `disabled: false`.
 - Env vars go in an `environment` object (not `env`); `{env:VAR}` syntax is
   supported.
-- `timeout` is in milliseconds. Kilo's default for local servers is 10000 —
-  too tight for a cold HTTP server or a `multi`-mode query. Set 30000.
-  See [Troubleshooting](#troubleshooting).
+- `timeout` is in milliseconds. A low client default can be too tight for a
+  cold HTTP server or a `multi`-mode query — set `30000` (as the example above
+  does). See [Troubleshooting](#troubleshooting).
 
 ### Cline
 
@@ -322,10 +326,9 @@ one project.
 - **"Tool calls return 'no brainpalace server running'"** → either run
   `brainpalace start` in the project root manually, or add `--ensure-server`
   to the client args.
-- **"Tool calls time out"** → raise the client's per-call timeout. Kilo's
-  default `timeout` is `10000` ms; bump to `30000`. Cold servers and
-  `multi`-mode queries are slow on first hit (graph index load can be
-  500 MB – 1 GB).
+- **"Tool calls time out"** → raise the client's per-call timeout (set
+  `timeout` to `30000` ms). Cold servers and `multi`-mode queries are slow on
+  the first hit, when the graph index is loaded.
 - **"Queries return results from the wrong project"** → CWD coupling. The MCP
   process is pinned to its spawn-time directory. Pass `path` on the tool
   call, or use one editor window per project.
@@ -334,9 +337,10 @@ one project.
 
 ## What this MCP server does NOT do (v1)
 
-- **No mutation tools.** `index`, `index_inject`, `reset`, `folders_add`,
-  `folders_remove` are deferred. v1 is read-only so the blast radius is
-  bounded.
+- **No indexing or destructive mutation.** `index`, `index_inject`, `reset`,
+  `folders_add`, `folders_remove` are deferred. The only write tool is
+  `memorize` (appends a curated fact to the project memory namespace);
+  everything else is read-only, so the blast radius stays bounded.
 - **No authentication.** Local stdio only. A future streamable-HTTP transport
   will need auth.
 - **No idle timeout.** stdio servers stay alive as long as the client keeps
@@ -345,7 +349,7 @@ one project.
 - **No auto-init.** `--ensure-server` will not run `brainpalace init` for you.
   Initialise the project (`brainpalace init`) before connecting MCP clients.
 - **No session summarization / draining.** Chat-session summarization runs only
-  through the Claude Code plugin path (`SessionEnd`/`UserPromptSubmit` hooks +
+  through the Claude Code plugin path (the `UserPromptSubmit` drain hook +
   the free Haiku `chat-session-extractor` subagent), after your first prompt, in
   throttled batches. The opt-in time-driven drain
   (`brainpalace drain-tick` / `/brainpalace-drain`, see

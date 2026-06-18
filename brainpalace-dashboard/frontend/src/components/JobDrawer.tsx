@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { X } from "lucide-react";
 import { getJobDetail } from "../api/client";
@@ -39,6 +39,61 @@ function Stat({ label, value }: { label: string; value: string | number }) {
     <div className="rounded-lg border border-line/60 bg-ink-700/30 p-3">
       <p className="eyebrow text-fg-faint">{label}</p>
       <p className="mt-1 font-mono text-sm tabular-nums text-fg">{value}</p>
+    </div>
+  );
+}
+
+/** Show the full file list inline only below this count; at/above it the list
+ *  is collapsed behind a "Show all" button so a large job (e.g. 911 unchanged
+ *  files) doesn't flood the drawer. */
+const FILE_LIST_INLINE_MAX = 20;
+
+/**
+ * A named list of file paths from a job's eviction summary (added / changed /
+ * deleted / unchanged). Every path is shown in full — never truncated (paths
+ * wrap via `break-all`) — and the list collapses behind a button once it has
+ * `FILE_LIST_INLINE_MAX` or more entries.
+ */
+function FileList({ label, files }: { label: string; files: string[] }) {
+  const [expanded, setExpanded] = useState(false);
+  if (files.length === 0) return null;
+  const collapsed = files.length >= FILE_LIST_INLINE_MAX && !expanded;
+  const niceLabel = label.replace(/^files_/, "").replace(/_/g, " ");
+  return (
+    <div className="mt-3" data-testid={`file-list-${label}`}>
+      <div className="flex items-baseline justify-between gap-2">
+        <p className="text-xs text-fg-faint">
+          {niceLabel}{" "}
+          <span className="font-mono tabular-nums text-fg-muted">
+            ({files.length})
+          </span>
+        </p>
+        {collapsed && (
+          <button
+            type="button"
+            data-testid={`btn-show-all-${label}`}
+            onClick={() => setExpanded(true)}
+            className="text-xs font-medium text-accent transition-colors hover:underline"
+          >
+            Show all {files.length} files
+          </button>
+        )}
+      </div>
+      {!collapsed && (
+        <ul
+          data-testid={`file-list-items-${label}`}
+          className="mt-1 max-h-72 space-y-0.5 overflow-y-auto rounded-lg border border-line/60 bg-ink-700/20 p-2"
+        >
+          {files.map((f) => (
+            <li
+              key={f}
+              className="whitespace-pre-wrap break-all font-mono text-[11px] leading-snug text-fg-muted"
+            >
+              {f}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
@@ -92,9 +147,15 @@ export function JobDrawer({
   if (!jobId) return null;
 
   const d = detailQ.data;
-  const evictions = d?.eviction_summary
-    ? Object.entries(d.eviction_summary).filter(([, v]) => typeof v === "number")
+  const evictionEntries = d?.eviction_summary
+    ? Object.entries(d.eviction_summary)
     : [];
+  const evictions = evictionEntries.filter(
+    ([, v]) => typeof v === "number",
+  ) as [string, number][];
+  const fileLists = evictionEntries.filter(
+    ([, v]) => Array.isArray(v) && v.length > 0,
+  ) as [string, string[]][];
 
   return (
     <div className="fixed inset-0 z-50" role="presentation">
@@ -197,6 +258,15 @@ export function JobDrawer({
                     ))}
                   </div>
                 </>
+              )}
+
+              {fileLists.length > 0 && (
+                <div data-testid="job-detail-files">
+                  <p className="eyebrow mb-1 mt-5">Files</p>
+                  {fileLists.map(([k, files]) => (
+                    <FileList key={k} label={k} files={files} />
+                  ))}
+                </div>
               )}
 
               <p className="eyebrow mb-1 mt-5">Details</p>

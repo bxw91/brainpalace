@@ -7,7 +7,7 @@ triggers:
 skills:
   - using-brainpalace
 model: haiku
-last_validated: 2026-06-15
+last_validated: 2026-06-18
 ---
 
 # Chat Session Extractor Agent

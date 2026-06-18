@@ -251,7 +251,10 @@ export type JobDetail = {
   error: string | null;
   retry_count: number;
   cancel_requested: boolean;
-  eviction_summary: Record<string, number> | null;
+  // Per-key it is either a count (e.g. `files_added: 3`) or the actual path list
+  // (e.g. `files_changed: ["/repo/a.py"]`). The drawer renders counts as stats
+  // and arrays as (collapsible) file lists.
+  eviction_summary: Record<string, number | string[]> | null;
 };
 
 /** Embedding-cache stats (server `/index/cache/`). */

@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-15
+last_validated: 2026-06-18
 ---
 
 # Configuration Reference
@@ -66,14 +66,14 @@ export DEBUG="true"
 **CLI Override**:
 
 ```bash
-brainpalace start --host 0.0.0.0 --port 8080 --reload
+brainpalace start --host 0.0.0.0 --port 8080
 ```
 
 ### Server Modes
 
 | Mode | Description |
 |------|-------------|
-| `project` | Per-project isolated server (default with `--daemon`) |
+| `project` | Per-project isolated server (default) |
 | `shared` | Single server for multiple projects (future) |
 
 ```bash
@@ -401,7 +401,7 @@ Controls the two-tier (memory + disk) embedding cache that avoids redundant Open
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `EMBEDDING_CACHE_MAX_DISK_MB` | `500` | Maximum disk cache size in megabytes |
-| `EMBEDDING_CACHE_MAX_MEM_ENTRIES` | `1000` | Maximum in-memory LRU cache entries |
+| `EMBEDDING_CACHE_MAX_MEM_ENTRIES` | `10000` | Maximum in-memory LRU cache entries |
 | `EMBEDDING_CACHE_PERSIST_STATS` | `false` | Persist hit/miss statistics across server restarts |
 
 **Examples**:
@@ -421,18 +421,18 @@ export EMBEDDING_CACHE_PERSIST_STATS="true"
 
 ## Reranking Configuration
 
-Controls the two-stage reranking pipeline that improves search relevance by using a cross-encoder model to rescore initial retrieval results. **Reranking is ON by default** — the cross-encoder is a *local* model (no API/token cost; adds a little query latency and a one-time model download). It is gated by the `reranker.enabled` key in `config.yaml` (default `true`), which `brainpalace init` writes; the `ENABLE_RERANKING` env var **overrides** the config when set. Disable per-project with `reranker.enabled: false`, at init with `--no-reranking`, or globally with `ENABLE_RERANKING=false`.
+Controls the two-stage reranking pipeline that improves search relevance by using a cross-encoder model to rescore initial retrieval results. **Reranking is OFF by default** — the cross-encoder is a *local* model (no API/token cost) but needs the heavy `reranker-local` extra (~2.8 GB PyTorch) and adds query latency. It is gated by the `reranker.enabled` key in `config.yaml` (default `false`), which `brainpalace init` writes; the `ENABLE_RERANKING` env var **overrides** the config when set. Enable per-project with `reranker.enabled: true`, at init with `--reranking` (installs the extra), or globally with `ENABLE_RERANKING=true`.
 
 ```yaml
-# config.yaml — per-project switch (default true)
+# config.yaml — per-project switch (default false)
 reranker:
-  enabled: true
+  enabled: false
   provider: sentence-transformers   # or "ollama"
 ```
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `reranker.enabled` (config) | `true` | Per-project master switch (written by `brainpalace init`) |
+| `reranker.enabled` (config) | `false` | Per-project master switch (written by `brainpalace init`) |
 | `ENABLE_RERANKING` (env) | (overrides config) | Force reranking on/off regardless of config |
 | `RERANKER_PROVIDER` | `sentence-transformers` | Reranker backend (`sentence-transformers` or `ollama`) |
 | `RERANKER_MODEL` | `cross-encoder/ms-marco-MiniLM-L-6-v2` | Cross-encoder model name |
@@ -842,7 +842,7 @@ env | grep -E "(OPENAI|ANTHROPIC|EMBEDDING|GRAPH|CHUNK|API)"
 
 ```bash
 # Start server and check health
-brainpalace start --daemon
+brainpalace start
 curl http://127.0.0.1:8000/health
 
 # Index test documents

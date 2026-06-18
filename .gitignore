@@ -152,6 +152,8 @@ tmp/
 .claude/scheduled_tasks.lock
 # Weekly doc-verify sweep cadence (per-machine; not shared — avoids commit churn)
 .claude/.doc-verify-sweep.json
+# Doc-verify deadlock report (transient human-action signal; regenerated/deleted)
+.claude/doc-verify-blocked.md
 brainpalace-server/.brainpalace/
 .brainpalace/
 .brainpalace-backup/
