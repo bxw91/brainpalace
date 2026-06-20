@@ -81,7 +81,7 @@ invocation — never the whole repo in one shot:
      what remains. Blowing the window risks compaction / truncated evidence
      mid-doc.
   2. **Doc cap ~20** — backstop in case context self-estimation drifts low.
-  3. **Packet empty** — skip-fresh drained the resolvable set.
+  3. **Packet empty** — relation-driven skipping drained the resolvable set.
 - **Floor — do NOT stop early.** While docs remain in the packet and context is
   **below ~60%**, none of the stop conditions has fired: you are **obligated to
   pull the next doc.** "I did a handful and feel done" is NOT a legal stop —
@@ -96,21 +96,17 @@ invocation — never the whole repo in one shot:
   pairs are reused for free (step 3). Doing docs in context-bounded batches across
   runs converges to the same coverage as one big sweep, without the big spend, a
   mid-sweep cap hit, or a blown context window.
-- **`--all` is the weekly sweep / periodic audit** — the only mode that catches
-  latent drift already merged into `main` with no current diff (`--changed`
-  structurally cannot). Still walk it in batches (the cache makes accumulation
-  cheap), not all ~87 docs in one shot. **Skip-fresh is ON by default in every
-  mode** (`--skip-fresh`, default 6 days): docs already prose-verified (a
-  verdict-cache hit) AND validated < 6d ago AND unchanged since (manifest-hash
-  match) are dropped and printed to stderr, so an empty packet (everything fresh)
-  is normal, not an error. Docs never prose-judged — whose `last_validated` came
-  only from the human audit (`add_audit_metadata.py`), not from `--record` — are
-  never skipped, even if recent; edited docs (changed hash) and `code-affected`
-  entries (prose unchanged, documented code moved) are never skipped either.
-  `--skip-fresh 0` disables it for the run. To restart verification of the
-  whole set, `verify-docs --reset` stamps a baseline epoch (in
-  `.claude/.doc-verify-sweep.json`) so docs validated before it go stale and later
-  sweeps re-judge everything incrementally — it mutates no docs.
+- **`--all` is the periodic audit** — the only mode that catches latent drift
+  already merged into `main` with no current diff (`--changed` structurally
+  cannot). Still walk it in batches (the cache makes accumulation cheap), not all
+  ~87 docs in one shot. **Skipping is relation-driven and automatic** — there is
+  NO time window and NO `--skip-fresh` flag. A doc is skipped only while its
+  authored prose AND every grounded file/dir are unchanged (same content hash). If
+  anything changes — prose, a grounded file, or any member of a grounded directory
+  — the doc re-enters the packet automatically. An empty packet (everything
+  relation-unchanged) is normal. Docs never prose-judged (human-audit stamp only)
+  and `code-affected` entries are never skipped. The manual full re-verify is
+  `--all --force` (no automatic time-based sweep).
 - **Never silently fan out.** If asked to "verify everything," confirm the batch
   size / budget first, then go incrementally.
 
@@ -120,9 +116,9 @@ invocation — never the whole repo in one shot:
 - **Done-boundary (before push):** verify the net-diff affected set (`--changed`),
   *after* `sync-docs --fix` (Layer A regenerates facts first; this verifies the
   prose around them) — naturally small.
-- **Weekly sweep / periodic audit:** `--all`, walked in batches per the rule
-  above — catches latent `main` drift `--changed` can't; kept cheap by
-  `--skip-fresh` + the cache.
+- **Periodic audit:** `--all`, walked in batches per the rule above — catches
+  latent `main` drift `--changed` can't; kept cheap by relation-driven skip + the
+  cache. Manual full re-verify: `--all --force`.
 
 ## Procedure
 
@@ -159,22 +155,32 @@ invocation — never the whole repo in one shot:
    the current `prose` and (re-)grounded against current code this run — a cache
    hit just lets you skip re-judging an unchanged `claim+grounding` pair, it does
    **not** license surfacing a stale `cached_verdicts` entry whose claim text no
-   longer appears in `prose`. **Never "carry forward" an old CONTRADICTED/BLOCKED
+   longer appears in `prose`. **Never "carry forward" an old CONTRADICTED/UNVERIFIABLE
    finding** for a claim the current doc no longer makes — that is how an
    already-fixed doc gets re-flagged. If the doc was edited since the verdict was
    cached (its content moved on), the claim is gone or changed: re-extract and
    re-ground, do not echo the old verdict.
 
+   **Complete-set / echo contract (MANDATORY):** for each doc you process, submit
+   the **complete current claim set** in one `--record`. A `cached_verdicts` entry
+   with `fresh: true` whose claim is **still present in the prose** is **reused
+   verbatim** — do NOT re-ground or re-judge it, but **DO re-emit it** in the
+   `--record` payload (copy its `claim`/`grounding`/`grounding_files`/`verdict`
+   exactly). Only `fresh: false` or new/changed claims are re-grounded and
+   re-judged. The CLI replaces that doc's records with exactly what you submit
+   (orphan prune), so omitting a fresh claim drops it — it is re-verified next run,
+   never falsely skipped. Never echo a `cached_verdicts` entry whose claim no longer
+   appears in the current prose.
+
 4. **Ground each (uncached) claim — CODE FIRST (MANDATORY).** Code is the only
    source of truth. The index holds **both code and docs**, so a `multi` query
    often surfaces *another doc paraphrasing the same sentence* — that is an **echo,
-   not evidence**, and grounding a claim on it (especially on a doc that is itself
-   unverified) silently launders drift into a false `SUPPORTED`. Enforce this
-   **grounding hierarchy** and pick the strongest tier a claim can reach:
+   not evidence**, and grounding a claim on it silently launders drift into a false
+   `SUPPORTED`. Enforce this **grounding hierarchy** — three outcomes:
 
-   1. **`code`** — a non-doc source file (`*.py`, tests, config, schema). Always
-      prefer this. Query for it explicitly; `bm25` for an exact symbol/flag/path,
-      `multi` for behavior:
+   1. **`code`** — a non-doc source file (`*.py`, tests, config, schema). The only
+      tier that confirms a claim. Always prefer this. Query for it explicitly;
+      `bm25` for an exact symbol/flag/path, `multi` for behavior:
 
       ```bash
       brainpalace query "<claim>" --mode multi --top-k 8 --json
@@ -195,20 +201,52 @@ invocation — never the whole repo in one shot:
       and a nearby comment agree but the underlying literal disagrees, the literal
       wins and the claim is CONTRADICTED (flag the stale comment too). Never report
       a count `SUPPORTED` without having seen the actual structure it counts.
-   2. **`verified-doc`** — only if NO code can ground the claim (it documents a
-      cross-doc contract or convention with no code referent) AND the doc you lean
-      on is **itself already fully verified** (clean in the verdict cache). Allowed:
-      derived trust.
-   3. **unverified doc → `BLOCKED`.** If the only support is an **unverified** doc
-      (or the doc citing itself), do **not** mark `SUPPORTED` — emit `BLOCKED` with
-      `blocked_on` = that dep doc. The CLI defers the doc until the dep is verified,
-      then re-queues the claim. (It re-derives `grounding_tier` from your
-      `grounding` path and coerces a mislabeled `SUPPORTED`→`BLOCKED` anyway, but
-      labeling it yourself makes `blocked_on` precise.)
-   4. **excluded doc or nothing → `UNVERIFIABLE`.** If the only support is an
-      **excluded** doc (CHANGELOG — never grounds live code) or retrieval found
-      nothing, label `UNVERIFIABLE`. Not deferrable: it needs code or a human. So
-      grounding on code (or a clean doc) is the only way a doc actually passes.
+
+      **For completeness/count claims, record the directory or registry that governs
+      the set as a `grounding_files` entry** (e.g. `grounding_files: ["src/tools/"]`
+      for "9 tools"). The CLI hashes the directory so the claim automatically
+      re-verifies the moment any file is added, removed, or edited there.
+
+   2. **`doc-dep`** — no code path, but the claim rests on another **audited** doc.
+      Set `grounding` to that doc and emit `grounding_files` = the audited dependency
+      doc path(s). Judge the claim `SUPPORTED` / `CONTRADICTED` against the **current**
+      dependency doc — you never emit `PENDING` or decide "stuck". The CLI settles the
+      final verdict: `SUPPORTED` only while every dependency doc is itself fully clean,
+      else a silent `PENDING`, or `UNVERIFIABLE` if the dependency can never reach code
+      (a cycle / an orphan). The CLI hashes a `.md` dependency by its **authored body**,
+      so the claim re-grounds only when that doc's prose changes — a `last_validated`
+      re-stamp does not re-trigger it. A claim grounding on its own doc is not a
+      dependency (self-reference is dropped).
+
+   3. **`unresolved` / `audit` (no code path, no audited-doc dep)** — the grounding is an
+      **excluded** / unknown `.md` (CHANGELOG, ORIGINAL_SPEC, `docs/superpowers/`,
+      `.planning/`, or any `.md` not in the audited set), OR nothing was found. Code
+      can't speak to such a claim, so **the CLI decides** — "external" is a SOURCE (the
+      `audit` `grounding_tier`), **not a verdict**; the status stays SUPPORTED/UNVERIFIABLE.
+      Emit your honest `SUPPORTED`/`UNVERIFIABLE` and let the CLI classify the source:
+      - host doc is **audit-fresh** (a human confirmed the current body via the
+        freshness stamp) → tier upgraded to **`audit`**, verdict **`SUPPORTED`**: a
+        human-asserted external fact (benchmark numbers, latency figures, third-party
+        facts) — **clean**, vouched by the audit, **not drift**.
+      - host doc is **not** audit-fresh (prose edited since the last stamp) →
+        `UNVERIFIABLE`: nobody vouched for the current text → needs code or a human
+        re-stamp.
+      - a `CONTRADICTED` here is **never** promoted — real drift stays drift.
+
+      **Precedence: code > doc-dep > audit > unresolved.** A claim with multiple
+      grounding links is judged against its STRONGEST source — code is ground truth and
+      dominates; `audit` only applies when there is no code path and no audited-doc dep.
+      There is no "BLOCKED/defer" tier — you never defer.
+
+      **Two caveats (MANDATORY):**
+      - Never let a claim that DOES have code fall into this tier through lazy grounding
+        — always name the real code path (step 4.1) when one exists, or a genuine
+        code-drift could be silently absorbed as an `audit` SUPPORTED and hidden.
+      - **Split bundled claims.** A sentence mixing a code fact and an audit-only figure
+        ("reranker is `ms-marco` **and** runs ~50ms") would take the code tier and let
+        "~50ms" ride unvouched under code-SUPPORTED. Extract them as **separate atomic
+        claims** so the code part grounds on code and the figure gets its own `audit`
+        verdict — one verdict can't be half-code, half-audit.
 
    JSON keys are `text` / `source` / `score` / `chunk_id` (no `file_path`, no line
    numbers). On failure stdout is `{"error": ...}` with a non-zero exit — check for
@@ -216,7 +254,7 @@ invocation — never the whole repo in one shot:
    (+ a short snippet) — make it the **code** path whenever step 4.1 found one.
 
    **Never merge stderr into a `--json` consumer — no `2>&1` (MANDATORY).** The
-   CLI prints clean JSON on **stdout** and diagnostics (skip-fresh notices, log
+   CLI prints clean JSON on **stdout** and diagnostics (skip notices, log
    lines, a server banner) on **stderr**. Piping `query --json 2>&1 | <parser>`
    prepends that stderr text to the JSON and your parser dies with a
    `JSONDecodeError` — a self-inflicted failure that looks like a query error but
@@ -252,40 +290,44 @@ invocation — never the whole repo in one shot:
    weaker judging silently marks SUPPORTED. (Judging depth is set by the pinned
    `effort: medium`, see "Model & dispatch discipline"; no in-prompt thinking
    keyword is used.)
-   - `SUPPORTED` — **code** (or a clean, already-verified doc) confirms the claim.
-   - `CONTRADICTED` — the code says something different (the drift).
-   - `BLOCKED` — the claim has no code referent and is supportable only via an
-     **unverified** doc. Do NOT mark it SUPPORTED. Emit `BLOCKED` and list the
-     dependency doc(s) in `blocked_on`. The CLI defers the doc until that
-     dependency is verified, then re-queues exactly this claim. (If you mislabel it
-     SUPPORTED, the CLI coerces it to BLOCKED from the grounding tier anyway — but
-     label it correctly so `blocked_on` is precise.)
+   - `SUPPORTED` — **code** confirms the claim, OR (doc-dep) the claim holds against
+     the current audited dependency doc. The CLI gates a doc-dep `SUPPORTED` behind the
+     dependency's own cleanness (settle), so emit your honest judgment and let it gate.
+   - `CONTRADICTED` — the code (or the current dependency doc) says something different.
    - `UNVERIFIABLE` — retrieval returned nothing relevant, OR the only support is an
-     **excluded** doc (CHANGELOG, a historical log that never grounds live code).
-     Can't confirm or deny; needs code or a human — never deferred.
+     **excluded**/unknown `.md`. Needs code or a human — never deferred, never BLOCKED.
+     (For such a no-code claim the CLI keeps the verdict SUPPORTED on the `audit` source
+     tier when the host doc is audit-fresh — see grounding tier 3. Emit your honest
+     `SUPPORTED`/`UNVERIFIABLE`; the `audit` tier is CLI-derived, never yours to set.)
 
 6. **Record** the verdicts; the CLI persists the cache, prints the report, and
-   **re-stamps `last_validated` only for docs whose every claim is SUPPORTED**.
-   For a `BLOCKED` claim include `blocked_on` (the unverified dep doc paths):
+   **re-stamps `last_validated` only for docs whose every claim is SUPPORTED and
+   code-grounded.** Submit the **complete** current claim set for the doc — fresh
+   verdicts echoed verbatim AND newly judged ones — in one `--record` call:
 
    ```bash
    brainpalace verify-docs --record - <<'JSON'
    {"verdicts":[
-     {"doc":"docs/FOO.md","claim":"...","grounding":"src/bar.py","verdict":"SUPPORTED","evidence":"<snippet>"},
-     {"doc":"docs/FOO.md","claim":"...","grounding":"src/baz.py","verdict":"CONTRADICTED","evidence":"code says X"},
-     {"doc":"docs/FOO.md","claim":"...","grounding":"docs/BAR.md","verdict":"BLOCKED","blocked_on":["docs/BAR.md"],"evidence":"only docs/BAR.md attests this"}
+     {"doc":"docs/FOO.md","claim":"...","grounding":"src/bar.py","grounding_files":["src/bar.py"],"verdict":"SUPPORTED","evidence":"<snippet>"},
+     {"doc":"docs/FOO.md","claim":"9 tools","grounding":"src/tools/","grounding_files":["src/tools/"],"verdict":"SUPPORTED","evidence":"9 files in src/tools/"},
+     {"doc":"docs/FOO.md","claim":"rests on D","grounding":"docs/D.md","grounding_files":["docs/D.md"],"verdict":"SUPPORTED","evidence":"D states X; holds against current docs/D.md"},
+     {"doc":"docs/FOO.md","claim":"...","grounding":"docs/CHANGELOG.md","verdict":"UNVERIFIABLE","evidence":"only an excluded doc attests this — needs code or a human"}
    ]}
    JSON
    ```
 
-   When every audited doc has been judged but a set of docs is mutually
-   cross-dependent (each `BLOCKED` on another unverified doc, no path to code), the
-   CLI writes `.claude/doc-verify-blocked.md` listing the cycle for a human. You do
-   not generate or act on it — the CLI owns it.
+   Always include `grounding_files` for code-grounded AND doc-dep claims — the code
+   files/directories, or the audited dependency doc(s), the claim depends on. For
+   count/membership claims, record the directory (e.g. `"src/tools/"`) so the CLI
+   hashes it and re-verifies the claim the moment any member changes. The CLI stores a
+   `grounding_hash` per entry (a `.md` dependency hashed by authored body) and uses it
+   for relation-driven skip.
 
-7. **Report** the CONTRADICTED + UNVERIFIABLE + BLOCKED list with evidence (source +
+7. **Report** the CONTRADICTED + UNVERIFIABLE list with evidence (source +
    snippet) so the orchestrator (or a human) fixes the prose. **Do not fix it
-   yourself** — this agent is read-only. For **each** reported finding, also emit a
+   yourself** — this agent is read-only. `audit`-tier claims (SUPPORTED, human-vouched)
+   are **not drift** — do not list them as findings; the CLI surfaces them as a one-line
+   count ("N claim(s) grounded by human audit"). For **each** reported finding, also emit a
    `fix_tier` (see rubric below) — a size/difficulty signal the orchestrator uses to
    decide *how* to apply the fix (inline by default; a fixer subagent only for a
    bulky or stronger-model-needing fix), not a model selector. Format each line as:
@@ -305,11 +347,13 @@ invocation — never the whole repo in one shot:
 
 - **Ground every verdict in retrieved code.** Empty retrieval ⇒ `UNVERIFIABLE` —
   never invent support, never guess CONTRADICTED.
-- **Never let an unverified doc stand in for code.** A doc echoing the claim is not
-  evidence; grounding a `SUPPORTED` on an unverified doc is circular, so it is
-  `BLOCKED` (deferred until the dep verifies), and the CLI coerces a mislabeled one.
-  Reach for code (or a clean doc); else `BLOCKED` (unverified dep) or `UNVERIFIABLE`
-  (excluded doc / nothing found) — see step 4's grounding hierarchy.
+- **A code echo is not code.** A doc echoing the claim is never code evidence. Ground
+  on the **audited dependency doc** (`doc-dep`) when that is the real source — the CLI
+  gates it behind the dependency's cleanness and settles `PENDING`/`UNVERIFIABLE`. A
+  grounding on an **excluded**/unknown `.md` (or nothing) is `unresolved`: the CLI
+  classifies the SOURCE — `audit` tier + verdict SUPPORTED (host doc audit-fresh —
+  human-vouched) or `UNVERIFIABLE` — and coerces a mislabeled `SUPPORTED` accordingly.
+  Only code confirms directly; only a human audit vouches for an external claim.
 - Code→affected-doc mapping is index recall, not 100% — misses are possible; say
   so rather than implying exhaustive coverage.
 - Reads and reports only; never deletes chunks, never edits project files, never

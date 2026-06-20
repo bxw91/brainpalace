@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-18
+last_validated: 2026-06-20
 ---
 
 # MCP setup — connecting AI clients to BrainPalace

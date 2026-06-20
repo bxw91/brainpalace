@@ -321,6 +321,7 @@ def launch_server(
     port: int | None = None,
     timeout: int = 120,
     strict: bool = False,
+    no_dashboard: bool = False,
 ) -> dict[str, Any]:
     """Resolve bind host/port, spawn the uvicorn server, persist runtime.json,
     update the global registry, and return the runtime dict.
@@ -357,6 +358,10 @@ def launch_server(
     env["BRAINPALACE_STATE_DIR"] = str(state_dir)
     if strict:
         env["BRAINPALACE_STRICT_MODE"] = "true"
+    if no_dashboard:
+        # Scope the opt-out to this server's lifetime so its self-heal heartbeat
+        # won't re-spawn a dashboard behind --no-dashboard (see self_heal.py).
+        env["BRAINPALACE_NO_DASHBOARD"] = "true"
 
     log_dir = state_dir / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -458,7 +463,9 @@ def launch_server(
 @click.option(
     "--no-dashboard",
     is_flag=True,
-    help="Do not auto-start the web dashboard (overrides dashboard.autostart)",
+    help="Do not bring up the web dashboard from this server, by any path "
+    "(overrides dashboard.autostart; also stops the server's self-heal from "
+    "re-spawning one for its lifetime)",
 )
 def start_command(
     path: str | None,
@@ -477,8 +484,10 @@ def start_command(
 
     On Python 3.12+ this also ensures the web dashboard (a single control plane
     for all projects) is running and prints its URL — opening a browser only
-    when it launches one. Disable per-run with --no-dashboard, or persistently
-    with dashboard.autostart: false in the XDG config.
+    when it launches one. Disable per-run with --no-dashboard (which also stops
+    this server's self-heal from re-spawning a dashboard, so "no dashboard"
+    holds for its whole lifetime), or persistently with dashboard.autostart:
+    false in the XDG config.
 
     \b
     Examples:
@@ -660,6 +669,10 @@ def start_command(
             env["BRAINPALACE_STATE_DIR"] = str(state_dir)
             if strict:
                 env["BRAINPALACE_STRICT_MODE"] = "true"
+            if no_dashboard:
+                # Scope the opt-out to this server's lifetime so its self-heal
+                # heartbeat won't re-spawn a dashboard (see self_heal.py).
+                env["BRAINPALACE_NO_DASHBOARD"] = "true"
 
             # Write runtime state even in foreground mode so CLI can discover the URL
             from datetime import datetime, timezone
@@ -709,6 +722,7 @@ def start_command(
                     port=port,
                     timeout=timeout,
                     strict=strict,
+                    no_dashboard=no_dashboard,
                 )
             except ServerAlreadyRunningError as e:
                 # A healthy server for this project was found mid-launch (runtime

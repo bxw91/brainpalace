@@ -197,6 +197,18 @@ def _heal_dashboard(healer: HealState | None = None) -> None:
     except ImportError:
         return  # dashboard not installed (e.g. Python < 3.12)
     try:
+        # A server started with `brainpalace start --no-dashboard` must not bring
+        # a dashboard up by ANY path. The CLI launch is already suppressed, but
+        # self-heal would otherwise re-spawn one here (autostart defaults on),
+        # racing an external dashboard manager (e.g. the dev install script) and
+        # drifting the port 8787 -> 8788. The flag is threaded in as an env var on
+        # the server process, so it is scoped to this server's lifetime.
+        if os.environ.get("BRAINPALACE_NO_DASHBOARD", "").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+        ):
+            return
         if not load_dashboard_config().autostart:
             return
         from brainpalace_server.locking import file_lock

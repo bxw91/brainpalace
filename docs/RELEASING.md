@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-18
+last_validated: 2026-06-20
 ---
 
 # Releasing BrainPalace
@@ -85,8 +85,12 @@ The version lives in **one place per package**: `pyproject.toml`.
    dashboard `__version__`, **and** the plugin manifest + marketplace entry moved
    together.
 4. **Reinstall** so editable `--version` reflects the bump: `task install`.
-5. **Changelog** — add the `[YY.M.N]` section in `docs/CHANGELOG.md`. Keep each
-   entry ≤ 3 sentences (see [DEVELOPERS_GUIDE.md → Changelog style](DEVELOPERS_GUIDE.md#changelog-style-docschangelogmd)).
+5. **Changelog** — entries accumulate under `## [Unreleased]` between releases
+   (**never hand-number an unreleased section** — the next version is unknown until
+   you cut it). At release, **rename `## [Unreleased]` → `## [YY.M.N] - DATE`** and
+   insert a fresh empty `## [Unreleased]` above it, so the next between-release commit
+   has a bucket and can't invent a guessed version header. Keep each entry ≤ 3
+   sentences (see [DEVELOPERS_GUIDE.md → Changelog style](DEVELOPERS_GUIDE.md#changelog-style-docschangelogmd)).
 6. **Refresh doc freshness** — any audited doc whose content changed this
    release must be re-read against the code and re-stamped. List stale docs with
    `python scripts/check_doc_freshness.py`; after re-reading, stamp them

@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-18
+last_validated: 2026-06-20
 ---
 
 # Graph Search Guide
@@ -101,7 +101,35 @@ curl -X POST http://localhost:8000/query/ \
     "top_k": 10,
     "similarity_threshold": 0.3
   }'
+
+# Graph search filtered by entity / relationship type
+curl -X POST http://localhost:8000/query/ \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "what calls authenticate_user",
+    "mode": "graph",
+    "entity_types": ["Class", "Function"],
+    "relationship_types": ["calls", "extends"]
+  }'
 ```
+
+### Per-request graph controls (API only)
+
+`entity_types` and `relationship_types` are `QueryRequest` fields that filter the
+graph walk; both apply **only** to `graph` and `multi` modes and accept a list of
+strings:
+
+| Field | Example | Effect |
+|-------|---------|--------|
+| `entity_types` | `["Class", "Function"]` | Keep only results whose entity is one of these types |
+| `relationship_types` | `["calls", "extends"]` | Keep only these relationship kinds |
+
+These are **API-only** — the `brainpalace query` CLI does not expose them (it has
+`--source-types`, `--languages`, `--file-paths`, but no graph-type filter).
+
+**Traversal depth is not per-request.** Every graph/multi query uses the server-wide
+`GRAPH_TRAVERSAL_DEPTH` (default 2); there is no request field to override it per
+query.
 
 ## Graph Search Options
 
@@ -113,7 +141,10 @@ curl -X POST http://localhost:8000/query/ \
 | `--top-k N` | 5 | Maximum results | More comprehensive results |
 | `--alpha F` | 0.5 | Hybrid weight (vector vs BM25) used when graph falls back | Tune hybrid fallback |
 
-**Note:** Graph search returns relationship metadata in the result's `metadata` field when available.
+**Note:** Graph context rides the top-level `related_entities` and
+`relationship_path` fields (not `metadata`). They are populated when the chunk has a
+graph hit and may be `null` for a chunk matched only via vector/BM25 in `multi`
+mode. There is no flag to toggle them.
 
 ## Enabling GraphRAG
 

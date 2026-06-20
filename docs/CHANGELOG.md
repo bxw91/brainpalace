@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-18
+last_validated: 2026-06-20
 ---
 
 # Changelog
@@ -15,9 +15,66 @@ Entries are kept short (≤ 3 sentences and ≤ 320 characters); see
 
 ---
 
+## [Unreleased]
+
+_Entries accumulate here between releases. The release step renames this to
+`## [YY.M.N] - DATE` and adds a fresh empty `## [Unreleased]` above it — never
+hand-number an unreleased section._
+
+## [26.6.50] - 2026-06-20
+
+### Added
+- **Durable human-confirm for doc-prose claims (repo-dev).** `brainpalace
+  verify-docs --confirm <doc>…` records a "mark verified by human" order in a
+  checked-in ledger (`scripts/doc_verify_confirmed.json`) and re-settles in the same
+  call, flipping a doc's open external (`unresolved`) claims to SUPPORTED/`audit`
+  tier immediately. The order survives later `--record` sweeps; code/doc-dep claims
+  are refused — code stays ground truth.
+
+### Fixed
+- **Doc-verify PostToolUse nudge mirrors `_is_excluded` (repo-dev).** Editing an
+  excluded doc (CHANGELOG / ORIGINAL_SPEC) wrongly nudged "run Layer B" — which the
+  verifier silently skips; the hook now points those to a freshness re-stamp instead,
+  and emits nothing for excluded scratch trees (superpowers/.planning).
+- **`--no-dashboard` now holds for the server's whole lifetime.** It was only
+  silencing the CLI launch; the server's self-heal still re-spawned a dashboard
+  (autostart defaults on), racing an external manager and drifting the port
+  (8787 → 8788). The flag now also gates self-heal (`BRAINPALACE_NO_DASHBOARD`).
+- **Dev install-from-source (repo-dev).** Fresh-build the local CLI/server/dashboard
+  (`--no-cache-dir`) so a stale path-keyed wheel can't downgrade them; the version
+  probe no longer aborts the whole task (`set -e`) when `/health` omits a version.
+
+### Changed
+- **doc-verifier doc-dependent claims (repo-dev).** A prose claim may now rest on
+  another **audited** doc (`doc-dep`); a settle fixpoint confirms it only while every
+  dependency is fully clean, else a silent `PENDING`, and re-grounds it when that doc's
+  authored body changes. Genuinely stuck cycles surface to
+  `.claude/doc-verify-needs-human.md`; the old BLOCKED defer scheduler is removed.
+- **doc-verifier `audit` grounding tier (repo-dev).** An `unresolved` claim (no code
+  path, no audited-doc dep) in an **audit-fresh** doc is now recorded SUPPORTED on the
+  `audit` tier — a human-vouched external fact counted clean instead of re-flagged
+  `UNVERIFIABLE`, provenance on `grounding_tier` not the status. Fails closed — editing
+  prose without re-stamping drops it to `UNVERIFIABLE`, `CONTRADICTED` is never promoted,
+  and precedence stays code > doc-dep > audit > unresolved.
+- **doc-verifier self-reference fix + `--resettle` (repo-dev).** `_grounding_tier` now
+  treats a grounding that names only the host doc as a self-reference (`unresolved`),
+  matching `_doc_paths_from_grounding`, so a self-cite settles via the audit tier instead
+  of mis-classifying as `doc-dep`. New `verify-docs --resettle` re-runs only the
+  deterministic tier + settle pass over cached raw verdicts (no LLM) when a settle input
+  moves — a classifier fix, a dependency going clean, or an audit stamp — re-stamping only
+  docs whose outcome changed.
+
+---
+
 ## [26.6.49] - 2026-06-18
 
 ### Added
+- **doc-verifier relation-driven re-verification (repo-dev).** `verify-docs
+  --record` stores `grounding_files` and a content hash per claim; a doc is
+  skipped only while its prose and every grounded file/dir are unchanged — so
+  token use tracks real change, not a calendar. Doc-grounded claims are
+  `UNVERIFIABLE`; `--skip-fresh`/`--reset` are removed (full re-verify:
+  `--all --force`).
 - **Doc-verifier code-first grounding (repo-dev).** A prose claim supportable only
   via an unverified doc is `BLOCKED` and deferred until that dependency verifies;
   cross-dependent cycles surface once in `.claude/doc-verify-blocked.md` instead of

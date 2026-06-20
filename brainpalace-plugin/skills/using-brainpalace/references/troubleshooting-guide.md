@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-18
+last_validated: 2026-06-20
 ---
 
 # Troubleshooting Guide
@@ -170,8 +170,8 @@ tail -f server.log
 
 **Lower threshold:**
 ```bash
-# Default is 0.7, try lower values
-brainpalace query "your search" --threshold 0.3
+# Default is 0.3, try lower values
+brainpalace query "your search" --threshold 0.1
 ```
 
 **Check query spelling:**
@@ -262,7 +262,7 @@ brainpalace list
 **Use correct URL:**
 ```bash
 # Override URL if needed
-export DOC_SERVE_URL="http://localhost:54321"
+export BRAINPALACE_URL="http://localhost:54321"
 brainpalace status
 ```
 
@@ -557,7 +557,7 @@ brainpalace cache clear --yes
 brainpalace index /path/to/docs
 ```
 
-**Configuration:** `EMBEDDING_CACHE_MAX_DISK_MB` (default: 500MB), `EMBEDDING_CACHE_MAX_MEM_ENTRIES` (default: 1000)
+**Configuration:** `EMBEDDING_CACHE_MAX_DISK_MB` (default: 500MB), `EMBEDDING_CACHE_MAX_MEM_ENTRIES` (default: 10000)
 
 ---
 

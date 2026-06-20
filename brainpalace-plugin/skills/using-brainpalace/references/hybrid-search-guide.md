@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-18
+last_validated: 2026-06-20
 ---
 
 # Hybrid Search Guide
@@ -70,7 +70,7 @@ curl -X POST http://localhost:8000/query/ \
 |--------|---------|-------------|----------|
 | `--mode hybrid` | Default | Combines vector + BM25 | Best overall results |
 | `--alpha F` | 0.5 | Weight balance (0.0=BM25, 1.0=vector) | Tune semantic vs keyword focus |
-| `--threshold F` | 0.7 | Minimum combined score | Higher precision, fewer results |
+| `--threshold F` | 0.3 | Minimum combined score | Higher precision, fewer results |
 | `--top-k N` | 5 | Maximum results | More comprehensive results |
 | `--scores` | Optional | Show individual vector/BM25 scores | Debugging and transparency |
 
@@ -100,7 +100,7 @@ The `alpha` parameter controls the balance between vector and BM25 search:
 - **`alpha = 1.0`**: 100% vector search (pure semantic)
 - **`alpha = 0.8`**: 80% vector, 20% BM25 (mostly semantic, some keyword boost)
 - **`alpha = 0.5`**: 50% vector, 50% BM25 (balanced - **recommended default**)
-- **`alpha = 0.3`**: 20% vector, 80% BM25 (mostly keyword, some semantic boost)
+- **`alpha = 0.3`**: 30% vector, 70% BM25 (mostly keyword, some semantic boost)
 - **`alpha = 0.0`**: 100% BM25 search (pure keyword)
 
 **Choosing Alpha Values:**
@@ -206,7 +206,9 @@ Hybrid search uses **Relative Score Fusion**:
 
 ## Performance Characteristics
 
-- **Response Time**: 1000-1800ms (parallel vector + BM25 execution)
+- **Response Time**: ~5 ms client-side p50 (7.7 ms p95), ~3.5 ms server-side, on the
+  reference benchmark — see [BENCHMARKS.md](../../../../docs/BENCHMARKS.md); hardware- and
+  index-size-dependent
 - **CPU Usage**: High (two search algorithms + fusion)
 - **Memory Usage**: High (loads both vector and BM25 indexes)
 - **API Costs**: Requires OpenAI API credits (for vector component)
@@ -214,7 +216,7 @@ Hybrid search uses **Relative Score Fusion**:
 
 ## Best Practices
 
-1. **Start with defaults**: Use `alpha = 0.5` and `threshold = 0.7` initially
+1. **Start with defaults**: Use `alpha = 0.5` and `threshold = 0.3` initially
 2. **Tune alpha for content type**: Adjust based on whether your docs are more technical or conceptual
 3. **Use scores for debugging**: `--scores` flag helps understand result quality
 4. **Combine with domain knowledge**: Know whether your docs favor technical terms or explanations
@@ -244,7 +246,7 @@ brainpalace query "how to optimize database queries" --alpha 0.5 --top-k 10
 Hybrid search benefits from two caching layers:
 
 - **Embedding Cache**: Caches computed embeddings to reduce API costs during re-indexing. Check with `brainpalace cache status`.
-- **Query Cache**: Caches identical query results for a configurable TTL (default: 5 minutes). Identical hybrid queries within the TTL return instantly. Configure with `QUERY_CACHE_TTL` and `QUERY_CACHE_MAX_SIZE`.
+- **Query Cache**: Caches identical query results for a configurable TTL (default: 1 hour). Identical hybrid queries within the TTL return instantly. Configure with `QUERY_CACHE_TTL` and `QUERY_CACHE_MAX_SIZE`.
 
 ```bash
 # Check embedding cache health
@@ -258,9 +260,9 @@ export QUERY_CACHE_TTL=0
 
 ## Common Issues
 
-- **API key required**: Must have valid OpenAI API key for vector component
+- **Embedding provider required**: The vector component needs a configured embedding provider — OpenAI or Cohere (API key + credits) or Ollama (free, local, no API key)
 - **Slower than BM25**: Expected due to dual algorithm execution
-- **Cost considerations**: Consumes OpenAI credits for each query (mitigated by embedding cache)
+- **Cost considerations**: Hosted providers (OpenAI/Cohere) consume credits per query (mitigated by embedding cache); Ollama is free/local
 - **Alpha tuning needed**: May require experimentation for optimal results
 
 ## Integration Examples
@@ -324,11 +326,11 @@ Where `k` is a smoothing constant (default: 60) and `rank_i` is the result's ran
 ### Multi-Mode Usage
 
 ```bash
-# CLI: Multi-mode with relationship details
-brainpalace query "complete authentication implementation" --mode multi --include-relationships
+# CLI: Multi-mode query
+brainpalace query "complete authentication implementation" --mode multi
 
 # CLI: Multi-mode with custom settings
-brainpalace query "payment processing flow" --mode multi --top-k 10 --traversal-depth 3
+brainpalace query "payment processing flow" --mode multi --top-k 10
 ```
 
 ```python
@@ -337,15 +339,15 @@ response = requests.post('http://localhost:8000/query/', json={
     'query': 'authentication flow with all dependencies',
     'mode': 'multi',
     'alpha': 0.6,
-    'traversal_depth': 2,
-    'include_relationships': True,
     'top_k': 10
 })
 ```
 
 ### Multi-Mode Performance
 
-- **Response Time**: 1500-2500ms (all retrievers + fusion)
+- **Response Time**: ~10 ms client-side p50 (12.8 ms p95), ~4.8 ms server-side, on the
+  reference benchmark — see [BENCHMARKS.md](../../../../docs/BENCHMARKS.md); hardware- and
+  index-size-dependent
 - **Memory Usage**: Highest (loads all indexes)
 - **Best Results**: Combines strengths of all retrieval methods
 
@@ -359,7 +361,7 @@ See [Graph Search Guide](graph-search-guide.md) for detailed GraphRAG documentat
 |--------|------|--------|--------|-------|-------|
 | **Accuracy** | High (exact) | High (semantic) | Highest (both) | High (relationships) | Comprehensive |
 | **Speed** | Fastest | Slow | Slow-Medium | Medium | Slowest |
-| **API Required** | No | Yes | Yes | Yes | Yes |
+| **External API Required** | No | Only if provider is hosted | Only if provider is hosted | Only if provider is hosted | Only if provider is hosted |
 | **Best For** | Technical terms | Concepts | General use | Dependencies | Everything |
 | **Tuning** | Threshold only | Threshold only | Alpha + threshold | Depth + threshold | All options |
 | **Transparency** | Single score | Single score | Dual scores | Graph score | All scores |

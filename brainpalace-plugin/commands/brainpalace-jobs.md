@@ -24,7 +24,7 @@ parameters:
     default: false
 skills:
   - using-brainpalace
-last_validated: 2026-06-18
+last_validated: 2026-06-20
 ---
 
 # Job Queue Management
@@ -103,16 +103,16 @@ brainpalace jobs <job_id> --cancel
 **List:**
 ```
 Job ID    Status     Folder                  Created
-abc123    completed  /home/dev/docs         2026-03-05T12:00:00
+abc123    done       /home/dev/docs         2026-03-05T12:00:00
 def456    running    /home/dev/src          2026-03-05T12:05:00
-ghi789    queued     /home/dev/tests        2026-03-05T12:06:00
+ghi789    pending    /home/dev/tests        2026-03-05T12:06:00
 ```
 
 **Job Detail (with eviction summary):**
 ```
 Job Details: abc123
 
-Status:    completed
+Status:    done
 Folder:    /home/dev/docs
 Created:   2026-03-05T12:00:00
 Completed: 2026-03-05T12:00:45
@@ -132,19 +132,19 @@ Job Queue (polling every 3s, Ctrl+C to stop)
 
 Job ID    Status     Folder                  Progress
 def456    running    /home/dev/src          Processing...
-ghi789    queued     /home/dev/tests        Waiting...
+ghi789    pending    /home/dev/tests        Waiting...
 ```
 
 ## Job Status Values
 
 | Status | Meaning |
 |--------|---------|
-| `queued` | Job is waiting in the queue |
-| `pending` | Job is about to start |
+| `pending` | Job is queued, waiting to start |
 | `running` | Job is actively indexing |
-| `completed` | Job finished successfully |
+| `done` | Job finished successfully |
 | `failed` | Job encountered an error |
 | `cancelled` | Job was cancelled by user |
+| `skipped` | Job was skipped (no work needed) |
 
 ## Eviction Summary (Incremental Indexing)
 

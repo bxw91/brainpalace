@@ -56,7 +56,7 @@ parameters:
     default: ""
 skills:
   - using-brainpalace
-last_validated: 2026-06-18
+last_validated: 2026-06-20
 ---
 
 # BrainPalace Query
@@ -68,6 +68,12 @@ mode selects the strategy: `vector` (semantic similarity), `bm25` (keyword
 matching), `hybrid` (vector + bm25, the default), `graph` (knowledge-graph
 relationships, requires `ENABLE_GRAPH_INDEX=true`), or `multi` (fusion of
 vector + bm25 + graph).
+
+In `graph`/`multi` modes results carry graph context in the `related_entities` and
+`relationship_path` response fields. Filtering the graph walk by entity or
+relationship type (`entity_types` / `relationship_types`) is available **only via
+the HTTP API**, not this CLI command; traversal depth is fixed server-side by
+`GRAPH_TRAVERSAL_DEPTH` (default 2), never per query.
 
 ## Usage
 

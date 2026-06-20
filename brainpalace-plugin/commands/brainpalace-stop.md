@@ -28,7 +28,7 @@ parameters:
     default: false
 skills:
   - using-brainpalace
-last_validated: 2026-06-18
+last_validated: 2026-06-19
 ---
 
 # Stop BrainPalace Server

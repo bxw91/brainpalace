@@ -33,7 +33,7 @@ allowed_tools:
   - "Edit(~/.config/brainpalace/**)"
   - "Write(.claude/brainpalace/**)"
   - "Edit(.claude/brainpalace/**)"
-last_validated: 2026-06-18
+last_validated: 2026-06-20
 ---
 
 # Setup Assistant Agent
@@ -99,7 +99,9 @@ echo "${OPENAI_API_KEY:+SET}"
 ### 3. Check Project Initialization
 
 ```bash
-ls .brainpalace/config.json 2>/dev/null
+# config.yaml is what the server resolves as authoritative; config.json is the
+# CLI init marker. Check the dir so neither file's absence false-negatives.
+ls .brainpalace/config.yaml .brainpalace/config.json 2>/dev/null
 ```
 
 **If not initialized:**

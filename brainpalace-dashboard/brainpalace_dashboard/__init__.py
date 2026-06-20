@@ -3,7 +3,7 @@
 import json
 from importlib.metadata import distribution
 
-__version__ = "26.6.49"
+__version__ = "26.6.50"
 
 
 def _direct_url_is_file(raw: str | None) -> bool:

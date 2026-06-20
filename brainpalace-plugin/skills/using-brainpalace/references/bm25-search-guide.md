@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-18
+last_validated: 2026-06-20
 ---
 
 # BM25 Keyword Search Guide
@@ -122,8 +122,8 @@ BM25 scores documents based on:
 Where:
 - `q_i`: Query terms
 - `D`: Document
-- `k₁ = 1.5` (term frequency saturation)
-- `b = 0.75` (length normalization factor)
+- `k₁ = 1.5` (term frequency saturation) — the `bm25s` library default, not overridden by BrainPalace
+- `b = 0.75` (length normalization factor) — the `bm25s` library default, not overridden by BrainPalace
 
 ## Example Queries and Results
 

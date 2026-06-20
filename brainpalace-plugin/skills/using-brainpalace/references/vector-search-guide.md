@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-18
+last_validated: 2026-06-20
 ---
 
 # Vector Search Guide
@@ -57,7 +57,7 @@ curl -X POST http://localhost:8000/query/ \
 | Option | Default | Description | Use Case |
 |--------|---------|-------------|----------|
 | `--mode vector` | Default | Uses semantic similarity | Conceptual queries |
-| `--threshold F` | 0.7 | Similarity cutoff (0.0-1.0) | Higher = more relevant, fewer results |
+| `--threshold F` | 0.3 | Similarity cutoff (0.0-1.0) | Higher = more relevant, fewer results |
 | `--top-k N` | 5 | Maximum results | More results for exploration |
 
 ## Why Choose Vector Over Other Modes
@@ -180,7 +180,7 @@ Vector search uses:
 ## Best Practices
 
 1. **Use natural language**: Vector search works best with conversational queries
-2. **Adjust thresholds carefully**: Start with 0.7, lower to 0.3-0.5 for more results
+2. **Adjust thresholds carefully**: Start with the 0.3 default, raise toward 0.5-0.7 for fewer, more-relevant results
 3. **Combine with domain knowledge**: Understand what concepts are covered in your docs
 4. **Use for exploration**: Great for discovering related content you didn't know existed
 

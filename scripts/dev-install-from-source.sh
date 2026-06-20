@@ -104,10 +104,17 @@ fi
 # Run pipx from a neutral dir: if cwd contains a 'brainpalace-cli' folder (e.g.
 # the repo root), pipx misreads the venv-name arg as a path and aborts.
 cd /
-log "Installing local CLI (pipx install --force)…"
-run pipx install --force "$CLI_DIR"
-log "Injecting local server + dashboard (pipx inject --force)…"
-run pipx inject --force brainpalace-cli "$SERVER_DIR" "$DASH_DIR"
+# --no-cache-dir on every local-source install: pip's wheel cache keys a build on
+# the SOURCE PATH (the `file://` link), not the version, so all builds of a package
+# land in one cache bucket. inject would then re-serve a STALE wheel (e.g. an old
+# 26.6.37 cli/server/dashboard built days ago) for the unchanged path instead of
+# rebuilding the current tree — silently injecting an old server/dashboard. Forcing
+# a fresh build kills that for all three packages (the CLI pin below only covered
+# the cli). PyPI deps (fastapi, …) are unaffected; only the local builds skip cache.
+log "Installing local CLI (pipx install --force, fresh build)…"
+run pipx install --force --pip-args=--no-cache-dir "$CLI_DIR"
+log "Injecting local server + dashboard (pipx inject --force, fresh build)…"
+run pipx inject --force --pip-args=--no-cache-dir brainpalace-cli "$SERVER_DIR" "$DASH_DIR"
 # Reinstall the local CLI LAST, with --no-deps. The inject above re-resolves
 # brainpalace-cli as a dependency of the server/dashboard; when the local version
 # is UNRELEASED, pip downgrades it to the latest PUBLISHED CLI — silently dropping
@@ -127,17 +134,23 @@ fi
 log "Restarting the $N_SERVERS server(s) that were running…"
 for r in "${RUNNING_ROOTS[@]:-}"; do
   [ -n "$r" ] || continue
+  # A session-autostart hook can re-spawn a STALE-version server during the
+  # (slow) pipx build window above. `brainpalace start` would then no-op with
+  # "already running" and we'd silently adopt the old build. Force it down
+  # first so the relaunch is guaranteed to be the just-installed version.
+  run brainpalace stop --path "$r" --force --timeout 15 || true
   # --no-dashboard: control the dashboard explicitly below (and avoid a browser pop).
   run brainpalace start --path "$r" --no-dashboard --timeout 120 || err "restart failed for $r"
 done
 if [ "$DASH_WAS_RUNNING" -eq 1 ]; then
   log "Restarting dashboard (was running before)…"
+  run brainpalace dashboard stop || true   # drop any raced-in stale dashboard
   run brainpalace dashboard start --no-open || err "dashboard restart failed"
 else
   log "Dashboard was stopped before — leaving it stopped."
 fi
 
-# --- verify back up ------------------------------------------------------------
+# --- verify back up (count AND version) ---------------------------------------
 if [ "$DRY_RUN" -eq 0 ]; then
   deadline=$(( SECONDS + 120 ))
   while :; do
@@ -149,5 +162,26 @@ if [ "$DRY_RUN" -eq 0 ]; then
     fi
     sleep 2
   done
-  log "Restore complete: ${total:-0}/$N_SERVERS server(s) up$([ "$DASH_WAS_RUNNING" -eq 1 ] && echo ' + dashboard')."
+  # A correct count is not enough: a stale-version process that raced in during
+  # the install window also satisfies it. Assert each running server reports the
+  # version we just installed (/health, suffix-tolerant), so an adopted old build
+  # fails loudly instead of masquerading as a successful reinstall.
+  # `|| true` on both probes: these are bare `var=$(pipeline)` assignments, and
+  # under `set -euo pipefail` a no-match `grep` (e.g. a /health that omits a
+  # version) makes the pipeline non-zero, which aborts the whole script on the
+  # assignment line — reporting a bogus `exit 1` even though the install fully
+  # succeeded. The `[ -n "$got" ]` guard below already treats empty as "skip", so
+  # swallow the pipeline status and let the check degrade gracefully instead.
+  want="$(brainpalace --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
+  stale=0
+  while IFS= read -r url; do
+    [ -n "$url" ] || continue
+    got="$(curl -fsS "$url/health" 2>/dev/null | jq -r '.version // empty' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
+    if [ -n "$want" ] && [ -n "$got" ] && [ "$got" != "$want" ]; then
+      err "server at $url runs $got, expected $want — a stale process was adopted; run 'brainpalace stop --path <root>' then 'brainpalace start'."
+      stale=1
+    fi
+  done < <(brainpalace list --json 2>/dev/null | jq -r '.instances[]? | select(.status=="running") | .base_url')
+  log "Restore complete: ${total:-0}/$N_SERVERS server(s) up$([ "$DASH_WAS_RUNNING" -eq 1 ] && echo ' + dashboard')$([ "$stale" -eq 1 ] && echo ' — VERSION MISMATCH (see error above)')."
+  [ "$stale" -eq 1 ] && exit 1 || true
 fi

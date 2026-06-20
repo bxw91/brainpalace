@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-18
+last_validated: 2026-06-20
 ---
 
 # Integration Guide
@@ -126,9 +126,9 @@ cd /project-b && brainpalace start  # Different port (e.g., 54322)
 
 # List all running instances
 brainpalace list
-# Instance   Project          Port   Status
-# a1b2c3d4   /project-a       54321  running
-# e5f6g7h8   /project-b       54322  running
+# Project     URL                     PID    Mode     Status
+# /project-a  http://127.0.0.1:54321  72235  project  running
+# /project-b  http://127.0.0.1:54322  72236  project  running
 
 # Query specific project (from its directory)
 cd /project-a && brainpalace query "auth module"

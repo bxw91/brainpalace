@@ -42,6 +42,17 @@ _SCRIPTS = _REPO_ROOT / "scripts"
 #: Sidecar verdict cache: claim+grounding hash -> verdict record. Kept out of doc
 #: frontmatter (same rationale as the freshness manifest) so docs render clean.
 _VERDICT_CACHE = _SCRIPTS / "doc_verify_cache.json"
+#: Durable human-confirm ledger: a claim+grounding hash the human has explicitly
+#: vouched for. Keyed identically to the verdict cache (`_claim_hash`), each row is
+#: ``{doc, claim, grounding, confirmed_by, confirmed_at}``. THIS is the persistent
+#: record of a "mark verified by human" order — the order is captured the instant it
+#: is given, and every later sweep consults it (see `_derive_record`), so the verdict
+#: survives even if no `--record` sweep runs that session. It is SEPARATE from the
+#: rewritten verdict cache precisely so a re-record can never erase a standing order.
+#: Scope (by design): only an `unresolved` claim (no code path, no audited-doc dep) is
+#: confirmable — code is still the sole ground truth, so a code-tier claim must be
+#: re-prosed to drop its code referent before it can be human-vouched.
+_CONFIRMED_LEDGER = _SCRIPTS / "doc_verify_confirmed.json"
 
 
 def _require_repo() -> None:
@@ -108,6 +119,41 @@ def _claim_hash(claim: str, grounding: str) -> str:
     return hashlib.sha256(
         (norm(claim) + "\x00" + norm(grounding)).encode("utf-8")
     ).hexdigest()
+
+
+# --- durable human-confirm ledger ------------------------------------------ #
+
+
+def _load_confirmed() -> dict[str, Any]:
+    """The durable human-confirm ledger (claim-hash -> order row), or ``{}`` when no
+    order has ever been given. Read on every record/resettle so a standing order is
+    re-applied without a fresh sweep input. A corrupt ledger is treated as empty
+    (fail-soft): a missing order only means a claim re-surfaces as UNVERIFIABLE, never
+    a wrong SUPPORTED, so it must never abort a verification run."""
+    try:
+        data = json.loads(_CONFIRMED_LEDGER.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_confirmed(ledger: dict[str, Any]) -> None:
+    """Persist the human-confirm ledger atomically (temp + replace), sorted for a
+    stable, review-friendly diff — it is a checked-in file."""
+    _CONFIRMED_LEDGER.parent.mkdir(parents=True, exist_ok=True)
+    tmp = _CONFIRMED_LEDGER.with_suffix(".json.tmp")
+    tmp.write_text(
+        json.dumps(ledger, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    tmp.replace(_CONFIRMED_LEDGER)
+
+
+def _claim_confirmed(claim_hash: str) -> bool:
+    """True iff this exact claim+grounding has a standing human-confirm order. This is
+    the second human-vouch signal alongside `_doc_audit_fresh` — but per-CLAIM and
+    durable, so the order is honoured the instant it is recorded and across every
+    later sweep, independent of the host doc's manifest re-stamp timing."""
+    return claim_hash in _load_confirmed()
 
 
 # --- affected-set resolver ------------------------------------------------- #
@@ -344,32 +390,16 @@ def _resolve_docs(
     return [entries[k] for k in sorted(entries)]
 
 
-# --- recently-verified skip (the --all "skip-fresh" filter) ---------------- #
-#: Default fresh window (days). Tuned to sit BELOW the weekly-sweep cadence (7d)
-#: so last week's sweep is always re-verified this week, yet ABOVE the multi-day
-#: span of a single sweep so a sweep dragged across sessions/days doesn't re-judge
-#: docs it already covered. See the command help + brainpalace-verify-docs.md.
-DEFAULT_SKIP_FRESH_DAYS = 6
-
-
-def _parse_iso_date(value: str | None) -> date | None:
-    """Parse a `last_validated` 'YYYY-MM-DD' string to a date, or None if missing
-    or unparseable (an un-dated / malformed doc is treated as stale → never
-    skipped, the safe default)."""
-    if not value:
-        return None
-    try:
-        return date.fromisoformat(value.strip())
-    except ValueError:
-        return None
+# --- recently-verified skip (relation-driven; no time window) ---------------- #
 
 
 def _prose_verified_docs() -> set[str]:
     """Repo-relative paths that have ≥1 prose verdict in the verdict cache — i.e.
     docs the Layer-B prose verifier has actually judged.
 
-    This is the **provenance signal** skip-fresh needs. `last_validated` alone is
-    ambiguous: it is written by BOTH `add_audit_metadata.py` (the human "confirmed
+    This is the **provenance signal** relation-driven skip relies on.
+    `last_validated` alone is ambiguous: it is written by BOTH
+    `add_audit_metadata.py` (the human "confirmed
     accurate" audit / doc-freshness gate) AND `verify-docs --record` (this prose
     verifier). A doc the human audited but the prose verifier never judged would
     otherwise look "fresh" and be silently dropped from a sweep. Cache entries are
@@ -386,50 +416,51 @@ def _prose_verified_docs() -> set[str]:
 
 
 def _filter_fresh(
-    entries: list[dict[str, Any]], days: int, reset_epoch: date | None = None
+    entries: list[dict[str, Any]], force: bool = False
 ) -> tuple[list[dict[str, Any]], list[str]]:
-    """Split resolved entries into (kept, skipped). A doc is **fresh** — and
-    skipped — only when ALL hold:
+    """Split resolved entries into (kept, skipped). A doc is **skipped** only when
+    ALL hold (there is NO time window — a stamp's age is irrelevant):
 
-      * it has actually been **prose-verified** (≥1 verdict in the verdict cache);
-        a doc whose `last_validated` came only from the human audit tool but was
-        never judged by Layer B is NEVER skipped, AND
-      * `last_validated` is newer than `days` ago (age < days), AND
-      * its authored content still matches the freshness manifest hash (i.e. it
-        has NOT been edited since it was validated), AND
-      * it was validated **on or after** `reset_epoch` (the verification-baseline
-        reset written by `--reset`); a doc stamped before the reset is stale until
-        re-verified this cycle. `reset_epoch=None` disables that gate.
+      * it has been **prose-verified** (≥1 verdict in the cache), AND
+      * its authored prose is **unchanged** (manifest-hash match), AND
+      * it is **fully clean** (every recorded verdict SUPPORTED — code-grounded),
+        AND
+      * **every grounded relation is unchanged** — for each of the doc's verdict
+        records, its `grounding_files`/dirs still hash to the stored value
+        (`_relation_unchanged`).
 
-    The hash guard is what makes "always skip fresh" safe: a doc you just edited
-    has a stale stamp but a changed hash, so it is kept (re-verified) — you never
-    silently skip a doc whose prose moved. A doc never prose-judged, `days`-or-more
-    old, un-dated, edited-since, unreadable, validated-before-reset, or absent from
-    the manifest is kept. The caller decides WHICH entries to pass here
-    (code-affected entries are exempt — their prose is unchanged yet the code they
-    document moved)."""
+    Any doc with edited prose, a moved/added/removed grounded file or dir member, a
+    missing relation, an open verdict, or no prose verdict at all is kept (re-
+    verified). `force=True` skips nothing — the manual full re-verify
+    (`--all --force`). Pure filesystem: no index server needed."""
     fresh = _freshness()
-    today = date.today()
     manifest = fresh.load_manifest()
     verified = _prose_verified_docs()
+    cache = _load_cache()
+    clean = _clean_verified_docs(cache)
     kept: list[dict[str, Any]] = []
     skipped: list[str] = []
     for e in entries:
-        full = _REPO_ROOT / e["path"]
+        rel = e["path"]
+        if force:
+            kept.append(e)
+            continue
+        full = _REPO_ROOT / rel
         try:
             content = full.read_text(encoding="utf-8")
         except OSError:
             kept.append(e)
             continue
-        stamped = _parse_iso_date(fresh.last_validated(content))
-        recent = stamped is not None and (today - stamped).days < days
-        unchanged = manifest.get(e["path"]) == fresh.content_hash(content)
-        after_reset = reset_epoch is None or (
-            stamped is not None and stamped >= reset_epoch
+        prose_verified = rel in verified
+        unchanged = manifest.get(rel) == fresh.content_hash(content)
+        is_clean = rel in clean
+        relations_ok = all(
+            _relation_unchanged(rec)
+            for h, rec in cache.items()
+            if h != _MARKER_KEY and isinstance(rec, dict) and rec.get("doc") == rel
         )
-        prose_verified = e["path"] in verified
-        if prose_verified and recent and unchanged and after_reset:
-            skipped.append(e["path"])
+        if prose_verified and unchanged and is_clean and relations_ok:
+            skipped.append(rel)
         else:
             kept.append(e)
     return kept, skipped
@@ -517,12 +548,12 @@ def _stamp_marker(base: str) -> None:
 #: stamps `last_verify` here to reset the weekly reminder clock.
 _SWEEP_STATE = _REPO_ROOT / ".claude" / ".doc-verify-sweep.json"
 
-#: Human-facing deadlock report (repo-dev scope, gitignore-able). Written ONLY when
-#: verification is genuinely stuck — every doc has been judged once and a set of
-#: still-unverified docs is mutually cross-dependent (a `blocked_on` cycle/orphan
-#: with no path to code). Deleted when no such deadlock remains. Its mere existence
-#: means "a human must break a cycle." NOT under docs/ — never an audited doc.
-_BLOCKED_REPORT = _REPO_ROOT / ".claude" / "doc-verify-blocked.md"
+#: Human-decision report (repo-dev scope). Written ONLY when verification is genuinely
+#: stuck — every audited doc judged once AND a set of doc-dep claims can never reach
+#: code (a dependency cycle or an orphan with no code exit). Deleted when no such set
+#: remains. Its existence means "a human must break a cycle or ground a claim on code."
+#: NOT under docs/ — never an audited doc.
+_NEEDS_HUMAN_REPORT = _REPO_ROOT / ".claude" / "doc-verify-needs-human.md"
 
 
 def _read_sweep_state() -> dict[str, Any]:
@@ -553,35 +584,31 @@ def _stamp_weekly_clock() -> None:
         pass
 
 
-def _load_reset_epoch() -> date | None:
-    """The verification-baseline reset date (`verify_reset_at`) written by
-    `--reset`, or None if never reset. Docs validated before it are treated as
-    stale by `_filter_fresh` until re-verified. Fail-soft."""
-    return _parse_iso_date(_read_sweep_state().get("verify_reset_at"))
-
-
-def _stamp_reset() -> str:
-    """Record TODAY as the verification-baseline reset epoch and return it.
-    Mutates no docs — only the gitignored sweep-state file."""
-    today = date.today().isoformat()
-    state = _read_sweep_state()
-    state["verify_reset_at"] = today
-    _write_sweep_state(state)
-    return today
-
-
 # --- packet emit ----------------------------------------------------------- #
+
+
+def _raw(rec: dict[str, Any]) -> str:
+    """A record's RAW verdict (the agent's judgment): `raw_verdict` if present, else
+    `verdict` (records written before the doc-dep split carry only `verdict`)."""
+    return (rec.get("raw_verdict") or rec.get("verdict") or "").upper()
 
 
 def _build_packet(entries: list[dict[str, Any]], base: str) -> dict[str, Any]:
     """Assemble the work packet the agent judges: per doc, the verifiable prose +
     any **terminal** cached verdicts (so the agent self-skips unchanged claim pairs).
 
-    Only SUPPORTED/CONTRADICTED are fed back as reusable: a BLOCKED or UNVERIFIABLE
-    claim is deliberately omitted so the agent **re-grounds and re-judges** it — its
-    blocking dependency may have been verified since (BLOCKED), or the index may now
-    return code (UNVERIFIABLE). This is the "only re-check the leftover claims"
-    contract: clean claims cost nothing, the open subset always retries."""
+    Reuse keys on the claim's **raw** verdict (`_raw`): only a raw SUPPORTED or
+    CONTRADICTED is fed back (so a doc-dep settled to PENDING is reused via its raw
+    SUPPORTED and the agent echoes it verbatim). A raw UNVERIFIABLE claim is omitted so
+    the agent re-grounds it — the index may now return code. This is the "only re-check
+    the leftover claims" contract: clean claims cost nothing, the open subset retries.
+
+    Each cached verdict now carries ``fresh: bool`` (relation unchanged) so the agent
+    re-grounds only stale or new claims. A cached verdict is reusable only when
+    ``fresh`` is true (its grounded files/dirs are unchanged) AND its claim is still
+    present in the prose; re-emit a fresh reused verdict verbatim into ``--record``
+    (no re-grounding, no re-judging); a ``fresh: false`` entry must be re-grounded
+    and re-judged."""
     cache = _load_cache()
     docs = []
     for e in entries:
@@ -592,11 +619,18 @@ def _build_packet(entries: list[dict[str, Any]], base: str) -> dict[str, Any]:
         except OSError:
             continue
         cached = [
-            {"hash": h, "claim": rec.get("claim"), "verdict": rec.get("verdict")}
+            {
+                "hash": h,
+                "claim": rec.get("claim"),
+                "grounding": rec.get("grounding", ""),
+                "grounding_files": rec.get("grounding_files", []),
+                "verdict": _raw(rec),
+                "fresh": _relation_unchanged(rec),
+            }
             for h, rec in cache.items()
             if isinstance(rec, dict)
             and rec.get("doc") == rel
-            and (rec.get("verdict") or "").upper() in _TERMINAL_VERDICTS
+            and _raw(rec) in _TERMINAL_VERDICTS
         ]
         docs.append(
             {
@@ -616,20 +650,26 @@ def _build_packet(entries: list[dict[str, Any]], base: str) -> dict[str, Any]:
 
 # --- record verdicts + re-stamp clean -------------------------------------- #
 
-#: A claim's judged outcome. BLOCKED is non-terminal: the claim has no code
-#: referent and grounds only on an *unverified* doc, so it can't be confirmed yet
-#: but MAY clear once that dependency is verified (the defer scheduler re-queues it
-#: then). SUPPORTED/CONTRADICTED are terminal (reused from cache); UNVERIFIABLE is
-#: terminal-for-now (retrieval found nothing — needs code/human, never auto-defers).
-_VERDICTS = ("SUPPORTED", "CONTRADICTED", "UNVERIFIABLE", "BLOCKED")
+#: A claim's recorded STATUS (orthogonal to its SOURCE, which is `grounding_tier`).
+#: PENDING is non-terminal: a doc-dep claim whose dependency is not yet clean — the
+#: settle (not the agent) assigns it and may promote it to SUPPORTED once every
+#: dependency clears, or to UNVERIFIABLE if it can never reach code. SUPPORTED/
+#: CONTRADICTED are terminal (reused from cache); UNVERIFIABLE is terminal-for-now (no
+#: source vouches — needs code/human). A human-asserted external fact is NOT a separate
+#: status: it is recorded SUPPORTED with `grounding_tier="audit"` (see `_grounding_tier`
+#: / `_doc_audit_fresh`) — the source tier holds the provenance, status stays SUPPORTED.
+_VERDICTS = ("SUPPORTED", "CONTRADICTED", "UNVERIFIABLE", "PENDING")
 
 #: Verdicts safe to REUSE from the cache without re-judging. Only the terminal ones:
-#: a BLOCKED/UNVERIFIABLE claim must be retried (its dependency may have cleared, or
-#: the index improved), so it is deliberately excluded and re-grounded each run.
+#: a PENDING/UNVERIFIABLE outcome is re-derived by the settle, not the agent. The
+#: packet feeds a doc-dep claim's RAW verdict, so reuse keys on `_raw(rec)`.
 _TERMINAL_VERDICTS = frozenset({"SUPPORTED", "CONTRADICTED"})
 
-#: Verdicts that mean a doc is NOT clean (any of these blocks the re-stamp).
-_OPEN_VERDICTS = frozenset({"CONTRADICTED", "UNVERIFIABLE", "BLOCKED"})
+#: Verdicts that mean a doc is NOT clean (blocks the re-stamp / cannot launder onward).
+#: PENDING joins them — a doc waiting on an unclean dependency must not count as clean —
+#: but PENDING is NEVER surfaced to a human (see _render_report). SUPPORTED is the only
+#: clean status (whether code-confirmed or audit-tier human-vouched).
+_OPEN_VERDICTS = frozenset({"CONTRADICTED", "UNVERIFIABLE", "PENDING"})
 
 
 def _docs_with_verdicts(cache: dict[str, Any]) -> set[str]:
@@ -645,11 +685,12 @@ def _docs_with_verdicts(cache: dict[str, Any]) -> set[str]:
 
 
 def _clean_verified_docs(cache: dict[str, Any]) -> set[str]:
-    """Repo-relative paths of docs that are FULLY clean in the cache — every
-    recorded verdict SUPPORTED, none CONTRADICTED/UNVERIFIABLE/BLOCKED. These are
-    the only docs that may serve as trustworthy grounding for *another* doc's claim:
-    their own claims have already been confirmed against code (transitively). A doc
-    with ≥1 verdict but any open verdict is NOT clean, so it can't launder onward."""
+    """Repo-relative paths of docs that are FULLY clean in the cache — every recorded
+    verdict SUPPORTED, none CONTRADICTED/UNVERIFIABLE/PENDING. These are the only docs
+    that may serve as trustworthy grounding for *another* doc's claim: their own claims
+    have been confirmed against code (transitively) or, for `audit`-tier claims, are
+    human-asserted externals vouched by the audit stamp. A doc with ≥1 verdict but any
+    open verdict is NOT clean, so it can't launder onward."""
     seen: dict[str, set[str]] = {}
     for h, rec in cache.items():
         if h == _MARKER_KEY or not isinstance(rec, dict):
@@ -663,9 +704,10 @@ def _clean_verified_docs(cache: dict[str, Any]) -> set[str]:
 def _verification_stats(cache: dict[str, Any], audited: set[str]) -> dict[str, int]:
     """Snapshot of verification progress across the project-doc set:
       * ``total``   — audited project docs,
-      * ``full``    — fully verified (every claim SUPPORTED; re-stamped),
+      * ``full``    — fully verified (every claim SUPPORTED — code or audit tier;
+                      re-stamped),
       * ``partial`` — judged but with ≥1 open item (CONTRADICTED/UNVERIFIABLE/
-                      BLOCKED) — i.e. seen but not clean,
+                      PENDING) — i.e. seen but not clean,
       * ``none``    — never prose-judged (no verdict in the cache).
     Cache rows for docs no longer audited (renamed/removed) are ignored by
     intersecting with the live audited set, so the counts always sum to `total`."""
@@ -687,52 +729,6 @@ def _render_stats(stats: dict[str, int]) -> str:
         f"{stats['partial']} partial, "
         f"{stats['none']} not verified."
     )
-
-
-def _doc_blocked_state(cache: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    """Per-doc deferral state derived from the cache:
-    * ``blocked_on``     — union of unverified-doc deps across the doc's BLOCKED
-                           claims (the docs it is waiting on).
-    * ``has_block``      — the doc has ≥1 BLOCKED claim.
-    * ``has_other_open`` — the doc has a CONTRADICTED/UNVERIFIABLE claim (real
-                           drift / ungroundable) — so it is NOT merely waiting on a
-                           dependency and must stay in the packet, not be deferred.
-    """
-    per: dict[str, dict[str, Any]] = {}
-    for h, rec in cache.items():
-        if h == _MARKER_KEY or not isinstance(rec, dict):
-            continue
-        doc = rec.get("doc")
-        if not isinstance(doc, str) or not doc:
-            continue
-        v = (rec.get("verdict") or "").upper()
-        s = per.setdefault(
-            doc, {"blocked_on": set(), "has_block": False, "has_other_open": False}
-        )
-        if v == "BLOCKED":
-            s["has_block"] = True
-            s["blocked_on"].update(rec.get("blocked_on") or [])
-        elif v in ("CONTRADICTED", "UNVERIFIABLE"):
-            s["has_other_open"] = True
-    return per
-
-
-def _blocked_on_from_grounding(
-    grounding: str, audited: set[str], clean_verified: set[str]
-) -> list[str]:
-    """The unverified audited docs a grounding string names — the deps a BLOCKED
-    claim waits on. Excluded docs (CHANGELOG) are NOT deps: they never clear, so a
-    claim resting on one is ungroundable (UNVERIFIABLE), not deferrable."""
-    deps: list[str] = []
-    g = grounding.replace(str(_REPO_ROOT) + "/", "").strip()
-    for token in g.split():
-        rel = token.replace(str(_REPO_ROOT) + "/", "").strip("`,()[]")
-        if rel in audited and rel not in clean_verified and rel not in deps:
-            deps.append(rel)
-    return deps
-
-
-# --- defer scheduler + deadlock report ------------------------------------- #
 
 
 def _order_by_cost(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -784,202 +780,84 @@ def _filter_unclassified(
     return kept, unclassified
 
 
-def _filter_blocked(
-    entries: list[dict[str, Any]], cache: dict[str, Any]
-) -> tuple[list[dict[str, Any]], list[str]]:
-    """Split resolved entries into (kept, deferred). A doc is **deferred** — dropped
-    from this run's packet — only when ALL hold:
-
-      * it has ≥1 BLOCKED claim and NO CONTRADICTED/UNVERIFIABLE claim (purely
-        waiting on a dependency, not itself drifted/ungroundable — a drifted doc
-        stays in the packet so its real findings keep surfacing), AND
-      * it is **unchanged** since last judged (manifest-hash match — an edited doc
-        always re-judges; its claims may have moved), AND
-      * **every** doc it is `blocked_on` is still NOT clean (if any blocker has been
-        verified since, the doc re-activates so its blocked claim can resolve), AND
-      * it was not named as an **explicit path** and is not `code-affected` (those
-        are deliberate "judge this now" requests — never deferred).
-
-    Deferral is what stops a blocked doc being re-queued every batch: it re-enters
-    only when a blocker clears (cascading topologically), and a true cross-dependent
-    cycle — whose blockers never clear — is simply never re-queued (zero budget;
-    surfaced by the deadlock report instead)."""
-    fresh = _freshness()
-    manifest = fresh.load_manifest()
-    clean = _clean_verified_docs(cache)
-    states = _doc_blocked_state(cache)
-    kept: list[dict[str, Any]] = []
-    deferred: list[str] = []
-    for e in entries:
-        rel = e["path"]
-        st = states.get(rel)
-        if (
-            e.get("trigger") in ("explicit", "code-affected")
-            or not st
-            or not st["has_block"]
-            or st["has_other_open"]
-        ):
-            kept.append(e)
-            continue
-        try:
-            content = (_REPO_ROOT / rel).read_text(encoding="utf-8")
-        except OSError:
-            kept.append(e)
-            continue
-        unchanged = manifest.get(rel) == fresh.content_hash(content)
-        deps = st["blocked_on"]
-        blockers_open = bool(deps) and all(d not in clean for d in deps)
-        if unchanged and blockers_open:
-            deferred.append(rel)
-        else:
-            kept.append(e)
-    return kept, deferred
-
-
-def _weak_components(
-    nodes: set[str], states: dict[str, dict[str, Any]]
-) -> list[set[str]]:
-    """Weakly-connected components of the deadlocked set over `blocked_on` edges —
-    so the report shows each mutual cycle as one group (and orphans as singletons).
-    Union-find over edges whose BOTH ends are in `nodes`."""
-    parent = {n: n for n in nodes}
-
-    def find(x: str) -> str:
-        while parent[x] != x:
-            parent[x] = parent[parent[x]]
-            x = parent[x]
-        return x
-
-    for d in nodes:
-        for dep in states.get(d, {}).get("blocked_on", set()):
-            if dep in parent:
-                parent[find(d)] = find(dep)
-    groups: dict[str, set[str]] = {}
-    for n in nodes:
-        groups.setdefault(find(n), set()).add(n)
-    return list(groups.values())
-
-
-def _deadlocked_docs(
-    cache: dict[str, Any],
-) -> tuple[list[str], dict[str, dict[str, Any]]]:
-    """Compute the deadlocked set: BLOCKED docs that can NEVER reach code. Seed the
-    `resolvable` set with the clean docs, then drain — a BLOCKED doc becomes
-    resolvable once every doc it waits on is resolvable. Whatever never drains is a
-    cross-dependent cycle or an orphan with no code exit. Returns (sorted deadlocked
-    paths, the per-doc state map) so the caller can render claims/edges."""
-    clean = _clean_verified_docs(cache)
-    states = _doc_blocked_state(cache)
-    blocked_docs = {d for d, s in states.items() if s["has_block"]}
-    resolvable: set[str] = set(clean)
-    grew = True
-    while grew:
-        grew = False
-        for d in blocked_docs - resolvable:
-            deps = states[d]["blocked_on"]
-            if deps and all(dep in resolvable for dep in deps):
-                resolvable.add(d)
-                grew = True
-    return sorted(blocked_docs - resolvable), states
-
-
-def _refresh_blocked_report(cache: dict[str, Any]) -> list[str]:
-    """Write the deadlock report when (and only when) verification is genuinely
-    stuck — every audited doc has been judged at least once AND a cross-dependent
-    BLOCKED set remains with no path to code. Otherwise delete any stale report
-    (there is still progress to make, or the deadlock cleared). Returns the
-    deadlocked paths (empty when none)."""
+def _refresh_needs_human_report(cache: dict[str, Any], stuck: list[str]) -> list[str]:
+    """Write the human-decision report iff verification is genuinely stuck — every
+    audited doc judged at least once AND `stuck` (settle's no-path-to-code set) is
+    non-empty. While any audited doc is unjudged, draining it may break a cycle, so
+    don't cry stuck — and delete any stale report. Returns the reported paths."""
     audited = _audited_doc_set()
     judged = _docs_with_verdicts(cache)
-    # Docs never looked at yet: while any remain, draining them may break a cycle,
-    # so "cannot proceed further" is not yet true — don't cry deadlock.
     unjudged = {d for d in audited if d not in judged and not _is_excluded(d)}
-    deadlocked, states = _deadlocked_docs(cache)
-    if unjudged or not deadlocked:
-        if _BLOCKED_REPORT.exists():
-            _BLOCKED_REPORT.unlink()
+    if unjudged or not stuck:
+        if _NEEDS_HUMAN_REPORT.exists():
+            _NEEDS_HUMAN_REPORT.unlink()
         return []
-    _write_blocked_report(deadlocked, states, cache)
-    return deadlocked
+    _write_needs_human_report(cache, stuck)
+    return sorted(stuck)
 
 
-def _write_blocked_report(
-    deadlocked: list[str], states: dict[str, dict[str, Any]], cache: dict[str, Any]
-) -> None:
-    """Render the human deadlock report grouped by cycle. Lists each doc's BLOCKED
-    claims and the docs it waits on, plus how to break the loop."""
-    dead = set(deadlocked)
-    blocked_claims: dict[str, list[dict[str, Any]]] = {}
-    for h, rec in cache.items():
-        if h == _MARKER_KEY or not isinstance(rec, dict):
-            continue
-        doc = rec.get("doc")
-        if doc in dead and (rec.get("verdict") or "").upper() == "BLOCKED":
-            blocked_claims.setdefault(doc, []).append(rec)
+def _write_needs_human_report(cache: dict[str, Any], stuck: list[str]) -> None:
+    """Render the human-decision report: each stuck doc and its settled-UNVERIFIABLE
+    doc-dep claims with the dependency they can never reach."""
+    dead = set(stuck)
     lines = [
-        "# Doc verification — blocked (human action needed)",
+        "# Doc verification — needs human decision",
         "",
         f"Generated {date.today().isoformat()}. Every audited doc has been judged, "
-        "but the docs below cannot be verified: their remaining claims ground only "
-        "on other **unverified** docs (a cross-dependent cycle or an orphan with no "
-        "path to code). The verifier will not re-queue them until a human breaks the "
-        "loop — ground one claim on code, rewrite it to cite a verified doc, or "
-        "manually stamp the doc (scripts/add_audit_metadata.py) if it is canonical.",
+        "but the doc-dep claims below can never reach code — a dependency cycle, or "
+        "a dependency with no path to a code-grounded doc. The verifier holds them "
+        "at UNVERIFIABLE until a human acts: ground one claim on code, rewrite it to "
+        "cite a code-grounded doc, or accept it.",
         "",
     ]
-    components = sorted(_weak_components(dead, states), key=lambda c: sorted(c)[0])
-    for i, comp in enumerate(components, 1):
-        members = sorted(comp)
-        if len(members) > 1:
-            label = " ↔ ".join(Path(m).name for m in members)
-            header = f"## Cycle {i}: {label}"
-        else:
-            header = f"## Orphan {i}: {Path(members[0]).name}"
-        lines.append(header)
-        for d in members:
-            lines.append(f"- {d}")
-            for rec in blocked_claims.get(d, []):
-                deps = ", ".join(rec.get("blocked_on") or []) or "(unverified doc)"
+    for doc in sorted(dead):
+        lines.append(f"## {doc}")
+        for h, rec in cache.items():
+            if h == _MARKER_KEY or not isinstance(rec, dict):
+                continue
+            if (
+                rec.get("doc") == doc
+                and rec.get("grounding_tier") == "doc-dep"
+                and (rec.get("verdict") or "").upper() == "UNVERIFIABLE"
+            ):
+                deps = ", ".join(rec.get("grounding_files") or []) or "(unverified doc)"
                 lines.append(f"  - claim: {rec.get('claim', '')}")
-                lines.append(f"    blocked_on: {deps}")
+                lines.append(f"    depends on (no path to code): {deps}")
         lines.append("")
-    _BLOCKED_REPORT.parent.mkdir(parents=True, exist_ok=True)
-    _BLOCKED_REPORT.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    _NEEDS_HUMAN_REPORT.parent.mkdir(parents=True, exist_ok=True)
+    _NEEDS_HUMAN_REPORT.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def _grounding_tier(grounding: str, audited: set[str], clean_verified: set[str]) -> str:
-    """Classify a claim's grounding by source-of-truth strength. **Fails CLOSED:**
-    the only way to earn the trusted `code` tier is a real non-doc source path —
-    anything unrecognized (a stray `.md`, an empty or vague grounding, a typo'd or
-    moved path) is NOT trusted, because letting it pass as `code` is the exact bug
-    class this whole layer exists to prevent.
+def _grounding_tier(
+    grounding: str, audited: set[str], clean_verified: set[str], doc: str | None = None
+) -> str:
+    """Classify a claim's grounding by source-of-truth strength. **Fails CLOSED.**
 
-      * ``code``           — a non-doc source path token (e.g. `*.py`, tests,
-                             config). Code IS the ground truth; the only tier that
-                             re-stamps a doc.
-      * ``verified-doc``   — an audited doc that is itself FULLY clean (transitively
-                             code-grounded). Allowed: derived trust.
-      * ``unverified-doc`` — an audited doc NOT yet verified (or self/circular). The
-                             SUPPORTED resting on it is an echo → coerced to BLOCKED;
-                             *may* clear once that dependency is verified.
-      * ``excluded-doc``   — an excluded doc (CHANGELOG / ORIGINAL_SPEC / superpowers
-                             / .planning — historical/frozen/scratch). Describes
-                             past/intended state, never clears → coerced to
-                             UNVERIFIABLE. Includes ANY unrecognized `.md` token: a
-                             doc-shaped path we can't vouch for is treated as
-                             un-groundable, never as code.
-      * ``unresolved``     — no usable path token at all (empty / vague prose). No
-                             evidence → coerced to UNVERIFIABLE. Closes the
-                             "SUPPORTED with no grounding" hole.
+      * ``code``      — a real non-doc source path (``*.py``, tests, config). Code is
+                        the ground truth; the only tier that confirms directly.
+      * ``doc-dep``   — no code path, but ≥1 **audited** doc token *other than the host
+                        doc* (``doc``): the claim depends on another doc the verifier
+                        judges and that *can* become clean. A grounding naming ONLY the
+                        host doc itself (self-reference) is NOT a dependency (a doc
+                        can't ground its own claim) so it falls to ``unresolved``
+                        (like `_doc_paths_from_grounding`, which drops self-refs).
+                        Confirmation is deferred to the settle (SUPPORTED/PENDING/
+                        UNVERIFIABLE), never decided here.
+      * ``unresolved``— an **excluded** doc (CHANGELOG / superpowers / ``.planning``) or
+                        an unrecognized ``.md`` (never verified → never clean), OR no
+                        usable path token. At record time `_record_verdicts` may UPGRADE
+                        an ``unresolved`` claim to the **``audit``** tier (verdict stays
+                        SUPPORTED) when the host doc is audit-fresh — a human-asserted
+                        external fact; otherwise it coerces to ``UNVERIFIABLE``.
 
-    The grounding string is the agent-recorded source (a path, sometimes absolute,
-    sometimes followed by a snippet). **Code-preferring:** if a real source path is
-    present it wins, even alongside an incidental doc mention; only when there is no
-    code evidence do we fall back to classifying the doc / unresolved tiers."""
+    Source-strength precedence: **code > doc-dep > audit > unresolved**. Code-preferring
+    — a real source path wins even beside an incidental doc mention or audit fallback,
+    so a multi-source claim is judged against its STRONGEST source (code is ground
+    truth); `audit` only applies to a claim with no code path and no audited-doc dep.
+    ``clean_verified`` is unused (kept for call-site stability)."""
     g = grounding.replace(str(_REPO_ROOT) + "/", "").strip()
     tokens = [t.strip("`,()[]<>\"'") for t in g.split()]
     pathish = [t for t in tokens if t and ("/" in t or "." in t)]
-    # Code-preferring: a real non-doc source path is the strongest evidence.
     code = [
         t
         for t in pathish
@@ -987,41 +865,377 @@ def _grounding_tier(grounding: str, audited: set[str], clean_verified: set[str])
     ]
     if code:
         return "code"
-    for rel in pathish:
-        if _is_excluded(rel):
-            return "excluded-doc"
-        if rel in audited:
-            return "verified-doc" if rel in clean_verified else "unverified-doc"
-    # A doc-shaped path we don't recognize is NEVER code — treat as ungroundable.
-    if any(t.endswith(".md") for t in pathish):
-        return "excluded-doc"
+    # No code path: only an AUDITED doc token OTHER THAN the host doc (one that can
+    # become clean) is a trackable dependency. A self-ref (== doc) can't ground its own
+    # claim, and an excluded / unknown .md never clears -> both fall to unresolved
+    # (where an audit-fresh host doc earns the `audit` tier in `_record_verdicts`).
+    if any(t in audited and t != doc for t in pathish):
+        return "doc-dep"
     return "unresolved"
 
 
+def _doc_audit_fresh(doc: str) -> bool:
+    """True iff the doc's CURRENT authored body matches its freshness-manifest hash —
+    i.e. THIS body was recorded by a human audit (`add_audit_metadata.py`) or by a prior
+    clean re-stamp.
+
+    This is the human-vouch signal that puts an `unresolved` claim (no code, no
+    audited-doc dependency) on the ``audit`` source tier (verdict SUPPORTED) instead of
+    ``UNVERIFIABLE``. It **fails closed** — the machine can never advance the manifest
+    hash to a body a human never confirmed:
+
+      * `_restamp` (machine) writes ``manifest[doc] = content_hash(body)`` only for a
+        doc judged fully CLEAN.
+      * A doc carrying an `unresolved` claim can only be clean once that claim is on the
+        ``audit`` tier (SUPPORTED) — which requires THIS check to already pass.
+
+    So the only way the manifest reaches a *new* body holding an unresolved claim is an
+    explicit human audit. Edit the prose without re-auditing → hash mismatch → the
+    claim falls back to ``UNVERIFIABLE`` and surfaces until a human re-stamps. The body
+    hash excludes frontmatter (`content_hash`), so a date-only re-stamp never flips it.
+    """
+    full = _REPO_ROOT / doc
+    try:
+        content = full.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    fresh = _freshness()
+    return bool(fresh.load_manifest().get(doc) == fresh.content_hash(content))
+
+
+# --- grounding relations (file/dir content hashing) ------------------------ #
+
+
+def _path_content_hash(rel: str) -> str | None:
+    """sha256 fingerprint of a grounded path at CURRENT state, or None if it no
+    longer exists (deleted file/dir → relation missing → reground the claim).
+
+      * **file** → hash of its raw bytes.
+      * **directory** → hash over the sorted ``(relpath, sha256(file bytes))`` of
+        every file beneath it, so adding, removing, or editing ANY member flips the
+        hash. This is what closes the "new member added to a documented set" gap:
+        a completeness claim grounded on a registry directory re-verifies the moment
+        a file lands there."""
+    full = _REPO_ROOT / rel
+    if full.is_file():
+        try:
+            return hashlib.sha256(full.read_bytes()).hexdigest()
+        except OSError:
+            return None
+    if full.is_dir():
+        h = hashlib.sha256()
+        try:
+            for p in sorted(full.rglob("*")):
+                if not p.is_file():
+                    continue
+                rel_parts = p.relative_to(full).parts
+                # Skip generated / VCS noise so the hash reflects SOURCE only — a
+                # .pyc rewrite or a new __pycache__ entry must NOT flip it (that would
+                # re-verify the doc every run for no real change).
+                if {".git", "__pycache__", ".mypy_cache", ".pytest_cache"} & set(
+                    rel_parts
+                ):
+                    continue
+                if p.suffix in {".pyc", ".pyo"} or p.name.startswith("."):
+                    continue
+                h.update("/".join(rel_parts).encode("utf-8"))
+                h.update(hashlib.sha256(p.read_bytes()).digest())
+        except OSError:
+            return None
+        return h.hexdigest()
+    return None
+
+
+def _grounding_path_hash(rel: str) -> str | None:
+    """Per-path fingerprint for a grounding relation. A ``.md`` dependency is hashed by
+    its **authored body** (`freshness.content_hash`, frontmatter-excluded) so a
+    `last_validated` re-stamp — which rewrites only the frontmatter on every clean
+    outcome — does NOT flip the hash and re-ground the dependent forever. Any other path
+    (code file / directory) keeps the raw-byte ``_path_content_hash`` (no frontmatter).
+    ``None`` if the path is missing/unreadable (missing relation → reground)."""
+    if rel.endswith(".md"):
+        full = _REPO_ROOT / rel
+        try:
+            return str(_freshness().content_hash(full.read_text(encoding="utf-8")))
+        except OSError:
+            return None
+    return _path_content_hash(rel)
+
+
+def _code_paths_from_grounding(grounding: str, audited: set[str]) -> list[str]:
+    """The repo-relative CODE path tokens named in a grounding string (non-doc,
+    non-excluded, not an audited doc). Mirrors `_grounding_tier`'s code-path parse so
+    a relation can be derived when the agent omits `grounding_files`. Empty when the
+    grounding names only docs or no path."""
+    g = grounding.replace(str(_REPO_ROOT) + "/", "").strip()
+    tokens = [t.strip("`,()[]<>\"':") for t in g.split()]
+    pathish = [t for t in tokens if t and ("/" in t or "." in t)]
+    return [
+        t
+        for t in pathish
+        if not t.endswith(".md") and not _is_excluded(t) and t not in audited
+    ]
+
+
+def _doc_paths_from_grounding(grounding: str, audited: set[str], doc: str) -> list[str]:
+    """The repo-relative **audited** doc paths a grounding string names — the deps a
+    `doc-dep` claim rests on. Drops excluded/unknown `.md` (they never become clean,
+    so a claim on one is `unresolved`, not a dependency) and the claim's own doc
+    (`dep == doc` self-reference, which would self-block). Sorted + deduped."""
+    g = grounding.replace(str(_REPO_ROOT) + "/", "").strip()
+    out: set[str] = set()
+    for token in g.split():
+        rel = token.strip("`,()[]<>\"':")
+        if rel in audited and rel != doc:
+            out.add(rel)
+    return sorted(out)
+
+
+def _relation_hash(paths: list[str]) -> str | None:
+    """Order-independent combined fingerprint of all paths a claim grounds on, or None
+    if the list is empty OR any path is unresolvable. Per-path hashing goes through
+    `_grounding_path_hash` (`.md` → authored body, else raw bytes) so the record side
+    and the `_relation_unchanged` re-check side fingerprint identically."""
+    if not paths:
+        return None
+    parts: list[str] = []
+    for rel in sorted(set(paths)):
+        ph = _grounding_path_hash(rel)
+        if ph is None:
+            return None
+        parts.append(f"{rel}:{ph}")
+    return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
+
+
+def _relation_unchanged(rec: dict[str, Any]) -> bool:
+    """True if a verdict record's grounded files/dirs still hash to what was stored.
+
+    A record with no `grounding_files` (a doc-grounded claim, or one recorded before
+    this field existed) carries no code relation → True: it contributes no code-
+    staleness signal. Such claims never get skipped on freshness anyway — under the
+    code-only-confirms rule they are `UNVERIFIABLE`, so their doc never goes fully
+    clean. A stored hash that no longer matches (file edited, dir membership changed,
+    path deleted) → False → reground exactly that claim."""
+    files = rec.get("grounding_files")
+    stored = rec.get("grounding_hash")
+    if not files or not stored:
+        return True
+    return bool(_relation_hash(list(files)) == stored)
+
+
+def _settle(cache: dict[str, Any]) -> list[str]:
+    """Assign each `doc-dep` claim's final ``verdict`` from two drains over the
+    dependency graph, mutating records in place. Returns the sorted **stuck** doc paths
+    (a doc with a settled-UNVERIFIABLE doc-dep claim) for the needs-human report.
+
+      * **Drain S — structural (verdict-AGNOSTIC):** a doc is *resolvable* if it has
+        ≥1 ``code``-tier claim, or every doc it depends on is resolvable. A doc that is
+        code-grounded but currently CONTRADICTED is still structurally resolvable (its
+        drift is fixable). Whatever never joins is stuck (cycle / orphan, no code exit)
+        -> the only path to ``UNVERIFIABLE``.
+      * **Drain C — cleanness (verdict-SENSITIVE, least-fixpoint):** a doc is *clean*
+        iff every claim's effective verdict is SUPPORTED. A ``doc-dep`` SUPPORTED-raw
+        claim is effectively SUPPORTED only when all its deps are clean; else PENDING
+        (or UNVERIFIABLE if not resolvable). Iterate to fixpoint.
+
+    Only ``doc-dep`` records with a SUPPORTED raw verdict are gated; a ``doc-dep`` raw
+    CONTRADICTED is real drift and is left CONTRADICTED. ``code`` / ``unresolved``
+    records are never touched."""
+    # Index doc-dep claims and per-doc structure.
+    dep_recs: list[dict[str, Any]] = []
+    deps_of: dict[str, set[str]] = {}
+    has_code: dict[str, bool] = {}
+    doc_recs: dict[str, list[dict[str, Any]]] = {}
+    for h, rec in cache.items():
+        if h == _MARKER_KEY or not isinstance(rec, dict):
+            continue
+        doc = rec.get("doc")
+        if not isinstance(doc, str) or not doc:
+            continue
+        doc_recs.setdefault(doc, []).append(rec)
+        if rec.get("grounding_tier") == "code":
+            has_code[doc] = True
+        if rec.get("grounding_tier") == "doc-dep" and _raw(rec) == "SUPPORTED":
+            dep_recs.append(rec)
+            deps_of.setdefault(doc, set()).update(rec.get("grounding_files") or [])
+
+    all_docs = set(doc_recs)
+
+    # Drain S: structural resolvability (verdict-agnostic worklist).
+    resolvable = {d for d in all_docs if has_code.get(d)}
+    grew = True
+    while grew:
+        grew = False
+        for d in all_docs - resolvable:
+            deps = deps_of.get(d)
+            if deps and all(dep in resolvable for dep in deps):
+                resolvable.add(d)
+                grew = True
+
+    def _doc_clean(d: str, clean: set[str]) -> bool:
+        recs = doc_recs.get(d) or []
+        if not recs:
+            return False
+        for r in recs:
+            if r.get("grounding_tier") == "doc-dep" and _raw(r) == "SUPPORTED":
+                deps = r.get("grounding_files") or []
+                eff = "SUPPORTED" if deps and all(x in clean for x in deps) else "OPEN"
+            else:
+                eff = _raw(r)
+            if eff != "SUPPORTED":
+                return False
+        return True
+
+    # Drain C: cleanness least-fixpoint.
+    clean: set[str] = set()
+    grew = True
+    while grew:
+        grew = False
+        for d in all_docs - clean:
+            if _doc_clean(d, clean):
+                clean.add(d)
+                grew = True
+
+    # Assign each gated doc-dep claim's verdict.
+    stuck: set[str] = set()
+    for rec in dep_recs:
+        dep_files = rec.get("grounding_files") or []
+        # No resolvable deps (an unhashable/missing dependency, or a pure self-reference
+        # whose only token was the doc itself) can never reach code -> orphan -> stuck.
+        if not dep_files or any(dep not in resolvable for dep in dep_files):
+            rec["verdict"] = "UNVERIFIABLE"
+            stuck.add(rec["doc"])
+        elif all(dep in clean for dep in dep_files):
+            rec["verdict"] = "SUPPORTED"
+        else:
+            rec["verdict"] = "PENDING"
+    return sorted(stuck)
+
+
+def _derive_record(
+    doc: str,
+    claim: str,
+    grounding: str,
+    verdict: str,
+    evidence: str,
+    explicit_files: list[str] | None,
+    audited: set[str],
+    clean_prev: set[str],
+) -> tuple[str, dict[str, Any], str]:
+    """Deterministically derive ONE cache record from a judged claim — the shared
+    classifier behind BOTH `--record` (fresh agent judgments) and `--resettle`
+    (cached raw verdicts replayed, no LLM). Classifies the grounding tier, resolves
+    the relation file list + hash, and applies the unresolved→audit/UNVERIFIABLE
+    promotion. Returns ``(claim_hash, record, raw_verdict)``.
+
+      * **Relation files.** CODE tier: the agent's explicit list, else the code paths
+        parsed from the grounding. DOC-DEP tier: the audited dependency doc(s). Hashed
+        (.md by authored body, code by raw bytes) so the claim re-grounds when a
+        dependency's body moves.
+      * **unresolved promotion.** A claim resting on NEITHER code NOR an audited doc is
+        not code-backed — the CLI decides from the human-vouch signal, splitting the
+        SOURCE (tier) but keeping STATUS honest: audit-FRESH host doc → tier ``audit``,
+        verdict SUPPORTED (a human confirmed this body; it is CLEAN); not audit-fresh →
+        UNVERIFIABLE (nobody vouched → surfaces as drift). CONTRADICTED is never
+        promoted (real drift the agent found); a doc-dep SUPPORTED is left raw for the
+        settle to gate.
+    """
+    tier = _grounding_tier(grounding, audited, clean_prev, doc)
+    if tier == "code":
+        raw_paths = list(explicit_files or []) or _code_paths_from_grounding(
+            grounding, audited
+        )
+    elif tier == "doc-dep":
+        raw_paths = _doc_paths_from_grounding(grounding, audited, doc)
+    else:
+        raw_paths = []
+    gfiles = sorted(
+        {
+            str(p).replace(str(_REPO_ROOT) + "/", "").strip("`,()[]<>\"' ")
+            for p in raw_paths
+            if str(p).strip()
+        }
+    )
+    ghash = _relation_hash(gfiles) if gfiles else None
+    raw_verdict = verdict
+    if tier == "unresolved" and verdict != "CONTRADICTED":
+        # Human-vouch on an unresolved claim → audit tier (SUPPORTED). Two independent
+        # signals: a standing per-claim confirm order (durable ledger, honoured the
+        # instant given and across every sweep) OR the host doc being audit-fresh
+        # (whole-doc manifest stamp). Either suffices; neither touches code/doc-dep
+        # tiers, so code stays the sole ground truth. CONTRADICTED is never promoted.
+        if _claim_confirmed(_claim_hash(claim, grounding)) or _doc_audit_fresh(doc):
+            tier = "audit"
+            verdict = "SUPPORTED"
+            raw_verdict = "SUPPORTED"
+        else:
+            verdict = "UNVERIFIABLE"
+            raw_verdict = "UNVERIFIABLE"
+    rec: dict[str, Any] = {
+        "doc": doc,
+        "claim": claim,
+        "grounding": grounding,
+        "raw_verdict": raw_verdict,
+        "verdict": verdict,
+        "grounding_tier": tier,
+        "evidence": evidence,
+    }
+    if gfiles and ghash and tier in ("code", "doc-dep"):
+        rec["grounding_files"] = gfiles
+        rec["grounding_hash"] = ghash
+    h = _claim_hash(claim, grounding)
+    return h, rec, raw_verdict
+
+
 def _record_verdicts(payload: dict[str, Any]) -> dict[str, Any]:
-    """Persist judged verdicts to the cache; re-stamp fully-clean docs.
+    """Persist judged verdicts to the cache; settle doc-dep claims; re-stamp clean docs.
 
-    A doc is **clean** iff every submitted verdict for it is SUPPORTED **and**
-    code-first-grounded — no CONTRADICTED, no UNVERIFIABLE, no BLOCKED. Code is the
-    source of truth; the CLI re-derives each verdict's grounding tier and **coerces**
-    a mis-labeled SUPPORTED so a sloppy judge can't launder drift:
+    The agent emits `verdict ∈ SUPPORTED | CONTRADICTED | UNVERIFIABLE` (never PENDING).
+    The CLI re-derives each verdict's grounding tier and records a `raw_verdict` (the
+    agent's judgment) alongside the settled `verdict`:
 
-      * SUPPORTED on an **unverified doc**  → **BLOCKED** (deferrable — re-queued
-        once that dependency doc is verified), `blocked_on` = the dep doc(s).
-      * SUPPORTED on an **excluded doc** (CHANGELOG) → **UNVERIFIABLE** (ungroundable
-        — that source never clears; needs code or a human, never deferred).
+      * **code** → confirms directly (SUPPORTED stands).
+      * **doc-dep** (the claim rests on an **audited** doc) → the raw SUPPORTED/
+        CONTRADICTED is kept, and a two-drain `_settle` fixpoint assigns the final
+        `verdict`: SUPPORTED only while every dependency doc is itself fully clean,
+        else a silent **PENDING**, or **UNVERIFIABLE** if the dependency can never
+        reach code (cycle / orphan — surfaced to the needs-human report).
+      * **unresolved** (an excluded / unknown `.md`, or no path) → a SUPPORTED is
+        coerced to **UNVERIFIABLE**.
 
-    Only clean docs get re-stamped (last_validated + freshness manifest hash).
+    The agent submits the **complete** current claim set per doc in one call — fresh
+    cached verdicts echoed verbatim AND newly judged ones. The CLI prunes orphans:
+    existing records for the doc are replaced by exactly what is submitted. Under-
+    submission fails safe (doc looks unclean → re-verified next run). Stores
+    `grounding_files` + `grounding_hash` per code AND doc-dep claim (`.md` deps hashed
+    by authored body) for relation-driven skip. Settle runs on the same in-RAM cache
+    before the single save (in-transaction); only clean docs get re-stamped.
     Returns a per-doc summary for the drift report.
     """
     verdicts = payload.get("verdicts") or []
     cache = _load_cache()
     audited = _audited_doc_set()
-    # Snapshot trust BEFORE this batch: a doc only counts as a clean grounding
-    # source if it was already clean in a PRIOR run. This enforces topological
-    # order — two mutually-referencing docs can't bootstrap each other's trust in
-    # one batch; the cycle stays BLOCKED until a code-grounded base breaks it.
+    # Snapshot prior cleanness (passed to the tier classifier for call-site stability).
+    # Cross-doc trust is now resolved by `_settle` over the whole cache, not from this
+    # snapshot — a mutually-referencing cycle settles to UNVERIFIABLE, not vacuous.
     clean_prev = _clean_verified_docs(cache)
+    # Prune orphans: a re-record REPLACES a doc's records (the agent submits the
+    # complete current claim set per doc, echoing reused/fresh verdicts verbatim).
+    # Drop every existing record for the docs in this payload first, so a claim the
+    # prose no longer makes can't keep re-verifying the doc (cache-driven skip reads
+    # every record of a doc) or skew its cleanliness. Under-submission fails safe:
+    # the doc looks unclean → re-verified, never falsely skipped.
+    docs_in_payload = {
+        v.get("doc")
+        for v in verdicts
+        if v.get("doc") in audited and (v.get("verdict") or "").upper() in _VERDICTS
+    }
+    cache = {
+        h: r
+        for h, r in cache.items()
+        if h == _MARKER_KEY
+        or not (isinstance(r, dict) and r.get("doc") in docs_in_payload)
+    }
     per_doc: dict[str, dict[str, list[Any]]] = {}
 
     for v in verdicts:
@@ -1036,53 +1250,171 @@ def _record_verdicts(payload: dict[str, Any]) -> dict[str, Any]:
         # stray file) is dropped — it must never cache nor trigger a re-stamp.
         if doc not in audited:
             continue
-        tier = _grounding_tier(grounding, audited, clean_prev)
-        blocked_on = list(v.get("blocked_on") or [])
-        # Coerce: code is the only source of truth, so a SUPPORTED that actually
-        # rests on a non-clean doc — or on no resolvable evidence — is not proof.
-        if verdict == "SUPPORTED" and tier == "unverified-doc":
-            verdict = "BLOCKED"
-        elif verdict == "SUPPORTED" and tier in ("excluded-doc", "unresolved"):
-            verdict = "UNVERIFIABLE"
-        if verdict == "BLOCKED" and not blocked_on:
-            blocked_on = _blocked_on_from_grounding(grounding, audited, clean_prev)
-        h = _claim_hash(claim, grounding)
-        rec: dict[str, Any] = {
-            "doc": doc,
-            "claim": claim,
-            "grounding": grounding,
-            "verdict": verdict,
-            "grounding_tier": tier,
-            "evidence": v.get("evidence", ""),
-        }
-        if verdict == "BLOCKED":
-            rec["blocked_on"] = blocked_on
+        h, rec, raw_verdict = _derive_record(
+            doc,
+            claim,
+            grounding,
+            verdict,
+            v.get("evidence", ""),
+            v.get("grounding_files"),
+            audited,
+            clean_prev,
+        )
+        verdict = rec["verdict"]
         cache[h] = rec
         slot = per_doc.setdefault(
             doc,
-            {"SUPPORTED": [], "CONTRADICTED": [], "UNVERIFIABLE": [], "BLOCKED": []},
+            {"SUPPORTED": [], "CONTRADICTED": [], "UNVERIFIABLE": [], "PENDING": []},
         )
         item: dict[str, Any] = {"claim": claim, "evidence": v.get("evidence", "")}
-        if verdict == "BLOCKED":
-            item["blocked_on"] = blocked_on
-        slot[verdict].append(item)
+        slot[raw_verdict if raw_verdict in slot else verdict].append(item)
 
+    # Settle doc-dep claims on the SAME in-RAM cache, then save ONCE (in-transaction —
+    # no second load/save TOCTOU). Settle assigns SUPPORTED/PENDING/UNVERIFIABLE from
+    # the whole cache, so a doc-dep in THIS payload sees deps recorded in earlier runs.
+    stuck = _settle(cache)
     _save_cache(cache)
 
-    clean_docs = [
-        doc
-        for doc, s in per_doc.items()
-        if not s["CONTRADICTED"] and not s["UNVERIFIABLE"] and not s["BLOCKED"]
-    ]
+    # Clean docs = re-derive from the SETTLED cache (a doc-dep demoted to PENDING must
+    # NOT re-stamp), intersected with this payload's docs (only judge what we just saw).
+    settled_clean = _clean_verified_docs(cache)
+    clean_docs = [doc for doc in per_doc if doc in settled_clean]
     restamped = _restamp(clean_docs) if clean_docs else []
-    # Refresh the deadlock report: if verification is now genuinely stuck (every
-    # doc judged once, a mutually cross-dependent BLOCKED set remains), write it;
-    # otherwise delete any stale one. Fail-soft — never break a --record.
+    # Needs-human report: written iff every audited doc judged once AND a stuck set
+    # remains. Fail-soft — never break a --record.
     try:
-        _refresh_blocked_report(cache)
+        _refresh_needs_human_report(cache, stuck)
     except Exception:
         pass
-    return {"per_doc": per_doc, "clean": clean_docs, "restamped": restamped}
+    # Count `audit`-tier claims (SUPPORTED-by-human-vouch, no code referent) across the
+    # docs in this payload, for the honest one-line report banner.
+    audit_grounded = sum(
+        1
+        for r in cache.values()
+        if isinstance(r, dict)
+        and r.get("doc") in per_doc
+        and r.get("grounding_tier") == "audit"
+    )
+    return {
+        "per_doc": per_doc,
+        "clean": clean_docs,
+        "restamped": restamped,
+        "audit_grounded": audit_grounded,
+    }
+
+
+def _resettle() -> dict[str, Any]:
+    """Re-run ONLY the deterministic half — tier classification + the settle fixpoint —
+    over already-judged verdicts, WITHOUT re-invoking the agent/LLM. The prose-vs-code
+    judgment is the expensive part and is keyed on (prose, grounded code); it is NEVER
+    recomputed here. What this DOES recompute is everything downstream of a *settle
+    input* that can move without the doc's own prose or code changing:
+
+      * the ``_grounding_tier`` logic itself (a verifier bug-fix / classifier change),
+      * a dependency doc's cleanliness (a doc-dep claim settles when its dep is clean),
+      * an audit stamp (an ``unresolved`` claim's audit-tier promotion / demotion).
+
+    Each cached record's stored ``raw_verdict`` (the agent's original judgment, kept
+    FIXED) is replayed through ``_derive_record`` + ``_settle``. A record whose host doc
+    is no longer audited is pruned. Re-stamping is SCOPED: only docs whose settled
+    outcome actually CHANGED this run are re-stamped (and only if now clean) — an
+    untouched clean doc keeps its existing ``last_validated``, so a re-settle never
+    re-claims today's date across the whole audited set. Returns the same summary shape
+    as ``_record_verdicts``, with ``per_doc`` limited to the changed docs.
+    """
+    cache = _load_cache()
+    audited = _audited_doc_set()
+    clean_prev = _clean_verified_docs(cache)
+    # Key the prior outcome by the RECOMPUTED claim hash (== the post-replay key), so
+    # change detection is stable even if a record was stored under a legacy key.
+    before: dict[str, tuple[Any, Any]] = {}
+    before_doc: dict[str, str] = {}
+    for h, r in cache.items():
+        if h == _MARKER_KEY or not isinstance(r, dict):
+            continue
+        doc = r.get("doc")
+        if not isinstance(doc, str):
+            continue
+        bh = _claim_hash(r.get("claim", ""), r.get("grounding", ""))
+        before[bh] = (r.get("verdict"), r.get("grounding_tier"))
+        before_doc[bh] = doc
+    new_cache: dict[str, Any] = {}
+    if _MARKER_KEY in cache:
+        new_cache[_MARKER_KEY] = cache[_MARKER_KEY]
+    doc_of: dict[str, set[str]] = {}  # doc -> set of its claim hashes (new)
+    for h, r in cache.items():
+        if h == _MARKER_KEY or not isinstance(r, dict):
+            continue
+        doc = r.get("doc")
+        if not isinstance(doc, str) or doc not in audited:
+            continue  # prune records whose doc is no longer audited
+        raw = (r.get("raw_verdict") or r.get("verdict") or "").upper()
+        if raw not in _VERDICTS:
+            continue
+        nh, nrec, _rawv = _derive_record(
+            doc,
+            r.get("claim", ""),
+            r.get("grounding", ""),
+            raw,
+            r.get("evidence", ""),
+            r.get("grounding_files"),
+            audited,
+            clean_prev,
+        )
+        new_cache[nh] = nrec
+        doc_of.setdefault(doc, set()).add(nh)
+
+    stuck = _settle(new_cache)
+    _save_cache(new_cache)
+
+    after = {
+        h: (r.get("verdict"), r.get("grounding_tier"))
+        for h, r in new_cache.items()
+        if h != _MARKER_KEY and isinstance(r, dict)
+    }
+    # A doc CHANGED if any of its (new or vanished) records' settled outcome differs.
+    changed_docs: set[str] = set()
+    for doc, hashes in doc_of.items():
+        if any(before.get(h) != after.get(h) for h in hashes):
+            changed_docs.add(doc)
+    for bh in before:
+        if bh not in after:  # a record was pruned (doc de-audited / claim re-keyed)
+            changed_docs.add(before_doc[bh])
+
+    settled_clean = _clean_verified_docs(new_cache)
+    restamp_targets = sorted(d for d in changed_docs if d in settled_clean)
+    restamped = _restamp(restamp_targets) if restamp_targets else []
+    try:
+        _refresh_needs_human_report(new_cache, stuck)
+    except Exception:
+        pass
+
+    # Report the FULL post-settle drift across every doc (so a still-open CONTRADICTED/
+    # UNVERIFIABLE that did not move is never hidden) — `_render_report` lists only the
+    # open ones. Re-stamping above stayed scoped to docs whose outcome actually changed.
+    per_doc: dict[str, dict[str, list[Any]]] = {}
+    for doc, hashes in doc_of.items():
+        slot = per_doc.setdefault(
+            doc,
+            {"SUPPORTED": [], "CONTRADICTED": [], "UNVERIFIABLE": [], "PENDING": []},
+        )
+        for h in hashes:
+            r = new_cache[h]
+            key = r["verdict"] if r["verdict"] in slot else "SUPPORTED"
+            slot[key].append(
+                {"claim": r.get("claim", ""), "evidence": r.get("evidence", "")}
+            )
+    audit_grounded = sum(
+        1
+        for r in new_cache.values()
+        if isinstance(r, dict) and r.get("grounding_tier") == "audit"
+    )
+    return {
+        "per_doc": per_doc,
+        "clean": restamp_targets,
+        "restamped": restamped,
+        "audit_grounded": audit_grounded,
+    }
 
 
 def _restamp(docs: list[str]) -> list[str]:
@@ -1109,14 +1441,115 @@ def _restamp(docs: list[str]) -> list[str]:
     return done
 
 
+def _confirm_claims(paths: list[str]) -> dict[str, Any]:
+    """Record a durable human-confirm order for the still-open EXTERNAL claims of the
+    named docs, then re-settle so the verdicts flip SUPPORTED immediately.
+
+    This is the one-step "mark verified by human" order. It is COMPLETE the moment it
+    runs: the order is written to the durable ledger (`_CONFIRMED_LEDGER`) — which no
+    later `--record` can erase — and a `_resettle` applies it to the verdict cache in
+    the same call, re-stamping the now-clean docs. No separate manifest re-stamp or
+    follow-up sweep is required.
+
+    Scope is enforced here (decision: only no-code externals). A claim is confirmable
+    only when its grounding tier is ``unresolved`` (no code path, no audited-doc dep).
+    A ``code`` / ``doc-dep`` claim is REFUSED with guidance — code stays the sole
+    ground truth, so such a claim must first be re-prosed to drop its code referent
+    (becoming external) before a human may vouch for it. A claim already SUPPORTED is
+    skipped (nothing to confirm). Returns ``{confirmed, refused, skipped, resettle}``.
+    """
+    audited = _audited_doc_set()
+    cache = _load_cache()
+    ledger = _load_confirmed()
+    today = date.today().isoformat()
+    wanted = {p for p in paths if p in audited}
+    confirmed: list[dict[str, str]] = []
+    refused: list[dict[str, str]] = []
+    skipped: list[dict[str, str]] = []
+    for r in cache.values():
+        if not isinstance(r, dict) or r.get("doc") not in wanted:
+            continue
+        doc = r["doc"]
+        claim = r.get("claim", "")
+        grounding = r.get("grounding", "")
+        tier = r.get("grounding_tier")
+        verdict = (r.get("verdict") or "").upper()
+        row = {"doc": doc, "claim": claim, "tier": tier or "?"}
+        if verdict == "SUPPORTED" and tier != "audit":
+            skipped.append(row)  # already confirmed against code/doc-dep
+            continue
+        if tier in ("code", "doc-dep"):
+            refused.append(row)  # code is ground truth — re-prose to external first
+            continue
+        # unresolved (or already audit-tier) → confirmable external claim.
+        h = _claim_hash(claim, grounding)
+        ledger[h] = {
+            "doc": doc,
+            "claim": claim,
+            "grounding": grounding,
+            "confirmed_by": "human",
+            "confirmed_at": today,
+        }
+        confirmed.append(row)
+    if confirmed:
+        _save_confirmed(ledger)
+    # Apply immediately: replay cached raw verdicts through the now-updated ledger so
+    # the freshly-confirmed claims become audit-tier SUPPORTED and clean docs re-stamp.
+    resettle = _resettle() if confirmed else {"per_doc": {}, "restamped": []}
+    return {
+        "confirmed": confirmed,
+        "refused": refused,
+        "skipped": skipped,
+        "resettle": resettle,
+    }
+
+
+def _render_confirm(result: dict[str, Any]) -> str:
+    """One-screen human summary of a `--confirm` order: what was vouched, what was
+    refused (and why), and which docs re-stamped clean."""
+    lines: list[str] = []
+    conf = result.get("confirmed", [])
+    ref = result.get("refused", [])
+    skip = result.get("skipped", [])
+    restamped = (result.get("resettle") or {}).get("restamped", [])
+    if conf:
+        lines.append(
+            f"Human-confirmed {len(conf)} external claim(s) → SUPPORTED (audit tier):"
+        )
+        lines += [f"  ✓ {c['doc']}: {c['claim'][:80]}" for c in conf]
+    if restamped:
+        lines.append("Re-stamped clean: " + ", ".join(sorted(restamped)))
+    if ref:
+        lines.append(
+            f"\nREFUSED {len(ref)} code-grounded claim(s) — code is ground truth. "
+            "FIRST read the live prose, don't trust this cached tier:\n"
+            "  • prose already external (e.g. 'library default, not overridden')? "
+            "the `code` grounding is STALE — re-sweep the doc so the agent re-grounds "
+            "it (likely → SUPPORTED, code tier). Do NOT re-prose.\n"
+            "  • prose really names our code? re-prose to drop the referent, then "
+            "re-sweep + confirm."
+        )
+        lines += [f"  ✗ [{c['tier']}] {c['doc']}: {c['claim'][:80]}" for c in ref]
+    if skip:
+        lines.append(f"\nSkipped {len(skip)} already-supported claim(s).")
+    if not (conf or ref or skip):
+        lines.append(
+            "No open external claims on the named doc(s) — nothing to confirm."
+        )
+    return "\n".join(lines)
+
+
 def _render_report(summary: dict[str, Any]) -> str:
-    """Human drift report: CONTRADICTED + UNVERIFIABLE + BLOCKED, per doc."""
+    """Human drift report: CONTRADICTED + UNVERIFIABLE per doc. PENDING is deliberately
+    NOT listed — a transient, silent 'waiting on a not-yet-clean dependency' state,
+    surfaced to a human only if it later proves genuinely stuck (needs-human report).
+    """
     per_doc = summary["per_doc"]
     lines: list[str] = []
     drift = 0
 
     def _open(s: dict[str, list[Any]]) -> list[Any]:
-        return s["CONTRADICTED"] + s["UNVERIFIABLE"] + s.get("BLOCKED", [])
+        return s["CONTRADICTED"] + s["UNVERIFIABLE"]
 
     for doc in sorted(per_doc):
         s = per_doc[doc]
@@ -1131,15 +1564,14 @@ def _render_report(summary: dict[str, Any]) -> str:
         for item in s["UNVERIFIABLE"]:
             drift += 1
             lines.append(f"  [UNVERIFIABLE] {item['claim']}")
-        for item in s.get("BLOCKED", []):
-            drift += 1
-            deps = ", ".join(item.get("blocked_on") or []) or "an unverified doc"
-            lines.append(
-                f"  [BLOCKED] {item['claim']}"
-                f"  (groundable only via {deps} — deferred until it is verified)"
-            )
     n_docs = sum(1 for d in per_doc if _open(per_doc[d]))
     head = f"Doc verification: {drift} open item(s) across {n_docs} doc(s)."
+    n_audit = summary.get("audit_grounded", 0)
+    if n_audit:
+        head += (
+            f"\n{n_audit} claim(s) grounded by human audit "
+            "(audit tier — no code referent; vouched by the freshness stamp)."
+        )
     if summary["restamped"]:
         head += f"\nRe-stamped {len(summary['restamped'])} clean doc(s): " + ", ".join(
             summary["restamped"]
@@ -1184,6 +1616,28 @@ def _render_report(summary: dict[str, Any]) -> str:
     help="Process gate (no LLM): exit non-zero if the current diff was not verified.",
 )
 @click.option(
+    "--resettle",
+    "resettle",
+    is_flag=True,
+    help=(
+        "Re-run the deterministic settle (no LLM): replay cached raw verdicts through "
+        "the current tier/settle logic. Use when a SETTLE INPUT moved without prose/"
+        "code changing — a verifier-logic fix, a dependency doc going clean, or an "
+        "audit stamp. Re-stamps only docs whose outcome changed."
+    ),
+)
+@click.option(
+    "--confirm",
+    "confirm",
+    is_flag=True,
+    help=(
+        "Human-confirm the open EXTERNAL claims of the named PATHS as verified (a "
+        "durable, one-step order). Writes the standing confirm ledger and re-settles "
+        "so they flip SUPPORTED (audit tier) immediately. Refuses code-grounded "
+        "claims — re-prose those to drop the code referent first."
+    ),
+)
+@click.option(
     "--url",
     envvar="BRAINPALACE_URL",
     default=None,
@@ -1197,34 +1651,13 @@ def _render_report(summary: dict[str, Any]) -> str:
     help="Top-k for the code→doc lookup (default: 8).",
 )
 @click.option(
-    "--skip-fresh",
-    "skip_fresh_days",
-    type=int,
-    default=DEFAULT_SKIP_FRESH_DAYS,
-    show_default=True,
-    help=(
-        "Skip docs already prose-verified AND validated in the last N days AND "
-        "unchanged since (verdict-cache hit + age < N + manifest-hash match) — "
-        "applied in EVERY mode (--all/--changed/explicit) so a run never re-judges "
-        "a doc already confirmed fresh. A doc whose last_validated came only from "
-        "the human audit (never prose-judged) is never skipped. Kept below the "
-        "weekly cadence (7d) so last week's sweep re-verifies; above one sweep's "
-        "multi-day span so a sweep across sessions/days isn't redone. An edited doc "
-        "(changed hash) is never skipped; code-affected docs (--changed via index) "
-        "are never skipped. 0 disables."
-    ),
-)
-@click.option(
-    "--reset",
-    "reset_audit",
+    "--force",
     is_flag=True,
     help=(
-        "Reset the verification baseline: stamp TODAY as the reset epoch so every "
-        "doc validated before now counts as stale. Subsequent sweeps then re-verify "
-        "the whole audited set incrementally (draining across sessions via the "
-        "normal skip-fresh window) — for when you want to restart verification from "
-        "scratch. Writes verify_reset_at to .claude/.doc-verify-sweep.json; mutates "
-        "no docs and re-stamps nothing. This is an action: it resolves no packet."
+        "Re-verify even docs whose prose AND grounded code are unchanged — the "
+        "manual full re-verify (use with --all). Default skipping is relation-"
+        "driven: a doc is skipped only while its prose and every grounded file/dir "
+        "are unchanged, so an idle repo costs nothing and there is no time window."
     ),
 )
 @click.option(
@@ -1240,10 +1673,11 @@ def verify_docs_command(
     base: str,
     record_file: str | None,
     check_marker: bool,
+    resettle: bool,
+    confirm: bool,
     url: str | None,
     top_k: int,
-    skip_fresh_days: int,
-    reset_audit: bool,
+    force: bool,
     json_output: bool,
 ) -> None:
     """Advisory prose-drift verification (deterministic half; agent judges).
@@ -1255,39 +1689,28 @@ def verify_docs_command(
       brainpalace verify-docs --changed             # done-boundary (net diff vs main)
       brainpalace verify-docs --all                 # FULL baseline — heavy; batch it
     emits {base, claim_hash, docs:[{path,trigger,affected_by,prose,cached_verdicts}]}.
-    Skip-fresh (default 6 days) is applied in EVERY mode: docs already prose-verified
-    (verdict-cache hit), validated < N days ago AND unchanged since are dropped. Docs
-    never prose-judged (human-audit stamp only), edited docs (changed hash), and
-    code-affected docs are never skipped; --skip-fresh 0 disables it for the run.
-
-    \b
-    Restart verification from scratch (durable, multi-session):
-      brainpalace verify-docs --reset       # mark the whole set stale, then sweep
-    --reset stamps today as the baseline epoch so docs validated earlier count as
-    stale; later runs re-verify them incrementally. It mutates no docs.
+    Skipping is RELATION-DRIVEN (no time window): a doc is dropped only while its
+    authored prose AND every grounded file/dir are unchanged. An idle repo costs
+    nothing; any change re-enters the doc automatically. Docs never prose-judged
+    (human-audit stamp only) and code-affected entries are never skipped.
+    For a full manual re-verify: --all --force.
 
     \b
     Record judged verdicts (the agent pipes them back):
       brainpalace verify-docs --record verdicts.json
       brainpalace verify-docs --record -            # stdin
-    payload {verdicts:[{doc,claim,grounding,verdict,evidence,blocked_on?}]},
-    verdict ∈ SUPPORTED|CONTRADICTED|UNVERIFIABLE|BLOCKED. The CLI re-derives each
-    grounding's tier and coerces a mis-labeled SUPPORTED: on an unverified doc →
-    BLOCKED (deferred until that dep is verified); on an excluded doc (CHANGELOG) →
-    UNVERIFIABLE. Clean docs (all SUPPORTED) are re-stamped; the report lists
-    CONTRADICTED + UNVERIFIABLE + BLOCKED. When every doc is judged but a cross-
-    dependent BLOCKED cycle remains, a deadlock report is written to
-    .claude/doc-verify-blocked.md for a human (deleted once the cycle clears).
+    payload {verdicts:[{doc,claim,grounding,grounding_files?,verdict,evidence}]},
+    verdict ∈ SUPPORTED|CONTRADICTED|UNVERIFIABLE (the agent never emits PENDING). The
+    agent submits the COMPLETE current claim set per doc (fresh cached verdicts echoed
+    verbatim + new judgments). The CLI re-derives each grounding's tier: code →
+    confirms; an audited-doc dependency (doc-dep) → settled to SUPPORTED/PENDING/
+    UNVERIFIABLE by a two-drain fixpoint (PENDING is a silent transient; UNVERIFIABLE
+    means a human is needed, see .claude/doc-verify-needs-human.md); an excluded/unknown
+    .md → UNVERIFIABLE. Stores grounding_files + grounding_hash per code AND doc-dep
+    claim (.md deps hashed by authored body). Clean docs are re-stamped; the report
+    lists CONTRADICTED + UNVERIFIABLE (PENDING stays silent).
     """
     _require_repo()
-    if reset_audit:
-        when = _stamp_reset()
-        click.echo(
-            f"verify-docs: verification baseline reset to {when}. Every doc "
-            "validated before now is stale; subsequent sweeps will re-verify the "
-            "whole audited set incrementally. No docs were modified."
-        )
-        return
     if check_marker:
         # B5 process gate (advisory, opt-in for pre-push wiring): did verify-docs
         # run for THIS diff? Compares the current net-diff fingerprint to the one
@@ -1308,6 +1731,34 @@ def verify_docs_command(
             f"Affected by changes to: {', '.join(relevant[:8])}"
             + (" …" if len(relevant) > 8 else "")
         )
+
+    if confirm:
+        # Durable human-confirm order: vouch the named docs' open EXTERNAL claims and
+        # re-settle so they go SUPPORTED now. The order persists in the ledger, so it
+        # survives even if no later sweep runs. Refuses code-grounded claims.
+        if not paths:
+            raise SystemExit(
+                "verify-docs --confirm: name the doc PATHS whose external claims you "
+                "are confirming. See --help."
+            )
+        result = _confirm_claims(list(paths))
+        _stamp_weekly_clock()
+        if json_output:
+            click.echo(json.dumps(result, indent=2))
+        else:
+            click.echo(_render_confirm(result))
+        return
+
+    if resettle:
+        # Deterministic re-settle (no LLM): replay cached raw verdicts through the
+        # current tier/settle logic. For settle-input changes (verifier-logic fix, a
+        # dependency going clean, an audit stamp) — never re-judges prose vs code.
+        summary = _resettle()
+        if json_output:
+            click.echo(json.dumps(summary, indent=2))
+        else:
+            click.echo(_render_report(summary))
+        return
 
     if record_file is not None:
         raw = (
@@ -1363,54 +1814,33 @@ def verify_docs_command(
             "verify_docs.py (and narrow DEFAULT_GLOBS if it shouldn't be tracked).",
             err=True,
         )
-    # Skip-fresh is ON by default in EVERY mode (--all, --changed, explicit paths);
-    # disable per-run with --skip-fresh 0. The hash guard in _filter_fresh keeps it
-    # safe (an edited doc has a changed hash → kept). A `--reset` baseline (epoch)
-    # further forces re-verification of docs stamped before the reset. Only
-    # `code-affected` entries are exempt: their prose is unchanged and their stamp
-    # may be fresh, but the code they document moved, so skipping them would hide
-    # exactly the drift the index lookup surfaced.
-    effective_days = skip_fresh_days
-    if effective_days > 0:
-        reset_epoch = _load_reset_epoch()
-        protected = [e for e in entries if e.get("trigger") == "code-affected"]
-        filterable = [e for e in entries if e.get("trigger") != "code-affected"]
-        kept, skipped = _filter_fresh(filterable, effective_days, reset_epoch)
-        entries = protected + kept
-        if skipped:
-            # stderr — stdout carries the JSON packet the agent parses.
-            click.echo(
-                f"verify-docs: skipped {len(skipped)} fresh doc(s) "
-                f"(validated < {effective_days}d, unchanged since): "
-                f"{', '.join(skipped)}. Use --skip-fresh 0 to include them.",
-                err=True,
-            )
-    # Defer blocked docs: a doc whose remaining claims ground only on a still-
-    # unverified dependency is dropped from this packet until that dependency is
-    # verified (it re-enters automatically then). This stops a cross-dependent doc
-    # being re-judged every batch. Explicit paths / code-affected entries bypass it.
-    cache = _load_cache()
-    entries, deferred = _filter_blocked(entries, cache)
-    if deferred:
+    # Relation-driven skip (no time window): drop docs whose prose AND every
+    # grounded file/dir are unchanged. Code-affected entries (--changed via index)
+    # are always kept — the code they document moved. --force skips nothing.
+    protected = [e for e in entries if e.get("trigger") == "code-affected"]
+    filterable = [e for e in entries if e.get("trigger") != "code-affected"]
+    kept, skipped = _filter_fresh(filterable, force=force)
+    entries = protected + kept
+    if skipped:
+        # stderr — stdout carries the JSON packet the agent parses.
         click.echo(
-            f"verify-docs: deferred {len(deferred)} blocked doc(s) "
-            f"(waiting on an unverified dependency): {', '.join(deferred)}.",
+            f"verify-docs: skipped {len(skipped)} unchanged doc(s) "
+            f"(prose + grounded code unchanged): {', '.join(skipped)}. "
+            "Use --force to re-verify them anyway.",
             err=True,
         )
-    # Order smallest-prose-first: cheap docs (and, by correlation, dependency
-    # leaves) lead, so a budget-capped batch clears more docs and builds the
-    # verified base that unblocks dependents. Final sort — after every filter.
+    # Order smallest-prose-first so cheap docs (and, by correlation, dependency leaves)
+    # lead and a budget-capped batch clears more docs. Final sort — after every filter.
     entries = _order_by_cost(entries)
-    # When nothing is left to judge, surface a deadlock report iff verification is
-    # genuinely stuck (every doc judged, a cross-dependent BLOCKED cycle remains).
-    if not entries:
-        dead = _refresh_blocked_report(cache)
-        if dead:
-            click.echo(
-                f"verify-docs: no docs left to judge — {len(dead)} doc(s) are "
-                f"cross-dependent and cannot be verified. See {_BLOCKED_REPORT}.",
-                err=True,
-            )
+    # Nothing left to judge: surface the needs-human report iff verification is stuck.
+    # The settle (in --record) maintains it; here we only echo its existence so a sweep
+    # that finds nothing tells the human why.
+    if not entries and _NEEDS_HUMAN_REPORT.exists():
+        click.echo(
+            f"verify-docs: no docs left to judge — see {_NEEDS_HUMAN_REPORT} for "
+            "doc-dep claims that need a human decision.",
+            err=True,
+        )
     # Grounding needs the server. If there is anything to judge, ensure it is up —
     # try one restart, and STOP (emit no packet) if that fails, rather than let the
     # agent ground against a dead server and record false UNVERIFIABLE verdicts.

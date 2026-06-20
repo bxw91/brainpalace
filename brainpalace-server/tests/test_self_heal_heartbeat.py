@@ -70,6 +70,32 @@ def test_heal_dashboard_relaunches_immediately_when_down(monkeypatch, tmp_path):
     dash.ensure_running.assert_called_once_with(open_browser_if_new=False)
 
 
+@pytest.mark.parametrize("flag", ["1", "true", "TRUE", "yes"])
+def test_heal_dashboard_no_relaunch_when_no_dashboard_env_set(
+    monkeypatch, tmp_path, flag
+):
+    """A server started with `--no-dashboard` sets BRAINPALACE_NO_DASHBOARD; its
+    self-heal must NOT spawn a dashboard even when one is down and autostart is on
+    — otherwise it races an external manager and drifts the port (8787 -> 8788)."""
+    monkeypatch.setenv("BRAINPALACE_NO_DASHBOARD", flag)
+    dash = _install_fake_dashboard(
+        monkeypatch, tmp_path, status={"status": "not_running"}, autostart=True
+    )
+    sh._heal_dashboard(sh.HealState())
+    dash.ensure_running.assert_not_called()
+
+
+def test_heal_dashboard_relaunches_when_no_dashboard_env_falsey(monkeypatch, tmp_path):
+    """A falsey/empty BRAINPALACE_NO_DASHBOARD must not suppress self-heal — only
+    an explicit truthy opt-out gates it."""
+    monkeypatch.setenv("BRAINPALACE_NO_DASHBOARD", "")
+    dash = _install_fake_dashboard(
+        monkeypatch, tmp_path, status={"status": "not_running"}, autostart=True
+    )
+    sh._heal_dashboard(sh.HealState())
+    dash.ensure_running.assert_called_once_with(open_browser_if_new=False)
+
+
 @pytest.mark.asyncio
 async def test_heal_once_restarts_dead_watcher_and_worker(monkeypatch):
     # watcher: 1 dead task, 1 auto folder expected -> heal (stop+start)

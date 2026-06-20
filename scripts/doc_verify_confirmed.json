@@ -1,0 +1,16 @@
+{
+  "a2e89bcda1913e6d4150f0a01d6de9c9256ff87c5e095de1dceca35abd323556": {
+    "claim": "BM25 k1=1.5 (term frequency saturation) and b=0.75 (length normalization factor)",
+    "confirmed_at": "2026-06-20",
+    "confirmed_by": "human",
+    "doc": "brainpalace-plugin/skills/using-brainpalace/references/bm25-search-guide.md",
+    "grounding": "External: standard bm25s library defaults; BrainPalace does not set or override these values"
+  },
+  "aa2ee7ca9e830f43e8999a29edc4d4bc2e888b00e3f4654555c4d6283013110e": {
+    "claim": "OpenAI API key format starts with sk-proj- or sk-",
+    "confirmed_at": "2026-06-20",
+    "confirmed_by": "human",
+    "doc": "brainpalace-plugin/skills/configuring-brainpalace/references/troubleshooting-guide.md",
+    "grounding": "(none)"
+  }
+}

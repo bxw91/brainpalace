@@ -38,7 +38,7 @@ context: brainpalace
 agent: setup-assistant
 skills:
   - using-brainpalace
-last_validated: 2026-06-18
+last_validated: 2026-06-20
 ---
 
 # BrainPalace Start
@@ -348,5 +348,5 @@ Each started server is registered in the global registry (`~/.local/state/brainp
 | --timeout | integer | 120 | Startup timeout in seconds (default: 120) |
 | --json | bool | false | Output as JSON |
 | --strict | bool | false | Enable strict mode: fail on critical provider configuration errors |
-| --no-dashboard | bool | false | Do not auto-start the web dashboard (overrides dashboard.autostart) |
+| --no-dashboard | bool | false | Do not bring up the web dashboard from this server, by any path (overrides dashboard.autostart; also stops the server's self-heal from re-spawning one for its lifetime) |
 <!--/GENERATED-->

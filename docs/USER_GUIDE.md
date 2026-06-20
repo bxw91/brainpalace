@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-18
+last_validated: 2026-06-20
 ---
 
 # BrainPalace User Guide
@@ -1024,8 +1024,9 @@ The CLI resolves the server URL in this priority:
 
 1. **Environment variable**: `BRAINPALACE_URL`
 2. **Runtime file**: `.brainpalace/runtime.json` (searches cwd upward)
-3. **Config file**: `config.yaml` (if contains URL)
-4. **Default**: `http://127.0.0.1:8000`
+3. **Owning project, server down**: if an owning `.brainpalace/` project is found but no live server validates, the CLI raises `ServerNotReachableError` (it does **not** fall through to config.yaml)
+4. **Config file**: `config.yaml` `server.url` — consulted only when the cwd has no owning `.brainpalace/` project
+5. **Default**: `http://127.0.0.1:8000`
 
 ### Config Discovery Order
 

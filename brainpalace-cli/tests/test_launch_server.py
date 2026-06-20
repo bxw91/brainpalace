@@ -77,6 +77,42 @@ def test_launch_server_sets_strict_env(tmp_path, monkeypatch):
     assert calls["env"]["BRAINPALACE_STRICT_MODE"] == "true"
 
 
+def test_launch_server_sets_no_dashboard_env(tmp_path, monkeypatch):
+    """no_dashboard=True propagates BRAINPALACE_NO_DASHBOARD so the spawned
+    server's self-heal won't re-spawn a dashboard behind --no-dashboard."""
+    calls: dict[str, object] = {}
+
+    class FakeProc:
+        pid = 100
+
+        def poll(self) -> None:
+            return None
+
+    monkeypatch.setattr(
+        start_mod.subprocess,
+        "Popen",
+        lambda cmd, **kw: calls.update(env=kw.get("env")) or FakeProc(),
+    )
+    monkeypatch.setattr(start_mod, "check_health", lambda url, timeout=3.0: True)
+    monkeypatch.setattr(start_mod, "update_registry", lambda *a, **k: None)
+
+    state_dir = tmp_path / ".brainpalace"
+    state_dir.mkdir()
+    (state_dir / "config.json").write_text(
+        json.dumps({"bind_host": "127.0.0.1", "port": 8126, "auto_port": False})
+    )
+
+    start_mod.launch_server(
+        project_root=tmp_path, state_dir=state_dir, timeout=5, no_dashboard=True
+    )
+    assert calls["env"]["BRAINPALACE_NO_DASHBOARD"] == "true"
+
+    # Default (no_dashboard omitted) must NOT set the var.
+    calls.clear()
+    start_mod.launch_server(project_root=tmp_path, state_dir=state_dir, timeout=5)
+    assert "BRAINPALACE_NO_DASHBOARD" not in calls["env"]
+
+
 def test_launch_server_raises_on_unhealthy(tmp_path, monkeypatch):
     """A server that never becomes healthy raises RuntimeError within timeout."""
 

@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-18
+last_validated: 2026-06-20
 ---
 
 # BrainPalace Troubleshooting Guide
@@ -89,7 +89,7 @@ cat .brainpalace/runtime.json | jq '.base_url'
 
 **Override URL if Needed:**
 ```bash
-export DOC_SERVE_URL="http://localhost:49321"
+export BRAINPALACE_URL="http://localhost:49321"
 brainpalace status
 ```
 
@@ -242,8 +242,8 @@ ls -la /path/to/your/docs
 
 **Lower Threshold:**
 ```bash
-# Default is 0.7, try lower values
-brainpalace query "your search" --threshold 0.3
+# Default is 0.3, try lower values
+brainpalace query "your search" --threshold 0.1
 ```
 
 **Try Different Modes:**
@@ -466,7 +466,7 @@ If these solutions don't resolve your issue:
 ```bash
 # Verify folder has watch mode enabled
 brainpalace folders list
-# Look for "Watch: auto" column
+# Look for the "Watch" column showing the value "auto"
 
 # Re-add folder with watch mode
 brainpalace folders add ./src --watch auto --include-code
@@ -524,7 +524,7 @@ brainpalace cache clear --yes
 ### Install-Agent Not Finding Plugin Directory
 
 **Symptoms:**
-- `brainpalace install-agent --agent claude` fails with "plugin directory not found"
+- `brainpalace install-agent --agent claude` fails with "Could not find canonical plugin directory. Use --plugin-dir to specify location."
 
 **Solutions:**
 
@@ -538,10 +538,11 @@ ls ~/.claude/plugins/brainpalace/commands/
 
 ### Uninstall Not Removing Files
 
-There is no CLI to remove a plugin — delete its dir directly (project + global):
+Use the guided teardown command:
 
 ```bash
-rm -rf .claude/plugins/brainpalace ~/.claude/plugins/brainpalace
+brainpalace uninstall                 # Guided teardown
+brainpalace uninstall --yes --json    # Global-only, non-interactive
 ```
 
 ---

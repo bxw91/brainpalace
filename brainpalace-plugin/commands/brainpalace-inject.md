@@ -72,7 +72,7 @@ parameters:
     default: false
 skills:
   - using-brainpalace
-last_validated: 2026-06-18
+last_validated: 2026-06-20
 ---
 
 # Content Injection
@@ -192,7 +192,7 @@ def process_chunk(chunk: dict) -> dict:
     return chunk
 ```
 
-**Input keys available:** `chunk_id`, `content`, `source`, `language`, `start_line`, `end_line`, `summary`
+**Input keys available** (from chunk metadata; not the chunk text): `chunk_id`, `source`, `language`, `start_line`, `end_line`, and `section_summary` (optional). Additional metadata keys (`file_name`, `chunk_index`, `total_chunks`, `source_type`, etc.) are also present.
 
 **Constraints:**
 - Values must be scalars (str, int, float, bool) — lists and dicts are stripped for ChromaDB compatibility

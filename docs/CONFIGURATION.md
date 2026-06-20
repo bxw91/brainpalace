@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-18
+last_validated: 2026-06-20
 ---
 
 # Configuration Reference
@@ -35,7 +35,7 @@ Settings are resolved in this order (first match wins):
 1. **Command-line flags**: `brainpalace start --port 8080`
 2. **Environment variables**: `export API_PORT=8080`
 3. **Project config**: `.brainpalace/config.json`
-4. **Global config**: `~/.brainpalace/config.json` (future)
+4. **Global config**: `~/.config/brainpalace/config.yaml` (XDG, preferred; legacy `~/.brainpalace/config.yaml` is deprecated and logs a warning)
 5. **Built-in defaults**: Defined in `settings.py`
 
 ---
@@ -241,7 +241,7 @@ export GRAPH_STORE_TYPE="simple"
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `GRAPH_USE_CODE_METADATA` | `true` | Extract from AST metadata |
-| `GRAPH_USE_LLM_EXTRACTION` | `true` | Use LLM for extraction |
+| `GRAPH_USE_LLM_EXTRACTION` | `false` | Legacy flag: use LLM for entity extraction (superseded by `GRAPH_DOC_EXTRACTOR`) |
 | `GRAPH_EXTRACTION_MODEL` | `claude-haiku-4-5` | LLM model for extraction |
 | `GRAPH_MAX_TRIPLETS_PER_CHUNK` | `10` | Limit per chunk |
 
@@ -319,7 +319,7 @@ a reindex job completes, ensuring freshness after every index update.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `QUERY_CACHE_TTL` | `300` | Time-to-live for cached query results in seconds. Set to a high value for mostly-static indexes, lower for frequently-updated ones. |
+| `QUERY_CACHE_TTL` | `3600` | Time-to-live for cached query results in seconds (default 1 hour). Set to a high value for mostly-static indexes, lower for frequently-updated ones. |
 | `QUERY_CACHE_MAX_SIZE` | `256` | Maximum number of query results to cache. When full, least-recently-used entries are evicted by TTLCache. |
 
 Notes:
@@ -819,8 +819,8 @@ GRAPH_USE_LLM_EXTRACTION=false
 BrainPalace searches for `.env` files in this order:
 
 1. Current working directory: `./.env`
-2. Server package directory: `brainpalace-server/.env`
-3. Project root: `../.env`
+2. Project root: `../.env`
+3. Server package directory: `brainpalace-server/.env`
 
 **Best Practice**: Place `.env` in your project root and add to `.gitignore`.
 
