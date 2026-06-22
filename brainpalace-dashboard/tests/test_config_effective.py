@@ -6,6 +6,9 @@ Resolution precedence is project > global > code default. Powers the dashboard's
 
 from __future__ import annotations
 
+import yaml
+
+import brainpalace_dashboard.services.config_svc as mod
 from brainpalace_dashboard.services.config_svc import MASK, ConfigService
 
 
@@ -51,13 +54,14 @@ def test_global_fallback_when_project_absent(tmp_path, monkeypatch):
 
 def test_project_override_inherited_falls_to_code_default(tmp_path, monkeypatch):
     state = _project(tmp_path)
-    # reranker.enabled set at project, absent from global → inherited = code default.
-    (state / "config.yaml").write_text("reranker:\n  enabled: false\n")
+    # reranker.enabled set at project (true), absent from global → inherited =
+    # the code default (false).
+    (state / "config.yaml").write_text("reranker:\n  enabled: true\n")
     _write_global(tmp_path, monkeypatch, "")
 
     entry = ConfigService().effective(state)["reranker.enabled"]
     assert entry["source"] == "project"
-    assert entry["inherited"] == {"value": True, "source": "default"}
+    assert entry["inherited"] == {"value": False, "source": "default"}
 
 
 def test_default_fallback_when_unset_everywhere(tmp_path, monkeypatch):
@@ -66,9 +70,9 @@ def test_default_fallback_when_unset_everywhere(tmp_path, monkeypatch):
     _write_global(tmp_path, monkeypatch, "")
 
     eff = ConfigService().effective(state)
-    # reranker.enabled defaults True in ui_schema.DEFAULTS
+    # reranker.enabled defaults False in ui_schema.DEFAULTS
     assert eff["reranker.enabled"] == {
-        "value": True,
+        "value": False,
         "source": "default",
         "inherited": None,
     }
@@ -94,3 +98,41 @@ def test_absent_key_is_omitted(tmp_path, monkeypatch):
     eff = ConfigService().effective(state)
     # A made-up key set nowhere (and not in DEFAULTS) must not appear.
     assert "embedding.nonsense_key" not in eff
+
+
+def test_effective_global_resolves_file_over_default(tmp_path, monkeypatch):
+    monkeypatch.setattr(mod, "get_xdg_config_dir", lambda: tmp_path)
+    # graphrag.enabled defaults True in code; set it false in the global file.
+    (tmp_path / "config.yaml").write_text("graphrag:\n  enabled: false\n")
+
+    svc = ConfigService()
+    eff = svc.effective_global()
+
+    # A key set in the global file -> source "global", inherited = code default.
+    assert eff["graphrag.enabled"]["value"] is False
+    assert eff["graphrag.enabled"]["source"] == "global"
+    assert eff["graphrag.enabled"]["inherited"] == {
+        "value": mod.DEFAULTS["graphrag.enabled"],
+        "source": "default",
+    }
+    # A key absent from the file -> source "default", no inherited.
+    some_default = next(k for k in mod.DEFAULTS if k != "graphrag.enabled")
+    assert eff[some_default]["source"] == "default"
+    assert eff[some_default]["inherited"] is None
+
+
+def test_unset_global_removes_key_and_reports_default(tmp_path, monkeypatch):
+    monkeypatch.setattr(mod, "get_xdg_config_dir", lambda: tmp_path)
+    (tmp_path / "config.yaml").write_text("graphrag:\n  enabled: false\n")
+
+    svc = ConfigService()
+    res = svc.unset_global(["graphrag.enabled"])
+
+    assert res["removed"] == ["graphrag.enabled"]
+    assert res["effective"]["graphrag.enabled"] == {
+        "value": mod.DEFAULTS["graphrag.enabled"],
+        "source": "default",
+    }
+    # File no longer carries the key (emptied parent pruned).
+    on_disk = yaml.safe_load((tmp_path / "config.yaml").read_text()) or {}
+    assert "graphrag" not in on_disk

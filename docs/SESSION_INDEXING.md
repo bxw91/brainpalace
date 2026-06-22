@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-18
+last_validated: 2026-06-22
 ---
 
 # Session Indexing
@@ -261,6 +261,28 @@ Session recall follows the tiered ladder (see [SESSION_CONTEXT.md](SESSION_CONTE
 2. **Summaries / decisions / graph** — added in 060/100.
 3. **Raw JSONL on disk** — the verbatim L3 tier; always the ground truth, never
    copied into the store.
+
+### Recall is gated on the live feature flags (hard off)
+
+Session-derived data is only reachable via search **while its producing feature
+is on**. The gate is per-feature and HARD — there is no per-query override, so an
+explicit `--source-types session_turn` simply returns nothing when the feature is
+off:
+
+| Feature OFF | Hidden from every query/search |
+|-------------|--------------------------------|
+| Vector indexing (`session_indexing.enabled: false`) | `session_turn` chunks |
+| Summarization (`session_extraction.mode: off`) | `session_summary` + `session_decision` chunks, and auto-promoted (`origin != user`) curated memory |
+
+Rationale: a disabled feature's data can be **stale**, so it must not leak into
+results or the SessionStart context block. Manually-saved facts
+(`brainpalace remember`, `origin: user`) are unaffected — always recallable via
+`brainpalace recall`. The SessionStart context block also makes its **session-recall
+instruction conditional**: the agent is told prior sessions/decisions are
+searchable only when the matching feature is live; with both off, no such line
+appears. `brainpalace status` shows the live state on the **Session Recall** row.
+Re-enabling a feature restores its recall immediately (no re-index needed for data
+already in the store).
 
 ## Submitting an extraction (summaries, decisions, triplets)
 

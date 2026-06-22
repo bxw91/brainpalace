@@ -151,6 +151,18 @@ exemption, open the prompt with `# BRAINPALACE_EXEMPT: <reason of 20+ chars>`.
 
 ---
 
+## Session Memory — Optional, Separately Gated
+
+Recall of prior AI-coding sessions (past-session transcript chunks and distilled
+decisions) is an **optional feature, gated independently** of document search.
+When it is enabled, the SessionStart context block tells you so and how to reach
+it; when it is off, that data is hidden from results and no recall instruction
+appears. So never assume session recall is always available — act on the context
+block you actually receive, not on a fixed expectation. Manually-saved memory
+(`brainpalace remember`) is always available via `brainpalace recall`.
+
+---
+
 ## When Not to Use
 
 This skill focuses on **searching and querying**. Do NOT use for installation,

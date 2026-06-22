@@ -1,6 +1,6 @@
 """HTTP client for Doc-Serve API communication."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from types import TracebackType
 from typing import Any
 
@@ -58,6 +58,9 @@ class IndexingStatus:
     migration: dict[str, Any] | None = None
     graph_index: dict[str, Any] | None = None
     features: dict[str, Any] | None = None
+    #: Index-drift warnings (embedding provider/model or storage backend changed
+    #: away from what the existing index was built with). Empty when consistent.
+    index_warnings: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -230,6 +233,7 @@ class DocServeClient:
             embedding_cache=data.get("embedding_cache"),
             graph_index=data.get("graph_index"),
             features=data.get("features"),
+            index_warnings=data.get("index_warnings") or [],
         )
 
     def query(

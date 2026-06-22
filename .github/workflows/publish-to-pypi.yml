@@ -295,6 +295,22 @@ jobs:
         with:
           version: 2.4.1
 
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build dashboard SPA
+        # static/ is gitignored generated output (no longer committed). Build it
+        # from frontend source here so `poetry build` below packages a fresh SPA
+        # into the wheel/sdist (forced in via pyproject `include`). End users then
+        # `pip install` a prebuilt SPA with no node toolchain. Mirrors the local
+        # `task build:dashboard-ui` and dev-install-from-source.sh rebuild.
+        working-directory: brainpalace-dashboard/frontend
+        run: |
+          npm ci
+          npm run build
+
       - name: Pin brainpalace-cli to the released version
         run: |
           # In source the dashboard depends on the CLI by path (develop install

@@ -18,8 +18,10 @@ from brainpalace_dashboard import version_display
 from brainpalace_dashboard.config import (
     TOKEN_MASK,
     DashboardConfigError,
+    dashboard_config_effective,
     load_dashboard_config,
     save_dashboard_config,
+    unset_dashboard_config,
 )
 from brainpalace_dashboard.server import read_dashboard_runtime
 from brainpalace_dashboard.services.update_check import get_update_status
@@ -72,12 +74,16 @@ class SettingsPatch(BaseModel):
     autostart: bool | None = None
     time_format: str | None = None
     date_format: str | None = None
+    # Fields to REMOVE so they fall back to the code default — staged in the form
+    # and applied in the same Save (no separate immediate /unset call).
+    unset: list[str] = []
 
 
 @router.patch("", response_model=None)
 def patch_settings(body: SettingsPatch) -> dict[str, Any] | JSONResponse:
     current = load_dashboard_config()
     values = body.model_dump(exclude_unset=True)
+    unset = values.pop("unset", [])
 
     # Which submitted fields actually change a restart-sensitive setting?
     restart_required: list[str] = []
@@ -89,9 +95,34 @@ def patch_settings(body: SettingsPatch) -> dict[str, Any] | JSONResponse:
         new = values["token"] or None
         if new != current.token:
             restart_required.append("token")
+    # Reverting a restart-sensitive field to its code default also needs a restart.
+    for field in RESTART_FIELDS:
+        if field in unset and field not in restart_required:
+            restart_required.append(field)
 
     try:
-        save_dashboard_config(values)
+        save_dashboard_config(values, unset)
     except DashboardConfigError as e:
         return JSONResponse(status_code=422, content={"errors": e.errors})
     return {"ok": True, "restart_required": restart_required}
+
+
+class SettingsUnset(BaseModel):
+    """Dashboard fields to remove so they fall back to the code default."""
+
+    fields: list[str]
+
+
+@router.get("/effective")
+def get_settings_effective() -> dict[str, Any]:
+    """Per-field effective value + provenance (file > code default).
+
+    Powers the inherit-first control on the Settings tab; ``token`` is masked.
+    """
+    return dashboard_config_effective()
+
+
+@router.post("/unset", response_model=None)
+def unset_settings(body: SettingsUnset) -> Any:
+    """Remove dashboard fields so they fall back to the code default."""
+    return unset_dashboard_config(body.fields)

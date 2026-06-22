@@ -51,6 +51,37 @@ def test_allows_when_server_unreachable(client, monkeypatch):
     assert resp.status_code == 200
 
 
+def test_noop_materializing_inherited_default_not_blocked(monkeypatch, tmp_path):
+    """The reported bug: project leaves embedding unset (inherits the default),
+    the save writes that SAME effective default (null -> openai /
+    text-embedding-3-large). Effective embedding is unchanged, so it must NOT be
+    blocked even with indexed data present."""
+    # Isolate from any real global config so effective() falls back to defaults.
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    sd = tmp_path / ".brainpalace"
+    sd.mkdir()
+    (sd / "config.yaml").write_text("graphrag:\n  enabled: true\n")  # no embedding
+    monkeypatch.setattr(rc, "_state_dir_for", lambda id_: sd)
+    client = TestClient(create_app())
+
+    async def fp(id_):
+        return {"has_data": True, "doc_count": 10, "chunk_count": 99}
+
+    monkeypatch.setattr(rc.proxy_service, "fetch_fingerprint", fp)
+    resp = client.patch(
+        "/dashboard/api/instances/x/config",
+        json={
+            "values": {
+                "embedding": {
+                    "provider": "openai",
+                    "model": "text-embedding-3-large",
+                }
+            }
+        },
+    )
+    assert resp.status_code == 200, resp.json()
+
+
 def test_force_reindex_skips_guard_and_triggers(client, monkeypatch):
     triggered = {}
 

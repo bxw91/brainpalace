@@ -58,3 +58,47 @@ async def test_no_memory_service_still_builds():
     assert "project_facts" in ctx.sections
     assert "memory" not in ctx.sections
     assert ctx.memory_count == 0
+
+
+def _patch_flags(monkeypatch, *, vector: bool, summarization: bool):
+    monkeypatch.setattr(
+        "brainpalace_server.config.session_config.session_recall_flags",
+        lambda *a, **k: (vector, summarization),
+    )
+
+
+async def test_summarization_off_hides_session_derived_memory(mem, monkeypatch):
+    await mem.add("user fact kept", section="Decisions", origin="user")
+    await mem.add("promoted decision", section="Decisions", origin="session:abc")
+    _patch_flags(monkeypatch, vector=False, summarization=False)
+    svc = SessionContextService(memory_service=mem)
+    ctx = svc.build(project_root="/p", branch="main", doc_count=1)
+    assert "user fact kept" in ctx.text
+    assert "promoted decision" not in ctx.text
+    assert ctx.memory_count == 1
+
+
+async def test_summarization_on_keeps_session_derived_memory(mem, monkeypatch):
+    await mem.add("user fact", section="Decisions", origin="user")
+    await mem.add("promoted decision", section="Decisions", origin="session:abc")
+    _patch_flags(monkeypatch, vector=True, summarization=True)
+    svc = SessionContextService(memory_service=mem)
+    ctx = svc.build(project_root="/p", branch="main", doc_count=1)
+    assert "promoted decision" in ctx.text
+    assert ctx.memory_count == 2
+
+
+def test_recall_line_present_when_a_feature_on(mem, monkeypatch):
+    _patch_flags(monkeypatch, vector=True, summarization=True)
+    svc = SessionContextService(memory_service=mem)
+    ctx = svc.build(project_root="/p", branch="main", doc_count=1)
+    assert "session_recall" in ctx.sections
+    assert "prior decisions & past sessions" in ctx.text
+
+
+def test_recall_line_absent_when_both_off(mem, monkeypatch):
+    _patch_flags(monkeypatch, vector=False, summarization=False)
+    svc = SessionContextService(memory_service=mem)
+    ctx = svc.build(project_root="/p", branch="main", doc_count=1)
+    assert "session_recall" not in ctx.sections
+    assert "Session recall" not in ctx.text

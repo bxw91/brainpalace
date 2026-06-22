@@ -186,7 +186,8 @@ async def cache_economics(
     stats = cache.get_stats()
     disk = await cache.get_disk_stats()
     provider_settings = load_provider_settings()
-    provider = str(provider_settings.embedding.provider)
+    _provider = provider_settings.embedding.provider
+    provider = getattr(_provider, "value", str(_provider))
     model = str(provider_settings.embedding.model)
     price = lookup_embedding_price(provider, model)
 

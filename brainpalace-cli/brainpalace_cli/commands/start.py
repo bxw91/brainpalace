@@ -17,7 +17,7 @@ from rich.panel import Panel
 
 from brainpalace_cli.config import resolve_project_root
 from brainpalace_cli.migration import resolve_state_dir_with_fallback
-from brainpalace_cli.xdg_paths import migrate_legacy_paths
+from brainpalace_cli.xdg_paths import get_xdg_config_dir, migrate_legacy_paths
 
 console = Console()
 
@@ -25,6 +25,10 @@ STATE_DIR_NAME = ".brainpalace"
 LOCK_FILE = "brainpalace.lock"
 PID_FILE = "brainpalace.pid"
 RUNTIME_FILE = "runtime.json"
+
+# Bind-config keys that resolve project (config.json) > global (XDG config.json)
+# > code default. Only these are inherited from the global layer.
+BIND_KEYS = ("bind_host", "port_range_start", "port_range_end", "auto_port")
 
 # A live server busy indexing can miss a health probe; retry before deciding it
 # is unresponsive (and never replace it with a duplicate).
@@ -85,13 +89,39 @@ def _dashboard_json(dash: dict[str, Any] | None) -> dict[str, Any]:
     }
 
 
+def read_global_bind() -> dict[str, Any]:
+    """Machine-wide bind defaults from the XDG ``config.json`` (bind keys only).
+
+    The parallel of the global ``config.yaml`` for the runtime bind: a project
+    that does not pin a bind key inherits it from here, before the code default.
+    Returns ``{}`` when the file is absent or unreadable.
+    """
+    path = get_xdg_config_dir() / "config.json"
+    if not path.exists():
+        return {}
+    try:
+        loaded = json.loads(path.read_text())
+    except Exception:
+        return {}
+    if not isinstance(loaded, dict):
+        return {}
+    return {k: loaded[k] for k in BIND_KEYS if k in loaded}
+
+
 def read_config(state_dir: Path) -> dict[str, Any]:
-    """Read configuration from state directory."""
+    """Read bind configuration: project ``config.json`` over global bind defaults.
+
+    A bind key the project omits is inherited from the machine-wide XDG
+    ``config.json`` (``read_global_bind``), then the code default applied by the
+    ``config.get(key, <default>)`` call sites. Non-bind keys in the project file
+    pass through unchanged.
+    """
+    merged: dict[str, Any] = dict(read_global_bind())
     config_path = state_dir / "config.json"
     if config_path.exists():
-        result: dict[str, Any] = json.loads(config_path.read_text())
-        return result
-    return {}
+        project: dict[str, Any] = json.loads(config_path.read_text())
+        merged.update(project)
+    return merged
 
 
 def read_runtime(state_dir: Path) -> dict[str, Any] | None:

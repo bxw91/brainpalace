@@ -67,6 +67,33 @@ def _stale_decision_penalty() -> float:
     return float(p)
 
 
+#: Chunk source types produced by each optional session feature. When the
+#: feature is OFF its data is HIDDEN from search (hard off, no per-query
+#: override) — a disabled feature must not leak possibly-stale data.
+_VECTOR_SESSION_TYPES = ("session_turn",)
+_SUMMARY_SESSION_TYPES = ("session_summary", "session_decision")
+
+
+def hidden_session_source_types() -> set[str]:
+    """Source types to suppress from results given the live recall flags.
+
+    Resolves :func:`session_recall_flags` (fails OPEN ⇒ empty set). Vector
+    indexing OFF hides raw ``session_turn`` chunks; summarization OFF hides
+    ``session_summary`` / ``session_decision`` chunks. Channel-agnostic: callers
+    apply it as a Chroma ``$nin`` (vector/hybrid) AND a post-filter (covers
+    bm25, which can only include-list source types).
+    """
+    from brainpalace_server.config.session_config import session_recall_flags
+
+    vector_on, summarization_on = session_recall_flags()
+    hidden: set[str] = set()
+    if not vector_on:
+        hidden.update(_VECTOR_SESSION_TYPES)
+    if not summarization_on:
+        hidden.update(_SUMMARY_SESSION_TYPES)
+    return hidden
+
+
 def _parse_created_at(value: Any) -> datetime | None:
     """Parse a chunk's ``created_at`` metadata into a tz-aware UTC datetime.
 
@@ -328,6 +355,16 @@ class QueryService:
         if any([request.source_types, request.languages, request.file_paths]):
             results = self._filter_results(results, request)
 
+        # Hard-off session recall: drop chunks whose producing feature is
+        # disabled (channel-agnostic — also covers bm25, which the where-clause
+        # cannot exclude). A disabled feature's possibly-stale data is never
+        # returned, even with an explicit source_types request.
+        hidden = hidden_session_source_types()
+        if hidden:
+            results = [
+                r for r in results if getattr(r, "source_type", None) not in hidden
+            ]
+
         # Time-decay (Phase 110): age-weight before rerank/truncate so newer
         # chunks survive into top_k. No-op when disabled.
         if decay_active:
@@ -465,12 +502,31 @@ class QueryService:
             logger.warning("memory boost recall failed: %s", exc)
             return response
 
+        # Hard-off session recall: when summarization is disabled, hide
+        # auto-promoted session-derived memory (origin != "user") — keep only
+        # manually-saved `brainpalace remember` facts. MemoryHit carries no
+        # origin, so cross-reference the stored entries by id.
+        from brainpalace_server.config.session_config import session_recall_flags
+
+        _, summarization_on = session_recall_flags()
+        user_only_ids: set[str] | None = None
+        if not summarization_on:
+            try:
+                user_only_ids = {
+                    m.id for m in ms.load() if (m.origin or "user") == "user"
+                }
+            except Exception as exc:  # noqa: BLE001 — fail open, never break a query
+                logger.warning("memory origin filter skipped: %s", exc)
+                user_only_ids = None
+
         boost = getattr(settings, "MEMORY_BOOST", 1.5)
         floor = getattr(settings, "MEMORY_MIN_SCORE", 0.35)
         existing = {r.chunk_id for r in response.results}
         mem_results: list[QueryResult] = []
         for h in hits:
             if h.score < floor or h.id in existing:
+                continue
+            if user_only_ids is not None and h.id not in user_only_ids:
                 continue
             mem_results.append(
                 QueryResult(
@@ -992,6 +1048,14 @@ class QueryService:
                 conditions.append({"source_type": source_types[0]})
             else:
                 conditions.append({"source_type": {"$in": source_types}})
+
+        # Hard-off session recall: exclude source types whose producing feature
+        # is disabled, so the vector/hybrid fetch never surfaces them. The
+        # execute_query post-filter covers bm25 and is the authority; this just
+        # spares the backend returning rows we would drop.
+        hidden = hidden_session_source_types()
+        if hidden:
+            conditions.append({"source_type": {"$nin": sorted(hidden)}})
 
         if languages:
             if len(languages) == 1:

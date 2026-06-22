@@ -30,11 +30,12 @@ const schema: UiSchema = {
 
 function renderForm(props: {
   values: ConfigValues;
-  onSave?: (v: ConfigValues, restart: boolean) => void;
+  onSave?: (v: ConfigValues, unset: string[], restart: boolean) => void;
   errors?: Record<string, string>;
   schema?: UiSchema;
   effective?: EffectiveConfig;
-  onUnset?: (dotpath: string) => void;
+  inheritFrom?: "global" | "default";
+  localSource?: "project" | "global" | "file";
 }) {
   const onSave = props.onSave ?? vi.fn();
   render(
@@ -44,13 +45,14 @@ function renderForm(props: {
       effective={props.effective}
       onSave={onSave}
       errors={props.errors}
-      onUnset={props.onUnset}
+      inheritFrom={props.inheritFrom ?? "default"}
+      localSource={props.localSource}
     />,
   );
   return onSave;
 }
 
-describe("SchemaForm provenance", () => {
+describe("SchemaForm inherit-first control", () => {
   const provSchema: UiSchema = {
     sections: [
       {
@@ -66,59 +68,72 @@ describe("SchemaForm provenance", () => {
     ],
   };
 
-  it("shows provenance only for unset fields; nothing for locally-set ones", () => {
+  it("inherit option shows the global value (only when a global value exists)", () => {
     renderForm({
       schema: provSchema,
+      inheritFrom: "global",
+      localSource: "project",
       values: { embedding: { provider: "openai" } }, // provider set locally
       effective: {
-        "embedding.provider": { value: "openai", source: "project" },
+        "embedding.provider": {
+          value: "openai",
+          source: "project",
+          inherited: { value: "ollama", source: "global" },
+        },
         "embedding.base_url": { value: "http://host:11434", source: "global" },
       },
     });
-    // Locally-set field: no default/inherited hint.
-    expect(
-      screen.queryByTestId("field-default-embedding.provider"),
-    ).toBeNull();
-    // Unset field inheriting from global: hint shows the global value, input empty.
-    expect(
-      screen.getByTestId("field-default-embedding.base_url"),
-    ).toHaveTextContent("inherited from global: http://host:11434");
-    expect(
-      (screen.getByTestId("text-embedding.base_url") as HTMLInputElement).value,
-    ).toBe("");
+    // Locally-set enum: inherit option present but unchecked; options visible.
+    const provInherit = screen.getByTestId("field-inherit-embedding.provider");
+    expect(provInherit).toHaveAttribute("aria-checked", "false");
+    expect(provInherit).toHaveTextContent(/using global value: ollama/i);
+    expect(screen.getByTestId("enum-embedding.provider-openai")).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    // Inheriting text field with a global value: inherit option checked + the
+    // input ALWAYS visible (no Override gate).
+    const buInherit = screen.getByTestId("field-inherit-embedding.base_url");
+    expect(buInherit).toHaveTextContent(
+      /using global value: http:\/\/host:11434/i,
+    );
+    expect(buInherit).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByTestId("text-embedding.base_url")).toBeInTheDocument();
   });
 
-  it("shows a source badge per field and an unset control on project-set keys", () => {
-    const onUnset = vi.fn();
+  it("no global value → no inherit option, just the control", () => {
     renderForm({
       schema: provSchema,
+      inheritFrom: "global",
+      localSource: "project",
+      values: {},
+      effective: {
+        // Only a code default, no global override → instance has nothing to inherit.
+        "embedding.base_url": { value: "", source: "default" },
+      },
+    });
+    expect(screen.queryByTestId("field-inherit-embedding.base_url")).toBeNull();
+    expect(screen.getByTestId("text-embedding.base_url")).toBeInTheDocument();
+  });
+
+  it("selecting inherit on a locally-set key stages an unset (no immediate call)", () => {
+    const onSave = renderForm({
+      schema: provSchema,
+      inheritFrom: "global",
+      localSource: "project",
       values: { embedding: { provider: "ollama" } },
       effective: {
-        // project-set, would inherit the global value if unset
         "embedding.provider": {
           value: "ollama",
           source: "project",
           inherited: { value: "openai", source: "global" },
         },
-        "embedding.base_url": { value: "http://host:11434", source: "global" },
       },
-      onUnset,
     });
-    // Source badges reflect provenance.
-    expect(
-      screen.getByTestId("field-source-embedding.provider"),
-    ).toHaveTextContent("project");
-    expect(
-      screen.getByTestId("field-source-embedding.base_url"),
-    ).toHaveTextContent("global");
-    // Unset control only on the project-set field; shows the inherited target.
-    const unset = screen.getByTestId("field-unset-embedding.provider");
-    expect(unset).toHaveTextContent("openai from global");
-    expect(
-      screen.queryByTestId("field-unset-embedding.base_url"),
-    ).toBeNull();
-    fireEvent.click(unset);
-    expect(onUnset).toHaveBeenCalledWith("embedding.provider");
+    fireEvent.click(screen.getByTestId("field-inherit-embedding.provider"));
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    // provider reverted: omitted from values, present in the unset list.
+    expect(onSave).toHaveBeenCalledWith({}, ["embedding.provider"], false);
   });
 });
 
@@ -162,15 +177,13 @@ describe("SchemaForm provider-driven rendering", () => {
       schema: provDriveSchema,
       values: { embedding: { provider: "openai" } },
     });
-    // openai's models are the presets
     expect(
       screen.getByTestId("preset-embedding.model-text-embedding-3-large"),
     ).toBeTruthy();
     expect(
       screen.queryByTestId("preset-embedding.model-nomic-embed-text"),
     ).toBeNull();
-    // switch to ollama -> presets change
-    fireEvent.click(screen.getByRole("button", { name: "ollama" }));
+    fireEvent.click(screen.getByTestId("enum-embedding.provider-ollama"));
     expect(
       screen.getByTestId("preset-embedding.model-nomic-embed-text"),
     ).toBeTruthy();
@@ -185,7 +198,7 @@ describe("SchemaForm provider-driven rendering", () => {
       values: { embedding: { provider: "openai" } },
     });
     expect(screen.queryByTestId("field-embedding.base_url")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "ollama" }));
+    fireEvent.click(screen.getByTestId("enum-embedding.provider-ollama"));
     expect(screen.getByTestId("field-embedding.base_url")).toBeTruthy();
   });
 
@@ -234,61 +247,82 @@ describe("SchemaForm", () => {
     const onSave = renderForm({
       values: { embedding: { provider: "openai", api_key: "********" } },
     });
-    fireEvent.click(screen.getByRole("button", { name: "ollama" }));
+    fireEvent.click(screen.getByTestId("enum-embedding.provider-ollama"));
     expect(onSave).not.toHaveBeenCalled(); // batched
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
     expect(onSave).toHaveBeenCalledWith(
       { embedding: { provider: "ollama", api_key: "********" } },
+      [],
       false,
     );
-  });
-
-  it("enum has no free-text input", () => {
-    renderForm({ values: { embedding: { provider: "openai" } } });
-    const providerGroup = screen.getByTestId("field-embedding.provider");
-    expect(providerGroup.querySelector("input[type=text]")).toBeNull();
   });
 
   it("Save + Restart passes restart=true", () => {
     const onSave = renderForm({
       values: { embedding: { provider: "openai", api_key: "********" } },
     });
-    fireEvent.click(screen.getByRole("button", { name: "ollama" }));
+    fireEvent.click(screen.getByTestId("enum-embedding.provider-ollama"));
     fireEvent.click(screen.getByRole("button", { name: /save \+ restart/i }));
     expect(onSave).toHaveBeenCalledWith(
       { embedding: { provider: "ollama", api_key: "********" } },
+      [],
       true,
     );
   });
 
   it("action bar is always shown; Save is disabled until dirty", () => {
     renderForm({ values: { embedding: { provider: "openai" } } });
-    // Always visible for discoverability, but Save is disabled while clean.
     expect(screen.getByTestId("unsaved-banner")).toHaveTextContent(
       /no unsaved changes/i,
     );
     expect(screen.getByTestId("btn-save")).toBeDisabled();
-    fireEvent.click(screen.getByRole("button", { name: "ollama" }));
+    fireEvent.click(screen.getByTestId("enum-embedding.provider-ollama"));
     expect(screen.getByTestId("unsaved-banner")).toHaveTextContent(
       /1 unsaved change/i,
     );
     expect(screen.getByTestId("btn-save")).not.toBeDisabled();
   });
 
-  it("Discard reverts the draft to the original values", () => {
+  it("Discard reverts an override back to the original", () => {
     const onSave = renderForm({ values: { embedding: { provider: "openai" } } });
-    fireEvent.click(screen.getByRole("button", { name: "ollama" }));
+    fireEvent.click(screen.getByTestId("enum-embedding.provider-ollama"));
     fireEvent.click(screen.getByRole("button", { name: /discard/i }));
-    // Bar stays (always visible) but reverts to the clean state.
     expect(screen.getByTestId("unsaved-banner")).toHaveTextContent(
       /no unsaved changes/i,
     );
-    // provider button "openai" is selected again
-    expect(screen.getByRole("button", { name: "openai" })).toHaveAttribute(
-      "aria-pressed",
+    expect(screen.getByTestId("enum-embedding.provider-openai")).toHaveAttribute(
+      "aria-checked",
       "true",
     );
     expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it("Discard reverts a staged inherit too", () => {
+    renderForm({
+      inheritFrom: "global",
+      localSource: "project",
+      values: { embedding: { provider: "openai" } },
+      effective: {
+        "embedding.provider": {
+          value: "openai",
+          source: "project",
+          inherited: { value: "ollama", source: "global" },
+        },
+      },
+    });
+    // Revert to inherit -> dirty; Discard -> back to the override.
+    fireEvent.click(screen.getByTestId("field-inherit-embedding.provider"));
+    expect(screen.getByTestId("unsaved-banner")).toHaveTextContent(
+      /1 unsaved change/i,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /discard/i }));
+    expect(screen.getByTestId("unsaved-banner")).toHaveTextContent(
+      /no unsaved changes/i,
+    );
+    expect(screen.getByTestId("enum-embedding.provider-openai")).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
   });
 
   it("renders a secret text field masked (type=password)", () => {
@@ -300,7 +334,7 @@ describe("SchemaForm", () => {
     expect(input).toHaveAttribute("type", "password");
   });
 
-  it("renders a toggle and batches its change", () => {
+  it("renders a toggle as On/Off radios and batches its change", () => {
     const toggleSchema: UiSchema = {
       sections: [
         {
@@ -321,9 +355,13 @@ describe("SchemaForm", () => {
       schema: toggleSchema,
       values: { graphrag: { enabled: false } },
     });
-    fireEvent.click(screen.getByTestId("toggle-graphrag.enabled"));
+    fireEvent.click(screen.getByTestId("toggle-graphrag.enabled-on"));
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
-    expect(onSave).toHaveBeenCalledWith({ graphrag: { enabled: true } }, false);
+    expect(onSave).toHaveBeenCalledWith(
+      { graphrag: { enabled: true } },
+      [],
+      false,
+    );
   });
 
   it("clamps an int stepper to min/max", () => {
@@ -350,11 +388,10 @@ describe("SchemaForm", () => {
       schema: intSchema,
       values: { query: { top_k: 3 } },
     });
-    // increment beyond max stays at 3
     fireEvent.click(screen.getByTestId("int-inc-query.top_k"));
     fireEvent.click(screen.getByTestId("int-dec-query.top_k"));
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
-    expect(onSave).toHaveBeenCalledWith({ query: { top_k: 2 } }, false);
+    expect(onSave).toHaveBeenCalledWith({ query: { top_k: 2 } }, [], false);
   });
 
   it("preset field hides the text input until Custom is chosen", () => {
@@ -380,7 +417,6 @@ describe("SchemaForm", () => {
       values: { embedding: { model: "text-embedding-3-small" } },
     });
     const group = screen.getByTestId("field-embedding.model");
-    // a preset is selected -> no free text input visible
     expect(group.querySelector("input[type=text]")).toBeNull();
     fireEvent.click(within(group).getByRole("button", { name: /custom/i }));
     expect(group.querySelector("input[type=text]")).not.toBeNull();
@@ -422,7 +458,7 @@ describe("SchemaForm", () => {
     ).toHaveTextContent("Distills a finished chat");
   });
 
-  it("surfaces defaults: label hint + the default enum option marked when unset", () => {
+  it("surfaces the code default on the inherit option when unset", () => {
     const defSchema: UiSchema = {
       sections: [
         {
@@ -437,36 +473,19 @@ describe("SchemaForm", () => {
               options: ["chroma", "postgres"],
               default: "chroma",
             },
-            {
-              key: "watch_debounce_ms",
-              dotpath: "session_indexing.watch_debounce_ms",
-              label: "Watch debounce ms",
-              widget: "int",
-              min: 0,
-              default: 30000,
-            },
           ],
         },
       ],
     };
-    // Nothing set -> defaults are surfaced.
-    renderForm({ schema: defSchema, values: {} });
-
-    // Label hint shows the default.
-    expect(
-      screen.getByTestId("field-default-storage.backend"),
-    ).toHaveTextContent("default: chroma");
-    // The default enum option is marked while unset, but NOT "selected".
-    const chroma = screen.getByTestId("enum-storage.backend-chroma");
-    expect(chroma).toHaveAttribute("data-selected", "false");
-    expect(chroma).toHaveTextContent(/default/i);
-    // Unset int is EMPTY (— placeholder); the default is shown beside the label,
-    // never baked into the input.
-    expect(
-      screen.getByTestId("int-value-session_indexing.watch_debounce_ms"),
-    ).toHaveTextContent("—");
-    expect(
-      screen.getByTestId("field-default-session_indexing.watch_debounce_ms"),
-    ).toHaveTextContent("default: 30000");
+    renderForm({
+      schema: defSchema,
+      values: {},
+      effective: {
+        "storage.backend": { value: "chroma", source: "default", inherited: null },
+      },
+    });
+    const inherit = screen.getByTestId("field-inherit-storage.backend");
+    expect(inherit).toHaveTextContent(/using code default: chroma/i);
+    expect(inherit).toHaveAttribute("aria-checked", "true");
   });
 });

@@ -1,71 +1,121 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ServerCog, RotateCcw } from "lucide-react";
 import {
   getSettings,
+  getSettingsEffective,
   patchSettings,
-  type DateFormat,
-  type TimeFormat,
 } from "../api/client";
+import { SchemaForm } from "../components/SchemaForm/SchemaForm";
 import { ConfirmDialog } from "../components/ConfirmDialog";
-import { ToggleField } from "../components/SchemaForm/widgets/ToggleField";
 import { useToast } from "../components/Toast";
-
-type Draft = {
-  host: string;
-  port: number;
-  poll_s: number;
-  token: string;
-  autostart: boolean;
-  time_format: TimeFormat;
-  date_format: DateFormat;
-};
+import type { ConfigValues, EffectiveConfig, UiSchema } from "../api/types";
 
 /**
  * Control-plane ("server") settings — the dashboard's OWN config, separate from
  * the per-instance Config tab. Edits the `dashboard:` block of the XDG
- * config.yaml. host/port/token take effect on the next `brainpalace dashboard`
- * restart; poll_s applies on browser reload.
+ * config.yaml. Reuses the SchemaForm so it gets the same inline inherit-first
+ * control + Discard + staged save: the provenance layer is file > code default,
+ * so each field shows `using code default: X`. host/port/token take effect on
+ * the next `brainpalace dashboard` restart; poll_s applies on browser reload.
  */
+
+// Single-scope schema for the 7 dashboard settings (dotpath == flat key).
+const SETTINGS_SCHEMA: UiSchema = {
+  sections: [
+    {
+      key: "dashboard",
+      label: "Dashboard settings",
+      fields: [
+        {
+          key: "host",
+          dotpath: "host",
+          label: "Bind host",
+          widget: "text",
+          default: "127.0.0.1",
+          help: "Interface the dashboard binds. Applies on dashboard restart.",
+        },
+        {
+          key: "port",
+          dotpath: "port",
+          label: "Port",
+          widget: "int",
+          default: 8787,
+          min: 1,
+          max: 65535,
+          help: "Preferred port (scanned upward). Restart to apply.",
+        },
+        {
+          key: "poll_s",
+          dotpath: "poll_s",
+          label: "Poll interval (s)",
+          widget: "int",
+          default: 5,
+          min: 1,
+          help: "SPA fallback poll. Applies on reload.",
+        },
+        {
+          key: "token",
+          dotpath: "token",
+          label: "Bearer token",
+          widget: "text",
+          secret: true,
+          default: null, // no code default → inherit option hidden, input only
+          help: "Guards /dashboard/api/** when set. Clear to disable. Restart to apply.",
+        },
+        {
+          key: "autostart",
+          dotpath: "autostart",
+          label: "Auto-start on brainpalace start",
+          widget: "toggle",
+          default: true,
+          help: "Bring up the dashboard whenever a project server starts. Applies on the next start.",
+        },
+        {
+          key: "time_format",
+          dotpath: "time_format",
+          label: "Clock format",
+          widget: "enum",
+          options: ["24h", "12h"],
+          default: "24h",
+          help: "How times are shown across the dashboard. Applies on reload.",
+        },
+        {
+          key: "date_format",
+          dotpath: "date_format",
+          label: "Date format",
+          widget: "enum",
+          options: ["dd.mm.yyyy", "mm.dd.yyyy", "yyyy-mm-dd"],
+          default: "dd.mm.yyyy",
+          help: "How display dates are formatted across the dashboard. Applies on reload.",
+        },
+      ],
+    },
+  ],
+};
+
 export function Settings() {
   const qc = useQueryClient();
   const { toast } = useToast();
-  const [draft, setDraft] = useState<Draft | null>(null);
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [pendingSave, setPendingSave] = useState<{
+    values: ConfigValues;
+    unset: string[];
+  } | null>(null);
 
   const settingsQ = useQuery({ queryKey: ["settings"], queryFn: getSettings });
-
-  // Seed the editable draft once the settings load.
-  useEffect(() => {
-    if (settingsQ.data && !draft) {
-      setDraft({
-        host: settingsQ.data.host,
-        port: settingsQ.data.port,
-        poll_s: settingsQ.data.poll_s,
-        token: settingsQ.data.token, // "********" when set, "" when unset
-        autostart: settingsQ.data.autostart,
-        time_format: settingsQ.data.time_format,
-        date_format: settingsQ.data.date_format,
-      });
-    }
-  }, [settingsQ.data, draft]);
+  const effectiveQ = useQuery({
+    queryKey: ["settings-effective"],
+    queryFn: getSettingsEffective,
+  });
 
   const save = useMutation({
-    mutationFn: (d: Draft) =>
-      patchSettings({
-        host: d.host,
-        port: d.port,
-        poll_s: d.poll_s,
-        token: d.token,
-        autostart: d.autostart,
-        time_format: d.time_format,
-        date_format: d.date_format,
-      }),
+    mutationFn: ({ values, unset }: { values: ConfigValues; unset: string[] }) =>
+      patchSettings(values, unset),
     onSuccess: (res) => {
-      setErrors({});
-      setConfirmOpen(false);
+      setFieldErrors({});
       qc.invalidateQueries({ queryKey: ["settings"] });
+      qc.invalidateQueries({ queryKey: ["settings-effective"] });
       const note =
         res.restart_required.length > 0
           ? ` Restart the dashboard to apply: ${res.restart_required.join(", ")}.`
@@ -73,13 +123,12 @@ export function Settings() {
       toast(`Settings saved.${note}`, "success");
     },
     onError: (err: unknown) => {
-      setConfirmOpen(false);
       if (err && typeof err === "object" && "errors" in err) {
         const map: Record<string, string> = {};
         for (const e of (err as { errors: { field: string; message: string }[] })
           .errors)
           map[e.field] = e.message;
-        setErrors(map);
+        setFieldErrors(map);
         toast("Some settings are invalid.", "error");
       } else {
         toast(err instanceof Error ? err.message : "Failed to save.", "error");
@@ -87,8 +136,6 @@ export function Settings() {
     },
   });
 
-  // Error must be checked BEFORE the `!draft` skeleton — on a failed load the
-  // draft is never seeded, so a draft-gated skeleton would loop forever.
   if (settingsQ.isError) {
     return (
       <div data-testid="tab-settings" role="alert" className="panel p-8 text-center">
@@ -108,7 +155,7 @@ export function Settings() {
     );
   }
 
-  if (settingsQ.isLoading || !draft) {
+  if (settingsQ.isLoading || effectiveQ.isLoading || !effectiveQ.data) {
     return (
       <div data-testid="tab-settings" className="panel max-w-xl p-6">
         <div className="skeleton mb-3 h-9 w-full" />
@@ -117,96 +164,21 @@ export function Settings() {
     );
   }
 
-  // Control-plane defaults (DashboardConfig). Shown so users see what's active
-  // when a setting is unset.
-  const DEFAULTS: Record<keyof Draft, string> = {
-    host: "127.0.0.1",
-    port: "8787",
-    poll_s: "5",
-    token: "none",
-    autostart: "on",
-    time_format: "24h",
-    date_format: "dd.mm.yyyy",
-  };
-
-  const TIME_FORMAT_OPTIONS: { value: TimeFormat; label: string }[] = [
-    { value: "24h", label: "24-hour (14:30)" },
-    { value: "12h", label: "12-hour (2:30 PM)" },
-  ];
-  const DATE_FORMAT_OPTIONS: { value: DateFormat; label: string }[] = [
-    { value: "dd.mm.yyyy", label: "dd.mm.yyyy (31.12.2026)" },
-    { value: "mm.dd.yyyy", label: "mm.dd.yyyy (12.31.2026)" },
-    { value: "yyyy-mm-dd", label: "yyyy-mm-dd (2026-12-31)" },
-  ];
-
-  const select = <T extends string>(
-    key: "time_format" | "date_format",
-    label: string,
-    hint: string,
-    options: { value: T; label: string }[],
-  ) => (
-    <label className="flex flex-col gap-1" data-testid={`field-${key}`}>
-      <span className="text-sm font-medium text-fg">
-        {label}
-        <span className="ml-2 font-normal text-xs text-fg-faint">
-          default: {DEFAULTS[key]}
-        </span>
-      </span>
-      <select
-        data-testid={`input-${key}`}
-        value={draft[key]}
-        onChange={(e) => setDraft({ ...draft, [key]: e.target.value as T })}
-        className="rounded-lg border border-line bg-ink-700/50 px-3 py-2 text-sm text-fg focus:border-accent/60 focus:outline-none focus:ring-2 focus:ring-accent/30"
-      >
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-      <span className="text-xs text-fg-faint">{hint}</span>
-    </label>
-  );
-
-  const field = (
-    key: "host" | "port" | "poll_s" | "token",
-    label: string,
-    hint: string,
-    type: "text" | "number" | "password",
-  ) => (
-    <label className="flex flex-col gap-1" data-testid={`field-${key}`}>
-      <span className="text-sm font-medium text-fg">
-        {label}
-        <span className="ml-2 font-normal text-xs text-fg-faint">
-          default: {DEFAULTS[key]}
-        </span>
-      </span>
-      <input
-        data-testid={`input-${key}`}
-        type={type}
-        value={draft[key]}
-        onChange={(e) =>
-          setDraft({
-            ...draft,
-            [key]: type === "number" ? Number(e.target.value) : e.target.value,
-          })
-        }
-        className="rounded-lg border border-line bg-ink-700/50 px-3 py-2 text-sm text-fg focus:border-accent/60 focus:outline-none focus:ring-2 focus:ring-accent/30"
-      />
-      <span className="text-xs text-fg-faint">{hint}</span>
-      {errors[key] && (
-        <span
-          data-testid={`field-error-${key}`}
-          className="text-xs text-bad"
-        >
-          {errors[key]}
-        </span>
-      )}
-    </label>
-  );
+  // Sparse values = only fields actually set in dashboard.yaml (source "file");
+  // fields at their code default are OMITTED so the form renders them inheriting.
+  const eff = effectiveQ.data;
+  const values: ConfigValues = {};
+  for (const [key, entry] of Object.entries(eff)) {
+    if (entry.source === "file") values[key] = entry.value;
+  }
+  // Reshape to the EffectiveConfig the form expects (value/source/inherited).
+  const effective: EffectiveConfig = {};
+  for (const [key, entry] of Object.entries(eff)) {
+    effective[key] = { value: entry.value, source: entry.source, inherited: null };
+  }
 
   return (
-    <div data-testid="tab-settings" className="flex max-w-xl flex-col gap-6">
+    <div data-testid="tab-settings" className="flex flex-col gap-4">
       <div className="flex items-center gap-2.5">
         <span className="grid h-9 w-9 place-items-center rounded-xl bg-accent/15 text-accent">
           <ServerCog className="h-5 w-5" aria-hidden="true" />
@@ -225,74 +197,29 @@ export function Settings() {
         </span>
       </div>
 
-      <div className="panel flex flex-col gap-5 p-6">
-        {field("host", "Bind host", "Applies on dashboard restart.", "text")}
-        {field("port", "Port", "Preferred port (scanned upward). Restart to apply.", "number")}
-        {field("poll_s", "Poll interval (s)", "SPA fallback poll. Applies on reload.", "number")}
-        {field(
-          "token",
-          "Bearer token",
-          "Guards /dashboard/api/** when set. Leave blank to disable. Restart to apply.",
-          "password",
-        )}
-        <div
-          className="flex items-start justify-between gap-4"
-          data-testid="field-autostart"
-        >
-          <span className="flex flex-col gap-1">
-            <span className="text-sm font-medium text-fg">
-              Auto-start on <code>brainpalace start</code>
-              <span className="ml-2 font-normal text-xs text-fg-faint">
-                default: {DEFAULTS.autostart}
-              </span>
-            </span>
-            <span className="text-xs text-fg-faint">
-              Bring up the dashboard (and open a browser when it launches one)
-              whenever a project server starts. Applies on the next start.
-            </span>
-          </span>
-          <ToggleField
-            dotpath="autostart"
-            value={draft.autostart}
-            onChange={(v) => setDraft({ ...draft, autostart: v })}
-            label="Auto-start dashboard on brainpalace start"
-          />
-        </div>
-        {select<TimeFormat>(
-          "time_format",
-          "Clock format",
-          "How times are shown across the dashboard. Applies on reload.",
-          TIME_FORMAT_OPTIONS,
-        )}
-        {select<DateFormat>(
-          "date_format",
-          "Date format",
-          "How display dates are formatted across the dashboard. Applies on reload.",
-          DATE_FORMAT_OPTIONS,
-        )}
-      </div>
-
-      <div className="flex justify-end">
-        <button
-          type="button"
-          data-testid="btn-save-settings"
-          onClick={() => setConfirmOpen(true)}
-          disabled={save.isPending}
-          className="btn-primary btn-sm"
-        >
-          Save settings
-        </button>
-      </div>
+      <SchemaForm
+        schema={SETTINGS_SCHEMA}
+        values={values}
+        effective={effective}
+        errors={fieldErrors}
+        saving={save.isPending}
+        showRestart={false}
+        localSource="file"
+        onSave={(v, unset) => setPendingSave({ values: v, unset })}
+      />
 
       <ConfirmDialog
-        open={confirmOpen}
+        open={!!pendingSave}
         tone="default"
         title="Save dashboard settings?"
         message="Writes the dashboard: block of your XDG config.yaml. host/port/token take effect on the next dashboard restart; poll interval applies on reload."
         confirmLabel="Save"
         busy={save.isPending}
-        onCancel={() => setConfirmOpen(false)}
-        onConfirm={() => draft && save.mutate(draft)}
+        onCancel={() => setPendingSave(null)}
+        onConfirm={() => {
+          if (pendingSave) save.mutate(pendingSave);
+          setPendingSave(null);
+        }}
       />
     </div>
   );

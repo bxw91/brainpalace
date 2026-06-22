@@ -16,7 +16,12 @@ from brainpalace_dashboard.services.config_svc import (
     ConfigWriteError,
     _changed_dotpaths,
 )
-from brainpalace_dashboard.services.data_guard import breaking_changes, build_conflict
+from brainpalace_dashboard.services.data_guard import (
+    breaking_changes,
+    build_conflict,
+    drop_effective_noops,
+    drop_global_noops,
+)
 from brainpalace_dashboard.services.instances import (
     InstanceNotFound,
     InstanceService,
@@ -69,15 +74,14 @@ def _changed_field_errors(
     return [e for e in config_service.validate(values) if e["field"] in changed]
 
 
-def _data_conflict(
-    id_: str, existing: dict[str, Any], values: dict[str, Any], changed: set[str]
+def _conflict_if_indexed(
+    id_: str, existing: dict[str, Any], values: dict[str, Any], breaking: set[str]
 ) -> dict[str, Any] | None:
-    """Return a 409 conflict payload if the save breaks existing data, else None.
+    """409 payload if ``breaking`` is non-empty AND the instance has indexed data.
 
-    The form submits the full draft, so the changed dotpaths are exactly the
-    leaves of ``values`` that differ from the on-disk config.
+    ``breaking`` is the caller's already-no-op-filtered set (project vs global
+    have different inheritance semantics), so this only checks the index state.
     """
-    breaking = breaking_changes(changed)
     if not breaking:
         return None
     fingerprint = _run_proxy(proxy_service.fetch_fingerprint(id_))
@@ -88,6 +92,9 @@ def _data_conflict(
 
 class ConfigPatch(BaseModel):
     values: dict[str, Any]
+    # Dotpaths to REMOVE so they inherit global / code default — staged in the
+    # form and applied in the same Save (no separate immediate /unset call).
+    unset: list[str] = []
     restart: bool = False
     force_reindex: bool = False
 
@@ -157,12 +164,16 @@ def patch_config(id_: str, body: ConfigPatch) -> Any:
     # Data-compatibility guard: block changes that would invalidate/strand the
     # existing index (unless the user opted into Save & reindex).
     if not body.force_reindex:
-        conflict = _data_conflict(id_, existing, body.values, changed)
+        effective = config_service.effective(state_dir)
+        breaking = drop_effective_noops(
+            breaking_changes(changed), body.values, effective
+        )
+        conflict = _conflict_if_indexed(id_, existing, body.values, breaking)
         if conflict is not None:
             return JSONResponse(status_code=409, content=conflict)
 
     try:
-        config_service.write(state_dir, body.values)
+        config_service.write(state_dir, body.values, body.unset)
     except ConfigWriteError as e:
         # Body is exactly {"errors": [...]} so the client reads .errors directly.
         return JSONResponse(status_code=422, content={"errors": e.errors})
@@ -188,9 +199,9 @@ def patch_config(id_: str, body: ConfigPatch) -> Any:
 
 
 # --------------------------------------------------------------------------- #
-# Global config — the machine-wide XDG config.yaml (every project inherits).
-# This IS the global layer, so no effective/provenance resolution: the form
-# renders the schema + the file's own (masked) values directly.
+# Global config — the global XDG config.yaml (every project inherits it).
+# Provenance here is global-file > code default (effective_global), surfaced as
+# the inherit-first control on the Global Config tab.
 # --------------------------------------------------------------------------- #
 @router.get("/global-config")
 def get_global_config() -> dict[str, Any]:
@@ -220,14 +231,40 @@ def patch_global_config(body: ConfigPatch) -> Any:
             )
             existing = _read_existing(sd)
             changed = _changed_dotpaths(body.values, existing)
-            conflict = _data_conflict(row["id"], existing, body.values, changed)
+            breaking = drop_global_noops(
+                breaking_changes(changed),
+                body.values,
+                config_service.effective(sd),
+            )
+            conflict = _conflict_if_indexed(row["id"], existing, body.values, breaking)
             if conflict is not None:
                 return JSONResponse(status_code=409, content=conflict)
     try:
-        config_service.write_global(body.values)
+        config_service.write_global(body.values, body.unset)
     except ConfigWriteError as e:
         return JSONResponse(status_code=422, content={"errors": e.errors})
     return {"ok": True}
+
+
+@router.get("/global-config/effective")
+def get_global_config_effective() -> dict[str, Any]:
+    """Per-key effective value + provenance for the GLOBAL layer.
+
+    ``source`` is ``"global"`` (set in the XDG config.yaml) or ``"default"``
+    (code default); ``inherited`` is the default a global-set key would fall back
+    to on unset. Powers the inherit-first control on the Global Config tab.
+    """
+    return config_service.effective_global()
+
+
+@router.post("/global-config/unset", response_model=None)
+def unset_global_config(body: ConfigUnset) -> Any:
+    """Remove keys from the GLOBAL config.yaml so they fall back to code default.
+
+    Returns ``{"removed": [...], "effective": {dotpath: {value, source}}}`` — the
+    same shape as the per-instance unset, so the form updates in place.
+    """
+    return config_service.unset_global(body.dotpaths)
 
 
 # --------------------------------------------------------------------------- #
@@ -242,6 +279,40 @@ def get_runtime_config(id_: str) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail="instance not found") from None
 
 
+@router.get("/instances/{id_}/runtime-config/effective")
+def get_runtime_config_effective(id_: str) -> dict[str, Any]:
+    """Per-field effective bind value + provenance (file > code default).
+
+    Powers the inherit-first control for the Runtime bind section folded into the
+    Config tab; the editable value still comes from GET /runtime-config.
+    """
+    try:
+        return runtime_config_service.effective(_state_dir_for(id_))
+    except InstanceNotFound:
+        raise HTTPException(status_code=404, detail="instance not found") from None
+
+
+@router.get("/global-runtime-config/effective")
+def get_global_runtime_config_effective() -> dict[str, Any]:
+    """Per-field effective bind for the GLOBAL layer (global file > code default).
+
+    Powers the machine-wide Runtime bind editor on the Global Config tab; a
+    project that omits a bind key inherits these before the code default.
+    """
+    return runtime_config_service.effective_global()
+
+
+@router.patch("/global-runtime-config", response_model=None)
+def patch_global_runtime_config(body: ConfigPatch) -> Any:
+    """Write the machine-wide bind defaults (XDG config.json); staged set + unset."""
+    try:
+        runtime_config_service.write_global(body.values, body.unset)
+    except RuntimeConfigError as e:
+        return JSONResponse(status_code=422, content={"errors": e.errors})
+    # Global bind changes apply to each project server on its next start.
+    return {"ok": True, "restart_required": True}
+
+
 @router.patch("/instances/{id_}/runtime-config", response_model=None)
 def patch_runtime_config(id_: str, body: ConfigPatch) -> Any:
     try:
@@ -249,7 +320,7 @@ def patch_runtime_config(id_: str, body: ConfigPatch) -> Any:
     except InstanceNotFound:
         raise HTTPException(status_code=404, detail="instance not found") from None
     try:
-        runtime_config_service.write(state_dir, body.values)
+        runtime_config_service.write(state_dir, body.values, body.unset)
     except RuntimeConfigError as e:
         return JSONResponse(status_code=422, content={"errors": e.errors})
     restarted = False

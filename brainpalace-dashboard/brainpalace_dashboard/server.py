@@ -209,9 +209,19 @@ def reap_orphan_dashboards(
 
 
 def _port_free(host: str, port: int) -> bool:
-    """Return True if ``host:port`` can be bound (i.e. is free)."""
+    """Return True if ``host:port`` can be bound (i.e. is free).
+
+    Probes with ``SO_REUSEADDR`` set — exactly how uvicorn binds — so the answer
+    matches what the real server can actually do. Without it, a socket left in
+    ``TIME_WAIT`` by a JUST-stopped dashboard makes the configured port look
+    busy, so a restart's scan climbs to the next port and the dashboard silently
+    drifts (8787 → 8788) on every reinstall. With ``SO_REUSEADDR``, a lingering
+    ``TIME_WAIT`` socket is correctly free (uvicorn can rebind it), while a live
+    listener still reports busy — so a genuinely foreign port still climbs.
+    """
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             s.bind((host, port))
             return True
     except OSError:

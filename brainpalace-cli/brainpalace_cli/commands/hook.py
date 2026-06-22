@@ -432,6 +432,49 @@ def _spawn_autostart(project: Path) -> None:
         pass
 
 
+def _dashboard_autostart_enabled() -> bool:
+    """Whether the singleton web dashboard should be auto-launched.
+
+    Mirrors the gate ``brainpalace start`` uses (``dashboard.autostart``).
+    Best-effort: if the dashboard package is absent (Python < 3.12) or the config
+    can't be read, returns False so the hook never tries to start something
+    unavailable or that the user turned off.
+    """
+    try:
+        from brainpalace_dashboard.config import (  # noqa: PLC0415
+            load_dashboard_config,
+        )
+
+        return bool(load_dashboard_config().autostart)
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _spawn_dashboard_autostart(project: Path) -> None:
+    """Detached, best-effort ``brainpalace dashboard start --no-open``.
+
+    Resurrects the singleton dashboard when the SERVER is already up but the
+    dashboard has died. The dashboard is launched on ``brainpalace start`` and is
+    NOT supervised, so a graceful stop (e.g. a reinstall) would otherwise leave it
+    down until the next ``start`` — and the server-down autostart path never fires
+    while the server is up. Idempotent: ``dashboard start`` refuses (no-ops) when a
+    healthy dashboard is already tracked, so firing this every session start is
+    safe and non-blocking.
+    """
+    try:
+        prog = shutil.which("brainpalace") or sys.argv[0]
+        subprocess.Popen(  # noqa: S603 — fixed argv, no shell
+            [prog, "dashboard", "start", "--no-open"],
+            cwd=str(project),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except Exception:  # noqa: BLE001 — best-effort; never blocks the hook
+        pass
+
+
 def _emit_sessionstart() -> None:
     project = discover_project_dir(None)
     if project is None:
@@ -447,8 +490,14 @@ def _emit_sessionstart() -> None:
         # in the background so this session can search without a manual `start`.
         _spawn_autostart(project)
     if url:
-        # Server up: append the frozen-snapshot context block (project facts +
-        # curated memory). Fail soft — a context error must not drop the NUDGE.
+        # Server up but the dashboard may have died (it is launched on
+        # `brainpalace start`, not supervised; the server-down autostart above
+        # never fires while the server is up). Best-effort, detached: resurrect it
+        # so it does not stay down after a graceful stop / reinstall.
+        if _session_autostart_enabled() and _dashboard_autostart_enabled():
+            _spawn_dashboard_autostart(project)
+        # Append the frozen-snapshot context block (project facts + curated
+        # memory). Fail soft — a context error must not drop the NUDGE.
         context = _session_context(url)
         if context.strip():
             msg += "\n\n" + context.strip()

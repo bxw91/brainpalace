@@ -349,6 +349,7 @@ class TestStatusBm25:
             embedding_cache=None,
             graph_index=None,
             features={},
+            index_warnings=[],
         )
         mock_client_class.return_value = mock_client
 
@@ -381,6 +382,7 @@ class TestStatusBm25:
             embedding_cache=None,
             graph_index=None,
             features={},
+            index_warnings=[],
         )
         mock_client_class.return_value = mock_client
 

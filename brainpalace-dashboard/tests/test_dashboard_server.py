@@ -43,6 +43,40 @@ def test_launch_writes_runtime_and_returns_url(
     assert rt["port"] == 8787
 
 
+def test_port_free_probes_with_so_reuseaddr(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The free-port probe must set SO_REUSEADDR — same as uvicorn's bind — so a
+    just-stopped dashboard's TIME_WAIT socket on the configured port reads free
+    and the restart reclaims it instead of drifting (8787 -> 8788)."""
+    import socket as _socket
+
+    calls: list[tuple[int, int, int]] = []
+
+    class RecordingSocket(_socket.socket):
+        def setsockopt(self, level, optname, value):  # type: ignore[override]
+            calls.append((level, optname, value))
+            return super().setsockopt(level, optname, value)
+
+    monkeypatch.setattr(srv.socket, "socket", RecordingSocket)
+    # port 0 = an ephemeral port, always bindable -> True regardless of host load.
+    assert srv._port_free("127.0.0.1", 0) is True
+    assert (_socket.SOL_SOCKET, _socket.SO_REUSEADDR, 1) in calls
+
+
+def test_port_free_false_while_a_listener_holds_the_port() -> None:
+    """A genuinely-in-use port (live listener) still reports busy, so a foreign
+    occupant correctly makes the scan climb."""
+    import socket as _socket
+
+    with _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM) as lst:
+        lst.setsockopt(_socket.SOL_SOCKET, _socket.SO_REUSEADDR, 1)
+        lst.bind(("127.0.0.1", 0))
+        lst.listen(1)
+        port = lst.getsockname()[1]
+        assert srv._port_free("127.0.0.1", port) is False
+
+
 def test_launch_scans_to_next_free_port(
     monkeypatch: pytest.MonkeyPatch, tmp_path: object
 ) -> None:

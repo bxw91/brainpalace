@@ -36,10 +36,24 @@ def test_patch_autostart_persists(tmp_path, monkeypatch):
     assert c.get("/dashboard/api/settings").json()["autostart"] is False
 
 
-def test_patch_writes_dashboard_block_and_preserves_others(tmp_path, monkeypatch):
+def test_patch_settings_staged_unset_reverts_to_default(tmp_path, monkeypatch):
+    """Save with `unset` removes the field so it falls back to the code default."""
+    c = _client(tmp_path, monkeypatch)
+    # First set a non-default port so there is something to revert.
+    c.patch("/dashboard/api/settings", json={"port": 9001})
+    assert c.get("/dashboard/api/settings").json()["port"] == 9001
+    # Now stage an unset of port on Save (flat body, mirrors patchSettings).
+    r = c.patch("/dashboard/api/settings", json={"unset": ["port"]})
+    assert r.status_code == 200
+    # port reverts to the code default; restart-sensitive → flagged.
+    assert c.get("/dashboard/api/settings").json()["port"] == 8787
+    assert "port" in r.json()["restart_required"]
+
+
+def test_patch_writes_dashboard_yaml_and_preserves_others(tmp_path, monkeypatch):
     cfg_dir = tmp_path / "cfg" / "brainpalace"
     cfg_dir.mkdir(parents=True)
-    # A pre-existing unrelated section must survive the write.
+    # A pre-existing unrelated section in config.yaml must survive untouched.
     (cfg_dir / "config.yaml").write_text("embedding:\n  provider: openai\n")
     c = _client(tmp_path, monkeypatch)
 
@@ -50,11 +64,15 @@ def test_patch_writes_dashboard_block_and_preserves_others(tmp_path, monkeypatch
     assert r.status_code == 200
     assert set(r.json()["restart_required"]) == {"port", "token"}  # not poll_s
 
+    # The dashboard's own settings land in dashboard.yaml, sparsely.
+    dash = yaml.safe_load((cfg_dir / "dashboard.yaml").read_text())
+    assert dash["port"] == 9001
+    assert dash["poll_s"] == 10
+    assert dash["token"] == "s3cret"
+    # config.yaml is left untouched — no dashboard block written back into it.
     saved = yaml.safe_load((cfg_dir / "config.yaml").read_text())
     assert saved["embedding"]["provider"] == "openai"  # preserved
-    assert saved["dashboard"]["port"] == 9001
-    assert saved["dashboard"]["poll_s"] == 10
-    assert saved["dashboard"]["token"] == "s3cret"
+    assert "dashboard" not in saved
 
     # GET now reports token_set but never the value.
     body = c.get("/dashboard/api/settings").json()
@@ -76,8 +94,26 @@ def test_patch_mask_keeps_existing_token(tmp_path, monkeypatch):
         headers=auth,
     )
     assert r.status_code == 200
-    saved = yaml.safe_load((cfg_dir / "config.yaml").read_text())
-    assert saved["dashboard"]["token"] == "keepme"  # mask did not overwrite
+    # The legacy block migrated into dashboard.yaml; the mask did not overwrite.
+    saved = yaml.safe_load((cfg_dir / "dashboard.yaml").read_text())
+    assert saved["token"] == "keepme"
+
+
+def test_get_settings_effective(tmp_path, monkeypatch):
+    c = _client(tmp_path, monkeypatch)
+    c.patch("/dashboard/api/settings", json={"port": 9000})
+    body = c.get("/dashboard/api/settings/effective").json()
+    assert body["port"] == {"value": 9000, "source": "file"}
+    assert body["host"]["source"] == "default"
+
+
+def test_post_settings_unset(tmp_path, monkeypatch):
+    c = _client(tmp_path, monkeypatch)
+    c.patch("/dashboard/api/settings", json={"port": 9000})
+    res = c.post("/dashboard/api/settings/unset", json={"fields": ["port"]}).json()
+    assert res["removed"] == ["port"]
+    assert res["effective"]["port"] == {"value": 8787, "source": "default"}
+    assert c.get("/dashboard/api/settings").json()["port"] == 8787
 
 
 def test_patch_rejects_bad_port(tmp_path, monkeypatch):

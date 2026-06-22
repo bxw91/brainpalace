@@ -12,6 +12,7 @@ from brainpalace_server.config.session_config import (
     resolve_session_capabilities,
     retain_cutoff,
     session_distill_enabled,
+    session_recall_flags,
 )
 
 
@@ -149,6 +150,49 @@ def test_archive_disabled_in_block(
     )
     assert caps.archive_enabled is False
     assert caps.index_enabled is True
+
+
+def _flags(cfg_text: str, tmp_path: Path) -> tuple[bool, bool]:
+    f = tmp_path / "config.yaml"
+    f.write_text(cfg_text)
+    return session_recall_flags(f)
+
+
+def test_recall_flags_both_on(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("SESSION_INDEXING_ENABLED", raising=False)
+    vector, summarization = _flags(
+        "session_indexing:\n  enabled: true\n"
+        "session_extraction:\n  mode: subagent\n",
+        tmp_path,
+    )
+    assert (vector, summarization) == (True, True)
+
+
+def test_recall_flags_vector_off(tmp_path: Path) -> None:
+    vector, summarization = _flags(
+        "session_indexing:\n  enabled: false\n"
+        "session_extraction:\n  mode: subagent\n",
+        tmp_path,
+    )
+    assert (vector, summarization) == (False, True)
+
+
+def test_recall_flags_summarization_off(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("SESSION_INDEXING_ENABLED", raising=False)
+    vector, summarization = _flags(
+        "session_indexing:\n  enabled: true\n" "session_extraction:\n  mode: off\n",
+        tmp_path,
+    )
+    assert (vector, summarization) == (True, False)
+
+
+def test_recall_flags_fail_open_on_bad_path() -> None:
+    # Nonexistent path resolves to absent blocks; vector defaults OFF (absent
+    # block) but summarization defaults ON (subagent) — never both-blanked.
+    vector, summarization = session_recall_flags(Path("/nonexistent/xyz.yaml"))
+    assert summarization is True
 
 
 def test_env_switches_force_off(

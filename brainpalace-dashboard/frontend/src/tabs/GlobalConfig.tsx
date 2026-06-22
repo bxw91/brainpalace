@@ -1,8 +1,14 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Globe, RotateCcw } from "lucide-react";
-import { getSchema, getGlobalConfig, patchGlobalConfig } from "../api/client";
+import {
+  getSchema,
+  getGlobalConfig,
+  getGlobalConfigEffective,
+  patchGlobalConfig,
+} from "../api/client";
 import { SchemaForm } from "../components/SchemaForm/SchemaForm";
+import { RuntimeSection } from "./Runtime";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { DataConflictDialog } from "../components/DataConflictDialog";
 import { useToast } from "../components/Toast";
@@ -30,19 +36,25 @@ function isConflict(e: unknown): e is DataConflictEnvelope {
 }
 
 /**
- * Global config editor — the machine-wide XDG `config.yaml` that every project
- * inherits (provider/graph/api defaults). Reuses the SchemaForm, but since this
- * IS the global layer there is no provenance/`effective` — the form renders the
- * file's own values + the schema directly. Changes apply to project servers on
- * their next start.
+ * Global config editor — the global XDG `config.yaml` that every project
+ * inherits (provider/graph/api defaults). Reuses the SchemaForm with the
+ * inherit-first control; the provenance layer here is global-file > code
+ * default, so each field shows `using code default: X`. Changes apply to
+ * project servers on their next start.
  */
 export function GlobalConfig() {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [pendingSave, setPendingSave] = useState<ConfigValues | null>(null);
+  const [pendingSave, setPendingSave] = useState<{
+    values: ConfigValues;
+    unset: string[];
+  } | null>(null);
   const [conflict, setConflict] = useState<DataConflictEnvelope | null>(null);
-  const [lastValues, setLastValues] = useState<ConfigValues | null>(null);
+  const [lastSave, setLastSave] = useState<{
+    values: ConfigValues;
+    unset: string[];
+  } | null>(null);
 
   const schemaQ = useQuery({
     queryKey: ["schema"],
@@ -53,20 +65,29 @@ export function GlobalConfig() {
     queryKey: ["global-config"],
     queryFn: getGlobalConfig,
   });
+  // Provenance (global-file > code default) powers the inherit-first control.
+  // Best-effort: the form still renders from schema + file values if it fails.
+  const effectiveQ = useQuery({
+    queryKey: ["global-config-effective"],
+    queryFn: getGlobalConfigEffective,
+  });
 
   const mutation = useMutation({
     mutationFn: ({
       values,
+      unset,
       forceReindex,
     }: {
       values: ConfigValues;
+      unset: string[];
       forceReindex?: boolean;
-    }) => patchGlobalConfig(values, forceReindex ?? false),
+    }) => patchGlobalConfig(values, forceReindex ?? false, unset),
     onSuccess: () => {
       setFieldErrors({});
       setConflict(null);
       toast("Global config saved. Applies to servers on their next start.", "success");
       qc.invalidateQueries({ queryKey: ["global-config"] });
+      qc.invalidateQueries({ queryKey: ["global-config-effective"] });
     },
     onError: (err: unknown) => {
       if (isConflict(err)) {
@@ -150,31 +171,41 @@ export function GlobalConfig() {
             Global config
           </h2>
           <p className="mt-0.5 text-xs text-fg-faint">
-            Machine-wide <code>~/.config/brainpalace/config.yaml</code> — every
-            project inherits these unless it overrides them.
+            Global <code>~/.config/brainpalace/config.yaml</code> — every project
+            inherits these unless it overrides them.
           </p>
         </div>
       </div>
       <SchemaForm
-        schema={schemaQ.data}
+        // The Project section is per-instance identity (state_dir/project_root)
+        // — meaningless on the machine-wide config, so drop it here.
+        schema={{
+          ...schemaQ.data,
+          sections: schemaQ.data.sections.filter((s) => s.key !== "project"),
+        }}
         values={configQ.data}
+        effective={effectiveQ.data}
         errors={fieldErrors}
         saving={mutation.isPending}
         showRestart={false}
-        onSave={(values) => setPendingSave(values)}
+        localSource="global"
+        onSave={(values, unset) => setPendingSave({ values, unset })}
       />
+      {/* Machine-wide runtime bind defaults (config.json) — every project
+          inherits these before the code default; the CLI honors them at start. */}
+      <RuntimeSection scope="global" />
       <ConfirmDialog
         open={!!pendingSave}
         tone="default"
         title="Save global config?"
-        message="Writes the machine-wide config.yaml. Project servers pick up the changes on their next start."
+        message="Writes the global config.yaml. Project servers pick up the changes on their next start."
         confirmLabel="Save"
         busy={mutation.isPending}
         onCancel={() => setPendingSave(null)}
         onConfirm={() => {
           if (pendingSave) {
-            setLastValues(pendingSave);
-            mutation.mutate({ values: pendingSave });
+            setLastSave(pendingSave);
+            mutation.mutate(pendingSave);
           }
           setPendingSave(null);
         }}
@@ -184,8 +215,8 @@ export function GlobalConfig() {
         busy={mutation.isPending}
         onCancel={() => setConflict(null)}
         onReindex={() => {
-          if (lastValues) {
-            mutation.mutate({ values: lastValues, forceReindex: true });
+          if (lastSave) {
+            mutation.mutate({ ...lastSave, forceReindex: true });
           }
         }}
       />

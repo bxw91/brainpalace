@@ -256,10 +256,10 @@ class RerankerConfig(BaseModel):
     """Configuration for reranking provider."""
 
     enabled: bool = Field(
-        default=True,
+        default=False,
         description=(
             "Enable two-stage reranking (local cross-encoder; adds query "
-            "latency, no API cost). ON by default; the ENABLE_RERANKING env "
+            "latency, no API cost). OFF by default; the ENABLE_RERANKING env "
             "var overrides this when set."
         ),
     )

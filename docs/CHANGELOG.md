@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-20
+last_validated: 2026-06-23
 ---
 
 # Changelog
@@ -20,6 +20,112 @@ Entries are kept short (≤ 3 sentences and ≤ 320 characters); see
 _Entries accumulate here between releases. The release step renames this to
 `## [YY.M.N] - DATE` and adds a fresh empty `## [Unreleased]` above it — never
 hand-number an unreleased section._
+
+## [26.6.51] - 2026-06-23
+
+### Added
+- **Dashboard config moved to its own `dashboard.yaml`.** The dashboard's settings
+  now live in `~/.config/brainpalace/dashboard.yaml` (auto-migrated from the legacy
+  `config.yaml` `dashboard:` block) and are written sparsely; the Settings tab uses
+  the shared inherit-first control.
+- **Dashboard: one inline inherit-first control everywhere.** Every config field
+  (instance Config, Global, Settings, Runtime) renders as one always-visible row:
+  `(•) using <global|code default>: X  ( ) <choices / input>`. Pick the inherited
+  value, a choice, or type one — the separate "Override" button is gone.
+- **Dashboard: Runtime bind folded into Config + a real global layer.** The
+  standalone Runtime tab is removed; `config.json` bind fields edit inline in
+  Config (project > **global** > code default), and a machine-wide bind editor
+  lives on the Global tab. The CLI honors the global defaults (XDG `config.json`)
+  at server start; new `…/runtime-config/effective` + `global-runtime-config` routes.
+- **Dashboard: nothing persistable is silently missing.** Init-managed identity
+  paths (`state_dir`, `project_root`) render **read-only** instead of hidden.
+- **Dashboard: session config split into three clear sections.** The old
+  "Session Indexing" (which buried the archive as a sub-group) is now **Session
+  Archiving** (the raw copy), **Session Vector Indexing** (the embed), and
+  **Session Summarization** (the LLM distill, was "Session Extraction"). Display
+  only — config keys are unchanged (`session_indexing.archive.*`,
+  `session_indexing.*`, `session_extraction.*`).
+
+### Added
+- **Index-drift warnings (embedding provider/model + storage backend).** An
+  existing-index vs effective-config mismatch (embedding `provider`/`model`/dimensions,
+  previously log-only) is now surfaced in `brainpalace status` (⚠ Index-drift panel),
+  `/health/status` (`index_warnings`), and a dashboard banner. A new storage-backend
+  drift check warns when `storage.backend` changes while data is stranded under the
+  old store (BM25 self-heals, so it needs none).
+
+### Changed
+- **Dashboard config form is now generated from the server pydantic models.** A new
+  `model_introspect` layer derives each field's widget/default/enum from its model —
+  add/change/remove a model field and the dashboard follows; `ui_schema.OVERRIDES` is
+  now presentation-only and the hand `_INT/_BOOL/_DICT/_STRINGLIST`/`DEFAULTS`/`ENUM_OPTIONS`
+  tables are gone. GraphRAG's legacy/internal knobs moved to `DASHBOARD_HIDDEN_FIELDS`
+  (with reasons) so a new graphrag field auto-surfaces, and the parity gate now sources
+  from the models and fails on control/default drift.
+- **Session recall is gated on the live feature flags (hard off).** With session
+  vector indexing off, `session_turn` chunks are hidden from every query; with
+  summarization off, `session_summary`/`session_decision` chunks and auto-promoted
+  (`origin != user`) memory are hidden — no per-query override. The SessionStart block
+  drops session-derived memory and emits its recall instruction only when a feature is
+  live (`brainpalace remember` facts unaffected); new **Session Recall** row in `status`.
+- **Dashboard SPA no longer committed to git.** The built `static/` is now
+  gitignored generated output, rebuilt from frontend source at wheel-creation (new
+  Node step in the `publish-dashboard` job) and on `task install`; pyproject
+  `include` still packages it into the wheel, so end users get a prebuilt SPA with
+  no node toolchain. Ends worktree churn on every rebuild.
+
+### Fixed
+- **Embedding provider mismatch no longer false-fires.**
+  `str(EmbeddingProviderType.OPENAI)` yields the enum repr, not its value
+  `openai`, so the index-vs-config provider check always mismatched and every
+  query 409'd on an unchanged config. All comparison/message/cost sites now use
+  the enum value.
+- **A dead dashboard is now resurrected on the next session.** The dashboard is
+  launched by `brainpalace start` but unsupervised, and SessionStart autostart only
+  fired when the *server* was down — so a dashboard stopped while the server ran (e.g.
+  a reinstall) stayed down. The SessionStart hook now also relaunches it (detached,
+  best-effort, gated by `dashboard.autostart`) when the server is up but the dashboard
+  has died.
+- **Dashboard instance Config always shows the inherited value (never blank).** The
+  inherit-first option on the instance Config / Runtime tab now falls back to the
+  code default when the global config does not set the key — shown and selected,
+  labelled "using code default: X" — instead of hiding the option and leaving the
+  field with no selected value. A real global value still reads "using global
+  value: X"; a field with no parent value at all (e.g. an api_key_env with no code
+  default) still shows just the input.
+- **Dashboard config save no longer false-blocks a no-op as "incompatible with
+  indexed data".** Writing a key to the value it already inherited (e.g.
+  `embedding.provider` null → openai when openai was already the effective
+  default) left the embedding/store identity unchanged, yet the data guard
+  compared the raw project value and raised a 409. The guard now compares the
+  EFFECTIVE value (project > global > code default); a global save is likewise a
+  no-op for an instance that overrides the key at project level.
+- **Dashboard save keeps the config sparse (no inherited-default pollution).** The
+  form submits a field's effective value even when it only inherits it, so a save
+  could write e.g. `embedding.model` at its code default into a project file that
+  never set it — un-sparsing it and making every later save diff it as a change.
+  The write now drops a NEWLY-added leaf that equals the value it would inherit
+  (global → code default); a value that diverges, or one already on disk, is kept.
+- **Dashboard no longer drifts off its port (8787 → 8788) on restart/reinstall.**
+  The free-port probe now binds with `SO_REUSEADDR` — exactly how uvicorn binds —
+  so a just-stopped dashboard's `TIME_WAIT` socket on the configured port reads as
+  free and the restart reclaims it, instead of falsely seeing it busy and climbing
+  to the next port. A genuinely foreign listener still makes the scan climb.
+- **Session archive / vector-index / summarization are now truly independent.** The
+  reconciler fed the server-side summarizer (provider/auto mode) only the *archived*
+  copies, so turning the archive (copy) OFF silently stopped summarization even when it
+  was enabled. It now summarizes the live source transcripts when archive is off, and the
+  server builds the distiller when extraction is on even if archive and index are both off.
+  (Vector indexing already read the live source; the subagent extractor was always
+  independent.)
+- **Reranking default now actually OFF in the config model.** `RerankerConfig.enabled`
+  and the dashboard's `reranker.enabled` default were still `True` while `init` and the
+  docs already treated reranking as opt-in; flipped to `False` so an unconfigured server
+  (no `config.yaml`, no `ENABLE_RERANKING`) matches the documented OFF-by-default.
+- **Dashboard: edits stay staged until Save.** Reverting a field to its inherited
+  value no longer writes immediately — it stages an unset sent with the next Save
+  (`PATCH …/config` now takes `unset`), so **Discard** and a browser refresh fully
+  revert it. Override/inherit state is driven by the live draft, not the server.
 
 ## [26.6.50] - 2026-06-20
 

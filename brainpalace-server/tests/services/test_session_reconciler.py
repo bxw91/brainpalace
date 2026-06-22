@@ -13,6 +13,15 @@ class _FakeArchive:
         return Path(str(live) + ".arch")  # pretend-archived path
 
 
+class _FakeDistiller:
+    def __init__(self):
+        self.caught_up = None
+
+    async def catch_up(self, transcripts):
+        self.caught_up = [Path(p) for p in transcripts]
+        return len(self.caught_up)
+
+
 class _Caps:
     index_enabled = False
 
@@ -77,6 +86,51 @@ def test_reconciler_tick_runs_one_sweep(tmp_path, monkeypatch):
     )
     asyncio.run(rec._tick())
     assert calls["n"] == 1
+
+
+def test_distiller_runs_on_live_when_archive_off(tmp_path, monkeypatch):
+    """Archive (copy) OFF + extraction ON: the distiller summarizes the LIVE
+    source transcripts — the three capabilities are independent."""
+    sdir = tmp_path / "sessions"
+    sdir.mkdir()
+    (sdir / "a.jsonl").write_text("{}\n")
+    (sdir / "b.jsonl").write_text("{}\n")
+    _patch_helpers(monkeypatch)
+    dist = _FakeDistiller()
+    res = asyncio.run(
+        reconcile_once(
+            sessions_dir=sdir,
+            archive_service=None,  # copy OFF
+            sess_svc=None,  # index OFF
+            session_cfg=_Cfg(),
+            caps=_Caps(),
+            distiller=dist,
+        )
+    )
+    assert res["archived"] == 0
+    # Distiller got the live source paths, not archive copies.
+    assert sorted(p.name for p in dist.caught_up) == ["a.jsonl", "b.jsonl"]
+    assert all(str(p).endswith(".jsonl") for p in dist.caught_up)
+
+
+def test_distiller_runs_on_archive_when_archiving(tmp_path, monkeypatch):
+    """Archive ON: the distiller summarizes the archived copies (unchanged)."""
+    sdir = tmp_path / "sessions"
+    sdir.mkdir()
+    (sdir / "a.jsonl").write_text("{}\n")
+    _patch_helpers(monkeypatch)
+    dist = _FakeDistiller()
+    asyncio.run(
+        reconcile_once(
+            sessions_dir=sdir,
+            archive_service=_FakeArchive(),
+            sess_svc=None,
+            session_cfg=_Cfg(),
+            caps=_Caps(),
+            distiller=dist,
+        )
+    )
+    assert [p.name for p in dist.caught_up] == ["a.jsonl.arch"]
 
 
 def test_reconcile_once_offers_files_every_sweep(tmp_path, monkeypatch):

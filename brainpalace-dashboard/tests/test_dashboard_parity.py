@@ -12,45 +12,47 @@ from __future__ import annotations
 
 from brainpalace_cli import config_schema as cs
 
+from brainpalace_dashboard import model_introspect as mi
 from brainpalace_dashboard.ui_schema import (
     DASHBOARD_HIDDEN_FIELDS,
     OVERRIDES,
-    SESSION_ARCHIVE_FIELDS,
     build_ui_schema,
 )
 
+# Model-less sections (runtime bind / machine identity) have no pydantic model;
+# their fields are sourced from config_schema and are fully hidden / read-only.
+_MODELLESS = {
+    "api": cs.API_KNOWN_FIELDS,
+    "server": cs.SERVER_KNOWN_FIELDS,
+    "project": cs.PROJECT_KNOWN_FIELDS,
+}
+
 
 def _all_schema_dotpaths() -> set[str]:
-    """Every leaf config dotpath the validated schema accepts."""
+    """Every leaf config dotpath, sourced from the SINGLE SOURCE — the pydantic
+    models — plus the model-less runtime/identity sections.
+
+    This is what makes add/remove automatic: the gate compares what the models
+    declare against what the dashboard renders, so a field added to a model must
+    be surfaced or explicitly hidden, and a removed one cannot linger.
+    """
     paths: set[str] = set()
-    section_fields = {
-        "embedding": cs.EMBEDDING_KNOWN_FIELDS,
-        "summarization": cs.SUMMARIZATION_KNOWN_FIELDS,
-        "reranker": cs.RERANKER_KNOWN_FIELDS,
-        "storage": cs.STORAGE_KNOWN_FIELDS,
-        "graphrag": cs.GRAPHRAG_KNOWN_FIELDS,
-        "api": cs.API_KNOWN_FIELDS,
-        "server": cs.SERVER_KNOWN_FIELDS,
-        "project": cs.PROJECT_KNOWN_FIELDS,
-        "bm25": cs.BM25_KNOWN_FIELDS,
-        "git_indexing": cs.GIT_INDEXING_KNOWN_FIELDS,
-        "session_indexing": cs.SESSION_INDEXING_KNOWN_FIELDS,
-        "session_extraction": cs.SESSION_EXTRACTION_KNOWN_FIELDS,
-    }
-    if hasattr(cs, "QUERY_LOG_KNOWN_FIELDS"):
-        section_fields["query_log"] = cs.QUERY_LOG_KNOWN_FIELDS
-    for sec, fields in section_fields.items():
-        for f in fields:
-            if sec == "storage" and f == "postgres":
-                # nested group; expand to leaves
+    for sec, model in mi.SECTION_MODELS.items():
+        for f in model.model_fields:
+            dotpath = f"{sec}.{f}"
+            if dotpath == "storage.postgres":
+                # raw dict (no nested model); leaves come from config_schema
                 for pg in cs.POSTGRES_KNOWN_FIELDS:
                     paths.add(f"storage.postgres.{pg}")
-            elif sec == "session_indexing" and f == "archive":
-                # nested group (SessionArchiveConfig); expand to leaves
-                for a in SESSION_ARCHIVE_FIELDS:
+            elif dotpath == "session_indexing.archive":
+                # nested model (SessionArchiveConfig); expand to leaves
+                for a in mi.nested_field_names("session_indexing.archive"):
                     paths.add(f"session_indexing.archive.{a}")
             else:
-                paths.add(f"{sec}.{f}")
+                paths.add(dotpath)
+    for sec, fields in _MODELLESS.items():
+        for f in fields:
+            paths.add(f"{sec}.{f}")
     return paths
 
 
@@ -100,6 +102,53 @@ def test_no_stale_hidden_fields() -> None:
     assert not stale, (
         "DASHBOARD_HIDDEN_FIELDS lists unknown config fields: " f"{sorted(stale)}"
     )
+
+
+def test_widget_and_default_derive_from_the_model() -> None:
+    """No drift: every rendered model-backed field's widget/default/options is
+    exactly what the pydantic model yields (modulo the documented fallbacks).
+
+    Structurally a new bool can never silently render as a text box, because the
+    form reads the model — this asserts that contract end-to-end.
+    """
+    from brainpalace_dashboard.ui_schema import (
+        DEFAULT_FALLBACKS,
+        ENUM_FALLBACKS,
+    )
+
+    ui = build_ui_schema()
+    for sec in ui["sections"]:
+        # Map a rendered section back to its model section key. The archive is
+        # rendered as its own section but its fields belong to the nested model.
+        for fld in sec["fields"]:
+            if fld.get("widget") == "group":
+                continue
+            dotpath = fld["dotpath"]
+            section, _, key = dotpath.rpartition(".")
+            if section in mi.SECTION_MODELS:
+                derived = mi.derive_field(section, key)
+            elif section == "session_indexing.archive":
+                derived = mi.nested_field("session_indexing.archive", key)
+            else:
+                continue  # model-less / postgres handled elsewhere
+            # widget: model wins unless an ENUM_FALLBACK promotes a plain-str field
+            expected_widget = "enum" if dotpath in ENUM_FALLBACKS else derived["widget"]
+            assert fld["widget"] == expected_widget, dotpath
+            # default: model value unless a settings-sourced fallback overrides
+            expected_default = DEFAULT_FALLBACKS.get(dotpath, derived.get("default"))
+            assert fld.get("default") == expected_default, dotpath
+
+
+def test_overrides_are_presentation_only() -> None:
+    """OVERRIDES must never carry widget/default/options — those derive from the
+    model. (Labels, help, placeholders, presets, visibility, secret are fine.)"""
+    forbidden = {"widget", "default", "options"}
+    offenders = {
+        k: sorted(set(v) & forbidden)
+        for k, v in OVERRIDES.items()
+        if set(v) & forbidden
+    }
+    assert not offenders, f"OVERRIDES must stay presentational: {offenders}"
 
 
 # --------------------------------------------------------------------------- #
@@ -165,3 +214,19 @@ def test_every_server_endpoint_classified() -> None:
     )
     removed = set(ENDPOINT_SURFACES) - live
     assert not removed, f"ENDPOINT_SURFACES lists removed routes: {sorted(removed)}"
+
+
+def test_readonly_fields_valid_and_not_hidden() -> None:
+    from brainpalace_dashboard.ui_schema import (
+        DASHBOARD_HIDDEN_FIELDS,
+        DASHBOARD_READONLY_FIELDS,
+    )
+
+    valid = _all_schema_dotpaths()
+    stale = {k for k in DASHBOARD_READONLY_FIELDS if k not in valid}
+    assert not stale, f"DASHBOARD_READONLY_FIELDS lists unknown fields: {sorted(stale)}"
+    # A field is read-only XOR hidden — never both.
+    overlap = set(DASHBOARD_READONLY_FIELDS) & set(DASHBOARD_HIDDEN_FIELDS)
+    assert not overlap, f"fields both hidden and read-only: {sorted(overlap)}"
+    # Every read-only field must have a non-empty reason.
+    assert all(DASHBOARD_READONLY_FIELDS.values())

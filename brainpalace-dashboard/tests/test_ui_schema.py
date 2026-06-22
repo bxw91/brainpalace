@@ -25,6 +25,11 @@ def test_every_known_field_is_present_or_hidden():
                     rendered.add(child["dotpath"])
             else:
                 rendered.add(f"{sec['key']}.{fld['key']}")
+    # The archive (session_indexing.archive) is surfaced as its OWN top-level
+    # "Session Archiving" section rather than a nested group, so the nested-object
+    # parent key is covered by that section's presence.
+    if any(s["key"] == "session_archiving" for s in ui["sections"]):
+        rendered.add("session_indexing.archive")
     expected = set()
     section_fields = {
         "embedding": cs.EMBEDDING_KNOWN_FIELDS,
@@ -86,18 +91,27 @@ def test_path_filter_uses_stringlist_widget():
     assert pf["widget"] == "stringlist"
 
 
-def test_session_archive_is_nested_group():
-    """session_indexing.archive expands into a group with its sub-fields."""
+def test_session_archiving_is_its_own_section():
+    """The archive (raw COPY) renders as its own top-level 'Session Archiving'
+    section, NOT a sub-group of Session Vector Indexing. Keys stay under
+    session_indexing.archive.*."""
     ui = build_ui_schema()
-    si = next(s for s in ui["sections"] if s["key"] == "session_indexing")
-    archive = next(f for f in si["fields"] if f["key"] == "archive")
-    assert archive["widget"] == "group"
-    child_keys = {c["key"] for c in archive["fields"]}
+    arch = next(s for s in ui["sections"] if s["key"] == "session_archiving")
+    assert arch["label"] == "Session Archiving"
+    child_keys = {c["key"] for c in arch["fields"]}
     assert child_keys == {"enabled", "dir", "retain_days", "reconcile_seconds"}
-    enabled = next(c for c in archive["fields"] if c["key"] == "enabled")
+    enabled = next(c for c in arch["fields"] if c["key"] == "enabled")
     assert enabled["widget"] == "toggle"
-    retain = next(c for c in archive["fields"] if c["key"] == "retain_days")
+    assert enabled["dotpath"] == "session_indexing.archive.enabled"
+    retain = next(c for c in arch["fields"] if c["key"] == "retain_days")
     assert retain["widget"] == "int"
+    # Vector Indexing no longer carries the archive as a nested group.
+    si = next(s for s in ui["sections"] if s["key"] == "session_indexing")
+    assert si["label"] == "Session Vector Indexing"
+    assert not any(f["key"] == "archive" for f in si["fields"])
+    # Summarization renamed too.
+    sx = next(s for s in ui["sections"] if s["key"] == "session_extraction")
+    assert sx["label"] == "Session Summarization"
 
 
 def test_unhidden_fields_not_in_hidden_map():
@@ -179,3 +193,13 @@ def test_query_log_section_renders():
     assert retention["min"] == 0
     assert retention["max"] == 365
     assert retention["help"] == "0 = keep forever"
+
+
+def test_identity_fields_emitted_readonly():
+    """state_dir / project_root are surfaced (not hidden) and marked read-only."""
+    ui = build_ui_schema()
+    by_path = {f["dotpath"]: f for sec in ui["sections"] for f in sec["fields"]}
+    assert by_path["project.state_dir"]["readonly"] is True
+    assert by_path["project.project_root"]["readonly"] is True
+    # An ordinary editable field carries no readonly flag (or False).
+    assert not by_path["graphrag.enabled"].get("readonly", False)

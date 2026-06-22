@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-20
+last_validated: 2026-06-23
 ---
 
 # Releasing BrainPalace
@@ -27,6 +27,16 @@ on the server; the dashboard depends on the cli) — using a **PyPI Trusted
 Publisher (OIDC)** — short-lived, repo-scoped, **no API token**. Each package
 publishes from its own GitHub environment: `pypi`, `pypi-cli`, and
 `pypi-dashboard`.
+
+> **Dashboard SPA is built in CI, not committed.** The dashboard's built SPA
+> (`brainpalace_dashboard/static/`) is gitignored generated output — it is no
+> longer committed to git (committing content-hash-named build output churned the
+> worktree on every rebuild). The `publish-dashboard` job sets up Node and runs
+> `npm ci && npm run build` before `poetry build`; pyproject's `[tool.poetry]
+> include` force-packages the freshly built `static/` into the wheel + sdist, so
+> end users still `pip install brainpalace-dashboard` and get a prebuilt SPA with
+> no node toolchain. Locally the same build runs via `task install`,
+> `task install:from-source`, and `task build:dashboard-ui`.
 
 > **One-time setup for `brainpalace-dashboard`:** the dashboard package needs its
 > own PyPI Trusted Publisher and a matching GitHub environment named

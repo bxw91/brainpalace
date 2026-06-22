@@ -95,6 +95,7 @@ describe("api client", () => {
     expect(init?.method).toBe("PATCH");
     expect(JSON.parse(init?.body as string)).toEqual({
       values: { embedding: { provider: "ollama" } },
+      unset: [],
       restart: false,
       force_reindex: false,
     });

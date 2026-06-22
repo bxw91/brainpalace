@@ -237,6 +237,57 @@ class ConfigService:
             now[dp] = inh or {"value": None, "source": "unset"}
         return {"removed": removed, "effective": now}
 
+    def effective_global(self) -> dict[str, dict[str, Any]]:
+        """Resolve each global config key across global-file > code default.
+
+        The GLOBAL layer has no project override above it, so ``source`` is
+        ``"global"`` (set in the file) or ``"default"`` (code default).
+        ``inherited`` is the code default a key falls back to when its global
+        override is removed — populated only for ``source == "global"`` keys.
+        """
+        global_ = _flatten(self._raw(self._global_config_path()))
+        out: dict[str, dict[str, Any]] = {}
+        for dotpath in set(global_) | set(DEFAULTS):
+            if dotpath in global_:
+                value, source = global_[dotpath], "global"
+            else:
+                value, source = DEFAULTS[dotpath], "default"
+            entry: dict[str, Any] = {
+                "value": _mask_value(dotpath, value),
+                "source": source,
+            }
+            entry["inherited"] = (
+                {
+                    "value": _mask_value(dotpath, DEFAULTS[dotpath]),
+                    "source": "default",
+                }
+                if source == "global" and dotpath in DEFAULTS
+                else None
+            )
+            out[dotpath] = entry
+        return out
+
+    def unset_global(self, dotpaths: list[str]) -> dict[str, Any]:
+        """Remove keys from the GLOBAL config.yaml so they fall back to code default.
+
+        Mirrors :meth:`unset` for the global layer: deletes each dotpath from the
+        XDG ``config.yaml`` (pruning emptied parents), persists atomically, and
+        reports the NEW resolved value+source per requested key (the code default,
+        or ``{"value": None, "source": "unset"}`` for a key with no default).
+        """
+        path = self._global_config_path()
+        data = self._raw(path)
+        removed = [dp for dp in dotpaths if _unset_dotpath(data, dp)]
+        if removed:
+            self._atomic_write(path, data)
+        now: dict[str, Any] = {}
+        for dp in dotpaths:
+            if dp in DEFAULTS:
+                now[dp] = {"value": _mask_value(dp, DEFAULTS[dp]), "source": "default"}
+            else:
+                now[dp] = {"value": None, "source": "unset"}
+        return {"removed": removed, "effective": now}
+
     def schema(self) -> dict[str, Any]:
         return build_ui_schema()
 
@@ -254,10 +305,21 @@ class ConfigService:
             if not e.message.startswith(("Unknown top-level key", "Unknown key"))
         ]
 
-    def write(self, state_dir: Path, values: dict[str, Any]) -> None:
-        self._write_to(self._config_path(Path(state_dir)), values)
+    def write(
+        self,
+        state_dir: Path,
+        values: dict[str, Any],
+        unset: list[str] | tuple[str, ...] = (),
+    ) -> None:
+        # Project layer inherits from the global file, then the code default.
+        global_flat = _flatten(self._raw(self._global_config_path()))
+        self._write_to(
+            self._config_path(Path(state_dir)), values, unset, inherit_from=global_flat
+        )
 
-    def write_global(self, values: dict[str, Any]) -> None:
+    def write_global(
+        self, values: dict[str, Any], unset: list[str] | tuple[str, ...] = ()
+    ) -> None:
         """Validate + atomically write the GLOBAL XDG ``config.yaml``.
 
         Reuses the same secret-merge, changed-fields-only validation, and
@@ -265,11 +327,58 @@ class ConfigService:
         config directory if it does not yet exist."""
         path = self._global_config_path()
         path.parent.mkdir(parents=True, exist_ok=True)
-        self._write_to(path, values)
+        # Global layer inherits only from the code default.
+        self._write_to(path, values, unset, inherit_from={})
 
-    def _write_to(self, path: Path, values: dict[str, Any]) -> None:
+    @staticmethod
+    def _strip_inherited_noise(
+        merged: dict[str, Any],
+        existing: dict[str, Any],
+        inherit_from: dict[str, Any],
+    ) -> None:
+        """Keep the config sparse: drop a NEWLY-added leaf that equals the value
+        it would inherit anyway.
+
+        The dashboard form submits a field's effective value even when it only
+        inherits it (e.g. ``embedding.model`` materialized to its code default).
+        Persisting that would un-sparse the file and re-introduce the verbatim
+        "copy the inherited value into the project" writes the config model
+        forbids — and make every later save diff it as a change. So a leaf that
+        (a) was NOT already set on disk and (b) equals its inherited value
+        (``inherit_from`` layer, else the code default) is removed before write.
+        A value that DIVERGES from what it would inherit is a real override and
+        is kept; a leaf the user already had on disk is left untouched.
+        """
+        flat_old = _flatten(existing)
+        for dp, val in list(_flatten(merged).items()):
+            if dp in flat_old:
+                continue  # pre-existing project value — never auto-strip
+            if dp in inherit_from:
+                inherited = inherit_from[dp]
+            elif dp in DEFAULTS:
+                inherited = DEFAULTS[dp]
+            else:
+                continue  # nothing to inherit → a genuine new override
+            if val == inherited:
+                _unset_dotpath(merged, dp)
+
+    def _write_to(
+        self,
+        path: Path,
+        values: dict[str, Any],
+        unset: list[str] | tuple[str, ...] = (),
+        inherit_from: dict[str, Any] | None = None,
+    ) -> None:
         existing = yaml.safe_load(path.read_text()) if path.exists() else {}
         merged = _merge_secrets(values, existing or {})
+        # Staged inherit: the form sends the keys it wants REMOVED so they fall
+        # back to global / code default. Apply them in the SAME atomic write as
+        # the value sets, so "revert to inherited" only persists on Save (and a
+        # Discard / refresh before Save reverts it — it was never written).
+        for dotpath in unset:
+            _unset_dotpath(merged, dotpath)
+        if inherit_from is not None:
+            self._strip_inherited_noise(merged, existing or {}, inherit_from)
         # Editor semantics: only block the save on validation errors in fields
         # this save actually CHANGES. A real config.yaml may already contain a
         # value the current schema rejects (a freshly-added enum value not yet

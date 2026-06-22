@@ -32,10 +32,7 @@ export function TextField({
     const showCustom = customOpen || (!valueIsPreset && value !== "");
     return (
       <div className="flex flex-col gap-2">
-        <div
-          role="group"
-          className="inline-flex flex-wrap gap-1 rounded-lg border border-line bg-ink-900/50 p-1"
-        >
+        <div role="group" className="inline-flex flex-wrap items-center gap-2">
           {presets!.map((p) => {
             const active = !showCustom && p === value;
             return (
@@ -49,11 +46,11 @@ export function TextField({
                   onChange(p);
                 }}
                 className={[
-                  "rounded-md px-3 py-1.5 text-sm font-medium transition-all duration-150",
+                  "rounded-md border px-3 py-1.5 text-sm font-medium transition-all duration-150",
                   "focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60",
                   active
-                    ? "bg-accent text-ink-900"
-                    : "text-fg-muted hover:bg-ink-700/60 hover:text-fg",
+                    ? "border-accent bg-accent text-ink-900"
+                    : "border-line bg-ink-900/40 text-fg-muted hover:border-accent/50 hover:bg-ink-700/60 hover:text-fg",
                 ].join(" ")}
               >
                 {p}

@@ -150,6 +150,64 @@ def test_spawn_autostart_is_detached_fire_and_forget(
     hook._spawn_autostart(Path("/proj"))
     assert len(calls) == 1
     assert calls[0]["argv"] == ["/usr/bin/brainpalace", "start", "--json"]
+
+
+def test_hook_sessionstart_server_up_resurrects_dashboard(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Server UP but dashboard may be dead → the hook best-effort relaunches it
+    (it is launched on `brainpalace start`, not supervised)."""
+    from brainpalace_cli.commands import hook
+
+    monkeypatch.setattr(hook, "discover_project_dir", lambda _=None: Path("/proj"))
+    monkeypatch.setattr(hook, "discover_server_url", lambda _=None: "http://x:8000")
+    monkeypatch.setattr(hook, "_session_context", lambda _url: "")  # no HTTP
+    monkeypatch.setattr(hook, "_dashboard_autostart_enabled", lambda: True)
+    dash: list[Path] = []
+    monkeypatch.setattr(hook, "_spawn_dashboard_autostart", lambda p: dash.append(p))
+    runner = CliRunner()
+    res = runner.invoke(cli, ["hook", "sessionstart"])
+    assert res.exit_code == 0
+    assert dash == [Path("/proj")]  # server up → dashboard resurrect fired
+
+
+def test_hook_sessionstart_server_up_dashboard_autostart_off(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """dashboard.autostart off → the hook does NOT relaunch the dashboard."""
+    from brainpalace_cli.commands import hook
+
+    monkeypatch.setattr(hook, "discover_project_dir", lambda _=None: Path("/proj"))
+    monkeypatch.setattr(hook, "discover_server_url", lambda _=None: "http://x:8000")
+    monkeypatch.setattr(hook, "_session_context", lambda _url: "")
+    monkeypatch.setattr(hook, "_dashboard_autostart_enabled", lambda: False)
+    dash: list[Path] = []
+    monkeypatch.setattr(hook, "_spawn_dashboard_autostart", lambda p: dash.append(p))
+    runner = CliRunner()
+    res = runner.invoke(cli, ["hook", "sessionstart"])
+    assert res.exit_code == 0
+    assert dash == []
+
+
+def test_spawn_dashboard_autostart_argv(monkeypatch: pytest.MonkeyPatch) -> None:
+    from brainpalace_cli.commands import hook
+
+    calls: list[dict] = []
+
+    def fake_popen(argv, **kwargs):  # noqa: ANN001, ANN202
+        calls.append({"argv": argv, "kwargs": kwargs})
+        return object()
+
+    monkeypatch.setattr(hook.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(hook.shutil, "which", lambda _: "/usr/bin/brainpalace")
+    hook._spawn_dashboard_autostart(Path("/proj"))
+    assert calls[0]["argv"] == [
+        "/usr/bin/brainpalace",
+        "dashboard",
+        "start",
+        "--no-open",
+    ]
+    assert calls[0]["kwargs"]["start_new_session"] is True
     assert calls[0]["kwargs"]["cwd"] == "/proj"
     assert calls[0]["kwargs"]["start_new_session"] is True  # own session → detached
     # Never waited on (fire-and-forget): Popen handle is discarded, no .wait().

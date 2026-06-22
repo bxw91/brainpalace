@@ -285,3 +285,34 @@ def resolve_session_capabilities(
         index_enabled=bool(cfg.enabled),
         tool=tool,
     )
+
+
+def session_recall_flags(config_path: Path | None = None) -> tuple[bool, bool]:
+    """Live on/off state that gates what session data may be RECALLED into search.
+
+    Returns ``(vector_index_enabled, summarization_enabled)``:
+      - ``vector_index_enabled`` — the embed capability is on, so raw ``session``
+        transcript chunks may surface in queries.
+      - ``summarization_enabled`` — the extraction engine is not ``off``, so
+        ``session_decision`` chunks + auto-promoted (``origin != user``) curated
+        memory may surface.
+
+    When a flag is False the corresponding data is HIDDEN from results (hard off,
+    no per-query override) — a disabled feature must not leak its possibly-stale
+    data, and the agent is never pointed at it. Manually-saved ``brainpalace
+    remember`` facts (``origin=user``) are unaffected. Best-effort: any failure
+    fails OPEN (both True) so a config hiccup never silently blanks recall.
+    """
+    try:
+        index_enabled = resolve_session_capabilities(
+            load_session_indexing_config(config_path)
+        ).index_enabled
+    except Exception:  # noqa: BLE001 — never break a query on config resolution
+        index_enabled = True
+    try:
+        summarization_enabled = (
+            load_session_extraction_config(config_path).mode != "off"
+        )
+    except Exception:  # noqa: BLE001
+        summarization_enabled = True
+    return bool(index_enabled), bool(summarization_enabled)

@@ -289,6 +289,13 @@ async def indexing_status(request: Request) -> dict[str, Any]:
     except Exception:  # noqa: BLE001 — never fail /status on the optional count
         pass
 
+    # Index-drift warnings (embedding provider/model + storage backend). Surfaced
+    # in `brainpalace status` and the dashboard so a config change that strands the
+    # existing index is visible, not buried in the server log.
+    data["index_warnings"] = list(
+        getattr(request.app.state, "index_warnings", None) or []
+    )
+
     # Consolidated per-feature status for `brainpalace status` (human view).
     # Reuses values already computed above; tolerant of missing app.state.
     session_cfg = getattr(request.app.state, "session_indexing_config", None)

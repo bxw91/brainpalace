@@ -27,18 +27,31 @@ export function SchemaForm({
   errors,
   saving = false,
   showRestart = true,
-  onUnset,
+  localSource,
+  inheritFrom = "default",
+  actionsInline = false,
+  idSuffix = "",
 }: {
   schema: UiSchema;
   values: ConfigValues;
   effective?: EffectiveConfig;
-  onSave: (draft: ConfigValues, restart: boolean) => void;
+  /** Persist the sparse override set + the keys to unset (revert to inherit). */
+  onSave: (draft: ConfigValues, unset: string[], restart: boolean) => void;
   errors?: Record<string, string>;
   saving?: boolean;
   /** Hide the "Save + Restart" button (e.g. global config has no instance). */
   showRestart?: boolean;
-  /** Remove a project override so the key inherits global/code (per-instance). */
-  onUnset?: (dotpath: string) => void;
+  /** Which source counts as "set in this file" for inherit/override. */
+  localSource?: "project" | "global" | "file";
+  /** The immediate parent layer this surface inherits from (drives whether the
+   *  inherit option shows and its "using global value / code default" label). */
+  inheritFrom?: "global" | "default";
+  /** Render the Save/Discard bar in-flow (for a sub-form stacked in a tab)
+   *  instead of floating fixed at the bottom of the viewport. */
+  actionsInline?: boolean;
+  /** Suffix appended to the action-bar testids (`btn-save`, `btn-discard`,
+   *  `unsaved-banner`, `btn-save-restart`) so two forms can share a tab. */
+  idSuffix?: string;
 }) {
   const allPaths = useMemo(
     () => schema.sections.flatMap((s) => leafPaths(s.fields)),
@@ -75,7 +88,9 @@ export function SchemaForm({
                   errors={errors}
                   effective={effective}
                   providers={schema.providers}
-                  onUnset={onUnset}
+                  onInherit={form.inherit}
+                  localSource={localSource}
+                  inheritFrom={inheritFrom}
                 />
               </div>
             ))}
@@ -86,11 +101,14 @@ export function SchemaForm({
       {/* Action bar is ALWAYS visible so Save / Save + Restart are discoverable;
           the buttons are disabled until there is something to save. */}
       <div
-        data-testid="unsaved-banner"
+        data-testid={`unsaved-banner${idSuffix}`}
         role="region"
         aria-label="Save configuration"
         className={[
-          "panel animate-fade-up fixed bottom-6 left-1/2 z-40 flex -translate-x-1/2 items-center gap-4 px-5 py-3",
+          "panel flex items-center gap-4 px-5 py-3",
+          actionsInline
+            ? "mt-2"
+            : "animate-fade-up fixed bottom-6 left-1/2 z-40 -translate-x-1/2",
           form.dirty ? "border-accent/30 shadow-glow" : "border-line",
         ].join(" ")}
       >
@@ -114,7 +132,7 @@ export function SchemaForm({
         <div className="flex items-center gap-2">
           <button
             type="button"
-            data-testid="btn-discard"
+            data-testid={`btn-discard${idSuffix}`}
             onClick={form.reset}
             disabled={saving || !form.dirty}
             className="btn-ghost btn-sm"
@@ -125,8 +143,8 @@ export function SchemaForm({
           {showRestart && (
             <button
               type="button"
-              data-testid="btn-save-restart"
-              onClick={() => onSave(form.draft, true)}
+              data-testid={`btn-save-restart${idSuffix}`}
+              onClick={() => onSave(form.draft, form.unsetPaths, true)}
               disabled={saving || !form.dirty}
               className="btn-ghost btn-sm"
             >
@@ -136,8 +154,8 @@ export function SchemaForm({
           )}
           <button
             type="button"
-            data-testid="btn-save"
-            onClick={() => onSave(form.draft, false)}
+            data-testid={`btn-save${idSuffix}`}
+            onClick={() => onSave(form.draft, form.unsetPaths, false)}
             disabled={saving || !form.dirty}
             className="btn-primary btn-sm"
           >

@@ -54,6 +54,43 @@ def test_write_atomic_creates_bak(tmp_path):
     assert saved["embedding"]["provider"] == "ollama"
 
 
+def test_write_strips_materialized_inherited_default(tmp_path, monkeypatch):
+    """The reported bug: the form submits embedding.provider/model at their code
+    defaults even though the project only set api_key_env. Persisting them would
+    un-sparse the file. They must be dropped (equal to what they'd inherit), while
+    the real edit and the pre-existing api_key_env are kept."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))  # no global file
+    state = _state(tmp_path, "embedding:\n  api_key_env: OPENAI_API_KEY\n")
+    svc = ConfigService()
+    svc.write(
+        state,
+        {
+            "embedding": {
+                "api_key_env": "OPENAI_API_KEY",
+                "provider": "openai",  # == code default → strip
+                "model": "text-embedding-3-large",  # == code default → strip
+            },
+            "git_indexing": {"enabled": True},  # a real new override → keep
+        },
+    )
+    saved = yaml.safe_load((state / "config.yaml").read_text())
+    assert "provider" not in saved["embedding"]
+    assert "model" not in saved["embedding"]
+    assert saved["embedding"]["api_key_env"] == "OPENAI_API_KEY"
+    assert saved["git_indexing"]["enabled"] is True
+
+
+def test_write_keeps_value_that_diverges_from_inherited(tmp_path, monkeypatch):
+    """A newly-added value that DIFFERS from the inherited default is a real
+    override and must be written."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
+    state = _state(tmp_path, "embedding:\n  api_key_env: OPENAI_API_KEY\n")
+    svc = ConfigService()
+    svc.write(state, {"embedding": {"provider": "ollama"}})  # != default openai
+    saved = yaml.safe_load((state / "config.yaml").read_text())
+    assert saved["embedding"]["provider"] == "ollama"
+
+
 def test_read_write_global_roundtrip(tmp_path, monkeypatch):
     """read_global / write_global target the XDG global file and reuse the
     same validate + secret-merge + atomic-write machinery as the project path."""

@@ -33,7 +33,27 @@ beforeEach(() => {
     version: "26.6.25",
     runtime: { running: true, port: 8787, base_url: "http://127.0.0.1:8787/dashboard/" },
   });
+  // Default: every field set in the file → controls render with a value.
+  vi.mocked(client.getSettingsEffective).mockResolvedValue({
+    host: { value: "127.0.0.1", source: "file" },
+    port: { value: 8787, source: "file" },
+    poll_s: { value: 5, source: "file" },
+    token: { value: "", source: "file" },
+    autostart: { value: true, source: "file" },
+    time_format: { value: "24h", source: "file" },
+    date_format: { value: "dd.mm.yyyy", source: "file" },
+  });
 });
+
+const ALL_DEFAULT: client.SettingsEffective = {
+  host: { value: "127.0.0.1", source: "default" },
+  port: { value: 8787, source: "default" },
+  poll_s: { value: 5, source: "default" },
+  token: { value: "", source: "default" },
+  autostart: { value: true, source: "default" },
+  time_format: { value: "24h", source: "default" },
+  date_format: { value: "dd.mm.yyyy", source: "default" },
+};
 
 describe("Settings tab (control-plane)", () => {
   it("edits port and saves after confirmation", async () => {
@@ -43,41 +63,38 @@ describe("Settings tab (control-plane)", () => {
     });
     wrap(<Settings />);
 
-    const portInput = (await screen.findByTestId("input-port")) as HTMLInputElement;
-    expect(portInput.value).toBe("8787");
-    fireEvent.change(portInput, { target: { value: "9001" } });
+    fireEvent.click(await screen.findByTestId("int-inc-port"));
 
-    fireEvent.click(screen.getByTestId("btn-save-settings"));
-    // Mutation is confirm-gated.
-    expect(client.patchSettings).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId("btn-save"));
+    expect(client.patchSettings).not.toHaveBeenCalled(); // confirm-gated
     fireEvent.click(await screen.findByTestId("btn-confirm"));
 
     await waitFor(() =>
       expect(client.patchSettings).toHaveBeenCalledWith(
-        expect.objectContaining({ port: 9001 }),
+        expect.objectContaining({ port: 8788 }),
+        [],
       ),
     );
     expect(await screen.findByTestId("toast-success")).toBeInTheDocument();
   });
 
-  it("toggles autostart and includes it in the save", async () => {
+  it("toggles autostart off and includes it in the save", async () => {
     vi.mocked(client.patchSettings).mockResolvedValue({
       ok: true,
       restart_required: [],
     });
     wrap(<Settings />);
 
-    const toggle = await screen.findByTestId("toggle-autostart");
-    expect(toggle).toHaveAttribute("aria-checked", "true");
-    fireEvent.click(toggle); // turn autostart off
-    expect(toggle).toHaveAttribute("aria-checked", "false");
+    const off = await screen.findByTestId("toggle-autostart-off");
+    fireEvent.click(off);
 
-    fireEvent.click(screen.getByTestId("btn-save-settings"));
+    fireEvent.click(screen.getByTestId("btn-save"));
     fireEvent.click(await screen.findByTestId("btn-confirm"));
 
     await waitFor(() =>
       expect(client.patchSettings).toHaveBeenCalledWith(
         expect.objectContaining({ autostart: false }),
+        [],
       ),
     );
   });
@@ -87,13 +104,41 @@ describe("Settings tab (control-plane)", () => {
       errors: [{ field: "port", message: "port must be 1–65535" }],
     });
     wrap(<Settings />);
-    fireEvent.change(await screen.findByTestId("input-port"), {
-      target: { value: "70000" },
-    });
-    fireEvent.click(screen.getByTestId("btn-save-settings"));
+    fireEvent.click(await screen.findByTestId("int-inc-port"));
+    fireEvent.click(screen.getByTestId("btn-save"));
     fireEvent.click(await screen.findByTestId("btn-confirm"));
     expect(await screen.findByTestId("field-error-port")).toHaveTextContent(
       "port must be 1–65535",
+    );
+  });
+
+  it("a code-default field shows 'using code default' (no Override button)", async () => {
+    vi.mocked(client.getSettingsEffective).mockResolvedValue(ALL_DEFAULT);
+    wrap(<Settings />);
+    expect(await screen.findByTestId("field-inherit-port")).toHaveTextContent(
+      /using code default: 8787/i,
+    );
+    expect(screen.queryByTestId("field-override-port")).toBeNull();
+  });
+
+  it("reverting a file-sourced field stages an unset, persisted on Save", async () => {
+    vi.mocked(client.getSettingsEffective).mockResolvedValue({
+      ...ALL_DEFAULT,
+      port: { value: 9000, source: "file" },
+    });
+    vi.mocked(client.patchSettings).mockResolvedValue({
+      ok: true,
+      restart_required: [],
+    });
+    wrap(<Settings />);
+
+    fireEvent.click(await screen.findByTestId("field-inherit-port"));
+    expect(client.patchSettings).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId("btn-save"));
+    fireEvent.click(await screen.findByTestId("btn-confirm"));
+    await waitFor(() =>
+      expect(client.patchSettings).toHaveBeenCalledWith({}, ["port"]),
     );
   });
 });

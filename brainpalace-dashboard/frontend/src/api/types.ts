@@ -22,6 +22,7 @@ export type SchemaField = {
   label: string;
   widget: "enum" | "toggle" | "int" | "text" | "group" | "dict" | "stringlist";
   secret?: boolean;
+  readonly?: boolean;
   options?: string[];
   presets?: string[];
   placeholder?: string;
@@ -50,6 +51,7 @@ export const SchemaField: z.ZodType<SchemaField> = z.lazy(() =>
       "stringlist",
     ]),
     secret: z.boolean().optional(),
+    readonly: z.boolean().optional(),
     options: z.array(z.string()).optional(),
     presets: z.array(z.string()).optional(),
     placeholder: z.string().optional(),
@@ -97,7 +99,12 @@ export type UiSchema = z.infer<typeof UiSchema>;
 export type ConfigValues = Record<string, unknown>;
 
 /** Per-key effective value + provenance across project > global > code default. */
-export type EffectiveSource = "project" | "global" | "default" | "unset";
+export type EffectiveSource =
+  | "project"
+  | "global"
+  | "file"
+  | "default"
+  | "unset";
 export type EffectiveEntry = {
   value: unknown;
   source: EffectiveSource;

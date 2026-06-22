@@ -97,6 +97,37 @@ describe("Status tab", () => {
     expect(tab).not.toHaveTextContent(/incomplete/i);
   });
 
+  it("shows the index-drift banner when the server reports index_warnings", async () => {
+    vi.mocked(client.getInstanceStatus).mockResolvedValue({
+      total_documents: 5,
+      total_chunks: 50,
+      indexed_folders: ["/a"],
+      index_warnings: [
+        "Embedding provider mismatch: index was created with openai/text-embedding-3-large.",
+        "Storage backend changed: the index was built under 'chroma'.",
+      ],
+    } as never);
+
+    wrap(<Status instanceId="inst-1" />);
+
+    const banner = await screen.findByTestId("index-drift-banner");
+    expect(banner).toHaveTextContent(/index drift/i);
+    expect(banner).toHaveTextContent(/embedding provider mismatch/i);
+    expect(banner).toHaveTextContent(/storage backend changed/i);
+  });
+
+  it("does NOT show the index-drift banner when there are no warnings", async () => {
+    vi.mocked(client.getInstanceStatus).mockResolvedValue({
+      total_documents: 5,
+      total_chunks: 50,
+      indexed_folders: ["/a"],
+      index_warnings: [],
+    } as never);
+    wrap(<Status instanceId="inst-1" />);
+    await screen.findByTestId("stat-documents");
+    expect(screen.queryByTestId("index-drift-banner")).toBeNull();
+  });
+
   it("shows the stopped state when the instance is unreachable", async () => {
     const err = new client.InstanceUnreachableError("instance unreachable", 502);
     vi.mocked(client.getInstanceStatus).mockRejectedValue(err);

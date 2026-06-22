@@ -35,6 +35,30 @@ def test_get_config_effective_route(monkeypatch, tmp_path):
     assert body["reranker.enabled"]["source"] == "default"
 
 
+def test_patch_config_applies_staged_unset(monkeypatch, tmp_path):
+    """Save with `unset` removes the key in the same write (staged inherit)."""
+    monkeypatch.setattr(rc, "_state_dir_for", lambda id_: tmp_path)
+    (tmp_path / "config.yaml").write_text(
+        "embedding:\n  provider: openai\n  model: text-embedding-3-small\n"
+    )
+    client = TestClient(create_app())
+    resp = client.patch(
+        "/dashboard/api/instances/abc/config",
+        json={
+            "values": {"embedding": {"provider": "openai"}},
+            "unset": ["embedding.model"],
+            "restart": False,
+        },
+    )
+    assert resp.status_code == 200
+    import yaml
+
+    saved = yaml.safe_load((tmp_path / "config.yaml").read_text())
+    assert saved["embedding"]["provider"] == "openai"
+    # The reverted key is gone → it inherits global / code default again.
+    assert "model" not in saved["embedding"]
+
+
 def test_patch_config_validation_error(monkeypatch, tmp_path):
     monkeypatch.setattr(rc, "_state_dir_for", lambda id_: tmp_path)
     (tmp_path / "config.yaml").write_text("embedding:\n  provider: openai\n")

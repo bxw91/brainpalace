@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-20
+last_validated: 2026-06-22
 ---
 
 # BrainPalace Developer Guide
@@ -426,6 +426,20 @@ breaks inheritance (a later global edit would no longer propagate).
 > `config.json` (server `bind_host`/ports, runtime-managed) is **not** layered;
 > only `config.yaml` participates in `code < global < project` resolution.
 
+### Dashboard's own config (`dashboard.yaml`)
+
+The control-plane dashboard's **own** settings (host/port/poll/token/autostart/
+display formats) live in their own file, `~/.config/brainpalace/dashboard.yaml`
+— **not** the `dashboard:` block of `config.yaml`. On first load the loader
+auto-migrates a legacy `config.yaml` `dashboard:` block into `dashboard.yaml`
+and strips it (other `config.yaml` sections survive). The file is **single-scope**
+(`file` > code `default`, no global/project layering) and **sparse**: a field
+equal to its `DashboardConfig` default is never persisted, and an unset deletes
+the key so the code default applies. The dashboard route `settings/effective`
+(per-field `{value, source}`, token masked) powers the Settings tab's inline
+inherit-first control (`using code default: X` + the choices/input); the revert
+is staged in the draft and applied as the Save `unset` list, not an immediate call.
+
 ### Health Endpoint Enhancement
 
 The `/health` endpoint now includes mode information:
@@ -508,7 +522,7 @@ checked-in coverage maps:
 
 | Check | Live source | Allowlist (with reasons) | What "satisfied" means |
 |-------|-------------|--------------------------|------------------------|
-| **Config** | `brainpalace_cli.config_schema.*_KNOWN_FIELDS` | `ui_schema.DASHBOARD_HIDDEN_FIELDS` | Every schema leaf dotpath is rendered by `ui_schema.build_ui_schema()` **or** hidden with a reason. Config fields auto-render, so usually nothing to do. |
+| **Config** | the server **pydantic config models** (`model_introspect.SECTION_MODELS`), plus config_schema for the model-less api/server/project sections | `ui_schema.DASHBOARD_HIDDEN_FIELDS` | Every model field is rendered by `ui_schema.build_ui_schema()` **or** hidden with a reason; its widget/default/enum are **derived from the model** (no hand table to drift). Config fields auto-render, so usually nothing to do. |
 | **CLI** | `brainpalace_cli.cli.cli.commands` (Click group) | `coverage_maps.CLI_DASHBOARD_COVERAGE` | Every registered command maps to a dashboard tab/action **or** a `cli_only: <reason>` entry; no map entry for a removed command. |
 | **Endpoint** | `brainpalace_server.api.main.app.routes` (dashboard route prefixes) | `coverage_maps.ENDPOINT_SURFACES` | Every live `route.path` maps to a tab **or** an `unsurfaced: <reason>` entry; no map entry for a removed route. Keys match the exact FastAPI `route.path` (`{param}` form; data ops are nested under `/index/`). |
 
@@ -520,9 +534,14 @@ that is not surfaced in the UI carries a one-line reason.
 
 **To satisfy the gate when you add something:**
 
-- [ ] **New config field** → it auto-renders. Only touch `ui_schema.py` to add a
-      presentation `OVERRIDE`, or `DASHBOARD_HIDDEN_FIELDS` (with a reason) if it
-      must not be shown.
+- [ ] **New config field** → add it to its server pydantic model; it then
+      auto-renders with a widget/default/options **derived from the model**. Only
+      touch `ui_schema.py` to add a presentation `OVERRIDE` (label/help/
+      visibility), or `DASHBOARD_HIDDEN_FIELDS` (with a reason) if it must not be
+      shown. `OVERRIDES` must stay presentation-only — never put `widget`/
+      `default`/`options` there (a gate enforces this). A whole new **section**
+      needs its model added to `model_introspect.SECTION_MODELS` + an entry in
+      `ui_schema.SECTION_ORDER`.
 - [ ] **New CLI command** → add a `CLI_DASHBOARD_COVERAGE` entry: the tab/action
       it maps to, or `cli_only: <reason>`.
 - [ ] **New / changed server endpoint** → add the exact live `route.path` to

@@ -103,3 +103,48 @@ async def test_truncates_to_top_k():
     )
     assert len(out.results) == 2
     assert out.results[0].chunk_id == "mem_1"
+
+
+class _Mem:
+    def __init__(self, mid, origin):
+        self.id = mid
+        self.origin = origin
+
+
+def _svc_with_load(hits, entries):
+    qs = _svc(hits)
+    qs.memory_service.load = lambda: entries  # type: ignore[attr-defined]
+    return qs
+
+
+async def test_summarization_off_drops_session_derived_memory(monkeypatch):
+    monkeypatch.setattr(
+        "brainpalace_server.config.session_config.session_recall_flags",
+        lambda *a, **k: (True, False),  # summarization OFF
+    )
+    svc = _svc_with_load(
+        [
+            MemoryHit(id="user_1", text="user fact", score=0.9),
+            MemoryHit(id="sess_1", text="promoted decision", score=0.9),
+        ],
+        [_Mem("user_1", "user"), _Mem("sess_1", "session:abc")],
+    )
+    out = await svc._apply_memory_boost(_req(), _resp(_chunk("c1", 0.1)))
+    mem_ids = {r.chunk_id for r in out.results if r.source_type == "memory"}
+    assert mem_ids == {"user_1"}
+
+
+async def test_summarization_on_keeps_session_derived_memory(monkeypatch):
+    monkeypatch.setattr(
+        "brainpalace_server.config.session_config.session_recall_flags",
+        lambda *a, **k: (True, True),  # summarization ON
+    )
+    svc = _svc(
+        [
+            MemoryHit(id="user_1", text="user fact", score=0.9),
+            MemoryHit(id="sess_1", text="promoted decision", score=0.9),
+        ]
+    )
+    out = await svc._apply_memory_boost(_req(), _resp(_chunk("c1", 0.1)))
+    mem_ids = {r.chunk_id for r in out.results if r.source_type == "memory"}
+    assert mem_ids == {"user_1", "sess_1"}

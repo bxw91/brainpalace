@@ -1,9 +1,37 @@
 """Start-time server reuse: honour the global registry, not just runtime.json."""
 
+import json
+
 from click.testing import CliRunner
 
 from brainpalace_cli.commands import start as start_mod
 from brainpalace_cli.commands.start import start_command
+from brainpalace_cli.xdg_paths import get_xdg_config_dir
+
+
+def test_read_config_inherits_global_bind(monkeypatch, tmp_path):
+    """A bind key the project omits is inherited from the global XDG config.json."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
+    gdir = get_xdg_config_dir()
+    gdir.mkdir(parents=True, exist_ok=True)
+    (gdir / "config.json").write_text(
+        json.dumps({"bind_host": "0.0.0.0", "port_range_start": 9000})
+    )
+    state = tmp_path / "proj" / ".brainpalace"
+    state.mkdir(parents=True)
+    (state / "config.json").write_text(json.dumps({"port_range_start": 7000}))
+
+    merged = start_mod.read_config(state)
+    assert merged["bind_host"] == "0.0.0.0"  # inherited from the global layer
+    assert merged["port_range_start"] == 7000  # project overrides global
+
+
+def test_read_config_without_global_is_project_only(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
+    state = tmp_path / ".brainpalace"
+    state.mkdir(parents=True)
+    (state / "config.json").write_text(json.dumps({"bind_host": "1.2.3.4"}))
+    assert start_mod.read_config(state) == {"bind_host": "1.2.3.4"}
 
 
 def test_start_reuses_live_registry_server_for_same_project(monkeypatch, tmp_path):

@@ -5,13 +5,19 @@
 # exact set of project servers + dashboard that were running before.
 #
 # Repo-development tooling. Fully automatic and idempotent:
-#   1. snapshot which project servers + the dashboard are currently running
-#   2. stop them all (force) and VERIFY everything is down before touching files
-#   3. pipx install --force the local CLI, then inject the local server + dashboard
+#   1. rebuild the dashboard SPA from the CURRENT frontend source (npm ci + build)
+#      so the injected dashboard never ships a stale static/ bundle (static/ is
+#      gitignored generated output, not committed)
+#   2. snapshot which project servers + the dashboard are currently running
+#   3. stop them all (force) and VERIFY everything is down before touching files
+#   4. pipx install --force the local CLI, then inject the local server + dashboard
 #      (the published brainpalace-rag / brainpalace-dashboard deps are overridden),
 #      then re-pin the local CLI last (--no-deps) so the inject can't downgrade it
-#   4. restart exactly what was running before — servers first, then the dashboard
+#   5. restart exactly what was running before — servers first, then the dashboard
 #      if (and only if) it was up before
+#
+# Guarantee: everything installed is built from THIS source tree — the SPA from
+# frontend/src (rebuilt here), the Python packages with --no-cache-dir fresh wheels.
 #
 # It deliberately refuses to reinstall while anything is still running, so you
 # never replace the package under a live old process.
@@ -49,12 +55,60 @@ log() { printf '\033[1;36m[install-from-source]\033[0m %s\n' "$*"; }
 err() { printf '\033[1;31m[install-from-source] ERROR:\033[0m %s\n' "$*" >&2; }
 run() { if [ "$DRY_RUN" -eq 1 ]; then printf '  + %s\n' "$*"; else "$@"; fi; }
 
-for bin in pipx jq brainpalace; do
+for bin in pipx jq brainpalace curl npm node; do
   command -v "$bin" >/dev/null || { err "'$bin' not found on PATH"; exit 1; }
 done
 for d in "$CLI_DIR" "$SERVER_DIR" "$DASH_DIR"; do
   [ -d "$d" ] || { err "package dir missing: $d (run from a source checkout)"; exit 1; }
 done
+
+# --- source provenance: prove WHAT tree we are about to install ----------------
+# This script installs the working tree as-is (incl. uncommitted edits) — that is
+# the point of a from-source install. Log the exact branch + commit + dirty state
+# so it is unambiguous which source the local install now reflects.
+if command -v git >/dev/null && git -C "$REPO_ROOT" rev-parse --git-dir >/dev/null 2>&1; then
+  GIT_BRANCH="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?')"
+  GIT_SHA="$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || echo '?')"
+  GIT_DIRTY=""; git -C "$REPO_ROOT" diff --quiet 2>/dev/null && git -C "$REPO_ROOT" diff --cached --quiet 2>/dev/null || GIT_DIRTY=" +local-uncommitted-changes"
+  log "Source tree: $REPO_ROOT @ ${GIT_BRANCH}/${GIT_SHA}${GIT_DIRTY}"
+else
+  log "Source tree: $REPO_ROOT (not a git checkout)"
+fi
+
+# --- 0. rebuild the dashboard SPA from CURRENT source -------------------------
+# pip/pipx packages whatever already sits in brainpalace_dashboard/static/. That
+# compiled bundle is gitignored generated output (NOT committed), so a fresh
+# checkout may have no SPA at all, or a stale one from an earlier build. Rebuild
+# it here so the injected dashboard always reflects this tree's frontend/src.
+# Done BEFORE stopping any servers: a build failure aborts (set -e) without having
+# torn down running instances. `npm ci` (not install) + vite's emptyOutDir wipe and
+# regenerate static/ from the lockfile — reproducible, no leftovers from old builds.
+FRONTEND_DIR="$DASH_DIR/frontend"
+STATIC_DIR="$DASH_DIR/brainpalace_dashboard/static"
+log "Rebuilding dashboard SPA from current source ($FRONTEND_DIR)…"
+if [ "$DRY_RUN" -eq 1 ]; then
+  printf '  + (cd %s && rm -rf static node_modules/.vite *.tsbuildinfo && npm ci && npm run build)\n' "$FRONTEND_DIR"
+else
+  # Purge every build cache first so `tsc -b` / vite cannot reuse a stale
+  # incremental artifact — the compile must come only from current frontend/src:
+  #   - the old static/ output     (vite's emptyOutDir also wipes it, belt+braces)
+  #   - tsc's *.tsbuildinfo         (incremental typecheck cache)
+  #   - node_modules/.vite          (vite's transform/dep cache)
+  rm -rf "$STATIC_DIR" "$FRONTEND_DIR"/node_modules/.vite "$FRONTEND_DIR"/*.tsbuildinfo
+  # `npm ci` installs registry deps strictly from package-lock.json into a clean
+  # node_modules (it deletes any existing one) — reproducible, lockfile-pinned.
+  ( cd "$FRONTEND_DIR" && npm ci && npm run build )
+  # Freshness guard: the build must have produced static/ assets newer than every
+  # frontend/src file. If not, the build silently no-op'd (or wrote elsewhere) and
+  # we'd ship a stale UI — fail loud now instead of injecting the old bundle.
+  newest_src="$(find "$FRONTEND_DIR/src" -type f -printf '%T@\n' 2>/dev/null | sort -nr | head -1)"
+  newest_out="$(find "$STATIC_DIR" -type f -printf '%T@\n' 2>/dev/null | sort -nr | head -1)"
+  if [ -z "$newest_out" ] || awk "BEGIN{exit !(${newest_src:-0} > ${newest_out:-0})}"; then
+    err "dashboard SPA build did not refresh $STATIC_DIR (built assets older than frontend/src). Aborting BEFORE install so no stale UI is shipped."
+    exit 1
+  fi
+  log "Dashboard SPA rebuilt: $STATIC_DIR is current with frontend/src."
+fi
 
 # --- 1. snapshot running state (with the OLD cli, before we replace it) --------
 log "Snapshotting running instances…"
@@ -124,6 +178,26 @@ run pipx inject --force --pip-args=--no-cache-dir brainpalace-cli "$SERVER_DIR" 
 log "Pinning local CLI last (pipx runpip --no-deps) so the inject can't downgrade it…"
 run pipx runpip brainpalace-cli install --no-deps --force-reinstall "$CLI_DIR"
 [ "$DRY_RUN" -eq 0 ] && log "Now installed: $(brainpalace --version 2>/dev/null || echo '?')"
+
+# --- 4b. verify the INSTALLED dashboard serves the freshly built SPA ----------
+# Strongest "did it really update from source" check: the dashboard wheel pipx
+# just injected must contain the static/ bundle we rebuilt above — not a stale
+# cached wheel. index.html references the content-hashed asset filenames, so an
+# identical index.html proves an identical bundle. Compare byte-for-byte.
+if [ "$DRY_RUN" -eq 0 ]; then
+  DASH_LOC="$(pipx runpip brainpalace-cli show brainpalace-dashboard 2>/dev/null | awk -F': ' '/^Location:/{print $2}')"
+  installed_html="${DASH_LOC%/}/brainpalace_dashboard/static/index.html"
+  source_html="$STATIC_DIR/index.html"
+  if [ -z "$DASH_LOC" ] || [ ! -f "$installed_html" ]; then
+    err "could not locate the installed dashboard static bundle (Location='$DASH_LOC') — cannot confirm the SPA updated from source. Aborting."
+    exit 1
+  fi
+  if ! cmp -s "$installed_html" "$source_html"; then
+    err "INSTALLED dashboard SPA differs from the source build — pipx injected a stale/cached wheel. Try 'pipx uninstall brainpalace-cli' then re-run."
+    exit 1
+  fi
+  log "Verified: installed dashboard serves the SPA just built from current source."
+fi
 
 # --- 5. restart exactly what was running --------------------------------------
 if [ "$NO_RESTART" -eq 1 ]; then

@@ -49,7 +49,23 @@ tasks:
       - task: server:install
       - task: cli:install
       - task: dashboard:install
+      - task: install:dashboard-ui
       - task: install:hooks
+
+  install:dashboard-ui:
+    desc: >-
+      Build the dashboard SPA into brainpalace_dashboard/static/ (gitignored
+      generated output — not committed). Skips gracefully when npm is absent:
+      the dashboard UI is then unavailable but the API/server are unaffected
+      (the runtime no-ops the SPA mount when static/ is missing).
+    dir: ./brainpalace-dashboard/frontend
+    cmds:
+      - cmd: |
+          if command -v npm >/dev/null 2>&1; then
+            npm ci && npm run build
+          else
+            echo "npm not found — skipping dashboard SPA build (UI unavailable; API/server unaffected)."
+          fi
 
   install:hooks:
     desc: "Point git at the version-controlled hooks"

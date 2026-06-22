@@ -11,14 +11,18 @@ export function GroupField({
   setValue,
   errors,
   effective,
-  onUnset,
+  onInherit,
+  localSource,
+  inheritFrom,
 }: {
   field: SchemaField;
   getValue: (dotpath: string) => unknown;
   setValue: (dotpath: string, value: unknown) => void;
   errors?: Record<string, string>;
   effective?: EffectiveConfig;
-  onUnset?: (dotpath: string) => void;
+  onInherit?: (dotpath: string) => void;
+  localSource?: "project" | "global" | "file";
+  inheritFrom?: "global" | "default";
 }) {
   if (field.visible_when) {
     const current = getValue(field.visible_when.field);
@@ -41,7 +45,9 @@ export function GroupField({
           setValue={setValue}
           errors={errors}
           effective={effective}
-          onUnset={onUnset}
+          onInherit={onInherit}
+          localSource={localSource}
+          inheritFrom={inheritFrom}
         />
       ))}
     </fieldset>

@@ -35,7 +35,10 @@ async def reconcile_once(
     live_files = discover_session_files(sessions_dir)
     cutoff = retain_cutoff(session_cfg.retain_days)
     archived = indexed = 0
-    arch_paths: list[Path] = []
+    # Transcripts to summarize. Archive / index / distil are INDEPENDENT: the
+    # distiller reads the archived copy when archiving, else the live source — so
+    # provider/auto summarization runs even with archive (copy) turned OFF.
+    distill_paths: list[Path] = []
     for live in live_files:
         arch = None
         if archive_service is not None:
@@ -43,7 +46,7 @@ async def reconcile_once(
             if arch is None:
                 continue  # tombstoned / unreadable
             archived += 1
-            arch_paths.append(arch)
+        distill_paths.append(arch if arch is not None else live)
         if not caps.index_enabled or sess_svc is None:
             continue
         if cutoff is not None:
@@ -60,9 +63,9 @@ async def reconcile_once(
             origin_path=str(live) if arch is not None else None,
         )
         indexed += 1
-    if distiller is not None and arch_paths:
+    if distiller is not None and distill_paths:
         with contextlib.suppress(Exception):
-            await distiller.catch_up(arch_paths)
+            await distiller.catch_up(distill_paths)
     return {"archived": archived, "indexed": indexed}
 
 

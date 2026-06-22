@@ -297,7 +297,11 @@ async def check_embedding_compatibility(
             provider_settings.embedding
         )
         current_dimensions = embedding_provider.get_dimensions()
-        current_provider = str(provider_settings.embedding.provider)
+        # provider is an (str, Enum); str() yields "EmbeddingProviderType.OPENAI",
+        # but stored metadata holds the enum *value* ("openai"). Use .value so the
+        # comparison/message don't false-positive a mismatch.
+        _provider = provider_settings.embedding.provider
+        current_provider = getattr(_provider, "value", str(_provider))
         current_model = provider_settings.embedding.model
 
         # Check for mismatch
@@ -318,6 +322,65 @@ async def check_embedding_compatibility(
     except Exception as e:
         logger.warning(f"Failed to check embedding compatibility: {e}")
         return None
+
+
+#: Marker recording which storage backend the project's index data lives under,
+#: kept in the state dir (backend-independent — a switched-to backend is empty,
+#: so we cannot read it from the store itself).
+_INDEX_BACKEND_MARKER = ".index_backend"
+
+
+def _read_index_backend_marker(state_dir: Path) -> str | None:
+    try:
+        p = state_dir / _INDEX_BACKEND_MARKER
+        return p.read_text(encoding="utf-8").strip() or None if p.is_file() else None
+    except OSError:
+        return None
+
+
+def _write_index_backend_marker(state_dir: Path, backend: str) -> None:
+    try:
+        (state_dir / _INDEX_BACKEND_MARKER).write_text(backend, encoding="utf-8")
+    except OSError as exc:  # best-effort — never block startup on the marker
+        logger.warning("Could not write index-backend marker: %s", exc)
+
+
+async def check_storage_backend_drift(
+    state_dir: Path | None, backend_type: str, storage_backend: Any
+) -> str | None:
+    """Warn when the configured storage backend differs from the one the index
+    was built under (a "db type" change that strands the existing index).
+
+    Self-maintaining marker: whenever the CURRENT backend holds data we record it
+    as the project's backend. If the current backend is empty but the marker
+    names a DIFFERENT one, the data is stranded under that other store — warn.
+    Returns None (no drift) for a fresh project or when data matches the marker.
+    """
+    if state_dir is None:
+        return None
+    try:
+        count = (
+            await storage_backend.get_count()
+            if storage_backend is not None and storage_backend.is_initialized
+            else 0
+        )
+    except Exception:  # noqa: BLE001 — diagnostic only, never raise on startup
+        count = 0
+
+    if count > 0:
+        # Data is present under the configured backend — record it as the truth.
+        if _read_index_backend_marker(state_dir) != backend_type:
+            _write_index_backend_marker(state_dir, backend_type)
+        return None
+
+    prior = _read_index_backend_marker(state_dir)
+    if prior and prior != backend_type:
+        return (
+            f"Storage backend changed: the index was built under '{prior}', but "
+            f"config now uses '{backend_type}'. The existing index is not visible "
+            f"under '{backend_type}' — switch the backend back, or re-index."
+        )
+    return None
 
 
 def _apply_graphrag_yaml_overrides(provider_settings: "ProviderSettings") -> None:
@@ -404,13 +467,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     try:
         provider_settings = load_provider_settings()
         # Reranking gate: the ENABLE_RERANKING env var (when set) wins; otherwise
-        # the per-project ``reranker.enabled`` config drives it (default ON). The
+        # the per-project ``reranker.enabled`` config drives it (default OFF). The
         # query path reads ``settings.ENABLE_RERANKING``, so reconcile it here so
         # config.yaml / `brainpalace init` can turn reranking on/off.
         if os.getenv("ENABLE_RERANKING") is None:
             try:
                 settings.ENABLE_RERANKING = bool(
-                    getattr(provider_settings.reranker, "enabled", True)
+                    getattr(provider_settings.reranker, "enabled", False)
                 )
             except Exception:  # noqa: BLE001 — never block startup on this
                 pass
@@ -699,6 +762,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.graph_store_type = settings.GRAPH_STORE_TYPE
         logger.info("Storage backend initialized")
 
+        # Index-drift warnings (visible in /health/status, `brainpalace status`,
+        # and the dashboard). Embedding provider/model drift is detected above
+        # (check_embedding_compatibility → app.state.embedding_warning); add a
+        # storage-backend ("db type") drift check now that the backend is up.
+        backend_drift = await check_storage_backend_drift(
+            state_dir, backend_type, storage_backend
+        )
+        app.state.index_warnings = [
+            w
+            for w in (getattr(app.state, "embedding_warning", None), backend_drift)
+            if w
+        ]
+
         # Initialize embedding cache service (Phase 16)
         # Must be initialized BEFORE IndexingService so get_embedding_cache()
         # returns the instance when the first embed call happens.
@@ -969,7 +1045,26 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             app.state.session_archive_enabled = caps.archive_enabled
             app.state.session_index_enabled = caps.index_enabled
 
-            if (caps.archive_enabled or caps.index_enabled) and app.state.project_root:
+            # Server-side summarization (provider/auto) is INDEPENDENT of archive
+            # and index: set it up whenever extraction would run, even if both of
+            # those are OFF, so the three capabilities work individually.
+            from brainpalace_server.config.session_config import (
+                load_session_extraction_config,
+                session_distill_enabled,
+                session_distill_grace_hours,
+            )
+
+            extract_cfg = load_session_extraction_config()
+            distill_would_run = (
+                extract_cfg.mode in ("provider", "auto")
+                and session_distill_enabled()
+                and bool(app.state.project_root)
+                and not read_only
+            )
+
+            if (
+                caps.archive_enabled or caps.index_enabled or distill_would_run
+            ) and app.state.project_root:
                 from brainpalace_server.services.session_index_service import (
                     encode_project_to_sessions_dir,
                 )
@@ -1041,20 +1136,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 # blocks startup; failure leaves distiller=None (archive still runs).
                 distiller = None
                 try:
-                    from brainpalace_server.config.session_config import (
-                        load_session_extraction_config,
-                        session_distill_enabled,
-                        session_distill_grace_hours,
-                    )
-
-                    extract_cfg = load_session_extraction_config()
                     extract_mode = extract_cfg.mode
-                    if (
-                        extract_mode in ("provider", "auto")
-                        and session_distill_enabled()
-                        and app.state.project_root
-                        and not read_only
-                    ):
+                    if distill_would_run:
                         from brainpalace_server.indexing import (
                             get_embedding_generator,
                         )
@@ -1106,7 +1189,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 # session_archive.reconcile_seconds. Per-event copy is retired, so a
                 # growing session is re-copied at most once per interval (the final
                 # tail is captured on the first sweep after it goes quiet).
-                if archive_service is not None or sess_svc is not None:
+                if (
+                    archive_service is not None
+                    or sess_svc is not None
+                    or distiller is not None
+                ):
                     from brainpalace_server.services.session_reconciler import (
                         SessionReconciler,
                     )

@@ -76,6 +76,11 @@ class SessionContextService:
         budget_chars = self.budget_tokens * _CHARS_PER_TOKEN
         truncated = False
 
+        # Live recall flags — gate what session-derived data we surface.
+        from brainpalace_server.config.session_config import session_recall_flags
+
+        vector_on, summarization_on = session_recall_flags()
+
         # 2. Curated memory (priority: confidence desc, then most-recent)
         memories = []
         if self._memory is not None:
@@ -84,6 +89,11 @@ class SessionContextService:
             except Exception as exc:  # noqa: BLE001 — context must never fail hard
                 logger.warning("session context: memory load failed: %s", exc)
                 memories = []
+        # Hard-off session recall: when summarization is disabled, drop
+        # auto-promoted session-derived memory (origin != "user"); keep only
+        # manually-saved `brainpalace remember` facts.
+        if not summarization_on:
+            memories = [m for m in memories if (m.origin or "user") == "user"]
         memories.sort(key=lambda m: (m.confidence, m.created_at), reverse=True)
 
         if memories:
@@ -102,7 +112,24 @@ class SessionContextService:
                 lines.append("")
                 sections.append("memory")
 
-        # 3. last-session summary — PLACEHOLDER (Phase 050). Intentionally absent.
+        # 3. Conditional session-recall instruction. Tell the agent that prior
+        # sessions are searchable ONLY when a producing feature is live — never
+        # point it at a disabled (and possibly stale) source. Both off ⇒ no line.
+        if vector_on or summarization_on:
+            recall_what = (
+                "prior decisions & past sessions"
+                if vector_on and summarization_on
+                else "past sessions" if vector_on else "prior decisions"
+            )
+            lines.append("## Session recall")
+            lines.append(
+                f"- {recall_what} are searchable: `brainpalace query "
+                '"..." --mode multi` (or `recall` for curated memory).'
+            )
+            lines.append("")
+            sections.append("session_recall")
+
+        # 4. last-session summary — PLACEHOLDER (Phase 050). Intentionally absent.
 
         text = "\n".join(lines).rstrip() + "\n"
         memory_count = sum(1 for line in lines if line.startswith("- ("))

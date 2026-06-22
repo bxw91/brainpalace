@@ -1,10 +1,16 @@
 [tool.poetry]
 name = "brainpalace-dashboard"
-version = "26.6.50"
+version = "26.6.51"
 description = "BrainPalace control-plane web dashboard"
 authors = ["BrainPalace"]
 readme = "README.md"
 packages = [{ include = "brainpalace_dashboard" }]
+# The built SPA (brainpalace_dashboard/static/) is gitignored generated output,
+# which Poetry would otherwise exclude from the build. Force-include it so the
+# wheel + sdist ship the prebuilt SPA and end users install it with no node
+# toolchain. CI builds static/ (npm run build) before `poetry build`; see
+# .github/workflows/publish-to-pypi.yml and brainpalace-dashboard/.gitignore.
+include = [{ path = "brainpalace_dashboard/static/**/*", format = ["sdist", "wheel"] }]
 
 [tool.poetry.dependencies]
 python = "^3.12"

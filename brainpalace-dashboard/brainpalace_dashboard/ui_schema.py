@@ -20,10 +20,12 @@ from typing import Any
 from brainpalace_cli import config_schema as cs
 from brainpalace_cli.providers import PROVIDERS
 
+from brainpalace_dashboard import model_introspect as mi
+
 # Section render order + human labels.
 SECTION_ORDER: list[tuple[str, str]] = [
     ("embedding", "Embedding"),
-    ("summarization", "Summarization"),
+    ("summarization", "Code & Doc Summarization"),
     ("reranker", "Reranker"),
     ("storage", "Storage"),
     ("graphrag", "GraphRAG"),
@@ -33,41 +35,55 @@ SECTION_ORDER: list[tuple[str, str]] = [
     ("query_log", "Query Log"),
     ("bm25", "BM25"),
     ("git_indexing", "Git Indexing"),
-    ("session_indexing", "Session Indexing"),
-    ("session_extraction", "Session Extraction"),
+    ("session_indexing", "Session Vector Indexing"),
+    ("session_extraction", "Session Summarization"),
 ]
 
 # Optional one-line "what this section does" intros, rendered under the header.
 SECTION_DESCRIPTIONS: dict[str, str] = {
+    "server": "Server-level switches. The bind host/port are NOT here — they live "
+    "in config.json (the Runtime bind section). read_only turns the server "
+    "query-only: no embedding, summarization, or index writes.",
+    "project": "Identity paths for THIS project, set by `brainpalace init` and "
+    "shown read-only. Editing them would break instance discovery, so they are "
+    "not editable here.",
     "storage": "Where indexed vectors live. chroma is the zero-setup local "
     "default; postgres is for shared/larger deployments.",
     "graphrag": "The knowledge graph (entities + relationships) that powers "
     "graph and multi query modes.",
     "git_indexing": "Index git history so past commits and decisions are "
     "searchable alongside code.",
+    "session_archiving": "COPIES raw chat transcripts verbatim to a local folder "
+    "— a free, durable backup. Does NOT embed or summarize; just the raw store.",
+    "session_indexing": "EMBEDS raw chat transcripts into vectors for semantic "
+    "recall (billable). Separate from the copy (Session Archiving) and the "
+    "summary (Session Summarization).",
     "session_extraction": "DISTILLS a finished chat transcript into a structured "
-    "summary, decisions, and graph triples. This is the curated 'memory', "
-    "separate from raw transcript indexing below.",
-    "session_indexing": "ARCHIVES raw chat transcripts and (optionally) EMBEDS "
-    "them for semantic recall. Distinct from Session Extraction: this is the "
-    "raw store, not the curated summary.",
+    "summary, decisions, and graph triples — the curated 'memory'. Not a copy "
+    "(Session Archiving) and not an embed (Session Vector Indexing).",
 }
 
-SECTION_KNOWN: dict[str, set[str]] = {
-    "embedding": cs.EMBEDDING_KNOWN_FIELDS,
-    "summarization": cs.SUMMARIZATION_KNOWN_FIELDS,
-    "reranker": cs.RERANKER_KNOWN_FIELDS,
-    "storage": cs.STORAGE_KNOWN_FIELDS,
-    "graphrag": cs.GRAPHRAG_KNOWN_FIELDS,
+# Sections WITHOUT a pydantic model: runtime bind (api/server) and machine
+# identity (project). Their fields come from config_schema and are fully
+# hidden / read-only (see DASHBOARD_HIDDEN_FIELDS / DASHBOARD_READONLY_FIELDS).
+_MODELLESS_SECTION_FIELDS: dict[str, set[str]] = {
     "api": cs.API_KNOWN_FIELDS,
     "server": cs.SERVER_KNOWN_FIELDS,
     "project": cs.PROJECT_KNOWN_FIELDS,
-    "query_log": cs.QUERY_LOG_KNOWN_FIELDS,
-    "bm25": cs.BM25_KNOWN_FIELDS,
-    "git_indexing": cs.GIT_INDEXING_KNOWN_FIELDS,
-    "session_indexing": cs.SESSION_INDEXING_KNOWN_FIELDS,
-    "session_extraction": cs.SESSION_EXTRACTION_KNOWN_FIELDS,
 }
+
+
+def _section_known(section: str) -> set[str]:
+    """Field surface for a section — model-derived where a model exists.
+
+    Model-backed sections reflect ``<Model>.model_fields`` (the single source of
+    truth), so a field added to the model auto-surfaces. The model-less runtime/
+    identity sections fall back to config_schema.
+    """
+    if section in mi.SECTION_MODELS:
+        return mi.model_field_names(section)
+    return _MODELLESS_SECTION_FIELDS.get(section, set())
+
 
 # Explicit field order within a section (fields not listed are appended
 # alphabetically). `provider` leads the provider-backed sections so the choice
@@ -78,16 +94,25 @@ SECTION_FIELD_ORDER: dict[str, list[str]] = {
     "reranker": ["enabled", "provider", "model", "base_url"],
 }
 
-# field dotpath -> enum options (from config_schema enum sets).
-ENUM_OPTIONS: dict[str, list[str]] = {
-    "embedding.provider": sorted(cs.VALID_EMBEDDING_PROVIDERS),
-    "summarization.provider": sorted(cs.VALID_SUMMARIZATION_PROVIDERS),
-    "reranker.provider": sorted(cs.VALID_RERANKER_PROVIDERS),
+# Enum options that the model annotation CANNOT express — these fields are plain
+# `str` validated by a field_validator (not Literal/Enum), so the choices live in
+# config_schema. Every OTHER enum (providers, bm25.engine, session_extraction.mode)
+# derives its options straight from the model annotation via model_introspect.
+ENUM_FALLBACKS: dict[str, list[str]] = {
     "storage.backend": sorted(cs.VALID_STORAGE_BACKENDS),
     "graphrag.store_type": sorted(cs.VALID_GRAPHRAG_STORE_TYPES),
     "graphrag.doc_extractor": sorted(cs.VALID_DOC_EXTRACTORS),
-    "bm25.engine": sorted(cs.VALID_BM25_ENGINES),
-    "session_extraction.mode": sorted(cs.VALID_EXTRACT_MODES),
+}
+
+# Effective defaults the model itself cannot give: graphrag.* default to None in
+# the model (an absent YAML key defers to the env/Settings layer), so the
+# *effective* defaults are mirrored here from settings.py (GRAPH_*). Every other
+# section's defaults derive from the model.
+DEFAULT_FALLBACKS: dict[str, Any] = {
+    "graphrag.enabled": True,
+    "graphrag.store_type": "sqlite",
+    "graphrag.use_code_metadata": True,
+    "graphrag.doc_extractor": "langextract",
 }
 
 # Provider/api_key/base_url help text — purpose + expected values + default.
@@ -166,7 +191,7 @@ OVERRIDES: dict[str, dict[str, Any]] = {
         "help": "Two-stage retrieval: after the first stage (bm25/vector/hybrid) "
         "returns candidates, a local cross-encoder rescores each (query, chunk) "
         "pair and reorders by relevance. No API cost (local model); adds a little "
-        "query latency. Default: on.",
+        "query latency. Default: off.",
     },
     "reranker.provider": {
         "help": "sentence-transformers = local cross-encoder, no API cost, no base "
@@ -296,8 +321,6 @@ OVERRIDES: dict[str, dict[str, Any]] = {
 
 # Fields deliberately not shown in the form (parity gate requires a reason).
 DASHBOARD_HIDDEN_FIELDS: dict[str, str] = {
-    "project.state_dir": "internal path, set by init; editing breaks discovery",
-    "project.project_root": "internal path, set by init; editing breaks discovery",
     # server.* / api.* live in config.yaml's schema but the runtime bind reads
     # config.json (bind_host/port_range/auto_port). Editing them here is a no-op;
     # they are editable via the per-instance Runtime panel (config.json) instead.
@@ -309,6 +332,29 @@ DASHBOARD_HIDDEN_FIELDS: dict[str, str] = {
     ),
     "api.host": "runtime bind comes from config.json, not config.yaml; no-op here",
     "api.port": "runtime bind comes from config.json, not config.yaml; no-op here",
+    # GraphRAGConfig models several legacy/internal knobs that are not part of
+    # the user-facing surface (tuning internals, a superseded extraction path,
+    # and persistence paths set by the server). The four user-facing graphrag
+    # controls (enabled / store_type / use_code_metadata / doc_extractor) render;
+    # the rest are hidden here with a reason so a genuinely NEW graphrag field
+    # still auto-surfaces.
+    "graphrag.index_path": "server-managed persistence path; not user-tunable",
+    "graphrag.extraction_model": "internal extraction model; set via providers/env",
+    "graphrag.max_triplets_per_chunk": "advanced extraction-tuning internal",
+    "graphrag.use_llm_extraction": "legacy doc-extraction path; use doc_extractor",
+    "graphrag.traversal_depth": "advanced query-tuning internal",
+    "graphrag.rrf_k": "advanced multi-retrieval fusion constant (internal)",
+    "graphrag.langextract_provider": "internal langextract wiring; follows doc_extractor",  # noqa: E501
+    "graphrag.langextract_model": "internal langextract wiring; follows doc_extractor",  # noqa: E501
+}
+
+# Fields shown but NOT editable — machine identity set by init. Visible for
+# transparency (the completeness rule: nothing persistable is silently absent),
+# but editing them would break instance discovery, so the form renders them
+# disabled. Parity gate requires a reason (test_readonly_fields_valid_and_not_hidden).
+DASHBOARD_READONLY_FIELDS: dict[str, str] = {
+    "project.state_dir": "internal path, set by init; editing breaks discovery",
+    "project.project_root": "internal path, set by init; editing breaks discovery",
 }
 
 # Sub-fields of session_indexing.archive (modeled by server SessionArchiveConfig:
@@ -320,118 +366,67 @@ SESSION_ARCHIVE_FIELDS: list[str] = [
     "reconcile_seconds",
 ]
 
-# Free-form provider-params dicts (dict[str, scalar]) — rendered with a
-# key/value editor (the "dict" widget) rather than left unreachable.
-_DICT_FIELDS = {
-    "embedding.params",
-    "summarization.params",
-    "reranker.params",
-}
-
-# String-list fields — rendered with a string-list editor (the "stringlist"
-# widget).
-_STRINGLIST_FIELDS = {
-    "git_indexing.path_filter",
-}
-
-# Type hints from config_schema (int/bool). Defaults to text otherwise.
-_INT_FIELDS = {
-    f"storage.postgres.{k}" for k, (t, _) in cs.POSTGRES_TYPE_FIELDS.items() if t is int
-} | {
-    "query_log.retention_days",
-    "git_indexing.depth",
-    "git_indexing.max_files",
-    "session_indexing.retain_days",
-    "session_indexing.window",
-    "session_indexing.stride",
-    "session_indexing.watch_debounce_ms",
-    "session_indexing.archive.retain_days",
-    "session_indexing.archive.reconcile_seconds",
-    "session_extraction.quiescence_seconds",
-}
-_BOOL_FIELDS = {
-    "reranker.enabled",
-    "graphrag.enabled",
-    "graphrag.use_code_metadata",
-    "query_log.enabled",
-    "bm25.detect",
-    "git_indexing.enabled",
-    "session_indexing.enabled",
-    "session_indexing.include_user_turns",
-    "session_indexing.archive.enabled",
-} | {
-    f"storage.postgres.{k}"
-    for k, (t, _) in cs.POSTGRES_TYPE_FIELDS.items()
-    if t is bool
-}
+# Sentinel: this field has no derivable default (distinct from a real `None`
+# default, which IS surfaced as "none").
+_NO_DEFAULT = object()
 
 
-# Effective default for each field when the project's config.yaml omits it.
-# Sourced from the server's pydantic config models / Settings (verified):
-# bm25_config.BM25Config, git_config.GitIndexingConfig, session_config.*,
-# settings.py (GRAPH_*), and the chroma storage default. Surfaced in the form so
-# users see what's active even when a section is unset. `None` = no default value
-# (shown as "none").
-DEFAULTS: dict[str, Any] = {
-    "reranker.enabled": True,
-    "storage.backend": "chroma",
-    "graphrag.enabled": True,
-    "graphrag.store_type": "sqlite",
-    "graphrag.doc_extractor": "langextract",
-    "graphrag.use_code_metadata": True,
-    "bm25.language": "en",
-    "bm25.engine": "stem",
-    "bm25.detect": False,
-    "bm25.detect_min_confidence": 0.6,
-    "git_indexing.enabled": False,
-    "git_indexing.depth": 0,
-    "git_indexing.max_files": 50,
-    "session_indexing.enabled": True,
-    "session_indexing.include_user_turns": False,
-    "session_indexing.retain_days": 0,
-    "session_indexing.window": 4,
-    "session_indexing.stride": 2,
-    "session_indexing.watch_debounce_ms": 30000,
-    "session_indexing.sessions_dir": None,
-    "session_indexing.archive.enabled": True,
-    "session_indexing.archive.dir": ".brainpalace/session_archive",
-    "session_indexing.archive.retain_days": 0,
-    "session_indexing.archive.reconcile_seconds": 600,
-    "session_extraction.mode": "subagent",
-    "session_extraction.quiescence_seconds": 1800,
-    "query_log.enabled": True,
-    "query_log.retention_days": 7,
-}
+def _derive(section: str, key: str) -> dict[str, Any]:
+    """Widget + default + enum options for a field, from the model where possible.
 
+    Dispatches on the field's location:
+    - a section backed by a pydantic model -> reflect the model;
+    - the nested archive model -> reflect SessionArchiveConfig;
+    - ``storage.postgres.*`` (a raw dict, no model) -> config_schema type hints;
+    - model-less api/server/project -> plain text, no default.
+    Then layer the small fallbacks the model can't express (ENUM_FALLBACKS,
+    DEFAULT_FALLBACKS).
+    """
+    dotpath = f"{section}.{key}"
+    derived: dict[str, Any]
+    if section in mi.SECTION_MODELS:
+        derived = mi.derive_field(section, key)
+    elif section == "session_indexing.archive":
+        derived = mi.nested_field("session_indexing.archive", key)
+    elif section == "storage.postgres":
+        t = dict(cs.POSTGRES_TYPE_FIELDS).get(key, (str, ""))[0]
+        widget = "int" if t is int else "toggle" if t is bool else "text"
+        derived = {"widget": widget, "default": _NO_DEFAULT}
+    else:  # model-less runtime/identity sections (api/server/project)
+        derived = {"widget": "text", "default": _NO_DEFAULT}
 
-def _widget_for(dotpath: str) -> str:
-    if dotpath in ENUM_OPTIONS:
-        return "enum"
-    if dotpath in _DICT_FIELDS:
-        return "dict"
-    if dotpath in _STRINGLIST_FIELDS:
-        return "stringlist"
-    if dotpath in _BOOL_FIELDS:
-        return "toggle"
-    if dotpath in _INT_FIELDS:
-        return "int"
-    return "text"
+    # Enum options: prefer the model-derived options; fall back to config_schema
+    # for the plain-str-validated fields whose annotation can't enumerate them.
+    if dotpath in ENUM_FALLBACKS:
+        derived["widget"] = "enum"
+        derived["options"] = ENUM_FALLBACKS[dotpath]
+    elif "options" in derived:
+        derived["options"] = sorted(derived["options"])
+
+    # Effective default: model value, overridden by the settings-sourced fallback
+    # (graphrag.*), which also forces it onto the surfaced graphrag controls.
+    if dotpath in DEFAULT_FALLBACKS:
+        derived["default"] = DEFAULT_FALLBACKS[dotpath]
+    return derived
 
 
 def _field(section: str, key: str) -> dict[str, Any]:
     dotpath = f"{section}.{key}"
     ov = OVERRIDES.get(dotpath, {})
+    derived = _derive(section, key)
     field: dict[str, Any] = {
         "key": key,
         "dotpath": dotpath,
         "label": ov.get("label", key.replace("_", " ").capitalize()),
-        "widget": _widget_for(dotpath),
+        "widget": derived["widget"],
         "secret": bool(ov.get("secret", False)),
     }
+    if dotpath in DASHBOARD_READONLY_FIELDS:
+        field["readonly"] = True
     if field["widget"] == "enum":
-        field["options"] = ENUM_OPTIONS[dotpath]
-    if dotpath in DEFAULTS:
-        field["default"] = DEFAULTS[dotpath]
+        field["options"] = derived["options"]
+    if derived.get("default", _NO_DEFAULT) is not _NO_DEFAULT:
+        field["default"] = derived["default"]
     for opt_key in (
         "presets",
         "placeholder",
@@ -456,7 +451,7 @@ def _ordered_fields(section: str, known: set[str]) -> list[str]:
 def build_ui_schema() -> dict[str, Any]:
     sections: list[dict[str, Any]] = []
     for key, label in SECTION_ORDER:
-        known = _ordered_fields(key, SECTION_KNOWN[key])
+        known = _ordered_fields(key, _section_known(key))
         fields: list[dict[str, Any]] = []
         for fld in known:
             dotpath = f"{key}.{fld}"
@@ -481,12 +476,15 @@ def build_ui_schema() -> dict[str, Any]:
                 }
             )
         if key == "session_indexing":
-            fields.append(
+            # Archiving (the raw COPY) is its OWN top-level section, emitted just
+            # BEFORE Session Vector Indexing — not a sub-group of it. The config
+            # keys stay under `session_indexing.archive.*`; only the dashboard
+            # presentation splits copy / embed / summarize into three sections.
+            sections.append(
                 {
-                    "key": "archive",
-                    "dotpath": "session_indexing.archive",
-                    "label": "Session archive",
-                    "widget": "group",
+                    "key": "session_archiving",
+                    "label": "Session Archiving",
+                    "description": SECTION_DESCRIPTIONS["session_archiving"],
                     "fields": [
                         _field("session_indexing.archive", k)
                         for k in SESSION_ARCHIVE_FIELDS
@@ -514,3 +512,24 @@ def _providers_payload() -> dict[str, Any]:
         kind: {prov: dict(info) for prov, info in provs.items()}
         for kind, provs in PROVIDERS.items()
     }
+
+
+def effective_defaults() -> dict[str, Any]:
+    """``dotpath -> effective code default`` for every rendered field that has
+    one. Derived from the SAME schema the form renders, so it auto-tracks the
+    models (no hand-maintained default table). Consumed by config_svc to label a
+    key's source as ``default`` when neither project nor global sets it."""
+    out: dict[str, Any] = {}
+    for sec in build_ui_schema()["sections"]:
+        for fld in sec["fields"]:
+            if fld.get("widget") == "group":
+                for child in fld.get("fields", []):
+                    if "default" in child:
+                        out[child["dotpath"]] = child["default"]
+            elif "default" in fld:
+                out[fld["dotpath"]] = fld["default"]
+    return out
+
+
+#: Back-compat module constant (was a hand-authored table; now model-derived).
+DEFAULTS: dict[str, Any] = effective_defaults()

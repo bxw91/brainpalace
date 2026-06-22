@@ -12,7 +12,6 @@ import { Settings } from "./tabs/Settings";
 import { GlobalConfig } from "./tabs/GlobalConfig";
 import { Status } from "./tabs/Status";
 import { Config } from "./tabs/Config";
-import { Runtime } from "./tabs/Runtime";
 import { Folders } from "./tabs/Folders";
 import { Documents } from "./tabs/Documents";
 import { Queries } from "./tabs/Queries";
@@ -39,7 +38,6 @@ export const TABS: TabDef[] = [
   { path: "/settings", label: "Settings", scope: "fleet" },
   { path: "/status", label: "Status", scope: "instance" },
   { path: "/config", label: "Config", scope: "instance" },
-  { path: "/runtime", label: "Runtime", scope: "instance" },
   { path: "/folders", label: "Folders", scope: "instance" },
   { path: "/documents", label: "Files", scope: "instance" },
   { path: "/queries", label: "Queries", scope: "instance" },
@@ -69,7 +67,6 @@ const globalConfigRoute = make("/global-config", () => <GlobalConfig />);
 const settingsRoute = make("/settings", () => <Settings />);
 const statusRoute = make("/status", () => <Status />);
 const configRoute = make("/config", () => <Config />);
-const runtimeRoute = make("/runtime", () => <Runtime />);
 const foldersRoute = make("/folders", () => <Folders />);
 const documentsRoute = make("/documents", () => <Documents />);
 const queriesRoute = make("/queries", () => <Queries />);
@@ -86,7 +83,6 @@ const routeTree = rootRoute.addChildren([
   settingsRoute,
   statusRoute,
   configRoute,
-  runtimeRoute,
   foldersRoute,
   documentsRoute,
   queriesRoute,

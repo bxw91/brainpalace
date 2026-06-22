@@ -214,6 +214,7 @@ def status_command(
                         "embedding_cache": indexing.embedding_cache,
                         "features": getattr(indexing, "features", None),
                         "graph_index": getattr(indexing, "graph_index", None),
+                        "index_warnings": indexing.index_warnings,
                     },
                 }
                 if bm25_cfg:
@@ -238,6 +239,19 @@ def status_command(
             console.print(
                 Panel(status_text, title="Server Status", border_style=status_color)
             )
+
+            # Index-drift warnings: a config change (embedding provider/model or
+            # storage backend) no longer matches what the existing index was built
+            # with. Loud panel so it is not missed.
+            if indexing.index_warnings:
+                warn_body = "\n".join(f"• {w}" for w in indexing.index_warnings)
+                console.print(
+                    Panel(
+                        warn_body,
+                        title="⚠ Index drift",
+                        border_style="yellow",
+                    )
+                )
 
             # Create info table
             table = Table(show_header=True, header_style="bold cyan")
@@ -373,6 +387,28 @@ def status_command(
                             "Session Summarization",
                             f"[dim]no sessions yet[/] (mode: {mode})",
                         )
+
+            # Session recall in search — what session-derived data the query
+            # path will surface. A disabled feature's (possibly stale) data is
+            # HARD-hidden from results until re-enabled; manually-saved
+            # `brainpalace remember` facts are always recallable.
+            sess_feat = features.get("session_memory")
+            ext_feat = features.get("session_extraction")
+            if isinstance(sess_feat, dict) or isinstance(ext_feat, dict):
+                vector_on = bool(
+                    isinstance(sess_feat, dict) and sess_feat.get("enabled")
+                )
+                summ_on = (
+                    isinstance(ext_feat, dict)
+                    and str(ext_feat.get("mode", "off")) != "off"
+                )
+                v_txt = "[green]on[/]" if vector_on else "[dim]off[/]"
+                s_txt = "[green]on[/]" if summ_on else "[dim]off[/]"
+                suffix = "" if vector_on and summ_on else " — disabled data hidden"
+                table.add_row(
+                    "Session Recall",
+                    f"vectors {v_txt}, summaries {s_txt}{suffix}",
+                )
 
             # Show embedding cache status if available (Phase 16)
             embedding_cache = indexing.embedding_cache

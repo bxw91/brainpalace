@@ -6,7 +6,7 @@ import type { UiSchema, ConfigValues } from "../../../api/types";
 function renderForm(props: {
   schema: UiSchema;
   values: ConfigValues;
-  onSave?: (v: ConfigValues, restart: boolean) => void;
+  onSave?: (v: ConfigValues, unset: string[], restart: boolean) => void;
 }) {
   const onSave = props.onSave ?? vi.fn();
   render(
@@ -78,18 +78,20 @@ describe("DictField", () => {
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
     expect(onSave).toHaveBeenCalledWith(
       { embedding: { params: { dimensions: "256" } } },
+      [],
       false,
     );
   });
 
-  it("removing the last entry emits undefined", () => {
+  it("removing the last entry prunes the key and stages it for unset", () => {
     const onSave = renderForm({
       schema: dictSchema,
       values: { embedding: { params: { a: "1" } } },
     });
     fireEvent.click(screen.getByTestId("dict-remove-embedding.params-0"));
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
-    expect(onSave).toHaveBeenCalledWith({ embedding: { params: undefined } }, false);
+    // The emptied key is pruned from the payload and reported in the unset list.
+    expect(onSave).toHaveBeenCalledWith({}, ["embedding.params"], false);
   });
 });
 
@@ -118,6 +120,7 @@ describe("StringListField", () => {
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
     expect(onSave).toHaveBeenCalledWith(
       { git_indexing: { path_filter: ["docs/**"] } },
+      [],
       false,
     );
   });

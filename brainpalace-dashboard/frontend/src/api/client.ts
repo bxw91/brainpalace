@@ -101,11 +101,12 @@ export async function patchConfig(
   values: ConfigValues,
   restart: boolean,
   forceReindex = false,
+  unset: string[] = [],
 ): Promise<{ ok: boolean; restarted?: boolean; reindex_triggered?: number }> {
   const r = await fetch(`${BASE}/instances/${id}/config`, {
     method: "PATCH",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ values, restart, force_reindex: forceReindex }),
+    body: JSON.stringify({ values, unset, restart, force_reindex: forceReindex }),
   });
   if (!r.ok) {
     // 422 -> { errors: [...] }; 409 -> DataConflictEnvelope { conflict, ... }
@@ -132,8 +133,8 @@ export async function unsetConfig(
 }
 
 // ---------------------------------------------------------------------------
-// Global config — the machine-wide XDG config.yaml (every project inherits).
-// This IS the global layer, so there is no effective/provenance resolution.
+// Global config — the global XDG config.yaml (every project inherits it).
+// The provenance layer here is global-file > code default.
 // ---------------------------------------------------------------------------
 
 export const getGlobalConfig = () =>
@@ -142,13 +143,35 @@ export const getGlobalConfig = () =>
 export async function patchGlobalConfig(
   values: ConfigValues,
   forceReindex = false,
+  unset: string[] = [],
 ): Promise<{ ok: boolean }> {
   const r = await fetch(`${BASE}/global-config`, {
     method: "PATCH",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ values, restart: false, force_reindex: forceReindex }),
+    body: JSON.stringify({
+      values,
+      unset,
+      restart: false,
+      force_reindex: forceReindex,
+    }),
   });
   if (!r.ok) throw await readError(r); // 422 -> { errors }; 409 -> conflict
+  return r.json();
+}
+
+export const getGlobalConfigEffective = () =>
+  get("/global-config/effective", (j) => j as EffectiveConfig);
+
+/** Remove keys from the global config.yaml so they fall back to code default. */
+export async function unsetGlobalConfig(
+  dotpaths: string[],
+): Promise<UnsetResult> {
+  const r = await fetch(`${BASE}/global-config/unset`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ dotpaths }),
+  });
+  if (!r.ok) throw await readError(r);
   return r.json();
 }
 
@@ -167,15 +190,37 @@ export type RuntimeConfig = {
 export const getRuntimeConfig = (id: string) =>
   get(`/instances/${id}/runtime-config`, (j) => j as RuntimeConfig);
 
+export const getRuntimeConfigEffective = (id: string) =>
+  get(`/instances/${id}/runtime-config/effective`, (j) => j as EffectiveConfig);
+
+// Machine-wide bind defaults (XDG config.json) — every project inherits these
+// before the code default. The CLI honors them at server start.
+export const getGlobalRuntimeConfigEffective = () =>
+  get("/global-runtime-config/effective", (j) => j as EffectiveConfig);
+
+export async function patchGlobalRuntimeConfig(
+  values: Record<string, unknown>,
+  unset: string[] = [],
+): Promise<{ ok: boolean; restart_required: boolean }> {
+  const r = await fetch(`${BASE}/global-runtime-config`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ values, unset, restart: false }),
+  });
+  if (!r.ok) throw await readError(r); // 422 -> { errors: [...] }
+  return r.json();
+}
+
 export async function patchRuntimeConfig(
   id: string,
   values: Partial<RuntimeConfig>,
   restart: boolean,
+  unset: string[] = [],
 ): Promise<{ ok: boolean; restarted: boolean; restart_required: boolean }> {
   const r = await fetch(`${BASE}/instances/${id}/runtime-config`, {
     method: "PATCH",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ values, restart }),
+    body: JSON.stringify({ values, unset, restart }),
   });
   if (!r.ok) throw await readError(r); // 422 -> { errors: [...] }
   return r.json();
@@ -217,21 +262,36 @@ export type UpdateStatus = {
 export const getUpdateCheck = (): Promise<UpdateStatus> =>
   getData<UpdateStatus>("/settings/update-check");
 
-export async function patchSettings(values: {
-  host?: string;
-  port?: number;
-  poll_s?: number;
-  token?: string;
-  autostart?: boolean;
-  time_format?: TimeFormat;
-  date_format?: DateFormat;
-}): Promise<{ ok: boolean; restart_required: string[] }> {
+export async function patchSettings(
+  values: Record<string, unknown>,
+  unset: string[] = [],
+): Promise<{ ok: boolean; restart_required: string[] }> {
   const r = await fetch(`${BASE}/settings`, {
     method: "PATCH",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(values),
+    body: JSON.stringify({ ...values, unset }),
   });
   if (!r.ok) throw await readError(r); // 422 -> { errors: [...] }
+  return r.json();
+}
+
+export type SettingsEffective = Record<
+  string,
+  { value: unknown; source: "file" | "default" }
+>;
+
+export const getSettingsEffective = (): Promise<SettingsEffective> =>
+  getData<SettingsEffective>("/settings/effective");
+
+export async function unsetSettings(
+  fields: string[],
+): Promise<{ removed: string[]; effective: SettingsEffective }> {
+  const r = await fetch(`${BASE}/settings/unset`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ fields }),
+  });
+  if (!r.ok) throw await readError(r);
   return r.json();
 }
 

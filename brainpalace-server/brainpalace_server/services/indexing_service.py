@@ -298,13 +298,16 @@ class IndexingService:
 
         # Get current config
         provider_settings = load_provider_settings()
-        current_provider = provider_settings.embedding.provider
+        _provider = provider_settings.embedding.provider
+        # (str, Enum) → str() gives "EmbeddingProviderType.OPENAI"; stored metadata
+        # holds the value ("openai"). Use .value so re-index doesn't false-mismatch.
+        current_provider = getattr(_provider, "value", str(_provider))
         current_model = provider_settings.embedding.model
         current_dimensions = self.embedding_generator.get_embedding_dimensions()
 
         # Validate
         self.storage_backend.validate_embedding_compatibility(
-            provider=str(current_provider),
+            provider=current_provider,
             model=current_model,
             dimensions=current_dimensions,
             stored_metadata=stored_metadata,
@@ -349,7 +352,8 @@ class IndexingService:
         )
 
         provider_settings = load_provider_settings()
-        provider = str(provider_settings.embedding.provider).lower()
+        _provider = provider_settings.embedding.provider
+        provider = getattr(_provider, "value", str(_provider)).lower()
         model = str(provider_settings.embedding.model)
 
         # Pick the most accurate tokenizer available for the provider.
@@ -506,7 +510,8 @@ class IndexingService:
 
             # Get current embedding config for metadata storage
             provider_settings = load_provider_settings()
-            current_provider = str(provider_settings.embedding.provider)
+            _provider = provider_settings.embedding.provider
+            current_provider = getattr(_provider, "value", str(_provider))
             current_model = provider_settings.embedding.model
             current_dimensions = self.embedding_generator.get_embedding_dimensions()
 

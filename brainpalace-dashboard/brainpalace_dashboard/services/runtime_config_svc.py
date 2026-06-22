@@ -17,6 +17,8 @@ import os
 from pathlib import Path
 from typing import Any
 
+from brainpalace_cli.xdg_paths import get_xdg_config_dir
+
 # The four runtime-bind keys the dashboard surfaces. Other config.json keys
 # (chunk_size, exclude_patterns, project_root, …) are preserved verbatim on
 # write but not exposed as editable controls here.
@@ -26,6 +28,18 @@ PORT_RANGE_END_DEFAULT = 8100
 AUTO_PORT_DEFAULT = True
 
 _BIND_KEYS = ("bind_host", "port_range_start", "port_range_end", "auto_port")
+
+# Per-field metadata for the inherit-first control: code default + which process
+# "type" consumes the field. The bind is read by the CLI when it starts the
+# SERVER, so every current field is `server`-type; the structure supports
+# `cli`-type runtime fields without code changes here.
+RUNTIME_FIELDS: tuple[dict[str, Any], ...] = (
+    {"key": "bind_host", "default": BIND_HOST_DEFAULT, "type": "server"},
+    {"key": "port_range_start", "default": PORT_RANGE_START_DEFAULT, "type": "server"},
+    {"key": "port_range_end", "default": PORT_RANGE_END_DEFAULT, "type": "server"},
+    {"key": "auto_port", "default": AUTO_PORT_DEFAULT, "type": "server"},
+)
+_DEFAULTS = {f["key"]: f["default"] for f in RUNTIME_FIELDS}
 
 
 class RuntimeConfigError(Exception):
@@ -87,6 +101,12 @@ class RuntimeConfigService:
     def _config_path(self, state_dir: Path) -> Path:
         return Path(state_dir) / "config.json"
 
+    def _global_path(self) -> Path:
+        """Machine-wide bind defaults — the XDG ``config.json`` (parallel to the
+        global ``config.yaml``). The CLI reads it at server start (start.read_config).
+        """
+        return Path(get_xdg_config_dir()) / "config.json"
+
     @staticmethod
     def _raw(path: Path) -> dict[str, Any]:
         if not path.exists():
@@ -98,31 +118,120 @@ class RuntimeConfigService:
         return loaded if isinstance(loaded, dict) else {}
 
     def read(self, state_dir: Path) -> dict[str, Any]:
-        """Return the four editable bind fields, falling back to CLI defaults."""
-        raw = self._raw(self._config_path(Path(state_dir)))
+        """Effective bind: project ``config.json`` > global > code default."""
+        project = self._raw(self._config_path(Path(state_dir)))
+        global_ = self._raw(self._global_path())
         return {
-            "bind_host": raw.get("bind_host", BIND_HOST_DEFAULT),
-            "port_range_start": raw.get("port_range_start", PORT_RANGE_START_DEFAULT),
-            "port_range_end": raw.get("port_range_end", PORT_RANGE_END_DEFAULT),
-            "auto_port": raw.get("auto_port", AUTO_PORT_DEFAULT),
+            key: project.get(key, global_.get(key, _DEFAULTS[key]))
+            for key in _BIND_KEYS
         }
 
-    def write(self, state_dir: Path, values: dict[str, Any]) -> None:
-        """Validate then atomically merge the bind fields into config.json.
+    def read_global(self) -> dict[str, Any]:
+        """The machine-wide bind defaults (bind keys only; code default fallback)."""
+        raw = self._raw(self._global_path())
+        return {key: raw.get(key, _DEFAULTS[key]) for key in _BIND_KEYS}
+
+    def effective(self, state_dir: Path) -> dict[str, dict[str, Any]]:
+        """Per-field effective value + provenance: project > global > code default.
+
+        ``source`` is ``"file"`` (this project's ``config.json``), ``"global"``
+        (machine-wide ``config.json``) or ``"default"`` (CLI built-in).
+        ``inherited`` is the value+source the key falls back to when the project
+        override is reverted (global, else code default). Powers the inherit-first
+        Runtime bind section in the Config tab.
+        """
+        project = self._raw(self._config_path(Path(state_dir)))
+        global_ = self._raw(self._global_path())
+        out: dict[str, dict[str, Any]] = {}
+        for key in _BIND_KEYS:
+            inherited = self._global_or_default(key, global_)
+            if key in project:
+                out[key] = {
+                    "value": project[key],
+                    "source": "file",
+                    "inherited": inherited,
+                }
+            elif key in global_:
+                out[key] = {
+                    "value": global_[key],
+                    "source": "global",
+                    "inherited": None,
+                }
+            else:
+                out[key] = {
+                    "value": _DEFAULTS[key],
+                    "source": "default",
+                    "inherited": None,
+                }
+        return out
+
+    def effective_global(self) -> dict[str, dict[str, Any]]:
+        """Per-field effective for the GLOBAL bind layer: global file > code default."""
+        global_ = self._raw(self._global_path())
+        out: dict[str, dict[str, Any]] = {}
+        for key in _BIND_KEYS:
+            if key in global_:
+                out[key] = {
+                    "value": global_[key],
+                    "source": "global",
+                    "inherited": {"value": _DEFAULTS[key], "source": "default"},
+                }
+            else:
+                out[key] = {
+                    "value": _DEFAULTS[key],
+                    "source": "default",
+                    "inherited": None,
+                }
+        return out
+
+    @staticmethod
+    def _global_or_default(key: str, global_: dict[str, Any]) -> dict[str, Any]:
+        """What a project key reverts to when unset: the global value, else default."""
+        if key in global_:
+            return {"value": global_[key], "source": "global"}
+        return {"value": _DEFAULTS[key], "source": "default"}
+
+    def write(
+        self,
+        state_dir: Path,
+        values: dict[str, Any],
+        unset: list[str] | tuple[str, ...] = (),
+    ) -> None:
+        """Validate then atomically merge the bind fields into the project config.json.
 
         Only the four bind keys are written; any other keys already in the file
         (chunk_size, exclude_patterns, project_root, …) are preserved verbatim.
+        ``unset`` lists bind keys to REMOVE so they revert to global / code default —
+        staged in the form and applied in the same Save.
         """
+        self._write_to(self._config_path(Path(state_dir)), values, unset)
+
+    def write_global(
+        self,
+        values: dict[str, Any],
+        unset: list[str] | tuple[str, ...] = (),
+    ) -> None:
+        """Atomically merge the bind fields into the machine-wide XDG config.json."""
+        self._write_to(self._global_path(), values, unset)
+
+    def _write_to(
+        self,
+        path: Path,
+        values: dict[str, Any],
+        unset: list[str] | tuple[str, ...] = (),
+    ) -> None:
         errors = validate_runtime_config(values)
         if errors:
             raise RuntimeConfigError(errors)
-        path = self._config_path(Path(state_dir))
         path.parent.mkdir(parents=True, exist_ok=True)
         existing = self._raw(path)
         merged = dict(existing)
         for key in _BIND_KEYS:
             if key in values:
                 merged[key] = values[key]
+        for key in unset:
+            if key in _BIND_KEYS:
+                merged.pop(key, None)
         tmp = path.with_suffix(".json.tmp")
         tmp.write_text(json.dumps(merged, indent=2))
         if path.exists():

@@ -79,3 +79,30 @@ def test_patch_global_config_preserves_secret_on_mask(monkeypatch, tmp_path):
     assert resp.status_code == 200
     saved = yaml.safe_load(path.read_text())
     assert saved["embedding"]["api_key"] == "sk-REAL"
+
+
+def test_get_global_config_effective(monkeypatch, tmp_path):
+    path = _xdg(monkeypatch, tmp_path)
+    path.parent.mkdir(parents=True)
+    path.write_text("graphrag:\n  enabled: false\n")
+    client = TestClient(create_app())
+    r = client.get("/dashboard/api/global-config/effective")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["graphrag.enabled"]["source"] == "global"
+    assert body["graphrag.enabled"]["value"] is False
+
+
+def test_post_global_config_unset(monkeypatch, tmp_path):
+    path = _xdg(monkeypatch, tmp_path)
+    path.parent.mkdir(parents=True)
+    path.write_text("graphrag:\n  enabled: false\n")
+    client = TestClient(create_app())
+    r = client.post(
+        "/dashboard/api/global-config/unset",
+        json={"dotpaths": ["graphrag.enabled"]},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["removed"] == ["graphrag.enabled"]
+    assert body["effective"]["graphrag.enabled"]["source"] == "default"

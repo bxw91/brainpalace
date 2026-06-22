@@ -43,18 +43,25 @@ beforeEach(() => {
   vi.mocked(client.getConfig).mockResolvedValue({
     embedding: { provider: "openai" },
   } as never);
+  // Runtime bind section folded into Config — give it a resolved payload so it
+  // renders without an error panel; these tests don't assert on it.
+  vi.mocked(client.getRuntimeConfigEffective).mockResolvedValue({
+    bind_host: { value: "127.0.0.1", source: "default", inherited: null },
+    port_range_start: { value: 8000, source: "default", inherited: null },
+    port_range_end: { value: 8100, source: "default", inherited: null },
+    auto_port: { value: true, source: "default", inherited: null },
+  } as never);
 });
 
 describe("Config tab", () => {
-  it("Save sends patchConfig(id, values, false)", async () => {
+  it("Save sends patchConfig(id, values, false, false, [])", async () => {
     vi.mocked(client.patchConfig).mockResolvedValue({
       ok: true,
       restarted: false,
     });
     wrap(<Config instanceId="inst-1" />);
 
-    await screen.findByRole("button", { name: "ollama" });
-    fireEvent.click(screen.getByRole("button", { name: "ollama" }));
+    fireEvent.click(await screen.findByTestId("enum-embedding.provider-ollama"));
     fireEvent.click(screen.getByTestId("btn-save"));
     fireEvent.click(await screen.findByTestId("btn-confirm"));
 
@@ -64,6 +71,7 @@ describe("Config tab", () => {
         { embedding: { provider: "ollama" } },
         false,
         false,
+        [],
       ),
     );
   });
@@ -76,8 +84,7 @@ describe("Config tab", () => {
     });
     wrap(<Config instanceId="inst-1" />);
 
-    await screen.findByRole("button", { name: "ollama" });
-    fireEvent.click(screen.getByRole("button", { name: "ollama" }));
+    fireEvent.click(await screen.findByTestId("enum-embedding.provider-ollama"));
     fireEvent.click(screen.getByTestId("btn-save"));
     fireEvent.click(await screen.findByTestId("btn-confirm"));
 
@@ -92,8 +99,7 @@ describe("Config tab", () => {
     });
     wrap(<Config instanceId="inst-1" />);
 
-    await screen.findByRole("button", { name: "ollama" });
-    fireEvent.click(screen.getByRole("button", { name: "ollama" }));
+    fireEvent.click(await screen.findByTestId("enum-embedding.provider-ollama"));
     fireEvent.click(screen.getByTestId("btn-save-restart"));
     fireEvent.click(await screen.findByTestId("btn-confirm"));
 
@@ -103,6 +109,7 @@ describe("Config tab", () => {
         { embedding: { provider: "ollama" } },
         true,
         false,
+        [],
       ),
     );
     expect(await screen.findByTestId("toast-success")).toBeInTheDocument();
@@ -120,8 +127,7 @@ describe("Config tab", () => {
       .mockResolvedValueOnce({ ok: true, reindex_triggered: 2 });
     wrap(<Config instanceId="inst-1" />);
 
-    await screen.findByRole("button", { name: "ollama" });
-    fireEvent.click(screen.getByRole("button", { name: "ollama" }));
+    fireEvent.click(await screen.findByTestId("enum-embedding.provider-ollama"));
     fireEvent.click(screen.getByTestId("btn-save"));
     fireEvent.click(await screen.findByTestId("btn-confirm"));
 
@@ -135,6 +141,7 @@ describe("Config tab", () => {
       { embedding: { provider: "ollama" } },
       false,
       true,
+      [],
     ]);
   });
 
@@ -144,11 +151,19 @@ describe("Config tab", () => {
     const retry = await screen.findByTestId("config-error-retry");
     expect(retry).toBeInTheDocument();
     expect(screen.getByText(/cfg 500/)).toBeInTheDocument();
-    // Retry re-runs the loaders.
     vi.mocked(client.getConfig).mockResolvedValue({
       embedding: { provider: "openai" },
     } as never);
     fireEvent.click(retry);
-    expect(await screen.findByRole("button", { name: "ollama" })).toBeInTheDocument();
+    expect(
+      await screen.findByTestId("enum-embedding.provider-ollama"),
+    ).toBeInTheDocument();
   });
+});
+
+it("points to the Runtime bind section for the config.json bind", async () => {
+  wrap(<Config instanceId="inst-1" />);
+  expect(
+    await screen.findByTestId("config-runtime-bind-note"),
+  ).toHaveTextContent(/config\.json.*Runtime bind/i);
 });

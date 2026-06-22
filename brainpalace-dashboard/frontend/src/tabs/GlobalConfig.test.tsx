@@ -20,6 +20,7 @@ const schema = {
           label: "Provider",
           widget: "enum" as const,
           options: ["openai", "ollama"],
+          default: "openai",
         },
       ],
     },
@@ -43,6 +44,13 @@ beforeEach(() => {
   vi.mocked(client.getGlobalConfig).mockResolvedValue({
     embedding: { provider: "openai" },
   } as never);
+  vi.mocked(client.getGlobalConfigEffective).mockResolvedValue({} as never);
+  vi.mocked(client.getGlobalRuntimeConfigEffective).mockResolvedValue({
+    bind_host: { value: "127.0.0.1", source: "default", inherited: null },
+    port_range_start: { value: 8000, source: "default", inherited: null },
+    port_range_end: { value: 8100, source: "default", inherited: null },
+    auto_port: { value: true, source: "default", inherited: null },
+  } as never);
 });
 
 describe("GlobalConfig tab (Server page)", () => {
@@ -50,11 +58,11 @@ describe("GlobalConfig tab (Server page)", () => {
     vi.mocked(client.patchGlobalConfig).mockResolvedValue({ ok: true });
     wrap(<GlobalConfig />);
 
-    await screen.findByRole("button", { name: "ollama" });
+    await screen.findByTestId("enum-embedding.provider-ollama");
     // Global config has no instance to restart.
     expect(screen.queryByTestId("btn-save-restart")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "ollama" }));
+    fireEvent.click(screen.getByTestId("enum-embedding.provider-ollama"));
     fireEvent.click(screen.getByTestId("btn-save"));
     fireEvent.click(await screen.findByTestId("btn-confirm"));
 
@@ -62,6 +70,7 @@ describe("GlobalConfig tab (Server page)", () => {
       expect(client.patchGlobalConfig).toHaveBeenCalledWith(
         { embedding: { provider: "ollama" } },
         false,
+        [],
       ),
     );
     expect(await screen.findByTestId("toast-success")).toBeInTheDocument();
@@ -73,13 +82,44 @@ describe("GlobalConfig tab (Server page)", () => {
     });
     wrap(<GlobalConfig />);
 
-    await screen.findByRole("button", { name: "ollama" });
-    fireEvent.click(screen.getByRole("button", { name: "ollama" }));
+    await screen.findByTestId("enum-embedding.provider-ollama");
+    fireEvent.click(screen.getByTestId("enum-embedding.provider-ollama"));
     fireEvent.click(screen.getByTestId("btn-save"));
     fireEvent.click(await screen.findByTestId("btn-confirm"));
 
     expect(
       await screen.findByTestId("field-error-embedding.provider"),
     ).toHaveTextContent("unsupported provider");
+  });
+
+  it("reverting a global-set field stages an unset, persisted on Save", async () => {
+    // Global file sets the provider (source "global"); it would fall back to the
+    // code default if unset.
+    vi.mocked(client.getGlobalConfig).mockResolvedValue({
+      embedding: { provider: "ollama" },
+    } as never);
+    vi.mocked(client.getGlobalConfigEffective).mockResolvedValue({
+      "embedding.provider": {
+        value: "ollama",
+        source: "global",
+        inherited: { value: "openai", source: "default" },
+      },
+    } as never);
+    vi.mocked(client.patchGlobalConfig).mockResolvedValue({ ok: true });
+    wrap(<GlobalConfig />);
+
+    // Click the inherit option — staged, NOT an immediate server call.
+    fireEvent.click(await screen.findByTestId("field-inherit-embedding.provider"));
+    expect(client.patchGlobalConfig).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId("btn-save"));
+    fireEvent.click(await screen.findByTestId("btn-confirm"));
+    await waitFor(() =>
+      expect(client.patchGlobalConfig).toHaveBeenCalledWith(
+        {},
+        false,
+        ["embedding.provider"],
+      ),
+    );
   });
 });

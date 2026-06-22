@@ -1,5 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
-import { FileText, Boxes, FolderTree, Share2, GitCommit, Lock } from "lucide-react";
+import {
+  FileText,
+  Boxes,
+  FolderTree,
+  Share2,
+  GitCommit,
+  Lock,
+  AlertTriangle,
+} from "lucide-react";
 import {
   getInstanceStatus,
   getInstanceHealth,
@@ -146,8 +154,25 @@ export function Status({ instanceId }: { instanceId?: string }) {
   const healEvents = num(indexHealth.heal_events);
   const healDropped = num(indexHealth.total_dropped);
 
+  const indexWarnings = asArray(s.index_warnings).map(String).filter(Boolean);
+
   return (
     <div data-testid="tab-status" className="flex flex-col gap-6">
+      {indexWarnings.length > 0 && (
+        <div
+          data-testid="index-drift-banner"
+          role="alert"
+          className="flex items-start gap-2 rounded-lg border border-warn/30 bg-warn/15 px-4 py-3 text-sm text-warn"
+        >
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+          <div className="flex flex-col gap-1">
+            <span className="font-semibold">Index drift</span>
+            {indexWarnings.map((w, i) => (
+              <span key={i}>{w}</span>
+            ))}
+          </div>
+        </div>
+      )}
       {readOnly && (
         <div
           data-testid="readonly-banner"

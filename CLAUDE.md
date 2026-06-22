@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-20
+last_validated: 2026-06-22
 ---
 
 # BrainPalace — repo guide for Claude
@@ -67,8 +67,11 @@ a project override so the key inherits again. Don't reintroduce verbatim
 When you add a **config option**, **CLI command**, **server endpoint**, or any
 **user-facing datum**, you MUST surface it in the control-plane dashboard in the
 same change — or add it to the relevant allowlist with a one-line reason. Config
-fields auto-render from `config_schema` (hide one only via
-`ui_schema.DASHBOARD_HIDDEN_FIELDS` with a reason); CLI commands and server
+fields **auto-render by reflecting the server pydantic models**
+(`ui_schema` ← `model_introspect.SECTION_MODELS`): a field added to a model
+appears with a widget/default/enum derived from it (hide one only via
+`ui_schema.DASHBOARD_HIDDEN_FIELDS` with a reason; `OVERRIDES` is
+presentation-only — never `widget`/`default`/`options`); CLI commands and server
 endpoints are checked against the checked-in maps in
 `brainpalace-dashboard/brainpalace_dashboard/coverage_maps.py`
 (`CLI_DASHBOARD_COVERAGE` / `ENDPOINT_SURFACES` — every non-surfaced entry needs
