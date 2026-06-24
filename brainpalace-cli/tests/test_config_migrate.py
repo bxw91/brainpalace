@@ -335,6 +335,9 @@ class TestWizardValidationIntegration:
                 "anthropic",  # summarization provider
                 "claude-haiku-4-5-20251001",  # summarization model
                 "1",  # graphrag mode: disabled
+                "n",  # enable compute query mode?
+                "n",  # extract numeric records at ingest?
+                "0.7",  # min record confidence summed by default compute
                 "n",  # embed chat sessions?
                 "n",  # back up transcripts?
                 "n",  # index git history?
