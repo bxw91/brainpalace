@@ -253,6 +253,11 @@ class GraphTriple(BaseModel):
         default=None,
         description="ID of the source document chunk",
     )
+    domain: str = Field(default="code", description="Domain tag (seam #1)")
+    source: str | None = Field(default=None, description="Provenance: source kind")
+    source_id: str | None = Field(default=None, description="Provenance: source id")
+    ingested_at: str | None = Field(default=None, description="Provenance: ISO ts")
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0, description="0..1")
 
 
 class GraphEntity(BaseModel):
@@ -305,6 +310,11 @@ class GraphEntity(BaseModel):
         default_factory=dict,
         description="Additional metadata properties",
     )
+    domain: str = Field(default="code", description="Domain tag (seam #1)")
+    source: str | None = Field(default=None, description="Provenance: source kind")
+    source_id: str | None = Field(default=None, description="Provenance: source id")
+    ingested_at: str | None = Field(default=None, description="Provenance: ISO ts")
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0, description="0..1")
 
 
 class GraphIndexStatus(BaseModel):

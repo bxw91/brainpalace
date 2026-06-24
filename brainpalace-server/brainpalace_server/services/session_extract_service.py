@@ -13,6 +13,7 @@ rewrites its digest block.
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -129,6 +130,7 @@ class SessionExtractService:
         digest_path: str | Path | None = None,
         memory_service: Any | None = None,
         project_root: str = "",
+        record_store: Any | None = None,
     ) -> SessionExtractResult:
         sid = payload.session_id
 
@@ -210,6 +212,18 @@ class SessionExtractService:
                     logger.debug("supersession closed facts for %d decision(s)", n)
             except Exception as exc:  # noqa: BLE001
                 logger.debug("apply_supersessions failed: %s", exc)
+
+        # Task 9: persist derived count + LLM-extracted records (common sink).
+        try:
+            from brainpalace_server.services.session_records import persist_records
+
+            persist_records(
+                record_store,
+                payload,
+                ingested_at=datetime.now(timezone.utc).isoformat(),
+            )
+        except Exception as exc:  # noqa: BLE001 — records are best-effort
+            logger.debug("persist_records failed: %s", exc)
 
         # Phase 140: promote durable decisions into curated memory (030).
         if memory_service is not None and getattr(

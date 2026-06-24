@@ -6,6 +6,7 @@ from .health import router as health_router
 from .index import router as index_router
 from .jobs import router as jobs_router
 from .query import router as query_router
+from .records import router as records_router
 from .runtime import router as runtime_router
 
 __all__ = [
@@ -15,5 +16,6 @@ __all__ = [
     "index_router",
     "jobs_router",
     "query_router",
+    "records_router",
     "runtime_router",
 ]

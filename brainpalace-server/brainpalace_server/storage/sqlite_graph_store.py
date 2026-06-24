@@ -29,7 +29,7 @@ from typing import Any
 from llama_index.core.graph_stores.types import EntityNode, Relation
 
 _SEP = "\x1f"  # unit separator — safe edge-id delimiter
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def _now_iso() -> str:
@@ -70,7 +70,8 @@ class SQLitePropertyGraphStore:
                 id         TEXT PRIMARY KEY,
                 name       TEXT NOT NULL,
                 label      TEXT,
-                properties TEXT
+                properties TEXT,
+                domain     TEXT NOT NULL DEFAULT 'code'
             );
             CREATE INDEX IF NOT EXISTS idx_nodes_name
                 ON nodes (name COLLATE NOCASE);
@@ -94,6 +95,18 @@ class SQLitePropertyGraphStore:
             );
             """
         )
+        # Idempotent migration: add domain column to existing DBs that lack it.
+        cols = {r[1] for r in self._conn.execute("PRAGMA table_info(nodes)").fetchall()}
+        if "domain" not in cols:
+            self._conn.execute(
+                "ALTER TABLE nodes ADD COLUMN domain TEXT NOT NULL DEFAULT 'code'"
+            )
+            self._conn.commit()
+        # Always ensure the domain index exists (safe for new DBs too).
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_nodes_domain ON nodes (domain)"
+        )
+        self._conn.commit()
         self._conn.execute(
             "INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', ?)",
             (str(SCHEMA_VERSION),),
@@ -108,17 +121,19 @@ class SQLitePropertyGraphStore:
                 n.name,
                 getattr(n, "label", None),
                 json.dumps(dict(getattr(n, "properties", {}) or {}), default=str),
+                getattr(n, "domain", "code"),
             )
             for n in nodes
         ]
         self._conn.executemany(
             """
-            INSERT INTO nodes (id, name, label, properties)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO nodes (id, name, label, properties, domain)
+            VALUES (?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
                 label = excluded.label,
-                properties = excluded.properties
+                properties = excluded.properties,
+                domain = excluded.domain
             """,
             rows,
         )

@@ -23,6 +23,7 @@ VALID_TOP_LEVEL_KEYS = {
     "reranker",
     "storage",
     "graphrag",
+    "compute",
     "api",
     "server",
     "project",
@@ -102,6 +103,8 @@ GRAPHRAG_KNOWN_FIELDS = {
     "use_code_metadata",
     "doc_extractor",
 }
+# `compute:` section — mirrors brainpalace_server.config.provider_config.ComputeConfig.
+COMPUTE_KNOWN_FIELDS = {"enabled", "record_extraction", "min_confidence"}
 API_KNOWN_FIELDS = {"host", "port"}
 SERVER_KNOWN_FIELDS = {"url", "host", "port", "auto_port", "read_only"}
 PROJECT_KNOWN_FIELDS = {"state_dir", "project_root"}
@@ -200,6 +203,11 @@ _RANGE_RULES: dict[str, tuple[float | None, float | None, str]] = {
         0.0,
         1.0,
         "bm25.detect_min_confidence must be between 0.0 and 1.0",
+    ),
+    "compute.min_confidence": (
+        0.0,
+        1.0,
+        "compute.min_confidence must be between 0.0 and 1.0",
     ),
     # Non-negative counts / durations
     "query_log.retention_days": (0, None, "query_log.retention_days must be >= 0"),
@@ -323,6 +331,20 @@ _SECTION_SCHEMA: dict[str, dict[str, Any]] = {
             "use_code_metadata": (
                 bool,
                 "graphrag.use_code_metadata must be a boolean (true/false)",
+            ),
+        },
+    },
+    "compute": {
+        "known_fields": COMPUTE_KNOWN_FIELDS,
+        "enum_fields": {},
+        # `min_confidence` (float) is intentionally not a type_field — it is range-
+        # checked via _RANGE_RULES instead, mirroring bm25.detect_min_confidence,
+        # so an integer YAML value like `1` is not falsely rejected by isinstance.
+        "type_fields": {
+            "enabled": (bool, "compute.enabled must be a boolean (true/false)"),
+            "record_extraction": (
+                bool,
+                "compute.record_extraction must be a boolean (true/false)",
             ),
         },
     },

@@ -23,7 +23,7 @@ from cachetools import TTLCache
 logger = logging.getLogger(__name__)
 
 # Modes that produce non-deterministic results and must never be cached.
-_UNCACHEABLE_MODES: frozenset[str] = frozenset({"graph", "multi"})
+_UNCACHEABLE_MODES: frozenset[str] = frozenset({"graph", "multi", "compute"})
 
 
 class QueryCacheService:

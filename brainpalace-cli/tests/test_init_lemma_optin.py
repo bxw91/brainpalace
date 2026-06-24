@@ -46,9 +46,9 @@ _SUPPRESS = [
 
 
 def test_decline_lemma_writes_no_lemma_engine_and_no_install(tmp_path, monkeypatch):
-    # reranker-gate=N, lemma=N, proceed=Y → engine stays stem, no install.
+    # reranker-gate=N, lemma=N, compute=Y, proceed=Y → engine stays stem, no install.
     with patch("brainpalace_cli.optional_deps.ensure_extra") as ensure:
-        r = _invoke(tmp_path, monkeypatch, args=_SUPPRESS, stdin="n\nn\ny\n")
+        r = _invoke(tmp_path, monkeypatch, args=_SUPPRESS, stdin="n\nn\ny\ny\n")
     assert r.exit_code == 0, r.output
     cfg = _read_cfg(tmp_path)
     # No global XDG config in this tmp project → init seeds code defaults, so the
@@ -61,9 +61,9 @@ def test_decline_lemma_writes_no_lemma_engine_and_no_install(tmp_path, monkeypat
 
 
 def test_enable_lemma_writes_engine_and_installs(tmp_path, monkeypatch):
-    # reranker-gate=N, lemma=Y, proceed=Y → engine lemma + ensure_extra.
+    # reranker-gate=N, lemma=Y, compute=Y, proceed=Y → engine lemma + ensure_extra.
     with patch("brainpalace_cli.optional_deps.ensure_extra") as ensure:
-        r = _invoke(tmp_path, monkeypatch, args=_SUPPRESS, stdin="n\ny\ny\n")
+        r = _invoke(tmp_path, monkeypatch, args=_SUPPRESS, stdin="n\ny\ny\ny\n")
     assert r.exit_code == 0, r.output
     cfg = _read_cfg(tmp_path)
     assert cfg["bm25"]["engine"] == "lemma"
@@ -79,7 +79,7 @@ def test_explicit_bm25_engine_flag_skips_lemma_prompt(tmp_path, monkeypatch, eng
             tmp_path,
             monkeypatch,
             args=[*_SUPPRESS, "--bm25-engine", engine],
-            stdin="n\ny\n",  # reranker gate=N, proceed=Y
+            stdin="n\ny\ny\n",  # reranker gate=N, compute=Y, proceed=Y
         )
     assert r.exit_code == 0, r.output
     assert "lemmatization for BM25" not in r.output.lower().replace("\n", " ")

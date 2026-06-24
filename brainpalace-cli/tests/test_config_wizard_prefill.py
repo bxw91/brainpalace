@@ -42,9 +42,16 @@ def test_wizard_global_prefills_from_saved_config(
     monkeypatch.setattr(config_mod, "_find_config_file", lambda *a, **k: None)
 
     runner = CliRunner()
-    # Accept every default by sending blank lines.
-    res = runner.invoke(cli, ["config", "wizard", "--global"], input="\n" * 30)
+    # 17 blank lines accept every prompt (incl. the three compute prompts). The
+    # written compute: block validates against the CLI-side schema, so no
+    # "Continue anyway?" abort fires.
+    res = runner.invoke(
+        cli,
+        ["config", "wizard", "--global"],
+        input="\n" * 17,
+    )
     assert res.exit_code == 0, res.output
+    assert "Unknown top-level key" not in res.output
 
     written = yaml.safe_load((xdg / "config.yaml").read_text())
     assert written["embedding"]["model"] == "my-embed-model"
@@ -69,8 +76,16 @@ def test_wizard_global_uses_shipped_defaults_without_prior_config(
     monkeypatch.setattr(config_mod, "_find_config_file", lambda *a, **k: None)
 
     runner = CliRunner()
-    res = runner.invoke(cli, ["config", "wizard", "--global"], input="\n" * 30)
+    # 17 blank lines accept every prompt (incl. the three compute prompts). The
+    # written compute: block validates against the CLI-side schema, so no
+    # "Continue anyway?" abort fires.
+    res = runner.invoke(
+        cli,
+        ["config", "wizard", "--global"],
+        input="\n" * 17,
+    )
     assert res.exit_code == 0, res.output
+    assert "Unknown top-level key" not in res.output
 
     written = yaml.safe_load((xdg / "config.yaml").read_text())
     assert written["embedding"]["provider"] == "openai"  # shipped default

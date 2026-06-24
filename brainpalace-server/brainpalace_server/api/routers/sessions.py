@@ -90,6 +90,7 @@ async def extract_session(
     )
 
     memory_service = getattr(request.app.state, "memory_service", None)
+    record_store = getattr(request.app.state, "record_store", None)
 
     result = await SessionExtractService().store(
         payload,
@@ -99,6 +100,7 @@ async def extract_session(
         digest_path=digest_path,
         memory_service=memory_service,
         project_root=project_root,
+        record_store=record_store,
     )
     # Unified marker: any stored extraction (subagent submit OR provider distil)
     # marks the session done, so `auto` engine flips never re-summarize it.

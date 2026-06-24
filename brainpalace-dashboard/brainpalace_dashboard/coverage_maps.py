@@ -90,6 +90,15 @@ ENDPOINT_SURFACES: dict[str, str] = {
     # --- context / runtime ---
     "/context/session-start": ("unsurfaced: agent context block, not user-facing"),
     "/runtime/": "Instances (id / url shown)",
+    # --- records (compute mode) ---
+    "/records/stats": (
+        "unsurfaced: record-store statistics for CLI/compute mode; "
+        "no dashboard panel yet"
+    ),
+    "/records/revalidate": (
+        "unsurfaced: maintenance action (re-score low-confidence records); "
+        "CLI-driven, no dashboard panel yet"
+    ),
 }
 
 # Every CLI command -> "tab/action" it maps to, or "cli_only: <reason>".
@@ -136,4 +145,5 @@ CLI_DASHBOARD_COVERAGE: dict[str, str] = {
         "agent-driven + repo-only, not a UI surface"
     ),
     "whoami": "cli_only: CWD-context helper, irrelevant in a fleet UI",
+    "records": ("cli_only: record store stats/revalidate; no dashboard panel yet"),
 }

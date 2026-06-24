@@ -6,6 +6,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
@@ -159,6 +160,11 @@ class Settings(BaseSettings):
     # (e.g. "python,typescript"). Empty = the whole LSP subsystem is inert.
     # Requires the per-language server binary installed (fail-soft if absent).
     BRAINPALACE_LSP_LANGUAGES: str = ""
+
+    # Compute query mode (Phase 0 — compute-foundation)
+    RECORD_EXTRACTION_ENABLED: bool = True  # extract typed numeric records at persist
+    ENABLE_COMPUTE: bool = True  # compute query mode (aggregation)
+    COMPUTE_MIN_CONFIDENCE: float = Field(default=0.7, ge=0.0, le=1.0)
 
     model_config = SettingsConfigDict(
         env_file=[

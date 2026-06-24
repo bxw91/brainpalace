@@ -188,6 +188,7 @@ _DASHBOARD_ROUTE_PREFIXES = (
     "/memories",
     "/context",
     "/runtime",
+    "/records",
 )
 
 

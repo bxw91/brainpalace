@@ -37,6 +37,7 @@ SECTION_ORDER: list[tuple[str, str]] = [
     ("git_indexing", "Git Indexing"),
     ("session_indexing", "Session Vector Indexing"),
     ("session_extraction", "Session Summarization"),
+    ("compute", "Compute"),
 ]
 
 # Optional one-line "what this section does" intros, rendered under the header.
@@ -61,6 +62,8 @@ SECTION_DESCRIPTIONS: dict[str, str] = {
     "session_extraction": "DISTILLS a finished chat transcript into a structured "
     "summary, decisions, and graph triples — the curated 'memory'. Not a copy "
     "(Session Archiving) and not an embed (Session Vector Indexing).",
+    "compute": "Aggregation query mode that sums typed numeric records extracted "
+    "from sessions. Powers the compute query mode.",
 }
 
 # Sections WITHOUT a pydantic model: runtime bind (api/server) and machine
@@ -113,6 +116,9 @@ DEFAULT_FALLBACKS: dict[str, Any] = {
     "graphrag.store_type": "sqlite",
     "graphrag.use_code_metadata": True,
     "graphrag.doc_extractor": "langextract",
+    "compute.enabled": True,
+    "compute.record_extraction": True,
+    "compute.min_confidence": 0.7,
 }
 
 # Provider/api_key/base_url help text — purpose + expected values + default.

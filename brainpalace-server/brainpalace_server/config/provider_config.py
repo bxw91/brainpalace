@@ -374,6 +374,26 @@ class GraphRAGConfig(BaseModel):
     )
 
 
+class ComputeConfig(BaseModel):
+    """`compute:` section of config.yaml. All-None so an absent key leaves the
+    Settings default; the lifespan override copies set keys onto the flat
+    ENABLE_COMPUTE / RECORD_EXTRACTION_ENABLED / COMPUTE_MIN_CONFIDENCE (env wins)."""
+
+    enabled: bool | None = Field(
+        default=None, description="Master switch for the compute query mode"
+    )
+    record_extraction: bool | None = Field(
+        default=None,
+        description="Extract typed numeric records at session persist",
+    )
+    min_confidence: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Min record confidence summed by default compute",
+    )
+
+
 class ProviderSettings(BaseModel):
     """Top-level provider configuration."""
 
@@ -396,6 +416,10 @@ class ProviderSettings(BaseModel):
     graphrag: GraphRAGConfig = Field(
         default_factory=GraphRAGConfig,
         description="GraphRAG configuration (Phase G)",
+    )
+    compute: ComputeConfig = Field(
+        default_factory=ComputeConfig,
+        description="Compute query mode configuration (Phase 1)",
     )
 
 

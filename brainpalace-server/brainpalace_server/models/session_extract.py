@@ -55,6 +55,15 @@ class Triplet(BaseModel):
     )
 
 
+class RecordItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    subject: str
+    metric: str
+    value: float
+    unit: str | None = None
+    ts: str | None = None
+
+
 class SessionExtraction(BaseModel):
     """One extraction object per session (020 frozen schema)."""
 
@@ -73,6 +82,7 @@ class SessionExtraction(BaseModel):
     files_touched: list[FileTouched] = Field(default_factory=list)
     tools_used: list[str] = Field(default_factory=list)
     triplets: list[Triplet] = Field(default_factory=list)
+    records: list[RecordItem] = Field(default_factory=list)
 
 
 class SessionExtractResult(BaseModel):

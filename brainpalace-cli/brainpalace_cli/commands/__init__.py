@@ -20,6 +20,7 @@ from .memories import memories_group
 from .plugin_detect import plugin_group
 from .query import query_command
 from .recall import recall_command
+from .records import records_group
 from .remember import remember_command
 from .reset import reset_command
 from .session_drain import drain_queue_command
@@ -59,6 +60,7 @@ __all__ = [
     "ai_guide_command",
     "hook_group",
     "query_command",
+    "records_group",
     "recall_command",
     "remember_command",
     "reset_command",

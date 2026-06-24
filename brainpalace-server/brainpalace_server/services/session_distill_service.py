@@ -188,7 +188,10 @@ _SCHEMA = (
     ' "tools_used": ["..."],\n'
     ' "triplets": [{"subject": "...", "relation":'
     ' "touches|fixed-by|superseded-by|ran-in|depends-on|decided",'
-    ' "object": "...", "evidence_turn": null}]}\n'
+    ' "object": "...", "evidence_turn": null}],\n'
+    ' "records": [{"subject": "...", "metric": "...", "value": 0,'
+    ' "unit": "... or null", "ts": "ISO8601 or null"}]  (use [] if the'
+    " session has no measurements — do not invent records)}\n"
     "Do NOT invent any other keys. Omit session_id/branch/timestamps — those are"
     " filled by the server."
 )
@@ -339,6 +342,7 @@ async def distill_transcript(
     memory_service: Any | None = None,
     digest_path: str | Path | None = None,
     chunk_chars: int = DEFAULT_CHUNK_CHARS,
+    record_store: Any | None = None,
 ) -> SessionExtractResult | None:
     """Distil one transcript → store → mark. Returns the store result or None.
 
@@ -367,6 +371,7 @@ async def distill_transcript(
             digest_path=digest_path,
             memory_service=memory_service,
             project_root=project_root,
+            record_store=record_store,
         )
     except Exception as exc:  # noqa: BLE001 — never propagate into the watcher
         logger.warning("distill failed for %s: %s", path, exc)
@@ -403,6 +408,7 @@ class SessionDistiller:
         mode: str = "provider",
         plugin_present: Callable[[], bool] | None = None,
         grace_hours: float = 24.0,
+        record_store: Any | None = None,
     ) -> None:
         self.summarizer = summarizer
         self.embedder = embedder
@@ -417,6 +423,7 @@ class SessionDistiller:
         self.mode = mode
         self._plugin_present = plugin_present or (lambda: False)
         self.grace_seconds = grace_hours * 3600
+        self.record_store = record_store
 
     async def maybe_distill(
         self,
@@ -466,6 +473,7 @@ class SessionDistiller:
                 memory_service=self.memory_service,
                 digest_path=self.digest_path,
                 chunk_chars=self.chunk_chars,
+                record_store=self.record_store,
             )
 
     async def _safe(self, path: str | Path, newer_exists: bool, force: bool) -> None:

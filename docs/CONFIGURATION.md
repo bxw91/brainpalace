@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-20
+last_validated: 2026-06-24
 ---
 
 # Configuration Reference
@@ -497,6 +497,50 @@ only on the `sqlite` graph backend** (temporal ops no-op on `simple`). See
 
 File-like triplet entities are also canonicalised to project-root-relative paths
 so the graph keeps one node per real file (no per-query setting).
+
+---
+
+## Compute Configuration
+
+Controls the compute query mode and the typed numeric records store. Mirrors
+the `graphrag:` config pattern — the `compute:` YAML section overrides defaults,
+and env vars win over YAML when both are set.
+
+### Environment variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ENABLE_COMPUTE` | `true` | Master switch for the `compute` query mode (aggregation). Set `false` to disable compute entirely — the mode still exists but returns empty. |
+| `RECORD_EXTRACTION_ENABLED` | `true` | Extract typed numeric records at each session persist (counts + LLM measurements). Set `false` to stop accumulating new records without disabling query. |
+| `COMPUTE_MIN_CONFIDENCE` | `0.7` | Confidence floor for records entering aggregates (0.0–1.0). Records below this threshold are stored but excluded from compute results by default. With the default 0.7, only HIGH-confidence records (`1.0`) are summed. |
+
+### `compute:` config.yaml section
+
+```yaml
+compute:
+  enabled: true             # null = inherit env / default (ENABLE_COMPUTE)
+  record_extraction: true   # null = inherit (RECORD_EXTRACTION_ENABLED)
+  min_confidence: 0.7       # null = inherit (COMPUTE_MIN_CONFIDENCE)
+```
+
+An absent key (or `null`) inherits from the env var or the code default; env
+vars win over YAML when both are set.
+
+**Examples**:
+
+```bash
+# Disable the compute mode while keeping record accumulation
+export ENABLE_COMPUTE="false"
+
+# Stop extracting new records (query still works on existing ones)
+export RECORD_EXTRACTION_ENABLED="false"
+
+# Lower the floor to include PROVISIONAL records (confidence >= 0.6)
+export COMPUTE_MIN_CONFIDENCE="0.6"
+```
+
+See [COMPUTE.md](COMPUTE.md) for the full guide including confidence tiers,
+record population, and the `--json` response contract.
 
 ---
 

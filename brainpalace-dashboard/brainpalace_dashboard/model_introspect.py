@@ -31,6 +31,7 @@ from typing import Any, Literal, Union, get_args, get_origin
 from brainpalace_server.config.bm25_config import BM25Config
 from brainpalace_server.config.git_config import GitIndexingConfig
 from brainpalace_server.config.provider_config import (
+    ComputeConfig,
     EmbeddingConfig,
     GraphRAGConfig,
     RerankerConfig,
@@ -61,6 +62,7 @@ SECTION_MODELS: dict[str, type[BaseModel]] = {
     "git_indexing": GitIndexingConfig,
     "session_indexing": SessionIndexingConfig,
     "session_extraction": SessionExtractionConfig,
+    "compute": ComputeConfig,
 }
 
 #: dotpath of a model field that is itself a nested pydantic model -> that model.

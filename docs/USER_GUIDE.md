@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-20
+last_validated: 2026-06-24
 ---
 
 # BrainPalace User Guide
@@ -39,7 +39,7 @@ BrainPalace is a RAG (Retrieval-Augmented Generation) system that indexes and se
 
 | Component | Count | Description |
 |-----------|-------|-------------|
-| **Commands** | 33 | Slash commands for all operations |
+| **Commands** | 34 | Slash commands for all operations |
 | **Agents** | 5 | Intelligent assistants for complex tasks |
 | **Skills** | 2 | Context for optimal search and configuration |
 
@@ -298,6 +298,28 @@ Combines all modes using Reciprocal Rank Fusion. Best for maximum recall.
 ```
 /brainpalace-query --mode multi "everything about data validation"
 ```
+
+### COMPUTE (Set-level aggregation)
+
+Answers numeric questions over the typed records accumulated from your
+AI-coding sessions: counts, sums, averages, and superlatives. Returns
+aggregation rows, not text chunks. Best for questions like "how many files did I
+touch last week?" or "which week had the most decisions?".
+
+```bash
+brainpalace query "how many files did I touch last week" --mode compute
+brainpalace query "which week had the most tools used" --mode compute
+brainpalace query "total decisions this month" --mode compute
+```
+
+**Auto-routing:** `hybrid` (the default) automatically tries compute first when
+the query contains a set-level tell (`"how many"`, `"total"`, `"which week had
+the most"`, etc.). If compute returns rows they are returned immediately;
+otherwise the query falls back to normal hybrid retrieval. You can also force
+`--mode compute` explicitly.
+
+Records are populated from session extraction — compute is empty until
+`session_extraction.mode != off`. Full details: [COMPUTE.md](COMPUTE.md).
 
 ---
 
@@ -1422,7 +1444,7 @@ brainpalace index .
 ## Next Steps
 
 - [Quick Start](QUICK_START.md) - Get running in minutes
-- [Plugin Guide](PLUGIN_GUIDE.md) - All 33 commands in detail
+- [Plugin Guide](PLUGIN_GUIDE.md) - All 34 commands in detail
 - [API Reference](API_REFERENCE.md) - REST API documentation
 - [GraphRAG Guide](GRAPHRAG_GUIDE.md) - Knowledge graph features
 - [Provider Configuration](../brainpalace-plugin/skills/using-brainpalace/references/provider-configuration.md) - Provider setup

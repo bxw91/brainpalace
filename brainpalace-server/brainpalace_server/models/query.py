@@ -14,6 +14,7 @@ class QueryMode(str, Enum):
     HYBRID = "hybrid"
     GRAPH = "graph"  # Graph-only retrieval (Feature 113)
     MULTI = "multi"  # Multi-retrieval: vector + BM25 + graph with RRF (Feature 113)
+    COMPUTE = "compute"  # Set-level aggregation over typed numeric Records (Phase 1)
 
 
 class QueryRequest(BaseModel):
@@ -164,6 +165,20 @@ class QueryRequest(BaseModel):
     }
 
 
+class ComputeResult(BaseModel):
+    """One set-level aggregation row (compute mode). Not a document."""
+
+    # dict form — matches query.py's existing style (no ConfigDict import there)
+    model_config = {"frozen": True}
+    label: str  # human row label, e.g. "2026-W03" or "sales sum"
+    value: float
+    metric: str
+    op: str  # sum|count|avg|max|min
+    group: str | None = None  # group key (week/month/source/...) or None if ungrouped
+    unit: str | None = None
+    score: float = 0.0  # value normalised to 0..1 (display ordering only)
+
+
 class QueryResult(BaseModel):
     """Single query result with source and score."""
 
@@ -225,6 +240,11 @@ class QueryResponse(BaseModel):
         default=0,
         ge=0,
         description="Total number of results found",
+    )
+    compute: list[ComputeResult] | None = Field(
+        default=None,
+        description="Set-level aggregation rows (compute mode); null for "
+        "document retrieval. When set, `results` is empty.",
     )
 
     model_config = {

@@ -450,6 +450,21 @@ def status_command(
                 else:
                     table.add_row("Graph Index", "[dim]Disabled[/]")
 
+            # Records / compute feature block (Task 14).
+            rec = features.get("records")
+            if isinstance(rec, dict):
+                total_rec = int(rec.get("total", 0) or 0)
+                unverified_rec = int(rec.get("unverified", 0) or 0)
+                metrics_rec = rec.get("metrics") or []
+                metrics_str = (
+                    ", ".join(str(m) for m in metrics_rec) if metrics_rec else "none"
+                )
+                table.add_row(
+                    "Records / Compute",
+                    f"{total_rec:,} ({unverified_rec:,} unverified)"
+                    f" · metrics: {metrics_str}",
+                )
+
             lsp = features.get("lsp")
             if isinstance(lsp, dict):
                 if lsp.get("enabled"):

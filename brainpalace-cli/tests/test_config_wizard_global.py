@@ -14,11 +14,15 @@ def test_wizard_global_writes_to_xdg(tmp_path: Path, monkeypatch) -> None:
         "brainpalace_cli.commands.config.get_xdg_config_dir", lambda: xdg
     )
 
-    # Accept every prompt default (openai/anthropic/graphrag=3/localhost/port,
-    # plus the two global-only dashboard prompts: autostart + port).
-    result = CliRunner().invoke(config_group, ["wizard", "--global"], input="\n" * 14)
+    # Accept every prompt default: embedding/summarization provider+model,
+    # graphrag mode, the three compute prompts, sessions/archive/git/rerank/lemma,
+    # deployment + port, plus the two global-only dashboard prompts (17 total).
+    result = CliRunner().invoke(config_group, ["wizard", "--global"], input="\n" * 17)
 
     assert result.exit_code == 0, result.output
+    # The wizard writes a compute: block; the CLI-side schema validator must
+    # recognise it so no "Continue anyway?" abort fires on a clean run.
+    assert "Unknown top-level key" not in result.output
     written = xdg / "config.yaml"
     assert written.is_file(), result.output
     text = written.read_text()
@@ -30,16 +34,25 @@ def test_wizard_without_global_writes_to_cwd_project(
     tmp_path: Path, monkeypatch
 ) -> None:
     # No --global: writes a project-style .brainpalace/config.yaml under CWD.
+    # 15 blank lines accept every prompt (incl. the three compute prompts).
     monkeypatch.chdir(tmp_path)
-    result = CliRunner().invoke(config_group, ["wizard"], input="\n" * 12)
+    result = CliRunner().invoke(config_group, ["wizard"], input="\n" * 15)
     assert result.exit_code == 0, result.output
+    assert "Unknown top-level key" not in result.output
     assert (tmp_path / ".brainpalace" / "config.yaml").is_file(), result.output
 
 
 def _run_wizard(tmp_path: Path, monkeypatch, args: list[str]):
-    """Run the wizard in an isolated CWD, accepting every prompt default."""
+    """Run the wizard in an isolated CWD, accepting every prompt default.
+
+    15 blank lines cover every non-global prompt, including the three compute
+    prompts. Asserts no schema "Unknown top-level key" abort fires so a future
+    regression (e.g. compute dropped from VALID_TOP_LEVEL_KEYS) is caught.
+    """
     monkeypatch.chdir(tmp_path)
-    return CliRunner().invoke(config_group, ["wizard", *args], input="\n" * 12)
+    result = CliRunner().invoke(config_group, ["wizard", *args], input="\n" * 15)
+    assert "Unknown top-level key" not in result.output, result.output
+    return result
 
 
 def test_chat_summarizer_plugin_wording(tmp_path: Path, monkeypatch) -> None:

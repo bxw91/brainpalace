@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-23
+last_validated: 2026-06-24
 ---
 
 # Changelog
@@ -20,6 +20,13 @@ Entries are kept short (≤ 3 sentences and ≤ 320 characters); see
 _Entries accumulate here between releases. The release step renames this to
 `## [YY.M.N] - DATE` and adds a fresh empty `## [Unreleased]` above it — never
 hand-number an unreleased section._
+
+## [26.6.52] - 2026-06-24
+
+### Added
+- **Compute query mode (`--mode compute`).** Answers set-level questions over your sessions — sum/count/average, grouped by ISO-week or month, and "which … the most" superlatives — over typed numeric records instead of documents. Auto-routed from a plain question, with a hybrid-search fallback. (Phase 1)
+- **Typed numeric records.** A dedicated SQLite store captures per-session numbers: deterministic HIGH-confidence counts (files touched, tools used, decisions, open threads) derived **free** from the session summary, plus optional LLM-extracted records — all confidence-tiered so only trusted values sum. (Phase 0)
+- **Compute config + setup surfaces.** `compute.enabled` / `record_extraction` / `min_confidence` (kill-switches, default ON, no extra API cost) are surfaced in config, the dashboard, `brainpalace init` (`--no-compute`), the `config` wizard, `brainpalace records`, and `brainpalace status`.
 
 ## [26.6.51] - 2026-06-23
 

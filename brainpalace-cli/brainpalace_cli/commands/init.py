@@ -522,6 +522,41 @@ def write_git_config(
         yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
 
 
+def write_compute_config(
+    state_dir: Path,
+    *,
+    enabled: bool | None = None,
+    record_extraction: bool | None = None,
+) -> None:
+    """Deep-merge the ``compute:`` block into config.yaml.
+
+    Both args ``None`` is a no-op, so a re-init or bare run that doesn't ask the
+    question never clobbers a prior choice. Compute is ON by code default, so
+    ``init`` only writes here when the user opts OUT (keeps the project config
+    sparse — an absent key inherits global, then the code default). Preserves all
+    other blocks. The server's lifespan copies these onto the flat ENABLE_COMPUTE
+    / RECORD_EXTRACTION_ENABLED settings (env still wins).
+    """
+    if enabled is None and record_extraction is None:
+        return
+    config_path = state_dir / "config.yaml"
+    data: dict[str, object] = {}
+    if config_path.exists():
+        loaded = yaml.safe_load(config_path.read_text()) or {}
+        if isinstance(loaded, dict):
+            data = loaded
+    block = data.get("compute")
+    if not isinstance(block, dict):
+        block = {}
+    if enabled is not None:
+        block["enabled"] = bool(enabled)
+    if record_extraction is not None:
+        block["record_extraction"] = bool(record_extraction)
+    data["compute"] = block
+    with open(config_path, "w", encoding="utf-8") as f:
+        yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
+
+
 def write_reranker_enabled(state_dir: Path, *, enabled: bool) -> None:
     """Persist ``reranker.enabled`` (deep-merge; preserve other reranker keys)."""
     config_path = state_dir / "config.yaml"
@@ -1200,6 +1235,18 @@ def _start_and_watch(
     ),
 )
 @click.option(
+    "--compute/--no-compute",
+    "enable_compute",
+    default=None,
+    help=(
+        "COMPUTE query mode: answer set-level questions (sum/count/avg, "
+        "by-week/month, 'which … most') over typed numeric records extracted "
+        "from your sessions. ON by default (free — derived counts piggyback "
+        "session summaries; no extra API call). Interactive runs ask. Pass "
+        "--no-compute to disable the mode and its record extraction."
+    ),
+)
+@click.option(
     "--extract/--no-extract",
     "enable_extract",
     default=None,
@@ -1302,6 +1349,7 @@ def init_command(
     yes: bool,
     enable_sessions: bool | None,
     enable_archive: bool | None,
+    enable_compute: bool | None,
     enable_extract: bool | None,
     enable_git_history: bool | None,
     enable_graphrag_extract: bool | None,
@@ -1332,6 +1380,7 @@ def init_command(
       brainpalace init --sessions       # Also embed chat sessions (billable)
       brainpalace init --no-start       # Config only (no server, no indexing)
       brainpalace init --no-sessions    # Never embed chat sessions
+      brainpalace init --no-compute     # Disable compute query mode + record extraction
       brainpalace init --no-watch       # Start, but do not index/watch the folder
       brainpalace init --path /my/proj  # Initialize a specific project
       brainpalace init --force          # Overwrite existing config
@@ -1353,6 +1402,11 @@ def init_command(
         # all-on defaults apply only with consent (TTY confirm or --yes);
         # --json forces non-interactive.
         is_tty = _stdin_is_tty() and not json_output
+
+        # Compute query mode is ON by code default; only an explicit opt-out is
+        # persisted (sparse). Flag wins; an interactive run may set this in the
+        # consent block below. None ⇒ nothing written ⇒ inherits the default.
+        compute_choice: bool | None = enable_compute
         plan = resolve_init_plan(
             start=start,
             watch=watch,
@@ -1691,6 +1745,24 @@ def init_command(
                     "Upgrade graph store to sqlite?", default=True
                 )
 
+            if enable_compute is None:
+                _compute_default, _compute_from = _global_default(
+                    "compute.enabled", True
+                )
+                console.print(
+                    "\n[bold]Enable compute query mode?[/] "
+                    "(answer set-level questions over your sessions)\n"
+                    '  Sums/counts typed numeric records — e.g. "how many files '
+                    'touched this week",\n  "which day had the most decisions". '
+                    "Free: counts are derived from the session\n  summaries above, "
+                    "no extra API call. Disable later: --no-compute."
+                )
+                if _compute_from:
+                    _from_global_note()
+                compute_choice = click.confirm(
+                    "Enable compute query mode?", default=_compute_default
+                )
+
             # Rebuild the plan from the answers (bools ⇒ explicit, so they win).
             plan = resolve_init_plan(
                 start=start,
@@ -1758,6 +1830,15 @@ def init_command(
                 )
             elif plan.git_history:
                 write_git_config(resolved_state_dir, enabled=True, depth=git_depth)
+
+            # Persist a compute opt-out for an EXISTING project too. ON is the
+            # code default (inherited, nothing written); only --no-compute / an
+            # interactive "no" persists, disabling both the mode and record
+            # extraction. A bare re-init leaves any prior choice untouched.
+            if compute_choice is False:
+                write_compute_config(
+                    resolved_state_dir, enabled=False, record_extraction=False
+                )
 
             # Persist graphrag doc-extractor choice for an EXISTING project.
             _reinit_graphrag_ans = (
@@ -2012,6 +2093,11 @@ def init_command(
                 git_choice = None
         write_session_config(resolved_state_dir, index=sess, archive=arch)
         write_git_config(resolved_state_dir, enabled=git_choice, depth=git_depth)
+        # Compute is ON by default → only an opt-out is persisted (sparse).
+        if compute_choice is False:
+            write_compute_config(
+                resolved_state_dir, enabled=False, record_extraction=False
+            )
 
         # Persist graphrag doc-extractor choice on the fresh-init path.
         # graphrag_extract_ans is set by the consent block (interactive) or

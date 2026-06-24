@@ -28,12 +28,14 @@ class TestConfigWizard:
                     "anthropic\n"
                     "claude-haiku-4-5-20251001\n"
                     "1\n"
+                    "y\ny\n0.7\n"  # compute, rec_extract, min_conf
                     "n\nn\nn\ny\nn\n"
                     "1\n"
                     "\n"
                 ),
             )
             assert result.exit_code == 0, result.output
+            assert "Unknown top-level key" not in result.output
             assert "Batch size" in result.output
             assert "Request delay" in result.output
 
@@ -57,12 +59,14 @@ class TestConfigWizard:
                         "anthropic\n"
                         "claude-haiku-4-5-20251001\n"
                         "1\n"
+                        "y\ny\n0.7\n"  # compute, rec_extract, min_conf
                         "n\nn\nn\ny\nn\n"
                         "1\n"
                         "\n"
                     ),
                 )
                 assert result.exit_code == 0, f"{provider}: {result.output}"
+                assert "Unknown top-level key" not in result.output
                 assert "Batch size" not in result.output
                 assert "Request delay" not in result.output
 
@@ -82,12 +86,14 @@ class TestConfigWizard:
                     "anthropic\n"
                     "claude-haiku-4-5-20251001\n"
                     "1\n"
+                    "y\ny\n0.7\n"  # compute, rec_extract, min_conf
                     "n\nn\nn\ny\nn\n"
                     "1\n"
                     "\n"
                 ),
             )
             assert result.exit_code == 0, result.output
+            assert "Unknown top-level key" not in result.output
             assert "is not one of" in result.output.lower()
 
     def test_wizard_global_asks_and_writes_dashboard_settings(
@@ -110,6 +116,7 @@ class TestConfigWizard:
                         "anthropic\n"
                         "claude-haiku-4-5-20251001\n"
                         "1\n"  # graphrag mode
+                        "y\ny\n0.7\n"  # compute, rec_extract, min_conf
                         "n\nn\nn\nn\nn\n"  # sessions, archive, git, rerank, lemma
                         "1\n"  # deployment: localhost
                         "\n"  # api port: default
@@ -118,6 +125,7 @@ class TestConfigWizard:
                     ),
                 )
             assert result.exit_code == 0, result.output
+            assert "Unknown top-level key" not in result.output
             assert "Auto-start the web dashboard" in result.output
             cfg = yaml.safe_load((xdg / "config.yaml").read_text(encoding="utf-8"))
             assert cfg["dashboard"] == {"autostart": False, "port": 9999}
@@ -136,12 +144,14 @@ class TestConfigWizard:
                     "anthropic\n"
                     "claude-haiku-4-5-20251001\n"
                     "1\n"
+                    "y\ny\n0.7\n"  # compute, rec_extract, min_conf
                     "n\nn\nn\nn\nn\n"
                     "1\n"
                     "\n"
                 ),
             )
             assert result.exit_code == 0, result.output
+            assert "Unknown top-level key" not in result.output
             assert "Auto-start the web dashboard" not in result.output
             cfg = yaml.safe_load(
                 (Path(".brainpalace") / "config.yaml").read_text(encoding="utf-8")
@@ -164,12 +174,14 @@ class TestConfigWizard:
                     "anthropic\n"
                     "claude-haiku-4-5-20251001\n"
                     "1\n"
+                    "y\ny\n0.7\n"  # compute, rec_extract, min_conf
                     "n\nn\nn\ny\nn\n"
                     "1\n"
                     "\n"
                 ),
             )
             assert result.exit_code == 0, result.output
+            assert "Unknown top-level key" not in result.output
             assert "x>=0" in result.output
 
             config_file = Path(".brainpalace") / "config.yaml"
@@ -200,6 +212,7 @@ class TestConfigWizard:
                         "anthropic\n"
                         "claude-haiku-4-5-20251001\n"
                         "2\n"
+                        "y\ny\n0.7\n"  # compute, rec_extract, min_conf
                         "n\nn\nn\ny\nn\n"
                         "2\n"
                         "1\n"
@@ -208,6 +221,7 @@ class TestConfigWizard:
                 )
 
             assert result.exit_code == 0, result.output
+            assert "Unknown top-level key" not in result.output
             assert "On, code + docs" in result.output
 
             config_file = Path(".brainpalace") / "config.yaml"
@@ -239,6 +253,7 @@ class TestConfigWizard:
                     "anthropic\n"
                     "claude-haiku-4-5-20251001\n"
                     "1\n"
+                    "y\ny\n0.7\n"  # compute, rec_extract, min_conf
                     "n\nn\nn\ny\nn\n"
                     "1\n"
                     "\n"
@@ -246,6 +261,7 @@ class TestConfigWizard:
             )
 
             assert result.exit_code == 0, result.output
+            assert "Unknown top-level key" not in result.output
             assert "available API port" in result.output
             assert "8000-8300" in result.output
 

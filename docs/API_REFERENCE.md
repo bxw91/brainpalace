@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-18
+last_validated: 2026-06-24
 ---
 
 # API Reference
@@ -286,8 +286,45 @@ Execute a search query.
 | `hybrid` | BM25 + Vector fusion |
 | `graph` | Knowledge graph traversal |
 | `multi` | All three with RRF |
+| `compute` | Set-level aggregation over typed numeric Records |
 
-**Response** `200 OK`:
+**Compute mode response** — when `mode` is `compute` (or auto-routed to
+compute), `results` is always `[]` and aggregation rows appear under `compute`:
+
+```json
+{
+  "results": [],
+  "query_time_ms": 11.2,
+  "total_results": 3,
+  "compute": [
+    {
+      "label": "2026-W24",
+      "value": 47.0,
+      "metric": "files_touched",
+      "op": "sum",
+      "group": "2026-W24",
+      "unit": null,
+      "score": 1.0
+    }
+  ]
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `label` | string | Human row label (e.g. `"2026-W24"` or `"files_touched sum"`) |
+| `value` | float | Aggregated value |
+| `metric` | string | Metric name |
+| `op` | string | `sum` \| `count` \| `avg` \| `max` \| `min` |
+| `group` | string or null | Group key (ISO week, month, source, …), or null if ungrouped |
+| `unit` | string or null | Unit if present on the records |
+| `score` | float 0..1 | Value normalised for display ordering only |
+
+Compute results are never cached. When `ENABLE_COMPUTE=false` or no metric
+resolves, `compute` is `[]` (explicit `mode=compute`) or the query falls back to
+`hybrid` (auto-routed). See [COMPUTE.md](COMPUTE.md) for the full contract.
+
+**Document retrieval response** `200 OK`:
 
 ```json
 {
@@ -396,6 +433,73 @@ extraction payloads are produced by the AI coding tool. See
 
 Session indexing/extraction is **opt-in** and references transcripts rather than
 copying them (ADR 0001).
+
+---
+
+### Records Endpoints
+
+Typed numeric records store (Phase 0/1). Records are populated automatically
+at session persist when `RECORD_EXTRACTION_ENABLED=true` and session extraction
+is on. See [COMPUTE.md](COMPUTE.md).
+
+#### GET /records/stats
+
+Return record store statistics.
+
+**Response** `200 OK`:
+
+```json
+{
+  "total": 120,
+  "unverified": 5,
+  "metrics": ["decisions", "files_touched", "open_threads", "tools_used"]
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `total` | integer | Total record count in the store |
+| `unverified` | integer | Records with `confidence < COMPUTE_MIN_CONFIDENCE` (default 0.7) |
+| `metrics` | array of string | Distinct metric names present in the store |
+
+**Errors**:
+
+| Code | Description |
+|------|-------------|
+| `503` | RecordStore not available on this server |
+
+---
+
+#### POST /records/revalidate
+
+Re-score all records whose confidence is below the threshold, optionally
+restricted to a single metric. Returns the number of records rescored.
+
+**Request Body**:
+
+```json
+{
+  "metric": "files_touched"
+}
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `metric` | string | (omit for all) | Restrict rescoring to this metric only |
+
+**Response** `200 OK`:
+
+```json
+{
+  "rescored": 12
+}
+```
+
+**Errors**:
+
+| Code | Description |
+|------|-------------|
+| `503` | RecordStore not available on this server |
 
 ---
 

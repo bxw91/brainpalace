@@ -352,6 +352,21 @@ def wizard(global_: bool, chat_summarizer: str) -> None:
         default=prev_graph_mode,
     )
 
+    compute_on = click.confirm(
+        "\nEnable compute query mode? (aggregates typed numeric records from sessions)",
+        default=bool(_prev("compute.enabled", True)),
+    )
+    record_extraction_on = click.confirm(
+        "\nExtract numeric records from sessions at ingest? (needed for compute mode)",
+        default=bool(_prev("compute.record_extraction", True)),
+    )
+    compute_min_confidence = click.prompt(
+        "\nMin record confidence summed by default compute (0.0–1.0)\n"
+        "  Lower = include less-certain records; 0.7 keeps only HIGH-confidence",
+        type=click.FloatRange(0.0, 1.0),
+        default=float(_prev("compute.min_confidence", 0.7)),
+    )
+
     embed_sessions = click.confirm(
         "\nEmbed chat sessions for semantic recall? (goes through your embedding "
         "provider)\n  Independent of chat summarization.",
@@ -450,6 +465,11 @@ def wizard(global_: bool, chat_summarizer: str) -> None:
         },
         "graphrag": {
             "enabled": False,
+        },
+        "compute": {
+            "enabled": compute_on,
+            "record_extraction": record_extraction_on,
+            "min_confidence": compute_min_confidence,
         },
         "session_indexing": {
             "enabled": embed_sessions,

@@ -86,13 +86,14 @@ def _maybe_print_ai_hint() -> None:
     "--mode",
     default="hybrid",
     type=click.Choice(
-        ["vector", "bm25", "hybrid", "graph", "multi"], case_sensitive=False
+        ["vector", "bm25", "hybrid", "graph", "multi", "compute"], case_sensitive=False
     ),
     help=(
         "Retrieval mode: 'vector' (semantic similarity), 'bm25' (keyword matching), "
         "'hybrid' (vector+bm25), 'graph' (knowledge graph relationships, requires "
-        "ENABLE_GRAPH_INDEX=true), 'multi' (fusion of vector+bm25+graph). "
-        "Default: hybrid."
+        "ENABLE_GRAPH_INDEX=true), 'multi' (fusion of vector+bm25+graph), "
+        "'compute' (set-level aggregation over typed numeric records, requires "
+        "ENABLE_COMPUTE=true). Default: hybrid."
     ),
 )
 @click.option(
@@ -200,7 +201,7 @@ def query_command(
             if json_output:
                 import json
 
-                output = {
+                output: dict[str, object] = {
                     "query": query_text,
                     "total_results": response.total_results,
                     "query_time_ms": response.query_time_ms,
@@ -214,7 +215,28 @@ def query_command(
                         for r in response.results
                     ],
                 }
+                if response.compute is not None:
+                    import dataclasses
+
+                    output["compute"] = [
+                        dataclasses.asdict(c) for c in response.compute
+                    ]
                 click.echo(json.dumps(output, indent=2))
+                return
+
+            # Compute mode: print aggregation rows as label: value lines
+            if response.compute is not None:
+                console.print(
+                    f"\n[bold]Query:[/] {query_text}\n"
+                    f"[dim]Compute results in {response.query_time_ms:.1f}ms[/]\n"
+                )
+                if not response.compute:
+                    console.print("[yellow]No compute results.[/]")
+                else:
+                    for row in response.compute:
+                        unit_suffix = f" {row.unit}" if row.unit else ""
+                        console.print(f"[bold]{row.label}:[/] {row.value}{unit_suffix}")
+                _maybe_print_ai_hint()
                 return
 
             # Display header

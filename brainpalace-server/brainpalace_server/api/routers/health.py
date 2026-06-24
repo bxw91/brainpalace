@@ -384,6 +384,25 @@ async def indexing_status(request: Request) -> dict[str, Any]:
         },
     }
 
+    # Records / compute feature block (Task 14).
+    _app_settings = get_settings()
+    rs = getattr(request.app.state, "record_store", None)
+    data["features"]["records"] = {
+        "enabled": bool(getattr(_app_settings, "ENABLE_COMPUTE", True)),
+        "extraction_enabled": bool(
+            getattr(_app_settings, "RECORD_EXTRACTION_ENABLED", True)
+        ),
+        "total": rs.record_count() if rs else 0,
+        "unverified": (
+            rs.count_unverified(
+                min_confidence=getattr(_app_settings, "COMPUTE_MIN_CONFIDENCE", 0.7)
+            )
+            if rs
+            else 0
+        ),
+        "metrics": rs.distinct_metrics() if rs else [],
+    }
+
     # Index-health: self-heal audit trail (#5). A heal rebuilds the HNSW to the
     # live count; a large shed (physical >> live) means vectors were lost and is
     # recorded to .brainpalace/heal-events.jsonl. Surface it so the loss isn't

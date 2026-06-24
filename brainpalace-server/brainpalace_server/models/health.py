@@ -158,6 +158,14 @@ class IndexingStatus(BaseModel):
             "index_generation. None when cache not initialized."
         ),
     )
+    # Records / compute status (Task 14)
+    records: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "Compute/records feature status with enabled, extraction_enabled, "
+            "total, unverified, and metrics list."
+        ),
+    )
     model_config = {
         "json_schema_extra": {
             "examples": [

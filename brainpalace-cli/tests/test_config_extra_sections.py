@@ -97,3 +97,50 @@ def test_indexing_type_errors_caught() -> None:
     fields = {e.field for e in errs}
     assert "indexing.reembed_cooldown_seconds" in fields
     assert "indexing.skip_minified" in fields
+
+
+# ---------------------------------------------------------------------------
+# compute: block (G5 — compute query mode). The wizard writes this section, so
+# the CLI-side schema must recognise it; otherwise the wizard's post-write
+# validation aborts on "Unknown top-level key 'compute'". Mirrors
+# brainpalace_server.config.provider_config.ComputeConfig.
+# ---------------------------------------------------------------------------
+
+
+def test_compute_block_validates_clean() -> None:
+    cfg = {
+        "compute": {
+            "enabled": True,
+            "record_extraction": True,
+            "min_confidence": 0.7,
+        }
+    }
+    assert cs.validate_config_dict(cfg) == []
+
+
+def test_compute_is_known_top_level_key() -> None:
+    assert "compute" in cs.VALID_TOP_LEVEL_KEYS
+    assert {"enabled", "record_extraction", "min_confidence"} <= (
+        cs.COMPUTE_KNOWN_FIELDS
+    )
+
+
+def test_compute_unknown_field_caught() -> None:
+    errs = cs.validate_config_dict({"compute": {"bogus": 1}})
+    assert any(e.field == "compute.bogus" for e in errs)
+
+
+def test_compute_type_errors_caught() -> None:
+    errs = cs.validate_config_dict(
+        {"compute": {"enabled": "yes", "record_extraction": "no"}}
+    )
+    fields = {e.field for e in errs}
+    assert "compute.enabled" in fields
+    assert "compute.record_extraction" in fields
+
+
+def test_compute_min_confidence_out_of_range_caught() -> None:
+    errs = cs.validate_config_dict({"compute": {"min_confidence": 1.5}})
+    assert any(e.field == "compute.min_confidence" for e in errs)
+    # An integer 1 is in range and accepted (mirrors bm25.detect_min_confidence).
+    assert cs.validate_config_dict({"compute": {"min_confidence": 1}}) == []

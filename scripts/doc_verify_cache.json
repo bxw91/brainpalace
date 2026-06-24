@@ -40,6 +40,20 @@
     ],
     "grounding_hash": "6788c6147d5e7d141e16c058e6c9bd2c027ebccde8087e380a245f66f01c11ff"
   },
+  "017762b7d36cf26d79d244e7b906f2fb9f9382d623dde107faf264db3896de26": {
+    "doc": "docs/COMPUTE.md",
+    "claim": "Record id field is a content-derived hash \u2014 re-ingesting the same data never duplicates",
+    "grounding": "brainpalace-server/brainpalace_server/services/session_records.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "_rid() = hashlib.sha1(...).hexdigest()[:16]; INSERT ON CONFLICT(id) DO UPDATE SET; replace_source atomically deletes+reinserts for full re-distill \u2014 same session+measurement \u2192 same id \u2192 no duplicate",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/services/session_records.py",
+      "brainpalace-server/brainpalace_server/storage/record_store.py"
+    ],
+    "grounding_hash": "50c84bbac6daebff71128ed1b444e4e4696f43078b21f2810ef0c3709e5c7641"
+  },
   "01a508a81bebdee867091b2b85d87099c7d7053164ebe427239729d0169401b4": {
     "doc": "brainpalace-plugin/skills/using-brainpalace/references/server-discovery.md",
     "claim": "Server health is validated via /health/ endpoint.",
@@ -112,7 +126,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "audit",
-    "evidence": "Cached fresh verdict"
+    "evidence": "cache-hit fresh re-emit"
   },
   "02b4b158aed1c8270c9be721ddc0ad03463558aaeab50ef67d759cd89d9b2422": {
     "doc": "docs/PLUGIN_GUIDE.md",
@@ -184,6 +198,19 @@
     "grounding_tier": "code",
     "evidence": "graph_extractor.py uses tree-sitter for AST metadata extraction covering imports and containment"
   },
+  "04d60fb3445b5a648b55ed96d118303a287917101e6c2af2df8c96e3904051e3": {
+    "doc": "docs/COMPUTE.md",
+    "claim": "Records are extracted at the common session persist sink SessionExtractService.store",
+    "grounding": "brainpalace-server/brainpalace_server/services/session_extract_service.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "session_extract_service.py:123 async def store(); lines 216-226 call persist_records(record_store,...) after summaries",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/services/session_extract_service.py"
+    ],
+    "grounding_hash": "512f857451e6b78f014d8378fa7ace5c9d1e3038fc9f075235d594ef33cf785f"
+  },
   "0540b86e22f84d9a1aee366d7d1e3e841f978f4986b60a7c1451c013ace71e87": {
     "doc": "brainpalace-plugin/commands/brainpalace-mcp.md",
     "claim": "--ensure-server causes the shim to start one on boot if discovery finds none.",
@@ -204,7 +231,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh",
+    "evidence": "cache-hit fresh re-emit",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/runtime/converter_base.py"
     ],
@@ -217,7 +244,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh",
+    "evidence": "cache-hit fresh re-emit",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/install_agent.py"
     ],
@@ -230,11 +257,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh",
+    "evidence": "cache-hit fresh re-emit",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/api/"
     ],
-    "grounding_hash": "fc1e6b965082d8d3e47ede925106a78ed6fe3b4278fb291e5a1ce2fd41951013"
+    "grounding_hash": "3d97703d8aed6c263a2133689ad3cb640a082c8416322804dd7475dddb2f7dfa"
   },
   "067b1d13833d7fade78a2fd4597ffd10543df8d2aff2902343418a7086baee04": {
     "doc": "brainpalace-plugin/skills/configuring-brainpalace/references/provider-configuration.md",
@@ -269,11 +296,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "Cached fresh verdict",
+    "evidence": "cache-hit re-emit",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/init.py"
     ],
-    "grounding_hash": "3b764166a9c0cf23c605a56b221c158b8df0cf2874b6f40ced9c40b6239aada1"
+    "grounding_hash": "17b26a52da269e895e4c772cb50777a46594a1ee9095e687a91872a5e22d7c7e"
   },
   "0701f5c79e5dd0a1f8d0bcf16d601c8b3d81e22b764b822e72262568f4b765ff": {
     "doc": "docs/USER_GUIDE.md",
@@ -282,7 +309,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh",
+    "evidence": "cache-hit fresh re-emit",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/runtime/types.py"
     ],
@@ -373,11 +400,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "settings.py: reranker.enabled default false confirmed",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
-    "grounding_hash": "69c8d872d95d0d115ef6ac3725ad6f2cc41b5f7e14fd2d69590c62e62a823171"
+    "grounding_hash": "0d00da4aafbd52904b9ec0d3dfa750051eb28713118e4fa8bd736afc56568000"
   },
   "0882bb653ba7b280b31d4f6b7d97b7cb4a93a2477cf68feed3b18fd0069882dc": {
     "doc": "docs/QUICK_START.md",
@@ -399,24 +426,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "Cached fresh verdict",
+    "evidence": "cache-hit re-emit",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/init.py"
     ],
-    "grounding_hash": "3b764166a9c0cf23c605a56b221c158b8df0cf2874b6f40ced9c40b6239aada1"
-  },
-  "09cba1efa1d7d8616bc8eef9d246a74df0cb548ab7d5be07527c1f8ae3e61671": {
-    "doc": "CLAUDE.md",
-    "claim": "Config resolves code < global < project with env overrides on top; provider_config.load_merged_config_dict / load_raw_config implement this",
-    "grounding": "brainpalace-cli/brainpalace_cli/commands/init.py",
-    "raw_verdict": "SUPPORTED",
-    "verdict": "SUPPORTED",
-    "grounding_tier": "code",
-    "evidence": "Cached fresh verdict",
-    "grounding_files": [
-      "brainpalace-cli/brainpalace_cli/commands/init.py"
-    ],
-    "grounding_hash": "3b764166a9c0cf23c605a56b221c158b8df0cf2874b6f40ced9c40b6239aada1"
+    "grounding_hash": "17b26a52da269e895e4c772cb50777a46594a1ee9095e687a91872a5e22d7c7e"
   },
   "0a14d46426366a09b298da6f2a20fbcef74ba46272385ad43e57fe87f195cb53": {
     "doc": "docs/POSTGRESQL_SETUP.md",
@@ -430,6 +444,20 @@
       "brainpalace-server/brainpalace_server/storage/postgres/config.py"
     ],
     "grounding_hash": "7c66447941561456b948be3b27aae942f139fa0d8b0f76896a82562b7792820a"
+  },
+  "0a23465391f1ba54faea388a2ab6070001c31a91d7ccc74da88f3fe7b89e6fab": {
+    "doc": "README.md",
+    "claim": "Compute query mode answers set-level questions (sum/count/avg, by ISO-week or month, which most superlatives) over typed numeric records, derived free from session summaries \u2014 no extra API call",
+    "grounding": "brainpalace-server/brainpalace_server/services/query_service.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "cache-hit fresh re-emit",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/services/query_service.py",
+      "brainpalace-server/brainpalace_server/services/session_records.py"
+    ],
+    "grounding_hash": "a4944888c5a41f2c41440a72065d4fa6e5c3e674ac034c76acebc633f4c4f330"
   },
   "0a6e0a85720737444e8c4ce318c6e88b7666db53e75675fd5ba95aeecf6cf934": {
     "doc": "docs/PLUGIN_GUIDE.md",
@@ -460,11 +488,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "Cached fresh verdict",
+    "evidence": "cache-hit re-emit",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/provider_config.py"
     ],
-    "grounding_hash": "9087288639b5c86fd03cd5a48b32587d15f3ed74ec8a189d2991b14fe32a2e39"
+    "grounding_hash": "a7ebab41be4ad5e5798880e6e59adef8351191057b517b00e689b2d1650b7728"
   },
   "0b23cddacb379f1b11fe6ae112b43a89696c564c30738f6d54748d9977b895dc": {
     "doc": "docs/CONFIGURATION.md",
@@ -473,11 +501,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "settings.py line 26: EMBEDDING_MODEL: str = 'text-embedding-3-large'",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
-    "grounding_hash": "69c8d872d95d0d115ef6ac3725ad6f2cc41b5f7e14fd2d69590c62e62a823171"
+    "grounding_hash": "0d00da4aafbd52904b9ec0d3dfa750051eb28713118e4fa8bd736afc56568000"
   },
   "0b543e0784880399910cf11d3d6757e4fba60d9dd5b4f47e0b669b2a717d7084": {
     "doc": "brainpalace-plugin/skills/using-brainpalace/references/troubleshooting-guide.md",
@@ -499,7 +527,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh"
+    "evidence": "cache-hit fresh re-emit"
   },
   "0baf55434f3e51ea0bff772a42985bd06892f0be720a3d62d225393e00b1665d": {
     "doc": "brainpalace-plugin/skills/using-brainpalace/references/api_reference.md",
@@ -556,7 +584,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "Cached fresh verdict",
+    "evidence": "cache-hit re-emit",
     "grounding_files": [
       ".gitignore"
     ],
@@ -648,7 +676,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "Cached fresh verdict",
+    "evidence": "cache-hit re-emit",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/index.py"
     ],
@@ -674,11 +702,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "init.py governs project init and provider config structure; verify command mirrors these checks",
+    "evidence": "init.py defines DEFAULT_CONFIG with bind_host/port/chunk settings (project settings in config.json) and write_compute_config etc; verification doc matches the structure",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/init.py"
     ],
-    "grounding_hash": "3b764166a9c0cf23c605a56b221c158b8df0cf2874b6f40ced9c40b6239aada1"
+    "grounding_hash": "17b26a52da269e895e4c772cb50777a46594a1ee9095e687a91872a5e22d7c7e"
   },
   "0f60d9fc1403f916e233e78fd122787805874bbcd99e5db3005678ec5556157c": {
     "doc": "docs/MCP_SETUP.md",
@@ -700,11 +728,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "Cached fresh verdict",
+    "evidence": "cache-hit re-emit",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/api/main.py"
     ],
-    "grounding_hash": "0a941101f8ab60d21a29f51cd4c22fb8d249535a70bf8938268bb29a313c46bd"
+    "grounding_hash": "eef38d2507a251cb53da09954cf47b63b29b3a91fe160d8e2fa4f3222ce3e027"
   },
   "10237b09941734305d1c936fe32624a6892565190a2f89cd682cdf100f6768ca": {
     "doc": "docs/LSP_INTEGRATION.md",
@@ -740,11 +768,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "Cached fresh verdict",
+    "evidence": "cache-hit re-emit",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/init.py"
     ],
-    "grounding_hash": "3b764166a9c0cf23c605a56b221c158b8df0cf2874b6f40ced9c40b6239aada1"
+    "grounding_hash": "17b26a52da269e895e4c772cb50777a46594a1ee9095e687a91872a5e22d7c7e"
   },
   "10b29df4628b337fd4102485de4d006525f954a5712ed7641b16ca727d3ccf78": {
     "doc": "docs/CONFIGURATION.md",
@@ -753,11 +781,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "settings.py line 19: API_PORT: int = 8000",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
-    "grounding_hash": "69c8d872d95d0d115ef6ac3725ad6f2cc41b5f7e14fd2d69590c62e62a823171"
+    "grounding_hash": "0d00da4aafbd52904b9ec0d3dfa750051eb28713118e4fa8bd736afc56568000"
   },
   "10d738a0bc2436307442783b959ff0dd1a98bf00b88552292cd95989e033554f": {
     "doc": "docs/GRAPH_TAXONOMY.md",
@@ -799,19 +827,6 @@
     ],
     "grounding_hash": "c70f7cf1af53564ccccaad16eb7583ecb88c7cf235fb43dd7f920b7ec7f67245"
   },
-  "1229b55e614bc989e1ba9185dfb3e5a73a8b260d0d566fe500748111bdfd27be": {
-    "doc": "docs/DEVELOPERS_GUIDE.md",
-    "claim": "CODE_EXTENSIONS and EXTENSION_TO_LANGUAGE in document_loader.py",
-    "grounding": "brainpalace-server/brainpalace_server/indexing/document_loader.py",
-    "raw_verdict": "SUPPORTED",
-    "verdict": "SUPPORTED",
-    "grounding_tier": "code",
-    "evidence": "Cached fresh verdict",
-    "grounding_files": [
-      "brainpalace-server/brainpalace_server/indexing/document_loader.py"
-    ],
-    "grounding_hash": "6d84ede63f7f567f5356d10f79242f2defe2eb4475eabef2311c3d9a408292d4"
-  },
   "12433f32e95acbdbca6ef9c583b637ad6302d450b007f3d8be7bb57a232dff7f": {
     "doc": "brainpalace-plugin/commands/brainpalace-plugin.md",
     "claim": "This is a command group; the status subcommand reports whether the plugin is installed.",
@@ -824,6 +839,19 @@
       "brainpalace-cli/brainpalace_cli/commands/plugin_detect.py"
     ],
     "grounding_hash": "4cd88e0b3690200c4112c4a0f64f86d139c6ec39ae4b9e75b2422693527b01fb"
+  },
+  "12445c7fd39d239d3b4411193ebd378015136ced0dc042df427feaf898034fc3": {
+    "doc": "docs/USER_GUIDE.md",
+    "claim": "Plugin overview table: 34 Commands, 5 Agents, 2 Skills",
+    "grounding": "brainpalace-plugin/commands/",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "cache-hit fresh re-emit",
+    "grounding_files": [
+      "brainpalace-plugin/commands/"
+    ],
+    "grounding_hash": "547232211a543c68f74e90fe3aa3fdeace069ba58964577145c5a249b1567486"
   },
   "12528a22f9b6840ea0faaec7ae45b5fa7490c322471269c424854b6408bb7048": {
     "doc": "docs/DASHBOARD.md",
@@ -845,11 +873,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "Cached fresh verdict",
+    "evidence": "cache-hit re-emit",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/status.py"
     ],
-    "grounding_hash": "1c070b8a54762644a309e634f26b2207679cc9decf6d47c7cd7f2083d6b5eb46"
+    "grounding_hash": "e05cb3bd2df08058eb2896007eded50df27cccbf7ce9a1246294f09631ef30cb"
   },
   "131ddfe25fc5fe6661d2fe0d7ac2eabfcb54c93dedd8c14841fb07c36b5f48f0": {
     "doc": "brainpalace-plugin/skills/using-brainpalace/references/hybrid-search-guide.md",
@@ -871,7 +899,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "Cached fresh verdict",
+    "evidence": "cache-hit re-emit",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/sync_docs.py"
     ],
@@ -929,6 +957,19 @@
     ],
     "grounding_hash": "d941f1fee39072f7ac2d56e9faec2d2bdf3e2af02fb2664b825624ac4e0732de"
   },
+  "1411fe9d3016e0bb58e8759c1a49c7c83524560deb49696fc74ac66fa49eec61": {
+    "doc": "docs/API_REFERENCE.md",
+    "claim": "Compute results are never cached",
+    "grounding": "brainpalace-server/brainpalace_server/services/query_service.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "_execute_compute_query returns results directly, no cache write; compute path is separate from cached retrieval path",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/services/query_service.py"
+    ],
+    "grounding_hash": "0ce6e11ed3af9f040b61351b83b9a927f9520fa21b45696eca47f2b07a918cc7"
+  },
   "14ea18a3cccdc640bfd17ff477b14eed2131c0c4c3b2e6d33ebfe54c1a3ddff0": {
     "doc": "docs/BENCHMARKS.md",
     "claim": "query_benchmark.py supports --prepare-docs-corpus and --json flags",
@@ -963,7 +1004,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "test_postgres_config.py confirms hnsw_m=16, hnsw_ef_construction=64",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-server/tests/unit/storage/test_postgres_config.py"
     ],
@@ -1047,6 +1088,19 @@
     ],
     "grounding_hash": "1ef4084090be566f71403ed9009a452f8fc4b73d43b68b32605c8fcb92005c04"
   },
+  "17bf1d9814bf545555e5b87f65a32814d7ffa5bf2628a6685c32f06b9345589e": {
+    "doc": "docs/API_REFERENCE.md",
+    "claim": "ComputeResult fields: label (string), value (float), metric (string), op (sum|count|avg|max|min), group (string or null), unit (string or null), score (float 0..1 for display ordering)",
+    "grounding": "brainpalace-server/brainpalace_server/models/query.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "ComputeResult at lines 168-179: label:str, value:float, metric:str, op:str, group:str|None, unit:str|None, score:float=0.0",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/models/query.py"
+    ],
+    "grounding_hash": "f114d0285eae6e1730471dc405eda8c8847193d6e460c046c5590ea8d83726d5"
+  },
   "17c8ee620a3e222f0eea8788d1abb841253df41dc07a67dc3bcd002da7425df5": {
     "doc": "brainpalace-plugin/skills/using-brainpalace/references/api_reference.md",
     "claim": "graph_index store_type is 'simple'; 'unavailable' for non-chroma backends; a configured 'sqlite' value is auto-downgraded to 'simple'",
@@ -1096,6 +1150,19 @@
     ],
     "grounding_hash": "a2e8f529c3c0f057cd624841b967eb15f26edf360bcaf16444f5ab6686e5c679"
   },
+  "188e334b46a4ca288ee2861f55b44677f459af35c3a0912e059122fe823e8e11": {
+    "doc": "docs/COMPUTE.md",
+    "claim": "compute: YAML section surfaces the three knobs (enabled, record_extraction, min_confidence)",
+    "grounding": "brainpalace-server/brainpalace_server/config/provider_config.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "class ComputeConfig(BaseModel) at line 377 with enabled/record_extraction/min_confidence fields; compute:ComputeConfig at line 420",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/config/provider_config.py"
+    ],
+    "grounding_hash": "a7ebab41be4ad5e5798880e6e59adef8351191057b517b00e689b2d1650b7728"
+  },
   "18cbbdc3b44fedff1e0752adb039c34a804c0ab9b554318be5cc191234e2885e": {
     "doc": "brainpalace-plugin/agents/setup-assistant.md",
     "claim": "~27 Snowball languages supported for BM25 plus Croatian (hr)",
@@ -1103,7 +1170,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "Snowball language list in snowball.py; hr handled separately",
+    "evidence": "cache-hit fresh re-emit",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/indexing/text_analysis/snowball.py"
     ],
@@ -1129,11 +1196,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "Cached fresh verdict",
+    "evidence": "cache-hit re-emit",
     "grounding_files": [
       "scripts/dev-install-from-source.sh"
     ],
-    "grounding_hash": "c9745a82bad352a401b48797d2f209a69cc60cfdec33b61663748853df111b8e"
+    "grounding_hash": "f6bfc593731351b5aa05f85c28fdb5c9549da9967febc3f08da40ff3a5430c3b"
   },
   "1a4347f58a16dae55f193e5c7f790e99430aed7a049857ae05541987fd44c314": {
     "doc": "docs/CODE_INDEXING.md",
@@ -1181,11 +1248,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "settings.py: GRAPH_STORE_TYPE default sqlite",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
-    "grounding_hash": "69c8d872d95d0d115ef6ac3725ad6f2cc41b5f7e14fd2d69590c62e62a823171"
+    "grounding_hash": "0d00da4aafbd52904b9ec0d3dfa750051eb28713118e4fa8bd736afc56568000"
   },
   "1b3ef623961f1729bbc90b6609947da1cb62d741596343d31a4d6fd3adcdca94": {
     "doc": "docs/CONFIGURATION.md",
@@ -1194,11 +1261,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "settings.py line 49: DEFAULT_SIMILARITY_THRESHOLD: float = 0.7",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
-    "grounding_hash": "69c8d872d95d0d115ef6ac3725ad6f2cc41b5f7e14fd2d69590c62e62a823171"
+    "grounding_hash": "0d00da4aafbd52904b9ec0d3dfa750051eb28713118e4fa8bd736afc56568000"
   },
   "1b52926ef25ed7e64577ac75604af482c0c08a2aa7652c074c11408a6ddd797b": {
     "doc": "docs/GIT_HISTORY.md",
@@ -1233,11 +1300,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "settings.py line 38: COLLECTION_NAME: str = 'brainpalace_collection'",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
-    "grounding_hash": "69c8d872d95d0d115ef6ac3725ad6f2cc41b5f7e14fd2d69590c62e62a823171"
+    "grounding_hash": "0d00da4aafbd52904b9ec0d3dfa750051eb28713118e4fa8bd736afc56568000"
   },
   "1cbdf0559624a39d02d6ce9bffcfa83ad68d5c2d181371e645ee8146e59802ff": {
     "doc": "brainpalace-plugin/skills/using-brainpalace/references/interactive-setup.md",
@@ -1265,19 +1332,6 @@
     ],
     "grounding_hash": "6babf1da4921c527778020041e5a939f7be52515f2eb9eb5776fb80631759e86"
   },
-  "1e1094ded5b0655ad8dab77acd9dfbffc459b71abcf8ac8fff628b330d28157c": {
-    "doc": "docs/DEVELOPERS_GUIDE.md",
-    "claim": "The MCP module exposes 9 tools: query, status, whoami, folders_list, jobs_list, recall, session_context, ai_guide (read-only), and memorize (writes curated memory)",
-    "grounding": "brainpalace-cli/brainpalace_cli/mcp_server/tools.py",
-    "raw_verdict": "SUPPORTED",
-    "verdict": "SUPPORTED",
-    "grounding_tier": "code",
-    "evidence": "tools.py defines 9 async tool handlers: query_tool, status_tool, whoami_tool, folders_list_tool, jobs_list_tool, memorize_tool, recall_tool, session_context_tool, ai_guide_tool",
-    "grounding_files": [
-      "brainpalace-cli/brainpalace_cli/mcp_server/tools.py"
-    ],
-    "grounding_hash": "ad0657215674f9fa45f8d17353849fdc04e2f1cce5a5b261a51e8f25f561525d"
-  },
   "1e3205cece27e7f4225bdc8ce2a83de10abb608e7ff7680100c736ea8e599571": {
     "doc": "CLAUDE.md",
     "claim": "--sessions enables embedding non-interactively",
@@ -1285,11 +1339,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "Cached fresh verdict",
+    "evidence": "cache-hit re-emit",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/init.py"
     ],
-    "grounding_hash": "3b764166a9c0cf23c605a56b221c158b8df0cf2874b6f40ced9c40b6239aada1"
+    "grounding_hash": "17b26a52da269e895e4c772cb50777a46594a1ee9095e687a91872a5e22d7c7e"
   },
   "1e5ec18ac2a99a554b47371c8d0bdc0e3d05aa4f4c30f375bf6b922ee3cead4a": {
     "doc": "docs/GIT_HISTORY.md",
@@ -1304,6 +1358,21 @@
     ],
     "grounding_hash": "d41e7cd0e31399905c549b6b804665f066d22769dd5b96c89e82550447b6a53e"
   },
+  "1e6055ad4a83278e2dc8710a31729ea12ea1a1300e0072168dd6195cb1f487b2": {
+    "doc": "brainpalace-plugin/agents/setup-assistant.md",
+    "claim": "Compute query mode (compute.enabled + compute.record_extraction, and compute.min_confidence in the wizard) \u2014 set-level questions (sum/count/avg, by-week/month, which most) over typed numeric records from sessions; default ON, free (counts piggyback session summaries \u2014 no extra API call); init writes disabling values only on --no-compute",
+    "grounding": "brainpalace-cli/brainpalace_cli/commands/config.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "config.py line 363-367: compute_min_confidence prompt with default 0.7; init.py line 1238-1247: --compute/--no-compute ON by default; settings.py line 167: COMPUTE_MIN_CONFIDENCE default=0.7; write_compute_config called only on opt-out",
+    "grounding_files": [
+      "brainpalace-cli/brainpalace_cli/commands/config.py",
+      "brainpalace-cli/brainpalace_cli/commands/init.py",
+      "brainpalace-server/brainpalace_server/config/settings.py"
+    ],
+    "grounding_hash": "6a237a1d18b4fcb0ca185c252d7b333217187a01ea870f6be4bd70c15c674cdb"
+  },
   "1e97e2744e2711167f90b006b90c6d967da0f8d87d0a24ceb518830fb94cc5d8": {
     "doc": "brainpalace-plugin/skills/configuring-brainpalace/references/troubleshooting-guide.md",
     "claim": "File watcher (v8.0+) excludes: .git/, node_modules/, __pycache__/, dist/, build/, .next/, .nuxt/, coverage/, htmlcov/",
@@ -1317,6 +1386,20 @@
     ],
     "grounding_hash": "cd3e23daa081fec64e5e1e5715acab794a6688a57d7332a8076cae64ad013135"
   },
+  "1eaab12134361851fb807b9f0f6e7f2c78affb0d26616b01ccb0aab015b42ac6": {
+    "doc": "README.md",
+    "claim": "COMPUTE search mode handles set-level aggregates over sessions (sum/count/avg, by week/month, superlatives)",
+    "grounding": "brainpalace-server/brainpalace_server/models/query.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "cache-hit fresh re-emit",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/models/query.py",
+      "brainpalace-server/brainpalace_server/services/query_service.py"
+    ],
+    "grounding_hash": "27f34fb3f529dfc0626046a339109bc27bbfce40852bfdc815383f24abe1b7ab"
+  },
   "1f115b9f18450019b55223610a807d596fedca91467511bf4d5b66246ccc4072": {
     "doc": "docs/PLUGIN_GUIDE.md",
     "claim": "install-agent supports claude, opencode, gemini, codex, and other runtimes",
@@ -1329,6 +1412,19 @@
       "brainpalace-plugin/commands/brainpalace-install-agent.md"
     ],
     "grounding_hash": "8c6c0c66101f76ca82b8c9a7363f6a2e7a6079344ea49749ac53fc63b817b779"
+  },
+  "1f8d0a9a0b29446746fc953898f543bfe50553f3aaa224b80bfe4ff44e8c14a4": {
+    "doc": "docs/COMPUTE.md",
+    "claim": "Supported grouping keys: week (ISO week YYYY-Www), month (YYYY-MM), source, subject, unit",
+    "grounding": "brainpalace-server/brainpalace_server/storage/record_store.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "_GROUPS = {'week':'iso_week','month':'ym','source':'source','subject':'subject','unit':'unit'} at lines 20-26",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/storage/record_store.py"
+    ],
+    "grounding_hash": "b5609b182ddd44d1e6b7ca0c1de4f55ad802973b73716adc8e1e01c4e211b83c"
   },
   "1fc44694133230e35201136b92b66bf609536f1697a9a2f7b98694be6afcf259": {
     "doc": "docs/LSP_INTEGRATION.md",
@@ -1476,7 +1572,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh",
+    "evidence": "cache-hit fresh re-emit",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/mcp_server/server.py"
     ],
@@ -1489,7 +1585,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh",
+    "evidence": "cache-hit fresh re-emit",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/indexing/document_loader.py"
     ],
@@ -1534,6 +1630,19 @@
     ],
     "grounding_hash": "6e42a11eb126df742c05135b5c1008f59b216925d05aaced0d331cb035ca02e9"
   },
+  "22348ab3245da9741ec408e41de31f2f6c71b884e2f74f133c7770c35f8af958": {
+    "doc": "docs/COMPUTE.md",
+    "claim": "ISO-week bucket column iso_week uses format YYYY-Www computed at insert time via datetime.isocalendar(), not strftime at query time",
+    "grounding": "brainpalace-server/brainpalace_server/storage/record_store.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "derive_buckets(): y,w,_=d.isocalendar(); return f'{y}-W{w:02d}' \u2014 no strftime; docstring 'not json_extract or strftime at query'",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/storage/record_store.py"
+    ],
+    "grounding_hash": "b5609b182ddd44d1e6b7ca0c1de4f55ad802973b73716adc8e1e01c4e211b83c"
+  },
   "2237f1ccc2df4183a3f1175f9f910aac19c8788adf1f857379a996a1f5ab4329": {
     "doc": "brainpalace-plugin/skills/using-brainpalace/references/api_reference.md",
     "claim": "languages is a string[] POST /query parameter filtering by programming language(s) for code files",
@@ -1546,19 +1655,6 @@
       "brainpalace-server/brainpalace_server/models/query.py"
     ],
     "grounding_hash": "a2e8f529c3c0f057cd624841b967eb15f26edf360bcaf16444f5ab6686e5c679"
-  },
-  "2247ac3e0a9d57008948b3626fbc7d2871977670b3d9167660463df5971fe7ae": {
-    "doc": "README.md",
-    "claim": "Update plugin with: claude plugin update brainpalace@brainpalace-marketplace",
-    "grounding": "brainpalace-plugin/.claude-plugin/plugin.json",
-    "raw_verdict": "SUPPORTED",
-    "verdict": "SUPPORTED",
-    "grounding_tier": "code",
-    "evidence": "cached",
-    "grounding_files": [
-      "brainpalace-plugin/.claude-plugin/plugin.json"
-    ],
-    "grounding_hash": "5df42a91201061e226992356b3e3e256680e1a58a219a75ca7a6053efb2d4b26"
   },
   "224b7b88a40d983b9c6164529e48468ae4eb0a6c04c4af36708b135f1b7162e8": {
     "doc": "brainpalace-plugin/commands/brainpalace-install.md",
@@ -1619,11 +1715,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh",
+    "evidence": "cache-hit fresh re-emit",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/indexing/"
     ],
-    "grounding_hash": "65fc443d377a6dc47d04fce51d7b289c92a8a53b72bb6269a3f95140c38955e3"
+    "grounding_hash": "e49e255c00799b2cc91eb0754f00855da8ca5f96fff0ef89e6b686b8a756a0fc"
   },
   "236b4daebf4d0522c8d482dfa939bb7871e256cd1a42be5f557a63367d9aed66": {
     "doc": "brainpalace-plugin/skills/using-brainpalace/references/graph-search-guide.md",
@@ -1645,7 +1741,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "doc-dep",
-    "evidence": "cached fresh",
+    "evidence": "cache-hit fresh re-emit",
     "grounding_files": [
       "docs/MCP_SETUP.md"
     ],
@@ -1716,6 +1812,19 @@
     ],
     "grounding_hash": "3b764166a9c0cf23c605a56b221c158b8df0cf2874b6f40ced9c40b6239aada1"
   },
+  "2598a523ce5f5ce1d36bf9c119d0a4cd5945b1bd6575f2e13f71c49746dd6972": {
+    "doc": "docs/USER_GUIDE.md",
+    "claim": "BrainPalace includes five intelligent agents that handle complex, multi-step tasks",
+    "grounding": "brainpalace-plugin/agents/",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "cache-hit fresh re-emit",
+    "grounding_files": [
+      "brainpalace-plugin/agents/"
+    ],
+    "grounding_hash": "143a0fb094cfcae9fb7e6fa6b8aded6b0948c2e173994d42723efcc1749b5645"
+  },
   "25d47203b3d1fb2d96abe8628f9b1d33426ed58ec7d368a47444b4ffdde5324e": {
     "doc": "brainpalace-plugin/commands/brainpalace-extract-session.md",
     "claim": "brainpalace submit-session <session_id> --json - reads payload from stdin",
@@ -1768,19 +1877,6 @@
     ],
     "grounding_hash": "a487ddfa8c78ef59ca136221ca8e3448507e914007708cc1b8bfb51e643fed51"
   },
-  "26721783f33021303bcd2ddcdaa44a43126395ef89dd30c89f6b51df1a37fab7": {
-    "doc": "CLAUDE.md",
-    "claim": "brainpalace query modes are bm25 (exact terms), vector (semantic/concepts), hybrid (default), graph (dependencies/relationships), multi (fusion)",
-    "grounding": "brainpalace-server/brainpalace_server/models/query.py",
-    "raw_verdict": "SUPPORTED",
-    "verdict": "SUPPORTED",
-    "grounding_tier": "code",
-    "evidence": "Cached fresh verdict",
-    "grounding_files": [
-      "brainpalace-server/brainpalace_server/models/query.py"
-    ],
-    "grounding_hash": "a2e8f529c3c0f057cd624841b967eb15f26edf360bcaf16444f5ab6686e5c679"
-  },
   "26896f53046f2c9eed1070a8ca721108228d184ef343e50fc07dc3814bfcca57": {
     "doc": "docs/CONFIGURATION.md",
     "claim": "BRAINPALACE_TIME_DECAY_HALF_LIFE_DAYS default 90",
@@ -1788,11 +1884,24 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "settings.py: BRAINPALACE_TIME_DECAY_HALF_LIFE_DAYS default 90",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
-    "grounding_hash": "69c8d872d95d0d115ef6ac3725ad6f2cc41b5f7e14fd2d69590c62e62a823171"
+    "grounding_hash": "0d00da4aafbd52904b9ec0d3dfa750051eb28713118e4fa8bd736afc56568000"
+  },
+  "26cbb62493094bacffcf0bb78f97292341b1771549b64c729ede68c7a9c7c9d9": {
+    "doc": "docs/DEVELOPERS_GUIDE.md",
+    "claim": "BrainPalace supports AST-aware code chunking for 10 programming languages using tree-sitter",
+    "grounding": "brainpalace-server/brainpalace_server/indexing/chunking.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "cache-hit fresh re-emit",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/indexing/chunking.py"
+    ],
+    "grounding_hash": "de115a3ac455db3b12d5ee9e657647d186a8944a32f02410cfca2c09038897da"
   },
   "273fa9c04bad8c61a8ab6a4ffe8ad9f487e8137240a9f166f0d31b8d3be35c2b": {
     "doc": "docs/EVALUATION.md",
@@ -1833,19 +1942,6 @@
     ],
     "grounding_hash": "524d1ea00abf95d8b15a4be051b991fffee2b9767641ecfeb9214cae7c3f04b7"
   },
-  "28c3d79a08a00020124da20853797c418e4f52e4146a5f54d51d22e2a8873d61": {
-    "doc": "docs/DEVELOPERS_GUIDE.md",
-    "claim": "BrainPalace supports AST-aware code chunking for 10 programming languages using tree-sitter: Python, TypeScript, JavaScript, Java, Go, Rust, C, C++, C#, and Object Pascal",
-    "grounding": "brainpalace-server/brainpalace_server/indexing/chunking.py",
-    "raw_verdict": "SUPPORTED",
-    "verdict": "SUPPORTED",
-    "grounding_tier": "code",
-    "evidence": "chunking.py lang_map has exactly 10 entries: python, typescript, javascript, go, rust, java, cpp, c, csharp, pascal",
-    "grounding_files": [
-      "brainpalace-server/brainpalace_server/indexing/chunking.py"
-    ],
-    "grounding_hash": "de115a3ac455db3b12d5ee9e657647d186a8944a32f02410cfca2c09038897da"
-  },
   "2911eea4bdc08815ef37261816e594e6c716d823834dfb29f3c7b3b1527314ec": {
     "doc": "CLAUDE.md",
     "claim": "AI guidance single source is brainpalace-cli/brainpalace_cli/data/ai_guidance.md; loader is brainpalace_cli/ai_guidance.py; brainpalace ai-guide renders it",
@@ -1853,12 +1949,12 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "Cached fresh verdict",
+    "evidence": "cache-hit re-emit",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/ai_guidance.py",
       "brainpalace-cli/brainpalace_cli/data/ai_guidance.md"
     ],
-    "grounding_hash": "0a46267993f8d4f8ee39cc91d1660d75b298ad3fab61efec49faa1684a1b78f9"
+    "grounding_hash": "d39a408ce3ce23d503250b6735398d8d8b9e4553bf5489ecdc47c2a4a40107c9"
   },
   "2971c80ebda27a3003140b89a7b3fa6bec69743a1ae90b24f68a22081a6bfba6": {
     "doc": "docs/CONFIGURATION.md",
@@ -1867,11 +1963,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "query_cache.py: graph and multi modes excluded from cache",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/services/query_cache.py"
     ],
-    "grounding_hash": "7fae3911b8729c6ffb646183ad8516d2c4d9096166e2602104c669420107e6fa"
+    "grounding_hash": "bfb9dca37f2daf05ac57f908c24fdf050b8c9f77c1a6e18aa3a8696c144fd9a4"
   },
   "29cbddd7fd81cfcf29737145640b660bc5a163b089ba2667aa442cdcab6d46e4": {
     "doc": "docs/GRAPH_TAXONOMY.md",
@@ -1911,19 +2007,6 @@
       "brainpalace-plugin/skills/"
     ],
     "grounding_hash": "d2e10b30c3693a7c2b5956db319ccbfa62800747677390811c842dcc2392d9f0"
-  },
-  "2bc2da35a4136589b54b6a936822d6055b84541b8c527a9383c2496be7b09424": {
-    "doc": "README.md",
-    "claim": "AST-aware code chunking supports Python, TypeScript, JavaScript, Java, Kotlin, C, C++, C#, Go, Rust, Swift (11 languages)",
-    "grounding": "brainpalace-server/brainpalace_server/indexing/document_loader.py",
-    "raw_verdict": "SUPPORTED",
-    "verdict": "SUPPORTED",
-    "grounding_tier": "code",
-    "evidence": "EXTENSION_TO_LANGUAGE dict includes .cs->csharp; chunking.py lang_map includes csharp; CODE_INDEXING.md lists 11 languages",
-    "grounding_files": [
-      "brainpalace-server/brainpalace_server/indexing/document_loader.py"
-    ],
-    "grounding_hash": "6d84ede63f7f567f5356d10f79242f2defe2eb4475eabef2311c3d9a408292d4"
   },
   "2d0c5d7236db74a3d0562c3661720de0c2ed17b656ff4c189d732107fb15ea31": {
     "doc": "docs/DEPLOYMENT.md",
@@ -1965,6 +2048,20 @@
     ],
     "grounding_hash": "66a7034a5e1b452332037c6a7336f63a8ab7d14dc71a8e32e47363d505356531"
   },
+  "2e8c4750417bf2cbfe6d748742927ff3feb5a11aaef4bbb0272bc5d96ad1d5df": {
+    "doc": "docs/USER_GUIDE.md",
+    "claim": "hybrid mode automatically tries compute first when the query contains a set-level tell; if compute returns rows they are returned immediately; otherwise falls back to normal hybrid retrieval",
+    "grounding": "brainpalace-server/brainpalace_server/services/query_service.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "cache-hit fresh re-emit",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/services/query_router.py",
+      "brainpalace-server/brainpalace_server/services/query_service.py"
+    ],
+    "grounding_hash": "4562ec103aa1a8cc12976f7f10353e25fbd5fac0ab7edb0cec87d1679caa588f"
+  },
   "2eb62c32ad712396a0f5033169a3c83b023a0f51d6dd4a74debe81ec97cadf9a": {
     "doc": "docs/PLUGIN_GUIDE.md",
     "claim": "MCP config snippet is at templates/mcp-config-claude-code.json",
@@ -1998,7 +2095,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh"
+    "evidence": "cache-hit fresh re-emit"
   },
   "301b35caa7799ab8801b3e1ddff86354782162914d0bb656bc06fc69e3c7c1a0": {
     "doc": "brainpalace-plugin/README.md",
@@ -2133,7 +2230,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "Cached fresh verdict",
+    "evidence": "cache-hit re-emit",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/folders.py"
     ],
@@ -2227,6 +2324,19 @@
     ],
     "grounding_hash": "8ed0d20632ee24911031119c348161e7d2f9da12b0805c865bb67feb62bb6cc1"
   },
+  "34c88709d382fe8219d286e87114fdf7b9175571ebe5b2d0f1ff43fbec16980a": {
+    "doc": "brainpalace-plugin/commands/brainpalace-init.md",
+    "claim": "--compute / --no-compute default is on (free \u2014 derived counts piggyback session summaries; no extra API call)",
+    "grounding": "brainpalace-cli/brainpalace_cli/commands/init.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "init.py line 1238-1247: '--compute/--no-compute', default=None, help='ON by default (free \u2014 derived counts piggyback session summaries; no extra API call)'",
+    "grounding_files": [
+      "brainpalace-cli/brainpalace_cli/commands/init.py"
+    ],
+    "grounding_hash": "17b26a52da269e895e4c772cb50777a46594a1ee9095e687a91872a5e22d7c7e"
+  },
   "3578e324abb6ac5216379ecb0c038d7874f11a5f0fb247cfd1643d33c43fbd91": {
     "doc": "docs/ARCHITECTURE.md",
     "claim": "BrainPalace combines BM25, semantic vector search, and GraphRAG knowledge graph in a unified per-project system",
@@ -2234,7 +2344,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "bm25_index.py, vector_store.py, graph services all confirmed in server codebase",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/indexing/bm25_index.py"
     ],
@@ -2292,6 +2402,20 @@
     ],
     "grounding_hash": "a2e8f529c3c0f057cd624841b967eb15f26edf360bcaf16444f5ab6686e5c679"
   },
+  "370587fbf6af4e01e14fb13586c6f0da855e2bd2188be942489749a1e9a98996": {
+    "doc": "docs/COMPUTE.md",
+    "claim": "Compute results arrive under the compute key, not results; results is always [] for a compute response",
+    "grounding": "brainpalace-server/brainpalace_server/services/query_service.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "query_service.py lines 347-351: SearchResponse(results=[], compute=compute_results,...); ComputeResult model has label/value/metric/op/group/unit/score fields",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/models/query.py",
+      "brainpalace-server/brainpalace_server/services/query_service.py"
+    ],
+    "grounding_hash": "27f34fb3f529dfc0626046a339109bc27bbfce40852bfdc815383f24abe1b7ab"
+  },
   "3713f34bd1733761e3f0505075cc8d74653489174d3f18090348f20ef883e0b7": {
     "doc": "brainpalace-plugin/skills/using-brainpalace/references/troubleshooting-guide.md",
     "claim": "brainpalace list shows all running instances with ports",
@@ -2304,6 +2428,19 @@
       "brainpalace-plugin/commands/brainpalace-list.md"
     ],
     "grounding_hash": "f6f43730249b743432f5c43fbcebdc9051f2e387640b95099614a119966c9093"
+  },
+  "375808f5adcd52d8b328da0fe798b642091ee83d3e437822f018c47631c0eb73": {
+    "doc": "docs/API_REFERENCE.md",
+    "claim": "POST /records/revalidate accepts optional metric field to restrict rescoring; returns {rescored: int}; 503 if RecordStore unavailable",
+    "grounding": "brainpalace-server/brainpalace_server/api/routers/records.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "records_revalidate(body, request): rs.revalidate(score_confidence, metric=body.get(\"metric\")); returns {\"rescored\": rescored}; 503 via _get_record_store if record_store is None",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/api/routers/records.py"
+    ],
+    "grounding_hash": "0d907d55c82a1c1705d19779cce8ccc7c188bac111e641364b3528776419f91d"
   },
   "379449c97f0539dc8bbce4808e6a65cab1a0d29bbbae1536e6e79274a35dd20f": {
     "doc": "docs/QUICK_START.md",
@@ -2366,11 +2503,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "Cached fresh verdict",
+    "evidence": "cache-hit re-emit",
     "grounding_files": [
       "brainpalace-dashboard/brainpalace_dashboard/coverage_maps.py"
     ],
-    "grounding_hash": "0e452011d111142f17723b164e6f70529872151c11bc71d8d991a430caaf2bcd"
+    "grounding_hash": "91c0319cb2b6b12a7e9e28c765bcea09b56a67a8fd8968b4a150e2746cc05a6c"
   },
   "38a19c3a9b62737bedbbb5053c2ef7cb56cdb6ce4f27d408f89cca71fa1e2dca": {
     "doc": "brainpalace-plugin/skills/using-brainpalace/references/provider-configuration.md",
@@ -2549,11 +2686,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "settings.py line 20: DEBUG: bool = False",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
-    "grounding_hash": "69c8d872d95d0d115ef6ac3725ad6f2cc41b5f7e14fd2d69590c62e62a823171"
+    "grounding_hash": "0d00da4aafbd52904b9ec0d3dfa750051eb28713118e4fa8bd736afc56568000"
   },
   "3cc8c8e75aafd5eb273e204337489b64adfd70c685d53594db833d5ca4ff5687": {
     "doc": "CLAUDE.md",
@@ -2562,11 +2699,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "Cached fresh verdict",
+    "evidence": "cache-hit re-emit",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/models/query.py"
     ],
-    "grounding_hash": "a2e8f529c3c0f057cd624841b967eb15f26edf360bcaf16444f5ab6686e5c679"
+    "grounding_hash": "f114d0285eae6e1730471dc405eda8c8847193d6e460c046c5590ea8d83726d5"
   },
   "3cd4fd75b8966f22b2418f7bfc00686c7446525a444792b617b6d60e96a74212": {
     "doc": "brainpalace-plugin/commands/brainpalace-install-agent.md",
@@ -2601,7 +2738,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "document_loader.py language map has 11 languages: python, typescript, javascript, java, kotlin, cpp, c, go, rust, swift, csharp \u2014 satisfies 8+",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/indexing/document_loader.py"
     ],
@@ -2672,6 +2809,33 @@
     ],
     "grounding_hash": "a56d0b73eb67c4c4bd85541966143dfaf5f43d2932b247d544342476e43d4e04"
   },
+  "3f04c93bf557f07bd1923e22444b7342b63dfccdcbf9124d86915d9adc0c422f": {
+    "doc": "docs/ARCHITECTURE.md",
+    "claim": "SessionExtractService.store calls persist_records; two kinds of records per session: derived counts (files_touched, tools_used, decisions, open_threads, all HIGH confidence 1.0) and LLM-extracted numeric measurements",
+    "grounding": "brainpalace-server/brainpalace_server/services/session_extract_service.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "session_extract_service.py:216-226 calls persist_records; session_records.py _COUNT_FIELDS 4 metrics all HIGH_CONFIDENCE 1.0",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/services/session_extract_service.py",
+      "brainpalace-server/brainpalace_server/services/session_records.py"
+    ],
+    "grounding_hash": "fcba61366425dde3edcdac5a5856ef2485b19ef6db870f54601a5436b09828d6"
+  },
+  "3f46f1525d2901e6222ded55639cf26a198374684fec74b8aad68e2d7c8e63d6": {
+    "doc": "docs/COMPUTE.md",
+    "claim": "Records subsystem adds zero new install dependencies (sqlite3 is Python stdlib)",
+    "grounding": "brainpalace-server/brainpalace_server/storage/record_store.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "record_store.py imports only stdlib: sqlite3, json, datetime, pathlib \u2014 no new third-party deps",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/storage/record_store.py"
+    ],
+    "grounding_hash": "b5609b182ddd44d1e6b7ca0c1de4f55ad802973b73716adc8e1e01c4e211b83c"
+  },
   "3f4e258104d36abe81f3aad588524c0a3a5c3814baac94f37391846da96b1a4a": {
     "doc": "brainpalace-plugin/commands/brainpalace-inject.md",
     "claim": "Default --chunk-size is 512 tokens",
@@ -2711,19 +2875,6 @@
     ],
     "grounding_hash": "2b4b8dc00a3e67b283750ebb16a90d2085f6e2432e79f9b8038d6df760abfdde"
   },
-  "3ff7d98f75e8234bdc2d7573eecb665b5e4d3554a863db5d7cfe1982b77c58cc": {
-    "doc": "docs/DEVELOPERS_GUIDE.md",
-    "claim": "Step 3 for adding a language: register in brainpalace_server/indexing/code_chunker.py CodeChunker.SUPPORTED_LANGUAGES",
-    "grounding": "brainpalace-server/brainpalace_server/indexing/chunking.py",
-    "raw_verdict": "SUPPORTED",
-    "verdict": "SUPPORTED",
-    "grounding_tier": "code",
-    "evidence": "Cached fresh verdict",
-    "grounding_files": [
-      "brainpalace-server/brainpalace_server/indexing/chunking.py"
-    ],
-    "grounding_hash": "de115a3ac455db3b12d5ee9e657647d186a8944a32f02410cfca2c09038897da"
-  },
   "40e022da5b720c1e8e2b532776baab51d6ab8bb989d1be95ec5ed95a4afe1543": {
     "doc": "docs/USER_GUIDE.md",
     "claim": "Watcher automatically ignores .git/, __pycache__/, node_modules/, .venv/, dist/, build/, .next/, .nuxt/, coverage/, htmlcov/; .brainpalace/ always excluded hardcoded",
@@ -2731,7 +2882,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh",
+    "evidence": "cache-hit fresh re-emit",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/services/file_watcher_service.py"
     ],
@@ -2888,7 +3039,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "Cached fresh verdict",
+    "evidence": "cache-hit fresh re-emit",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/ai_guidance.py"
     ],
@@ -2907,6 +3058,19 @@
     ],
     "grounding_hash": "a2e8f529c3c0f057cd624841b967eb15f26edf360bcaf16444f5ab6686e5c679"
   },
+  "458bf03eb3ffc084e039c14126f1914c92b65f7a2fb2c897cb7bee2f032bc5e3": {
+    "doc": "docs/COMPUTE.md",
+    "claim": "RECORD_EXTRACTION_ENABLED env var default true",
+    "grounding": "brainpalace-server/brainpalace_server/config/settings.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "RECORD_EXTRACTION_ENABLED:bool=True at settings.py:165",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/config/settings.py"
+    ],
+    "grounding_hash": "0d00da4aafbd52904b9ec0d3dfa750051eb28713118e4fa8bd736afc56568000"
+  },
   "45a46ed49772bbe83a4ec046422da1ce1802e19578b75f739fab49094399f9b1": {
     "doc": "docs/CONFIGURATION.md",
     "claim": "BRAINPALACE_MAX_RETRIES default 3",
@@ -2914,11 +3078,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "settings.py: BRAINPALACE_MAX_RETRIES default 3",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
-    "grounding_hash": "69c8d872d95d0d115ef6ac3725ad6f2cc41b5f7e14fd2d69590c62e62a823171"
+    "grounding_hash": "0d00da4aafbd52904b9ec0d3dfa750051eb28713118e4fa8bd736afc56568000"
   },
   "467082413a6b84599ec9d41b09a7c8193813709b4f77fb6a0d565df91807c19d": {
     "doc": "brainpalace-plugin/skills/using-brainpalace/references/api_reference.md",
@@ -2940,7 +3104,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh",
+    "evidence": "cache-hit fresh re-emit",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/context.py"
     ],
@@ -2958,6 +3122,19 @@
       "brainpalace-cli/brainpalace_cli/commands/query.py"
     ],
     "grounding_hash": "0cb199504707bd53830af047e76d25a49f3cef550af47a48e49bd42ea6d738af"
+  },
+  "490569d0919af5afcd7a0e6eea6d18e53ea88a2859ea17c2af4429e657ff2978": {
+    "doc": "docs/CONFIGURATION.md",
+    "claim": "ENABLE_COMPUTE env var default true: master switch for compute query mode",
+    "grounding": "brainpalace-server/brainpalace_server/config/settings.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "ENABLE_COMPUTE:bool=True at settings.py:166",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/config/settings.py"
+    ],
+    "grounding_hash": "0d00da4aafbd52904b9ec0d3dfa750051eb28713118e4fa8bd736afc56568000"
   },
   "4921730994e394c73d6cdfc2fb13609e90646cf6fdf929a6d3adab0a2dd5dc82": {
     "doc": "docs/INJECTOR_PROTOCOL.md",
@@ -3018,11 +3195,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh",
+    "evidence": "cache-hit fresh re-emit",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
-    "grounding_hash": "69c8d872d95d0d115ef6ac3725ad6f2cc41b5f7e14fd2d69590c62e62a823171"
+    "grounding_hash": "0d00da4aafbd52904b9ec0d3dfa750051eb28713118e4fa8bd736afc56568000"
   },
   "4a86f0fe97fb2e8a66d6e3102aafd26519887c5d6e543803dd8f5ac830f3fd65": {
     "doc": "docs/LSP_INTEGRATION.md",
@@ -3044,7 +3221,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "Files confirmed: .claude/agents/doc-verifier.md, .claude/commands/brainpalace-verify-docs.md, brainpalace-cli/brainpalace_cli/commands/verify_docs.py all exist",
+    "evidence": "cache-hit re-emit",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/verify_docs.py"
     ],
@@ -3057,12 +3234,12 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh",
+    "evidence": "cache-hit fresh re-emit",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py",
       "brainpalace-server/brainpalace_server/services/embedding_cache.py"
     ],
-    "grounding_hash": "58421dbd584fe17495914bc3d8f6185ce74ffde153eb5cf0aed0b03695eddc0b"
+    "grounding_hash": "c92eeb659bb9079a65bc56c58c2a00a64635e566130b8fd59462ff58494aaeff"
   },
   "4b324d188b03c95bcd9eb53ad06fea665df1f8ec5140a435e667cb17a58ef0fc": {
     "doc": "brainpalace-plugin/commands/brainpalace-cache.md",
@@ -3097,7 +3274,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "audit",
-    "evidence": "Human-asserted external latency figure for ollama scoring; no code referent. Host doc is audit-fresh so CLI will classify as audit-tier SUPPORTED."
+    "evidence": "External benchmark figure \u2014 no code referent. doc is now audit-fresh; CLI promotes to audit-SUPPORTED."
   },
   "4cdc2bc219ab32648464f076d722439ec2b8c11de6df3e9bdb555af1cf7dd54c": {
     "doc": "brainpalace-plugin/skills/using-brainpalace/references/interactive-setup.md",
@@ -3185,11 +3362,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "query_cache.py: cache invalidated on reindex completion",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/services/query_cache.py"
     ],
-    "grounding_hash": "7fae3911b8729c6ffb646183ad8516d2c4d9096166e2602104c669420107e6fa"
+    "grounding_hash": "bfb9dca37f2daf05ac57f908c24fdf050b8c9f77c1a6e18aa3a8696c144fd9a4"
   },
   "4f92097c75c7fd3b0bfea5ef92b78a270928fc5dd2235717b1b1a0d0857da216": {
     "doc": "docs/PLUGIN_GUIDE.md",
@@ -3211,7 +3388,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh",
+    "evidence": "cache-hit fresh re-emit",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/config.py"
     ],
@@ -3224,11 +3401,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh",
+    "evidence": "cache-hit fresh re-emit",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
-    "grounding_hash": "69c8d872d95d0d115ef6ac3725ad6f2cc41b5f7e14fd2d69590c62e62a823171"
+    "grounding_hash": "0d00da4aafbd52904b9ec0d3dfa750051eb28713118e4fa8bd736afc56568000"
   },
   "4fd85f0a827c5526478b5957269191bf9812eb08fea2aafb1f982d2e8e0f1d51": {
     "doc": "brainpalace-plugin/skills/using-brainpalace/references/bm25-search-guide.md",
@@ -3250,7 +3427,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "optional_deps.py: reranker-local ~2.8 GB PyTorch",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/optional_deps.py"
     ],
@@ -3315,11 +3492,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "settings.py line 42: DEFAULT_CHUNK_OVERLAP: int = 50",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
-    "grounding_hash": "69c8d872d95d0d115ef6ac3725ad6f2cc41b5f7e14fd2d69590c62e62a823171"
+    "grounding_hash": "0d00da4aafbd52904b9ec0d3dfa750051eb28713118e4fa8bd736afc56568000"
   },
   "53d7003d1ce73e87b3920317da6861e6e781c4720e801f83e39c09a6fc5f8280": {
     "doc": "docs/RELEASING.md",
@@ -3399,6 +3576,19 @@
     ],
     "grounding_hash": "6babf1da4921c527778020041e5a939f7be52515f2eb9eb5776fb80631759e86"
   },
+  "56fe1a1edb2a57c19070e7aa391d14bfe609478b5852b63beeb09aac472f0d37": {
+    "doc": "docs/COMPUTE.md",
+    "claim": "Record domain field ships code and chat-life by default; downstream products can register additional domains at runtime",
+    "grounding": "brainpalace-server/brainpalace_server/models/domains.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "DEFAULT_DOMAIN='code'; _DOMAINS={'code','chat-life'}; register_domain() adds to set at runtime",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/models/domains.py"
+    ],
+    "grounding_hash": "a67aa9e1aba444b3547e319efb7e017c6b3c480c389e8f282ed027e5dedda8ec"
+  },
   "5753632be546751a75867f8ba3a6bc05335f8242d399728fdd849bc1ddc04d17": {
     "doc": "brainpalace-plugin/agents/chat-session-extractor.md",
     "claim": "Live Claude Code path fallback: ~/.claude/projects/<encoded-cwd>/<session_id>.jsonl (cwd with / replaced by -).",
@@ -3432,11 +3622,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh",
+    "evidence": "cache-hit fresh re-emit",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/services/query_service.py"
     ],
-    "grounding_hash": "6788c6147d5e7d141e16c058e6c9bd2c027ebccde8087e380a245f66f01c11ff"
+    "grounding_hash": "0ce6e11ed3af9f040b61351b83b9a927f9520fa21b45696eca47f2b07a918cc7"
   },
   "57762820abeef9e7b56043410828f630546b84fb04d7ba45d5c735db00c37141": {
     "doc": "brainpalace-plugin/commands/brainpalace-verify.md",
@@ -3445,11 +3635,24 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "init.py lines 59-60: 'Default configuration values for config.json (project settings only) / Provider settings (embedding/summarization) go in config.yaml'; line 1409 writes config.json; line 1920 writes config.yaml",
+    "evidence": "init.py line 59: '# Default configuration values for config.json (project settings only) # Provider settings (embedding/summarization) go in config.yaml'; config_path = resolved_state_dir / 'config.json' (line 1463)",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/init.py"
     ],
-    "grounding_hash": "3b764166a9c0cf23c605a56b221c158b8df0cf2874b6f40ced9c40b6239aada1"
+    "grounding_hash": "17b26a52da269e895e4c772cb50777a46594a1ee9095e687a91872a5e22d7c7e"
+  },
+  "577b55b620e1fe006473c21155a9926d93f60745f28acf6e111fcc8b2876616f": {
+    "doc": "docs/DEVELOPERS_GUIDE.md",
+    "claim": "The MCP module exposes 9 tools: query, status, whoami, folders_list, jobs_list, ...",
+    "grounding": "brainpalace-cli/brainpalace_cli/mcp_server/tools.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "cache-hit fresh re-emit",
+    "grounding_files": [
+      "brainpalace-cli/brainpalace_cli/mcp_server/tools.py"
+    ],
+    "grounding_hash": "ad0657215674f9fa45f8d17353849fdc04e2f1cce5a5b261a51e8f25f561525d"
   },
   "57871b952b4915c1999920417690130ed885ead8a299c8374075c619a7685350": {
     "doc": "docs/PERFORMANCE_TRADEOFFS.md",
@@ -3486,7 +3689,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh",
+    "evidence": "cache-hit fresh re-emit",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/doctor.py"
     ],
@@ -3526,7 +3729,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh",
+    "evidence": "cache-hit fresh re-emit",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/indexing/document_loader.py"
     ],
@@ -3591,11 +3794,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "Cached fresh verdict",
+    "evidence": "cache-hit re-emit",
     "grounding_files": [
       ".github/workflows/publish-to-pypi.yml"
     ],
-    "grounding_hash": "9f1564991b7d334dc45d803772f5c907157a7cf667ab8991cc0328ba999e64e0"
+    "grounding_hash": "b6da5defd0f27fdf242031540e76dd5342a583c8e6c8242f34b936b6faa41636"
   },
   "5aaf3462280fb81a248bcae34923fd4df4a267636fc39b7850ba2fe7e73c69be": {
     "doc": "docs/SESSION_CONTEXT.md",
@@ -3619,6 +3822,19 @@
     "grounding_tier": "code",
     "evidence": "cached fresh \u2014 postgres_store.py defines pool_size and pool_max_overflow"
   },
+  "5afefc02bad55c4fd21d5fa92485237657c09be04d6fda227f731384f347e766": {
+    "doc": "docs/COMPUTE.md",
+    "claim": "HIGH confidence applies to authored validators \u2014 the four derived count metrics plus amount/USD currency",
+    "grounding": "brainpalace-server/brainpalace_server/indexing/record_validation.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "_authored(): returns HIGH_CONFIDENCE for metric in _AUTHORED_CURRENCY_METRICS (amount) with unit None or USD, OR metric in _AUTHORED_COUNT_METRICS (files_touched/tools_used/decisions/open_threads) with unit=count",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/indexing/record_validation.py"
+    ],
+    "grounding_hash": "62ff3a09e722ff5da5e31d6fcea56be2ee9b60cde86b26fbc76483eafb6d0799"
+  },
   "5b6c7f58f1b964c9b53886b82ef0bf5c4aa46b211ebaeb6bf8e95bed56519d53": {
     "doc": "brainpalace-plugin/agents/search-assistant.md",
     "claim": "BM25 mode is for exact matching (error messages, function names, config keys, stack traces)",
@@ -3639,7 +3855,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "Cached fresh verdict",
+    "evidence": "cache-hit re-emit",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/services/session_archive_service.py"
     ],
@@ -3678,11 +3894,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "init.py --language flag references snowball language set + hr lemma option",
+    "evidence": "init.py and snowball.py confirm ~27 Snowball languages + Croatian",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/init.py"
     ],
-    "grounding_hash": "3b764166a9c0cf23c605a56b221c158b8df0cf2874b6f40ced9c40b6239aada1"
+    "grounding_hash": "17b26a52da269e895e4c772cb50777a46594a1ee9095e687a91872a5e22d7c7e"
   },
   "5eec371d96e1b4c85ac004a34b2184536dff2e8f02cfa20895a2001969be795f": {
     "doc": "docs/CONFIGURATION.md",
@@ -3691,11 +3907,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "settings.py: BRAINPALACE_STALE_DECISION_PENALTY default 0.5",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
-    "grounding_hash": "69c8d872d95d0d115ef6ac3725ad6f2cc41b5f7e14fd2d69590c62e62a823171"
+    "grounding_hash": "0d00da4aafbd52904b9ec0d3dfa750051eb28713118e4fa8bd736afc56568000"
   },
   "5f0a0d54284c909f0372d4c1c37502f1de22aed443a3687f2476e92edadc55ca": {
     "doc": "docs/DEPLOYMENT.md",
@@ -3730,11 +3946,24 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "provider_config.py: DOC_SERVE_STATE_DIR fallback confirmed",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/provider_config.py"
     ],
-    "grounding_hash": "9087288639b5c86fd03cd5a48b32587d15f3ed74ec8a189d2991b14fe32a2e39"
+    "grounding_hash": "a7ebab41be4ad5e5798880e6e59adef8351191057b517b00e689b2d1650b7728"
+  },
+  "60b14bd2ed42911db9ca72c2414a3ca651c811f1f606ff6c53a714497c0fe0d5": {
+    "doc": "docs/COMPUTE.md",
+    "claim": "Month bucket column ym uses format YYYY-MM computed at insert time",
+    "grounding": "brainpalace-server/brainpalace_server/storage/record_store.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "derive_buckets(): return f'{d.year}-{d.month:02d}' for ym",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/storage/record_store.py"
+    ],
+    "grounding_hash": "b5609b182ddd44d1e6b7ca0c1de4f55ad802973b73716adc8e1e01c4e211b83c"
   },
   "6129e6c826f9d9735b81599fdd58a5706f7c1ba070da61880510d70c4a92fb48": {
     "doc": "docs/MCP_SETUP.md",
@@ -3769,11 +3998,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "settings.py: BRAINPALACE_CHECKPOINT_INTERVAL default 50",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
-    "grounding_hash": "69c8d872d95d0d115ef6ac3725ad6f2cc41b5f7e14fd2d69590c62e62a823171"
+    "grounding_hash": "0d00da4aafbd52904b9ec0d3dfa750051eb28713118e4fa8bd736afc56568000"
   },
   "62f62eafefad7d34b63245ff3f0d30b6d875b646e4c30b80877efe11cf8d603a": {
     "doc": "docs/GRAPH_TAXONOMY.md",
@@ -3808,7 +4037,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh",
+    "evidence": "cache-hit fresh re-emit",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/doctor.py"
     ],
@@ -3821,7 +4050,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "Cached fresh verdict",
+    "evidence": "cache-hit re-emit",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/init_plan.py"
     ],
@@ -3847,7 +4076,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh",
+    "evidence": "cache-hit fresh re-emit",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/memories.py"
     ],
@@ -3873,11 +4102,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "init.py line 1409: config_path = resolved_state_dir / 'config.json'",
+    "evidence": "config.json is the init marker: config_path = resolved_state_dir / 'config.json'; preexisting = config_path.exists()",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/init.py"
     ],
-    "grounding_hash": "3b764166a9c0cf23c605a56b221c158b8df0cf2874b6f40ced9c40b6239aada1"
+    "grounding_hash": "17b26a52da269e895e4c772cb50777a46594a1ee9095e687a91872a5e22d7c7e"
   },
   "6512cb09e85f027971f1e44b9778b55956fa30f7536541f5cc002ca13e3a9016": {
     "doc": "docs/DEPLOYMENT.md",
@@ -3891,6 +4120,20 @@
       "brainpalace-cli/brainpalace_cli/commands/start.py"
     ],
     "grounding_hash": "41255d0205249856f553793b8864cb948e6fcd086d2f1d283e738a4ac7b7dbb0"
+  },
+  "65284d850e7a601a436fc655979cb0546922e079de45c7c063ed70fd1abf889f": {
+    "doc": "docs/COMPUTE.md",
+    "claim": "COMPUTE_MIN_CONFIDENCE default is 0.7; only records at or above that threshold enter aggregates",
+    "grounding": "brainpalace-server/brainpalace_server/config/settings.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "settings.py:167 COMPUTE_MIN_CONFIDENCE:float=Field(default=0.7,...); aggregate() takes min_confidence=0.7 default; WHERE confidence >= ?",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/config/settings.py",
+      "brainpalace-server/brainpalace_server/storage/record_store.py"
+    ],
+    "grounding_hash": "d7fc037a67ed9ec276c139e04fda3f9fbe8ab1e9cece07d022f49afb2a8d3893"
   },
   "657bab7532cf7903159596c640d9c1dd9c793af552f304d54d3676d7f2c94007": {
     "doc": "brainpalace-plugin/commands/brainpalace-ai-guide.md",
@@ -3917,6 +4160,20 @@
       "brainpalace-server/brainpalace_server/models/query.py"
     ],
     "grounding_hash": "a2e8f529c3c0f057cd624841b967eb15f26edf360bcaf16444f5ab6686e5c679"
+  },
+  "65cc8e907babb0164f2bec8954a0979216339347a7ce07821886771481fa2942": {
+    "doc": "docs/CONFIGURATION.md",
+    "claim": "COMPUTE_MIN_CONFIDENCE env var default 0.7; with default 0.7, only HIGH-confidence records (1.0) are summed",
+    "grounding": "brainpalace-server/brainpalace_server/config/settings.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "COMPUTE_MIN_CONFIDENCE:float=Field(default=0.7) settings.py:167; HIGH_CONFIDENCE=1.0, PROVISIONAL=0.6 < 0.7 so excluded by default",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/config/settings.py",
+      "brainpalace-server/brainpalace_server/indexing/record_validation.py"
+    ],
+    "grounding_hash": "c7dc66ff43c073233d65e44c997149a3d142a5dac80145ea27cd7751ee1a36f4"
   },
   "65f823f5400ed0ce9b64e34d8f400b29af4f3aad6ee30edf73c0b47bf00ac00a": {
     "doc": "brainpalace-plugin/agents/chat-session-extractor.md",
@@ -3964,7 +4221,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh",
+    "evidence": "cache-hit fresh re-emit",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/query_log_config.py"
     ],
@@ -4094,11 +4351,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "settings.py line 59: BRAINPALACE_STRICT_MODE: bool = False",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
-    "grounding_hash": "69c8d872d95d0d115ef6ac3725ad6f2cc41b5f7e14fd2d69590c62e62a823171"
+    "grounding_hash": "0d00da4aafbd52904b9ec0d3dfa750051eb28713118e4fa8bd736afc56568000"
   },
   "692134d5e5cafe998b8876c3290571ff1a6187352c91b96f5c825aee73ad2259": {
     "doc": "docs/USER_GUIDE.md",
@@ -4107,11 +4364,25 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh",
+    "evidence": "cache-hit fresh re-emit",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/start.py"
     ],
-    "grounding_hash": "41255d0205249856f553793b8864cb948e6fcd086d2f1d283e738a4ac7b7dbb0"
+    "grounding_hash": "25b8b696d8da2e95f003034a69bff14cd321893a78a1bb61b13997d8d308f0ef"
+  },
+  "69c7f09471a03e803793f40dcb08a0a39a76fe9a7a9479dcf89c0ad2a5ab49b1": {
+    "doc": "docs/ARCHITECTURE.md",
+    "claim": "BrainPalace maintains a fourth store: a typed numeric records database (records.db, SQLite only)",
+    "grounding": "brainpalace-server/brainpalace_server/api/main.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "main.py:1296 RecordStore(Path(state_dir)/'records.db'); record_store.py docstring: 'Dedicated relational store...Separate from the JSON graph store'",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/api/main.py",
+      "brainpalace-server/brainpalace_server/storage/record_store.py"
+    ],
+    "grounding_hash": "54d5eaf2beb5da6ed96898d27fad9bfdf663fa1a90d39e196670c479deeeb0a4"
   },
   "69df073bae2e18c77eeb1791723f6a6127078fc94afeada8b065be54002c978e": {
     "doc": "brainpalace-plugin/skills/configuring-brainpalace/references/provider-configuration.md",
@@ -4133,11 +4404,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "settings.py: EMBEDDING_CACHE_MAX_MEM_ENTRIES default 10000",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
-    "grounding_hash": "69c8d872d95d0d115ef6ac3725ad6f2cc41b5f7e14fd2d69590c62e62a823171"
+    "grounding_hash": "0d00da4aafbd52904b9ec0d3dfa750051eb28713118e4fa8bd736afc56568000"
   },
   "6a7ade87928bfebbe47447e1759203a762abe1bb77b3e8df3b313ded51f398c3": {
     "doc": "docs/LSP_INTEGRATION.md",
@@ -4231,6 +4502,19 @@
     ],
     "grounding_hash": "3f8dc1a7ed4c501750ed5680582dc927ac517707804584f77286b95ea0544cfd"
   },
+  "6b53daf29482bb609d1ce3a3dbd61a10c312d58025febb518539c6e8fd4b6f3e": {
+    "doc": "docs/API_REFERENCE.md",
+    "claim": "When ENABLE_COMPUTE=false or no metric resolves, compute is [] for explicit mode=compute or falls back to hybrid for auto-routed",
+    "grounding": "brainpalace-server/brainpalace_server/services/query_service.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "_execute_compute_query returns [] if not ENABLE_COMPUTE; auto-router at lines 342-345: if compute_results non-empty return; else continue to hybrid",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/services/query_service.py"
+    ],
+    "grounding_hash": "0ce6e11ed3af9f040b61351b83b9a927f9520fa21b45696eca47f2b07a918cc7"
+  },
   "6b61ad3a48df3f7c75679f3d408f49fdc4e328e7967111e579d8a0106a1544d7": {
     "doc": "docs/GRAPH_TAXONOMY.md",
     "claim": "Supersession invalidates the prior decision's still-valid facts but preserves the superseded-by edge itself",
@@ -4265,7 +4549,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "audit",
-    "evidence": "Human-asserted external performance figure; no code referent and no audited-doc dependency. Host doc is audit-fresh so CLI will classify as audit-tier SUPPORTED."
+    "evidence": "External benchmark figure \u2014 no code referent. doc is now audit-fresh; CLI promotes to audit-SUPPORTED."
   },
   "6c5b2ed31b788b79f1a59451231ffbd103199bcd8219ded22de3f4d640937f6d": {
     "doc": "docs/MCP_SETUP.md",
@@ -4293,6 +4577,20 @@
       "brainpalace-server/pyproject.toml"
     ],
     "grounding_hash": "892a5feadd20032b8d1bf02fc504c0a3f55349bd75a63a4af59563659bd4f6bd"
+  },
+  "6db03eecb982474777227ccccca08c2b73275cf8767176cf0cabce399b8708bd": {
+    "doc": "docs/DEVELOPERS_GUIDE.md",
+    "claim": "Kotlin and Swift are also detected and indexed, but chunked without AST metadata",
+    "grounding": "brainpalace-server/brainpalace_server/indexing/document_load",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "cache-hit fresh re-emit",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/indexing/chunking.py",
+      "brainpalace-server/brainpalace_server/indexing/document_loader.py"
+    ],
+    "grounding_hash": "74465860f1c9a4fe118ebfc518492cfae24703b929d6fd7c2c4eb3c9aaae1dc6"
   },
   "6db41d0ea9838c145d58cfabdd1a096866b09b3d788f8a1fea2602efda491ed9": {
     "doc": "docs/INJECTOR_PROTOCOL.md",
@@ -4336,7 +4634,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh"
+    "evidence": "cache-hit fresh re-emit"
   },
   "6e43aa393c99203c94b126f6a0ff47100d71cae7eea8884b275f313dc5cf188c": {
     "doc": "brainpalace-plugin/commands/brainpalace-jobs.md",
@@ -4371,7 +4669,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "init.py + settings.py: precedence chain confirmed",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/init.py"
     ],
@@ -4384,11 +4682,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "settings.py is the canonical defaults file",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
-    "grounding_hash": "69c8d872d95d0d115ef6ac3725ad6f2cc41b5f7e14fd2d69590c62e62a823171"
+    "grounding_hash": "0d00da4aafbd52904b9ec0d3dfa750051eb28713118e4fa8bd736afc56568000"
   },
   "6fc039e79c395f58bd58f565910128639fb5dc4bf6828a7d08b5141e59337bcc": {
     "doc": "docs/USER_GUIDE.md",
@@ -4397,7 +4695,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh",
+    "evidence": "cache-hit fresh re-emit",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/services/file_type_presets.py"
     ],
@@ -4410,7 +4708,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "Cached fresh verdict",
+    "evidence": "cache-hit re-emit",
     "grounding_files": [
       ".git/info/exclude"
     ],
@@ -4423,7 +4721,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "audit",
-    "evidence": "Human-asserted external figures (HuggingFace model download size and inference latency); no code referent. Host doc is audit-fresh so CLI will classify as audit-tier SUPPORTED."
+    "evidence": "External benchmark figure \u2014 no code referent. doc is now audit-fresh; CLI promotes to audit-SUPPORTED."
   },
   "70543e3fc6be6e38b6d86731e5ee5ae366e22f1603a18d39abe2bdd0e5d018a0": {
     "doc": "CLAUDE.md",
@@ -4432,11 +4730,24 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "Cached fresh verdict",
+    "evidence": "cache-hit re-emit",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/init.py"
     ],
-    "grounding_hash": "3b764166a9c0cf23c605a56b221c158b8df0cf2874b6f40ced9c40b6239aada1"
+    "grounding_hash": "17b26a52da269e895e4c772cb50777a46594a1ee9095e687a91872a5e22d7c7e"
+  },
+  "70b8365c0d6fd7784315b1849b3a128b00c60e03cab8a20b1dfe8cf34b744f50": {
+    "doc": "docs/COMPUTE.md",
+    "claim": "Server endpoints: GET /records/stats and POST /records/revalidate",
+    "grounding": "brainpalace-server/brainpalace_server/api/routers/records.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "@router.get('/stats') at line 25; @router.post('/revalidate') at line 43; app.include_router(records_router, prefix='/records')",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/api/routers/records.py"
+    ],
+    "grounding_hash": "0d907d55c82a1c1705d19779cce8ccc7c188bac111e641364b3528776419f91d"
   },
   "715272271ca3f34825c3cf3704434481a3846908956a8e7033a937fdd24dc63d": {
     "doc": "docs/QUICK_START.md",
@@ -4511,11 +4822,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "settings.py + provider_config.py: .brainpalace/config.yaml used as project config",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
-    "grounding_hash": "69c8d872d95d0d115ef6ac3725ad6f2cc41b5f7e14fd2d69590c62e62a823171"
+    "grounding_hash": "0d00da4aafbd52904b9ec0d3dfa750051eb28713118e4fa8bd736afc56568000"
   },
   "72b3175c9412f5d380b5165d8b16b3df09bdbb56ca077e04b50fa5e0be76c275": {
     "doc": "brainpalace-plugin/commands/brainpalace-inject.md",
@@ -4595,6 +4906,19 @@
     ],
     "grounding_hash": "c9c0186ecf37e72a2b896e5882f4a1dbd46c86137f7913815d0b89063d90a1e5"
   },
+  "75ba5ce17792376e123417ec3d7b512eecb4de17093330cb12fae77d42a12399": {
+    "doc": "docs/CONFIGURATION.md",
+    "claim": "RECORD_EXTRACTION_ENABLED env var default true: extract typed numeric records at each session persist",
+    "grounding": "brainpalace-server/brainpalace_server/config/settings.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "RECORD_EXTRACTION_ENABLED:bool=True at settings.py:165",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/config/settings.py"
+    ],
+    "grounding_hash": "0d00da4aafbd52904b9ec0d3dfa750051eb28713118e4fa8bd736afc56568000"
+  },
   "75e68ee915f5c0ef8973accd87bbc364a3191e457e80ebe779f40ac07693a5c0": {
     "doc": "brainpalace-plugin/commands/brainpalace-index.md",
     "claim": "Default --watch-debounce is 30 seconds",
@@ -4629,11 +4953,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "settings.py line 47: DEFAULT_TOP_K: int = 5",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
-    "grounding_hash": "69c8d872d95d0d115ef6ac3725ad6f2cc41b5f7e14fd2d69590c62e62a823171"
+    "grounding_hash": "0d00da4aafbd52904b9ec0d3dfa750051eb28713118e4fa8bd736afc56568000"
   },
   "76b06eeacd56b347df44057f8826c0c42188399a2d26331829bf03efb881a77d": {
     "doc": "brainpalace-plugin/skills/using-brainpalace/references/api_reference.md",
@@ -4655,11 +4979,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "settings.py: RERANKER_PROVIDER default sentence-transformers",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
-    "grounding_hash": "69c8d872d95d0d115ef6ac3725ad6f2cc41b5f7e14fd2d69590c62e62a823171"
+    "grounding_hash": "0d00da4aafbd52904b9ec0d3dfa750051eb28713118e4fa8bd736afc56568000"
   },
   "77ca53875c261d6311af5be95580ef180b79c307713da0648efe137862566c3a": {
     "doc": "brainpalace-plugin/commands/brainpalace-update.md",
@@ -4765,19 +5089,6 @@
     ],
     "grounding_hash": "0cb199504707bd53830af047e76d25a49f3cef550af47a48e49bd42ea6d738af"
   },
-  "7a8570feea0a462c00e73c364fc812fda16c47ca6dea23c155782ac410982ac0": {
-    "doc": "docs/DEVELOPERS_GUIDE.md",
-    "claim": "MCP subpackage is named mcp_server (not mcp) in brainpalace-cli/brainpalace_cli/mcp_server/",
-    "grounding": "brainpalace-cli/brainpalace_cli/mcp_server/tools.py",
-    "raw_verdict": "SUPPORTED",
-    "verdict": "SUPPORTED",
-    "grounding_tier": "code",
-    "evidence": "Cached fresh verdict",
-    "grounding_files": [
-      "brainpalace-cli/brainpalace_cli/mcp_server/tools.py"
-    ],
-    "grounding_hash": "ad0657215674f9fa45f8d17353849fdc04e2f1cce5a5b261a51e8f25f561525d"
-  },
   "7adc861c691646f50e1b826196acdc487730f5bfdfa4d37c7d67306bcc64eb94": {
     "doc": "docs/MCP_SETUP.md",
     "claim": "Session summarization runs only through the Claude Code plugin path via the UserPromptSubmit drain hook plus the free Haiku chat-session-extractor subagent",
@@ -4816,20 +5127,6 @@
       "brainpalace-cli/brainpalace_cli/commands/doctor.py"
     ],
     "grounding_hash": "bb92a557a2dfb64882f911a7242f9e69ed6b75fd2bd138242bd1c68e01c4fd36"
-  },
-  "7bdca53beb257e4108a2885112db0726e24ecbb031940e501b04354407d3c467": {
-    "doc": "docs/DEVELOPERS_GUIDE.md",
-    "claim": "Kotlin and Swift are also detected and indexed, but chunked without AST metadata",
-    "grounding": "brainpalace-server/brainpalace_server/indexing/document_loader.py",
-    "raw_verdict": "SUPPORTED",
-    "verdict": "SUPPORTED",
-    "grounding_tier": "code",
-    "evidence": "document_loader.py EXTENSION_TO_LANGUAGE includes .kt (kotlin) and .swift (swift); chunking.py lang_map does NOT include kotlin or swift \u2014 confirmed chunked without AST metadata",
-    "grounding_files": [
-      "brainpalace-server/brainpalace_server/indexing/chunking.py",
-      "brainpalace-server/brainpalace_server/indexing/document_loader.py"
-    ],
-    "grounding_hash": "74465860f1c9a4fe118ebfc518492cfae24703b929d6fd7c2c4eb3c9aaae1dc6"
   },
   "7c24a127bc82d0100d49905a02b67729487ec2adeda132f0230c601d1446dd59": {
     "doc": "docs/LSP_INTEGRATION.md",
@@ -4956,11 +5253,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "Cached fresh verdict",
+    "evidence": "cache-hit re-emit",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/session_config.py"
     ],
-    "grounding_hash": "edcd5ddc532cd616f8ca79bfcc375a7cb21bfca36157fecee02f824586c598c7"
+    "grounding_hash": "1e83d09d725d76b97ed87c1c3e9fec0c5a1fa777dfcb2e35c38b305f478d7072"
   },
   "7f0a5b6e08fb73b2bad3ca14f8522aaf3bd60060d4ea4b622be3bce8ca7a7d38": {
     "doc": "brainpalace-plugin/commands/brainpalace-remember.md",
@@ -5009,11 +5306,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "settings.py: RERANKER_TOP_K_MULTIPLIER default 10",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
-    "grounding_hash": "69c8d872d95d0d115ef6ac3725ad6f2cc41b5f7e14fd2d69590c62e62a823171"
+    "grounding_hash": "0d00da4aafbd52904b9ec0d3dfa750051eb28713118e4fa8bd736afc56568000"
   },
   "7fc96d9092c20c8291e72ef8f5e854f60aeb040e9a81258f18f2d33b7b9c21c5": {
     "doc": "CLAUDE.md",
@@ -5022,7 +5319,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "Cached fresh verdict",
+    "evidence": "cache-hit re-emit",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/ai_guidance.py"
     ],
@@ -5035,11 +5332,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "settings.py: GRAPH_EXTRACTION_MODEL default claude-haiku-4-5",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
-    "grounding_hash": "69c8d872d95d0d115ef6ac3725ad6f2cc41b5f7e14fd2d69590c62e62a823171"
+    "grounding_hash": "0d00da4aafbd52904b9ec0d3dfa750051eb28713118e4fa8bd736afc56568000"
   },
   "81200c492cf4b1cf161be1fb449d2553498078faac8124f4685edf9b0183c208": {
     "doc": "docs/MCP_SETUP.md",
@@ -5074,7 +5371,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "Cached fresh verdict",
+    "evidence": "cache-hit re-emit",
     "grounding_files": [
       "scripts/install.sh",
       "scripts/setup.sh"
@@ -5145,7 +5442,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "Cached fresh verdict",
+    "evidence": "cache-hit fresh re-emit",
     "grounding_files": [
       "scripts/check_doc_freshness.py"
     ],
@@ -5158,12 +5455,12 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "Taskfile.yml confirmed: lint:doc-freshness task exists under before-push",
+    "evidence": "re-grounded SUPPORTED (Taskfile.yml defines lint:doc-freshness)",
     "grounding_files": [
       "Taskfile.yml",
       "scripts/doc_freshness.json"
     ],
-    "grounding_hash": "5bec78aecf5b8195e66c153e3b7c0a3974777e35d84bba91a96c1cebcf36b994"
+    "grounding_hash": "b3e662fdb96098ddd32fa73c7a734e2304da976a379e1d4ef1af1efcd5fcedc1"
   },
   "86493278b37444502b81168c6d81fedd0143d83d0723a91d3ed314a41ad8b016": {
     "doc": "brainpalace-plugin/commands/brainpalace-ai-guide.md",
@@ -5186,7 +5483,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh",
+    "evidence": "cache-hit fresh re-emit",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/install_agent.py"
     ],
@@ -5205,6 +5502,20 @@
     ],
     "grounding_hash": "088e0a174ef0332c8687f623a4b649526f5774ea25fa652c3c64110fe3c588ea"
   },
+  "86d1aab4e57e67f034945e44d6d78419979f3d7d5b5118b8236cab66218d86ae": {
+    "doc": "docs/API_REFERENCE.md",
+    "claim": "GET /records/stats returns {total, unverified, metrics} where unverified = records with confidence < COMPUTE_MIN_CONFIDENCE (default 0.7)",
+    "grounding": "brainpalace-server/brainpalace_server/api/routers/records.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "records_stats() returns {total: record_count(), unverified: count_unverified(), metrics: distinct_metrics()}; count_unverified uses confidence < ? with default 0.7",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/api/routers/records.py",
+      "brainpalace-server/brainpalace_server/storage/record_store.py"
+    ],
+    "grounding_hash": "9c9fe7ca4772bdc2da0dd512d6444ab83f088f9eb62c1825fb223019e768c51a"
+  },
   "8714ff1942798f206a6f60982c0776d98abb5b579cc7eb41eef3babd4f4de123": {
     "doc": "CLAUDE.md",
     "claim": "AI guidance tiers NUDGE subset CORE subset FULL; hook gets NUDGE, MCP instructions get CORE, skill + ai-guide --tier full + ai_guide MCP tool get FULL",
@@ -5212,7 +5523,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "Cached fresh verdict",
+    "evidence": "cache-hit re-emit",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/ai_guidance.py"
     ],
@@ -5251,7 +5562,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "chunking.py: CodeChunker defaults confirmed",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/indexing/chunking.py"
     ],
@@ -5277,11 +5588,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "Cached fresh verdict",
+    "evidence": "cache-hit re-emit",
     "grounding_files": [
       "Taskfile.yml"
     ],
-    "grounding_hash": "8a2bd1916b9d3cae979edb61a375bb6260d59f0384b8e23c30ef4381a1e24846"
+    "grounding_hash": "d81f6c373a7009b1b18bd1a59307583d14a1f6c417e262fb411b2921a53bfff8"
   },
   "8a2b87e658afb3a643d4d0c6c189cfd1e0c5afe28ff415622601aa0fceaa00d1": {
     "doc": "brainpalace-plugin/skills/configuring-brainpalace/references/troubleshooting-guide.md",
@@ -5316,12 +5627,12 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "Cached fresh verdict",
+    "evidence": "cache-hit re-emit",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/init.py",
       "brainpalace-cli/pyproject.toml"
     ],
-    "grounding_hash": "3c14d95a9bd33bc1617495c199b799e5f3e560c0d792976db9153c6d272f392b"
+    "grounding_hash": "ad0af710548275563468fdd54cb7a4fc0d3efea6dfc1bbfdd0c6c62eedc52136"
   },
   "8a71fea965f5e76bfc8038e2e9a8a176df0bb009edb5e9a532872848d07c3958": {
     "doc": "docs/DEVELOPERS_GUIDE.md",
@@ -5330,7 +5641,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "Cached fresh verdict",
+    "evidence": "cache-hit fresh re-emit",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/providers.py"
     ],
@@ -5466,6 +5777,19 @@
     ],
     "grounding_hash": "66a7034a5e1b452332037c6a7336f63a8ab7d14dc71a8e32e47363d505356531"
   },
+  "8df7bf15e1faa6f487d0ff5f034a3a967953601322a44b422a48d593e6d5b7d6": {
+    "doc": "docs/DEVELOPERS_GUIDE.md",
+    "claim": "CODE_EXTENSIONS and EXTENSION_TO_LANGUAGE in document_loader.py",
+    "grounding": "brainpalace-server/brainpalace_server/indexing/document_load",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "cache-hit fresh re-emit",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/indexing/document_loader.py"
+    ],
+    "grounding_hash": "6d84ede63f7f567f5356d10f79242f2defe2eb4475eabef2311c3d9a408292d4"
+  },
   "8f1ec962157014f51c1be3a0eccd14ac3842b7d8797cef1118029d12c06177ef": {
     "doc": "docs/MCP_SETUP.md",
     "claim": "brainpalace init asks the same question set as brainpalace install / brainpalace config wizard: embedding, summarizer, reranker, embed-sessions, session-archive, git-history, and GraphRAG doc-extraction",
@@ -5486,11 +5810,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "settings.py: BRAINPALACE_WATCH_DEBOUNCE_SECONDS default 30",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
-    "grounding_hash": "69c8d872d95d0d115ef6ac3725ad6f2cc41b5f7e14fd2d69590c62e62a823171"
+    "grounding_hash": "0d00da4aafbd52904b9ec0d3dfa750051eb28713118e4fa8bd736afc56568000"
   },
   "8fce02ae3e6bf42cc0a92d64bbb729edcc94b080f20179a68f1117a1dd3b272e": {
     "doc": "docs/CONFIGURATION.md",
@@ -5499,11 +5823,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "settings.py lines 164-167: env_file=['.env', parent.parent.parent/.env (brainpalace-server/, labeled Project root), parent.parent/.env (brainpalace_server/, labeled brainpalace-server directory)]",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
-    "grounding_hash": "69c8d872d95d0d115ef6ac3725ad6f2cc41b5f7e14fd2d69590c62e62a823171"
+    "grounding_hash": "0d00da4aafbd52904b9ec0d3dfa750051eb28713118e4fa8bd736afc56568000"
   },
   "900c86f25e599406349d6809cc1f44be09d31db90fa8245b09041cbfc918d035": {
     "doc": "brainpalace-plugin/agents/search-assistant.md",
@@ -5539,7 +5863,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "Cached fresh verdict",
+    "evidence": "cache-hit re-emit",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/doc_sync/checkers/skills.py"
     ],
@@ -5626,11 +5950,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "settings.py line 52: EMBEDDING_BATCH_SIZE: int = 100",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
-    "grounding_hash": "69c8d872d95d0d115ef6ac3725ad6f2cc41b5f7e14fd2d69590c62e62a823171"
+    "grounding_hash": "0d00da4aafbd52904b9ec0d3dfa750051eb28713118e4fa8bd736afc56568000"
   },
   "92b7bdc5e155318c70c82997caf8d9059a1f38844e56119ed3b8d8a9c51b7b24": {
     "doc": "docs/RELEASING.md",
@@ -5652,11 +5976,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "settings.py: BRAINPALACE_JOB_TIMEOUT default 7200",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
-    "grounding_hash": "69c8d872d95d0d115ef6ac3725ad6f2cc41b5f7e14fd2d69590c62e62a823171"
+    "grounding_hash": "0d00da4aafbd52904b9ec0d3dfa750051eb28713118e4fa8bd736afc56568000"
   },
   "93acd57a8346f8e5a998d640c7f5e6321e592429c7cb790ae2a2b8abc04e38ee": {
     "doc": "brainpalace-plugin/skills/using-brainpalace/references/troubleshooting-guide.md",
@@ -5704,11 +6028,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "settings.py line 18: API_HOST: str = '127.0.0.1'",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
-    "grounding_hash": "69c8d872d95d0d115ef6ac3725ad6f2cc41b5f7e14fd2d69590c62e62a823171"
+    "grounding_hash": "0d00da4aafbd52904b9ec0d3dfa750051eb28713118e4fa8bd736afc56568000"
   },
   "9469ff8ce83127e4ac05f2437acc217613c2fac2fc12a0b7ecc568fdfa7b2145": {
     "doc": "brainpalace-plugin/skills/using-brainpalace/references/api_reference.md",
@@ -5756,24 +6080,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh",
+    "evidence": "cache-hit fresh re-emit",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
-    "grounding_hash": "69c8d872d95d0d115ef6ac3725ad6f2cc41b5f7e14fd2d69590c62e62a823171"
-  },
-  "950bcb6c33c16ff3d244926d682d2e25f49638744eb9f354b462aaaa314d7b57": {
-    "doc": "docs/USER_GUIDE.md",
-    "claim": "BrainPalace includes five intelligent agents that handle complex, multi-step tasks",
-    "grounding": "brainpalace-plugin/agents/ (5 files: chat-session-extractor.md, memory-curator.md, research-assistant.md, search-assistant.md, setup-assistant.md)",
-    "raw_verdict": "SUPPORTED",
-    "verdict": "SUPPORTED",
-    "grounding_tier": "code",
-    "evidence": "cached fresh",
-    "grounding_files": [
-      "brainpalace-plugin/agents/"
-    ],
-    "grounding_hash": "fc4b4a91a428f175096cf2ac505f8b0557205a5a2e3141e0d975804cd3df8cde"
+    "grounding_hash": "0d00da4aafbd52904b9ec0d3dfa750051eb28713118e4fa8bd736afc56568000"
   },
   "958b8497505740e5a34a80531f306d138e1785d945b81e3bd8ebc9ceb3cf48ad": {
     "doc": "brainpalace-plugin/commands/brainpalace-memories.md",
@@ -5795,11 +6106,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "FastAPI server confirmed; api/AGENTS.md confirms FastAPI REST API structure",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/api/main.py"
     ],
-    "grounding_hash": "0a941101f8ab60d21a29f51cd4c22fb8d249535a70bf8938268bb29a313c46bd"
+    "grounding_hash": "eef38d2507a251cb53da09954cf47b63b29b3a91fe160d8e2fa4f3222ce3e027"
   },
   "95d41129e29e658007cb08584a3c28f405958d9bf61dd591353aca516b1e6721": {
     "doc": "brainpalace-plugin/commands/brainpalace-jobs.md",
@@ -5827,6 +6138,19 @@
     ],
     "grounding_hash": "c9c0186ecf37e72a2b896e5882f4a1dbd46c86137f7913815d0b89063d90a1e5"
   },
+  "963f340dbb6e8ad82b2ba1b9440f4f3015b64164abb0a03e9b43c8839834447c": {
+    "doc": "README.md",
+    "claim": "~27 Snowball languages supported via SNOWBALL table in text_analysis/snowball.py",
+    "grounding": "brainpalace-server/brainpalace_server/indexing/text_analysis",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "cache-hit fresh re-emit",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/indexing/text_analysis/snowball.py"
+    ],
+    "grounding_hash": "55683eb25e7fb7b9a4674887e9cbc115631902227a849b56e90da6f374161a2b"
+  },
   "96507dde10babd7c088c533fcea1c3b0911d10ebac8eb2d42681772f745737d0": {
     "doc": "docs/USER_GUIDE.md",
     "claim": "Embedding cache Layer 1 (Memory): in-memory LRU cache with fixed capacity default 10,000 entries",
@@ -5834,7 +6158,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh",
+    "evidence": "cache-hit fresh re-emit",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/services/embedding_cache.py"
     ],
@@ -5873,11 +6197,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "Cached fresh verdict",
+    "evidence": "config_svc.py line 169: def effective(self, state_dir: Path) and line 240: def effective_global()",
     "grounding_files": [
       "brainpalace-dashboard/brainpalace_dashboard/services/config_svc.py"
     ],
-    "grounding_hash": "2934aac04f6ed27a01fdf065feacbc9d986dd49d5b9ffb5d9dc6c53de423a144"
+    "grounding_hash": "6c982482e837bacc47d1ac03893bd64d58af114588bb1d00b7c8a94ce3c81eb5"
   },
   "98631d1bf9b0df22b1ba48128ae531b95a397f54100430d07bdfc2fca18d01a6": {
     "doc": "docs/PLUGIN_GUIDE.md",
@@ -5938,7 +6262,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "--watch-debounce / --debounce option in folders.py",
+    "evidence": "cache-hit fresh re-emit",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/folders.py"
     ],
@@ -5983,6 +6307,19 @@
     ],
     "grounding_hash": "52f39b3dd771028728762f9806c389ac7d3fe62020a56507fc1f453dfb16c7b1"
   },
+  "9a3b92fdaf8113cf50c3528bdecdeb95b5ac93f568e4e5735d4b55765d42bde8": {
+    "doc": "docs/COMPUTE.md",
+    "claim": "Auto-routing is deterministic \u2014 keyword tell-list only, no LLM",
+    "grounding": "brainpalace-server/brainpalace_server/services/query_router.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "query_router.py: classify_compute_intent() = any(t in q for t in _TELLS) \u2014 keyword list, no LLM call",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/services/query_router.py"
+    ],
+    "grounding_hash": "d98e9a62fbdcfffc805c9ac6c476345be90ef8b0c89896c1eec430d16655e8c5"
+  },
   "9a7675b4cce1ebe433a8e20e60a2d925a327731881433dce548c5072f0c9dacd": {
     "doc": "brainpalace-plugin/skills/using-brainpalace/references/hybrid-search-guide.md",
     "claim": "Default alpha is 0.5 (50% vector, 50% BM25)",
@@ -6003,11 +6340,24 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "optional_deps.py documents reranker-local size and deps",
+    "evidence": "cache-hit fresh re-emit",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/optional_deps.py"
     ],
     "grounding_hash": "48fad8c8b07e47d92b3d8a3d709b7ef23d321041fe68be4598fe857808a3692b"
+  },
+  "9afd1bcee5c7238a193e0625b6162aadcdbf75c16484feff57239eea5e932aaa": {
+    "doc": "docs/DEVELOPERS_GUIDE.md",
+    "claim": "MCP subpackage is named mcp_server (not mcp) in brainpalace-cli/brainpalace_cli/",
+    "grounding": "brainpalace-cli/brainpalace_cli/mcp_server/tools.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "cache-hit fresh re-emit",
+    "grounding_files": [
+      "brainpalace-cli/brainpalace_cli/mcp_server/tools.py"
+    ],
+    "grounding_hash": "ad0657215674f9fa45f8d17353849fdc04e2f1cce5a5b261a51e8f25f561525d"
   },
   "9bbf69428ea2b56bf2f95d4250e29ee1b18fed38cf1c40adead0d946d5391811": {
     "doc": "docs/POSTGRESQL_SETUP.md",
@@ -6022,18 +6372,19 @@
     ],
     "grounding_hash": "7c66447941561456b948be3b27aae942f139fa0d8b0f76896a82562b7792820a"
   },
-  "9bdccfbc5e7d6c263e5a32fdc558ab99574985b2f4588afb4b4d193d3d8290fa": {
-    "doc": "README.md",
-    "claim": "Plugin ships 33 slash commands, 5 agents, 2 skills",
-    "grounding": "brainpalace-plugin/commands/",
+  "9c27875d10028dcb174bc6231939b4330c979f3e30c75314d530c82fc413b673": {
+    "doc": "docs/USER_GUIDE.md",
+    "claim": "Records are populated from session extraction \u2014 compute is empty until session_extraction.mode != off",
+    "grounding": "brainpalace-server/brainpalace_server/services/session_extract_service.py",
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached \u2014 commands dir count + agents confirmed",
+    "evidence": "cache-hit fresh re-emit",
     "grounding_files": [
-      "brainpalace-plugin/commands/"
+      "brainpalace-server/brainpalace_server/config/session_config.py",
+      "brainpalace-server/brainpalace_server/services/session_extract_service.py"
     ],
-    "grounding_hash": "88924cf452f924da034c2712d3c870d2dc0da55c443ee39c4fc7bdf7487eb103"
+    "grounding_hash": "6694171c801aea38f6075b846bda59d3845bd642d751153ef7b9c13d42092790"
   },
   "9c759c183b4ddaf1e3b92fe305e935e09523daf780319726ed9673a76c9914e6": {
     "doc": "docs/SESSION_CONTEXT.md",
@@ -6151,7 +6502,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh",
+    "evidence": "cache-hit fresh re-emit",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/job_queue/"
     ],
@@ -6172,7 +6523,7 @@
   },
   "__marker__": {
     "base": "main",
-    "fingerprint": "db12770733a0b32b89537209bf45e759cc3c1494eb55390663de1ccf98634e77"
+    "fingerprint": "8b19724446e8000a2ef5ecc95f74084dda8fd36bb2114a387cd647caf7a404e6"
   },
   "a082327bc52f078312a6d60936fdcd030e6061167a1af7693f1bcfa4612eb0a9": {
     "doc": "docs/DASHBOARD.md",
@@ -6194,7 +6545,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "install_agent.py: skill-runtime handler requires --dir, raises error without it",
+    "evidence": "cache-hit fresh re-emit",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/install_agent.py"
     ],
@@ -6207,11 +6558,24 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "doc-dep",
-    "evidence": "brainpalace-config.md documents --debounce flag",
+    "evidence": "cache-hit fresh re-emit",
     "grounding_files": [
       "brainpalace-plugin/commands/brainpalace-config.md"
     ],
     "grounding_hash": "4f6bf4340f5f5179d4bd24193e59ee3cd24d86d208ef084c3eb43589c6402093"
+  },
+  "a0e4b887620aba603ac4eae37171761bce52e3a6d0460011ad1502e077bcda41": {
+    "doc": "README.md",
+    "claim": "AST-aware code chunking supports Python, TypeScript, JavaScript, Java, Kotlin, C, C++, C#, Go, Rust, Swift",
+    "grounding": "brainpalace-server/brainpalace_server/indexing/document_load",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "cache-hit fresh re-emit",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/indexing/"
+    ],
+    "grounding_hash": "e49e255c00799b2cc91eb0754f00855da8ca5f96fff0ef89e6b686b8a756a0fc"
   },
   "a0f225a55a770e8d4a458bd164af51227c8fc5d781e7290ad58bcdce72a35de7": {
     "doc": "docs/CONFIGURATION.md",
@@ -6220,11 +6584,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "settings.py line 37: BM25_INDEX_PATH: str = './bm25_index'",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
-    "grounding_hash": "69c8d872d95d0d115ef6ac3725ad6f2cc41b5f7e14fd2d69590c62e62a823171"
+    "grounding_hash": "0d00da4aafbd52904b9ec0d3dfa750051eb28713118e4fa8bd736afc56568000"
   },
   "a10f63d779e032f625986b0c65dde80a85efa4ee0331d6a4a77e09ca4569ce5c": {
     "doc": "docs/CONFIGURATION.md",
@@ -6233,11 +6597,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "settings.py: BRAINPALACE_PROMOTE_DECISIONS default true",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
-    "grounding_hash": "69c8d872d95d0d115ef6ac3725ad6f2cc41b5f7e14fd2d69590c62e62a823171"
+    "grounding_hash": "0d00da4aafbd52904b9ec0d3dfa750051eb28713118e4fa8bd736afc56568000"
   },
   "a182d2dae550a0f6c8056deafbc495d1edd25bd9e7fb904af88fbbd57420d164": {
     "doc": "docs/USER_GUIDE.md",
@@ -6246,11 +6610,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh",
+    "evidence": "cache-hit fresh re-emit",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
-    "grounding_hash": "69c8d872d95d0d115ef6ac3725ad6f2cc41b5f7e14fd2d69590c62e62a823171"
+    "grounding_hash": "0d00da4aafbd52904b9ec0d3dfa750051eb28713118e4fa8bd736afc56568000"
   },
   "a1b82a7fea397e35a5c8c62ef18d514608c99d85eff790495d15e3c3530aae44": {
     "doc": "brainpalace-plugin/skills/configuring-brainpalace/references/installation-guide.md",
@@ -6438,11 +6802,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "settings.py: BRAINPALACE_STORAGE_BACKEND default chroma, postgres supported",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
-    "grounding_hash": "69c8d872d95d0d115ef6ac3725ad6f2cc41b5f7e14fd2d69590c62e62a823171"
+    "grounding_hash": "0d00da4aafbd52904b9ec0d3dfa750051eb28713118e4fa8bd736afc56568000"
   },
   "a6176e9b451b99fb2c58121d1f3684c791686287055474ddfb02d705e22cf479": {
     "doc": "brainpalace-plugin/commands/brainpalace-cache.md",
@@ -6523,6 +6887,20 @@
     ],
     "grounding_hash": "9f1564991b7d334dc45d803772f5c907157a7cf667ab8991cc0328ba999e64e0"
   },
+  "a8a5e483b7ed875a74acbac9a206039e0f4f3cb7af5690dd9643808ece4ad9b0": {
+    "doc": "docs/ARCHITECTURE.md",
+    "claim": "QueryService._execute_compute_query compiles natural-language query into aggregation plan (metric+op+grouping+optional time bounds); auto-router in hybrid mode tries compute first for set-level intent then falls back to normal hybrid retrieval",
+    "grounding": "brainpalace-server/brainpalace_server/services/query_service.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "query_service.py:329-350 auto-route logic; _execute_compute_query at line 910; query_router.py classify_compute_intent() keyword-only",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/services/query_router.py",
+      "brainpalace-server/brainpalace_server/services/query_service.py"
+    ],
+    "grounding_hash": "4562ec103aa1a8cc12976f7f10353e25fbd5fac0ab7edb0cec87d1679caa588f"
+  },
   "a8f7e4af723ad302164a6adbcf026f7fbc375700e3eed0e29f932167d1d01f5c": {
     "doc": "brainpalace-plugin/commands/brainpalace-whoami.md",
     "claim": "--json parameter is optional, default false, outputs as JSON",
@@ -6562,6 +6940,19 @@
     ],
     "grounding_hash": "1ef4084090be566f71403ed9009a452f8fc4b73d43b68b32605c8fcb92005c04"
   },
+  "a931c38ddda9e235ff1918581c19211e03103287e3813afd316e5673e3bc34fc": {
+    "doc": "docs/COMPUTE.md",
+    "claim": "ENABLE_COMPUTE env var default true (master switch for compute query mode)",
+    "grounding": "brainpalace-server/brainpalace_server/config/settings.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "ENABLE_COMPUTE:bool=True at settings.py:166",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/config/settings.py"
+    ],
+    "grounding_hash": "0d00da4aafbd52904b9ec0d3dfa750051eb28713118e4fa8bd736afc56568000"
+  },
   "a9ae8f0c65e42c6fa903e868273a1136e519b59647a39e8832d357c959ee04a5": {
     "doc": "docs/DEPLOYMENT.md",
     "claim": "GET /health/status provides detailed status including indexing progress and counts",
@@ -6582,7 +6973,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh",
+    "evidence": "cache-hit fresh re-emit",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/services/file_type_presets.py"
     ],
@@ -6670,11 +7061,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "settings.py: time-decay formula 0.5 ** (age_days / half_life) confirmed",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
-    "grounding_hash": "69c8d872d95d0d115ef6ac3725ad6f2cc41b5f7e14fd2d69590c62e62a823171"
+    "grounding_hash": "0d00da4aafbd52904b9ec0d3dfa750051eb28713118e4fa8bd736afc56568000"
   },
   "ac4cd46179b5388f2e0b4dfd779011bbd394d11d45d0306079d7b42bcd4e588a": {
     "doc": "docs/CONFIGURATION.md",
@@ -6683,11 +7074,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "settings.py: RERANKER_MODEL default cross-encoder/ms-marco-MiniLM-L-6-v2",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
-    "grounding_hash": "69c8d872d95d0d115ef6ac3725ad6f2cc41b5f7e14fd2d69590c62e62a823171"
+    "grounding_hash": "0d00da4aafbd52904b9ec0d3dfa750051eb28713118e4fa8bd736afc56568000"
   },
   "ac856004fe2413a3caa4afba7eb6b85133256160bdedfecdcec8e214de16dec0": {
     "doc": "docs/MCP_SETUP.md",
@@ -6722,11 +7113,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "Cached fresh verdict",
+    "evidence": "cache-hit re-emit",
     "grounding_files": [
       "Taskfile.yml"
     ],
-    "grounding_hash": "8a2bd1916b9d3cae979edb61a375bb6260d59f0384b8e23c30ef4381a1e24846"
+    "grounding_hash": "d81f6c373a7009b1b18bd1a59307583d14a1f6c417e262fb411b2921a53bfff8"
   },
   "ae930eb22a9cb71491a86d9b95d7ecad6d327085eea624115c2266613f8ae3ed": {
     "doc": "brainpalace-plugin/commands/brainpalace-folders.md",
@@ -6763,6 +7154,20 @@
       "brainpalace-cli/tests/test_multi_instance_commands.py"
     ],
     "grounding_hash": "30678767bf0929d258eae7dbda17f9119e9cb7e386af74db59300aca8e3926db"
+  },
+  "afe6ad40e05161be27828e32eacf949430571efe0f3ebfab69031975b0cf65d6": {
+    "doc": "docs/API_REFERENCE.md",
+    "claim": "Compute mode response: results is always [] and aggregation rows appear under compute key",
+    "grounding": "brainpalace-server/brainpalace_server/services/query_service.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "query_service.py lines 347-351: SearchResponse(results=[], compute=compute_results,...); QueryResponse.compute field in models/query.py",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/models/query.py",
+      "brainpalace-server/brainpalace_server/services/query_service.py"
+    ],
+    "grounding_hash": "27f34fb3f529dfc0626046a339109bc27bbfce40852bfdc815383f24abe1b7ab"
   },
   "afff356f1269fd5d79e4666723b58213f9e05aedcb6bae91515aadcdbc223f97": {
     "doc": "brainpalace-plugin/skills/configuring-brainpalace/references/troubleshooting-guide.md",
@@ -6850,11 +7255,24 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "Cached fresh verdict",
+    "evidence": "cache-hit re-emit",
     "grounding_files": [
       "scripts/add_audit_metadata.py"
     ],
     "grounding_hash": "e6f6ed30732e95baf591fcd058a9fd6818fdb26f5d775e0431b358569a6eaacf"
+  },
+  "b30f0729457acfa56a105c295c38ef8f14fc499e01bcf73c1f4e3b15471a0509": {
+    "doc": "docs/DEVELOPERS_GUIDE.md",
+    "claim": "Step 3 for adding a language: register in brainpalace_server/indexing/code_chunking",
+    "grounding": "brainpalace-server/brainpalace_server/indexing/chunking.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "cache-hit fresh re-emit",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/indexing/chunking.py"
+    ],
+    "grounding_hash": "de115a3ac455db3b12d5ee9e657647d186a8944a32f02410cfca2c09038897da"
   },
   "b381a4b6977502c298eae2e8d939562e399e5dab9d2397022406cea3880cd18b": {
     "doc": "docs/API_REFERENCE.md",
@@ -6863,7 +7281,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "test_api.py: TestOpenAPIDocumentation confirms /openapi.json returns 200 with valid OpenAPI schema"
+    "evidence": ""
   },
   "b3ffc8585c3d62506457e4839f998b206817ed7f93baf82d4ebd7722bd54da34": {
     "doc": "brainpalace-plugin/commands/brainpalace-dashboard.md",
@@ -6924,11 +7342,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "settings.py line 41: DEFAULT_CHUNK_SIZE: int = 512",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
-    "grounding_hash": "69c8d872d95d0d115ef6ac3725ad6f2cc41b5f7e14fd2d69590c62e62a823171"
+    "grounding_hash": "0d00da4aafbd52904b9ec0d3dfa750051eb28713118e4fa8bd736afc56568000"
   },
   "b487c9a59aa349d8874f2e137922825febff766c10f1791463d0edd1e83ad476": {
     "doc": "brainpalace-plugin/skills/using-brainpalace/references/graph-search-guide.md",
@@ -6950,12 +7368,12 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "Cached fresh verdict",
+    "evidence": "cache-hit re-emit",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/api/main.py",
       "brainpalace-server/pyproject.toml"
     ],
-    "grounding_hash": "3059afe09b214249d59959bf1c756e9fc98d372dd5ea52adea633f4d965cb764"
+    "grounding_hash": "f2e67eedbb2ce88a37ce9e6cf3b5e2c9e1804e1c489c969e7046a5f4b342b20e"
   },
   "b52e57b16c2969f1552a622b9f305397067511f0ee5a58016e7d3ce6aa552c70": {
     "doc": "brainpalace-plugin/agents/memory-curator.md",
@@ -6970,6 +7388,19 @@
       "brainpalace-plugin/templates/weekly-curate-hook.sh"
     ],
     "grounding_hash": "8bb91f030e8653d5561c01f327e40993faea03c12733c1596979d2acd2636c52"
+  },
+  "b55525864e74f3cdeaa1d27bfee4d0f8c962ba8a757b861eba3b59fcbf36eb96": {
+    "doc": "README.md",
+    "claim": "Plugin ships 34 slash commands, 5 agents, 2 skills",
+    "grounding": "brainpalace-plugin/commands/",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "brainpalace-plugin/commands/ contains exactly 34 .md files; brainpalace-plugin/agents/ contains 5; brainpalace-plugin/skills/ contains 2 directories",
+    "grounding_files": [
+      "brainpalace-plugin/commands/"
+    ],
+    "grounding_hash": "547232211a543c68f74e90fe3aa3fdeace069ba58964577145c5a249b1567486"
   },
   "b5c7d93b2cd2b84eccf04dfdbe02155651b412f786a61b39f8d4201cef45502e": {
     "doc": "brainpalace-plugin/agents/chat-session-extractor.md",
@@ -7036,6 +7467,19 @@
     ],
     "grounding_hash": "0372537788015b1acad0b8d71b43800316c222dcb1c7a1fc3ea3bb3cfcb2120f"
   },
+  "b786bd0d933c4de729e1f7f8048eb40c8cb5b8b114fcc4b4ac1b78ebb346a2cd": {
+    "doc": "docs/ARCHITECTURE.md",
+    "claim": "Records store uses pre-derived ISO-week and month bucket columns \u2014 no strftime at query time, no Postgres Records store, no new runtime dependencies",
+    "grounding": "brainpalace-server/brainpalace_server/storage/record_store.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "record_store.py: derive_buckets() pre-computes iso_week/ym at insert; _GROUPS maps group keys to plain columns; 'no DuckDB' in docstring; only stdlib imports",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/storage/record_store.py"
+    ],
+    "grounding_hash": "b5609b182ddd44d1e6b7ca0c1de4f55ad802973b73716adc8e1e01c4e211b83c"
+  },
   "b7ecdfeef83b053a5fd08ed5521031a41ad9a436ae58dd200b6edb216b9d561b": {
     "doc": "docs/DEVELOPERS_GUIDE.md",
     "claim": "claude_plugin_installed() can be mocked at brainpalace_cli.commands.config.claude_plugin_installed",
@@ -7043,11 +7487,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "Cached fresh verdict",
+    "evidence": "config.py line 15: from brainpalace_cli.commands.plugin_detect import claude_plugin_installed; line 302: chat_by_plugin = claude_plugin_installed(). Patching brainpalace_cli.commands.config.claude_plugin_installed patches the name in config's namespace, which is the standard mock pattern",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/config.py"
     ],
-    "grounding_hash": "e8d560f13e54eb91ba70764fffd3f486ce1f2002158f114931cf372eaaec57a7"
+    "grounding_hash": "585b87736edff4a419485f41a82ef40f9f1dea90a68512beb7382fe4c631cb3a"
   },
   "b8264fe81a1e8ece34b6aa3d0f83c510485e1fcc70227c5b555528523a3a18a7": {
     "doc": "brainpalace-plugin/commands/brainpalace-recall.md",
@@ -7074,6 +7518,19 @@
       "brainpalace-cli/brainpalace_cli/config.py"
     ],
     "grounding_hash": "6babf1da4921c527778020041e5a939f7be52515f2eb9eb5776fb80631759e86"
+  },
+  "b9a60d5fe9324dddbc86184f679b8f92b78b25dab6dca40a9394daf2ead4a4d7": {
+    "doc": "docs/COMPUTE.md",
+    "claim": "Confidence tiers: HIGH=1.0, PROVISIONAL=0.6, UNVERIFIED=0.3",
+    "grounding": "brainpalace-server/brainpalace_server/indexing/record_validation.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "HIGH_CONFIDENCE=1.0; PROVISIONAL_CONFIDENCE=0.6; UNVERIFIED_CONFIDENCE=0.3 at lines 10-12",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/indexing/record_validation.py"
+    ],
+    "grounding_hash": "62ff3a09e722ff5da5e31d6fcea56be2ee9b60cde86b26fbc76483eafb6d0799"
   },
   "b9f88931dad9a9660afd4bd0edaad7130a79d308cc1318675d2c8f00453d1923": {
     "doc": "brainpalace-plugin/commands/brainpalace-install-session-hooks.md",
@@ -7134,11 +7591,24 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "verify_docs.py confirmed at brainpalace-cli/brainpalace_cli/commands/verify_docs.py",
+    "evidence": "cache-hit re-emit",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/verify_docs.py"
     ],
     "grounding_hash": "626c6eda62efc498565801f19e435fc946977ca8f9802ff579027f6c0284019b"
+  },
+  "bcbf82bc7ff918c1ff5d50645ff65ce06aad2e0e20f2186654166337271f8d70": {
+    "doc": "docs/COMPUTE.md",
+    "claim": "replace_source atomically deletes all records for a source_id then inserts the new set in one transaction",
+    "grounding": "brainpalace-server/brainpalace_server/storage/record_store.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "replace_source(): with self._conn: DELETE WHERE source_id=?; executemany(_INSERT_SQL, rows) \u2014 one atomic transaction (lines 111-118)",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/storage/record_store.py"
+    ],
+    "grounding_hash": "b5609b182ddd44d1e6b7ca0c1de4f55ad802973b73716adc8e1e01c4e211b83c"
   },
   "bcf418b76cba51ba1be899a11c04f67f760aa65bc34a486efb38daa80227a847": {
     "doc": "docs/DEVELOPERS_GUIDE.md",
@@ -7147,11 +7617,24 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "Cached fresh verdict",
+    "evidence": "cache-hit fresh re-emit",
     "grounding_files": [
       "brainpalace-cli/tests/mcp_server/test_tools.py"
     ],
     "grounding_hash": "cb032aec1d062cc45ef35c904f091de9cd3cf6b67aea4a0754b6fe9f23ae9b86"
+  },
+  "bd21bd4eda2415452b61c060e71d9a184413e8d8e3b0afba0542ec47fdb56ab3": {
+    "doc": "docs/CONFIGURATION.md",
+    "claim": "compute: YAML section with enabled, record_extraction, min_confidence knobs; absent key or null inherits from env var or code default",
+    "grounding": "brainpalace-server/brainpalace_server/config/provider_config.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "ComputeConfig(BaseModel) at line 377 with enabled/record_extraction/min_confidence all defaulting to None; compute:ComputeConfig field at line 420",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/config/provider_config.py"
+    ],
+    "grounding_hash": "a7ebab41be4ad5e5798880e6e59adef8351191057b517b00e689b2d1650b7728"
   },
   "bd6686754c4f79c029cd3e71a5a8b8cdc6eabea155a5682c8e344b01d6d2d92f": {
     "doc": "docs/RELEASING.md",
@@ -7173,7 +7656,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh",
+    "evidence": "cache-hit fresh re-emit",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/remember.py"
     ],
@@ -7278,13 +7761,13 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "xdg_paths.py is_initialized_state_dir(): checks config.yaml OR config.json OR runtime.json; docstring calls config.json 'the canonical marker \u2014 brainpalace init writes it unconditionally'. provider_config.py resolves only config.yaml for server config. init.py line 1409 writes config.json as config_path.",
+    "evidence": "setup-assistant.md Step 3 checks ls .brainpalace/config.yaml .brainpalace/config.json; init.py confirms config.json is init marker and config.yaml holds provider settings",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/init.py",
       "brainpalace-cli/brainpalace_cli/xdg_paths.py",
       "brainpalace-server/brainpalace_server/config/provider_config.py"
     ],
-    "grounding_hash": "d9f6a808c70722a72962c23edf169cc482f1bb5c2fb07c0320ddfa3b5fb4f189"
+    "grounding_hash": "b292720a09138e95b84d668a8791eea85ac8dd5b8fd3456134fcbb7643f3b749"
   },
   "c04a24ddd7a3817a67fe0b2d0033bb72477aaf88bd0b123656f12b0bc899b9c0": {
     "doc": "brainpalace-plugin/commands/brainpalace-plugin.md",
@@ -7311,19 +7794,6 @@
       "brainpalace-cli/brainpalace_cli/commands/plugin_detect.py"
     ],
     "grounding_hash": "4cd88e0b3690200c4112c4a0f64f86d139c6ec39ae4b9e75b2422693527b01fb"
-  },
-  "c18ec5a5b1f9cd52d2ab065410a2aecf49caa9cb0309eb33fe7817381d3669c7": {
-    "doc": "README.md",
-    "claim": "~27 Snowball languages supported via SNOWBALL table in text_analysis/snowball.py",
-    "grounding": "brainpalace-server/brainpalace_server/indexing/text_analysis/snowball.py",
-    "raw_verdict": "SUPPORTED",
-    "verdict": "SUPPORTED",
-    "grounding_tier": "code",
-    "evidence": "SNOWBALL table has exactly 27 entries; ARCHITECTURE.md confirms '27 languages via PyStemmer'",
-    "grounding_files": [
-      "brainpalace-server/brainpalace_server/indexing/text_analysis/snowball.py"
-    ],
-    "grounding_hash": "55683eb25e7fb7b9a4674887e9cbc115631902227a849b56e90da6f374161a2b"
   },
   "c271413c911bc6edcf628be1155d77c77359d9f53da69e6ff0525898585c2fdf": {
     "doc": "brainpalace-plugin/skills/configuring-brainpalace/references/troubleshooting-guide.md",
@@ -7398,11 +7868,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "provider_config.py _find_global_config_file(): XDG ~/.config/brainpalace/config.yaml checked first; legacy ~/.brainpalace/config.yaml logs warning",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/provider_config.py"
     ],
-    "grounding_hash": "9087288639b5c86fd03cd5a48b32587d15f3ed74ec8a189d2991b14fe32a2e39"
+    "grounding_hash": "a7ebab41be4ad5e5798880e6e59adef8351191057b517b00e689b2d1650b7728"
   },
   "c531343ca42247c6129d21d2c5d52d7525b84e1725343123905a544197c2387d": {
     "doc": "docs/MCP_SETUP.md",
@@ -7437,7 +7907,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "Live measurement: NUDGE=567 bytes (~580), CORE=4193 bytes (~4.1K), FULL=7668 bytes (~7.5K) \u2014 within stated approximations",
+    "evidence": "cache-hit fresh re-emit",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/ai_guidance.py"
     ],
@@ -7450,11 +7920,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "settings.py: RERANKER_MAX_CANDIDATES default 100",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
-    "grounding_hash": "69c8d872d95d0d115ef6ac3725ad6f2cc41b5f7e14fd2d69590c62e62a823171"
+    "grounding_hash": "0d00da4aafbd52904b9ec0d3dfa750051eb28713118e4fa8bd736afc56568000"
   },
   "c651c6fe96747b41fcdd5b9cee2735be86b0b99eb5ffa329239a64e96408bf80": {
     "doc": "docs/MCP_SETUP.md",
@@ -7600,6 +8070,19 @@
     ],
     "grounding_hash": "41255d0205249856f553793b8864cb948e6fcd086d2f1d283e738a4ac7b7dbb0"
   },
+  "c983c7977bf1f66536c817a9421bc3acad682fee02758f7a613be814dfb87b93": {
+    "doc": "brainpalace-plugin/commands/brainpalace-init.md",
+    "claim": "--no-compute writes compute.enabled=False and compute.record_extraction=False (only written on opt-out)",
+    "grounding": "brainpalace-cli/brainpalace_cli/commands/init.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "init.py lines 1838-1840: write_compute_config(..., enabled=False, record_extraction=False) called only when compute_choice is False; write_compute_config line 540: both-None is a no-op (sparse)",
+    "grounding_files": [
+      "brainpalace-cli/brainpalace_cli/commands/init.py"
+    ],
+    "grounding_hash": "17b26a52da269e895e4c772cb50777a46594a1ee9095e687a91872a5e22d7c7e"
+  },
   "ca3d0da9d7284cd850fbdccb05b62371aa26f2b600963db60c82716b6016d1a3": {
     "doc": "brainpalace-plugin/commands/brainpalace-whoami.md",
     "claim": "Exit code 2 \u2014 project found but the server is not running",
@@ -7639,6 +8122,19 @@
     ],
     "grounding_hash": "a56d0b73eb67c4c4bd85541966143dfaf5f43d2932b247d544342476e43d4e04"
   },
+  "cb3ff27bcecbbd40ddb66929170dc1f8137fcc57d2e7a84980f00fc219dd801a": {
+    "doc": "docs/COMPUTE.md",
+    "claim": "Compute results are never cached (the query cache does not apply)",
+    "grounding": "brainpalace-server/brainpalace_server/services/query_service.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "_execute_compute_query returns list directly with no cache write; auto-router returns immediately on compute results without going through cache layer",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/services/query_service.py"
+    ],
+    "grounding_hash": "0ce6e11ed3af9f040b61351b83b9a927f9520fa21b45696eca47f2b07a918cc7"
+  },
   "cb7959309e82785a0f678ac985068c6e930388401f253a458fe7040cd96a33bb": {
     "doc": "docs/USER_GUIDE.md",
     "claim": "AST-aware chunking: Python (.py), TypeScript (.ts, .tsx), JavaScript (.js, .jsx), Java (.java), Go (.go), Rust (.rs), C (.c, .h), C++ (.cpp, .hpp, .cc), C# (.cs, .csx), Object Pascal (.pas, .pp, .lpr, .dpr, .dpk)",
@@ -7646,7 +8142,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh",
+    "evidence": "cache-hit fresh re-emit",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/indexing/chunking.py"
     ],
@@ -7737,11 +8233,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "init.py: --start/--no-start, --sessions/--no-sessions, --archive/--no-archive, --yes, --path, --force all confirmed",
+    "evidence": "init.py defines all listed flags; also --compute/--no-compute added on this branch",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/init.py"
     ],
-    "grounding_hash": "3b764166a9c0cf23c605a56b221c158b8df0cf2874b6f40ced9c40b6239aada1"
+    "grounding_hash": "17b26a52da269e895e4c772cb50777a46594a1ee9095e687a91872a5e22d7c7e"
   },
   "cfaca57575ed08659d7e304d401e58bb9b970efeb30149d0c6b121e06e8ecad9": {
     "doc": "docs/BENCHMARKS.md",
@@ -7769,6 +8265,19 @@
     ],
     "grounding_hash": "dfd6ea4a266b6a88bf1c432ab49ffc55445611d41b9a399831b51c02a4baf527"
   },
+  "cfb30da4386f0a001b3f9a2ccb0be84b14e06d70894015a4250402ffd0b06ad2": {
+    "doc": "CLAUDE.md",
+    "claim": "brainpalace query modes are bm25 (exact terms), vector (semantic/concepts), hybrid (default), graph (dependencies/relationships), multi (fusion), compute (set-level aggregates over sessions)",
+    "grounding": "brainpalace-server/brainpalace_server/models/query.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "QueryMode enum lines 9-17 has exactly 6 members: BM25='bm25', VECTOR='vector', HYBRID='hybrid', GRAPH='graph', MULTI='multi', COMPUTE='compute'. All 6 modes match the prose.",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/models/query.py"
+    ],
+    "grounding_hash": "f114d0285eae6e1730471dc405eda8c8847193d6e460c046c5590ea8d83726d5"
+  },
   "cfc0341251cfec598965a0cf61cbaeabeda5d6eb03be90a3defbc2c2af161632": {
     "doc": "docs/DEVELOPERS_GUIDE.md",
     "claim": "provider_config.load_merged_config_dict and load_raw_config merge global and project config",
@@ -7776,11 +8285,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "Cached fresh verdict",
+    "evidence": "provider_config.py line 547: def load_merged_config_dict; line 572: def load_raw_config",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/provider_config.py"
     ],
-    "grounding_hash": "9087288639b5c86fd03cd5a48b32587d15f3ed74ec8a189d2991b14fe32a2e39"
+    "grounding_hash": "a7ebab41be4ad5e5798880e6e59adef8351191057b517b00e689b2d1650b7728"
   },
   "cfca6c9621f7a0a1cd8322b09fc50cdd73e09fa714ae1163b4b568dd834987cb": {
     "doc": "docs/CONFIGURATION.md",
@@ -7789,11 +8298,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "settings.py line 36: CHROMA_PERSIST_DIR: str = './chroma_db'",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
-    "grounding_hash": "69c8d872d95d0d115ef6ac3725ad6f2cc41b5f7e14fd2d69590c62e62a823171"
+    "grounding_hash": "0d00da4aafbd52904b9ec0d3dfa750051eb28713118e4fa8bd736afc56568000"
   },
   "d04e9060bf8de21afd9ce9bced735567bedd763d4fa32bd32c841f206ab831a2": {
     "doc": "docs/MCP_SETUP.md",
@@ -7926,6 +8435,19 @@
     ],
     "grounding_hash": "69c8d872d95d0d115ef6ac3725ad6f2cc41b5f7e14fd2d69590c62e62a823171"
   },
+  "d189ab907426f597a16c14202b4328ad2c51aad5b6f7d35580ada759cbedc659": {
+    "doc": "docs/COMPUTE.md",
+    "claim": "SQLite only \u2014 no Postgres Records store",
+    "grounding": "brainpalace-server/brainpalace_server/storage/record_store.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "record_store.py docstring: 'SQLite only \u2014 no DuckDB'; no pgvector Records store anywhere in codebase",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/storage/record_store.py"
+    ],
+    "grounding_hash": "b5609b182ddd44d1e6b7ca0c1de4f55ad802973b73716adc8e1e01c4e211b83c"
+  },
   "d23f36faf905b84e87ba6b2e86dfaf0db6415406317d82e3672aa2bee8a9a80a": {
     "doc": "brainpalace-plugin/commands/brainpalace-mcp.md",
     "claim": "--ensure-server is optional with default false.",
@@ -7946,7 +8468,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh",
+    "evidence": "cache-hit fresh re-emit",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/indexing/document_loader.py"
     ],
@@ -7959,11 +8481,24 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "Cached fresh verdict",
+    "evidence": "cache-hit re-emit",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/services/file_watcher_service.py"
     ],
     "grounding_hash": "cd3e23daa081fec64e5e1e5715acab794a6688a57d7332a8076cae64ad013135"
+  },
+  "d32975072887c59aa34caa05eb2c615a318fc772d8f8731fc28569ca4d4a60a6": {
+    "doc": "docs/COMPUTE.md",
+    "claim": "Records are immutable and frozen once created (Record model uses ConfigDict(frozen=True))",
+    "grounding": "brainpalace-server/brainpalace_server/models/record.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "Record(BaseModel) with model_config = ConfigDict(frozen=True) at line 24",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/models/record.py"
+    ],
+    "grounding_hash": "58f7745b0d85c26a96963915c7508cfd038418602f67c82eacfb77a1c283c0a5"
   },
   "d3321cbaa012732a409128852f8dfb368d7b555cb50628944eed87f2120af636": {
     "doc": "brainpalace-plugin/skills/configuring-brainpalace/references/provider-configuration.md",
@@ -7985,11 +8520,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "settings.py line 95: GRAPH_USE_LLM_EXTRACTION: bool = False",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
-    "grounding_hash": "69c8d872d95d0d115ef6ac3725ad6f2cc41b5f7e14fd2d69590c62e62a823171"
+    "grounding_hash": "0d00da4aafbd52904b9ec0d3dfa750051eb28713118e4fa8bd736afc56568000"
   },
   "d425deab572ef20838f26c9869a71e35e1944c63cdf1fcd8fdef49252f89960d": {
     "doc": "brainpalace-plugin/commands/brainpalace-recall.md",
@@ -8029,6 +8564,34 @@
       "brainpalace-cli/brainpalace_cli/commands/mcp.py"
     ],
     "grounding_hash": "4f72c3092aaf0b5a9beeec3096e08d77d326c757f68f9948d81c432ff5798284"
+  },
+  "d4a1bdae5cb4cdd601c39cfaf4a6d9b2a6bf4f83f35c232dbb22c8dba691d3d6": {
+    "doc": "README.md",
+    "claim": "Counts (files touched, tools used, decisions, open threads) are derived free from session summaries \u2014 no extra API call",
+    "grounding": "brainpalace-server/brainpalace_server/services/session_records.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "cache-hit fresh re-emit",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/indexing/record_validation.py",
+      "brainpalace-server/brainpalace_server/services/session_records.py"
+    ],
+    "grounding_hash": "823a4010256295a613021f9e1a198fac1a1f72331667a94994f39d242d3d86ae"
+  },
+  "d52c7a7fe5573e77fcd1bfcd855009893d928030b181d7d4d4dec68525f9864a": {
+    "doc": "docs/COMPUTE.md",
+    "claim": "Records live in a dedicated SQLite database named records.db in the project state directory, entirely separate from the graph store and ChromaDB/Postgres vector store",
+    "grounding": "brainpalace-server/brainpalace_server/api/main.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "main.py:1296 RecordStore(Path(state_dir)/'records.db'); record_store.py docstring: 'Dedicated relational store...Separate from the JSON graph store'",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/api/main.py",
+      "brainpalace-server/brainpalace_server/storage/record_store.py"
+    ],
+    "grounding_hash": "54d5eaf2beb5da6ed96898d27fad9bfdf663fa1a90d39e196670c479deeeb0a4"
   },
   "d6b8d39015711510fca35d243ac7162cfd61554aef15a0c7f3726c77cd0b69cf": {
     "doc": "brainpalace-plugin/skills/using-brainpalace/references/api_reference.md",
@@ -8169,7 +8732,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh",
+    "evidence": "cache-hit fresh re-emit",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/query_log_config.py"
     ],
@@ -8274,12 +8837,12 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "Cached fresh verdict",
+    "evidence": "cache-hit re-emit",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/init.py",
       "brainpalace-cli/brainpalace_cli/xdg_paths.py"
     ],
-    "grounding_hash": "813ec77ecc8eb0ebf068eea9c886f8a5ad71662af974ed9bcb0cb950c2cbc26b"
+    "grounding_hash": "8290d7530502afbc87307f9bfcd0a7124692ca1f865b7021c2e370c8e7b73cb9"
   },
   "dc758065cc4c84d61845ded5f62195182a7b541ba71dc42ce207548dc7797533": {
     "doc": "docs/RELEASING.md",
@@ -8327,11 +8890,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "query.py: --no-time-decay flag confirmed",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/query.py"
     ],
-    "grounding_hash": "0cb199504707bd53830af047e76d25a49f3cef550af47a48e49bd42ea6d738af"
+    "grounding_hash": "c74899ae2db06187b6b924a88ccce76010a08ee886cea3667b602567b935b4cd"
   },
   "dd5878216427d96a80dc15659672572736263ea04c94ec6bf0106eb5e01b6c24": {
     "doc": "brainpalace-plugin/agents/research-assistant.md",
@@ -8392,7 +8955,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "Cached fresh verdict",
+    "evidence": "cache-hit fresh re-emit",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/_dashboard_url.py"
     ],
@@ -8424,6 +8987,20 @@
     ],
     "grounding_hash": "fd7d19117458548ffc3df0567d25414242f3125fa44849119988f53d17b37a10"
   },
+  "df76ace65c2e824119ea04d8c4a66c9fde2cbebf5ae7a8bc08edfafe18f8092e": {
+    "doc": "docs/COMPUTE.md",
+    "claim": "Session hard-off: records with source=session are excluded from every aggregate when session recall is disabled (no per-query override)",
+    "grounding": "brainpalace-server/brainpalace_server/services/query_service.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "_execute_compute_query line 934: exclude=['session'] if hidden_session_source_types() else None; passed to aggregate(exclude_sources=exclude)",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/config/session_config.py",
+      "brainpalace-server/brainpalace_server/services/query_service.py"
+    ],
+    "grounding_hash": "4bda3e9f29f748617e3f9d596dc6b6053503aa21e4eecea88c6d10aeab79d570"
+  },
   "dfaf8982ea71ee5d17b2842b77066a029accf3be236b720c6aee8f2d81f5fb9f": {
     "doc": "brainpalace-plugin/skills/configuring-brainpalace/references/troubleshooting-guide.md",
     "claim": "brainpalace install-agent --agent claude fails with 'Could not find canonical plugin directory. Use --plugin-dir to specify location.'",
@@ -8444,11 +9021,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "settings.py line 28: EMBEDDING_DIMENSIONS: int = 3072",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
-    "grounding_hash": "69c8d872d95d0d115ef6ac3725ad6f2cc41b5f7e14fd2d69590c62e62a823171"
+    "grounding_hash": "0d00da4aafbd52904b9ec0d3dfa750051eb28713118e4fa8bd736afc56568000"
   },
   "dfbf336df6709b22b1a270cf715cd6dd3b6ee52a90362b1845d5c5bb7549f900": {
     "doc": "docs/MEMORY.md",
@@ -8531,7 +9108,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "test_postgres_config.py: pool_size=10, pool_max_overflow=10, pool_timeout=30 confirmed",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-server/tests/unit/storage/test_postgres_config.py"
     ],
@@ -8570,11 +9147,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "settings.py: EMBEDDING_CACHE_PERSIST_STATS default false",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
-    "grounding_hash": "69c8d872d95d0d115ef6ac3725ad6f2cc41b5f7e14fd2d69590c62e62a823171"
+    "grounding_hash": "0d00da4aafbd52904b9ec0d3dfa750051eb28713118e4fa8bd736afc56568000"
   },
   "e3aea5102d0c2ad363292570435ae20a84c4b079288397e0bbe525c6680cc264": {
     "doc": "brainpalace-plugin/commands/brainpalace-ai-guide.md",
@@ -8596,11 +9173,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "settings.py: BRAINPALACE_MAX_QUEUE default 100",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
-    "grounding_hash": "69c8d872d95d0d115ef6ac3725ad6f2cc41b5f7e14fd2d69590c62e62a823171"
+    "grounding_hash": "0d00da4aafbd52904b9ec0d3dfa750051eb28713118e4fa8bd736afc56568000"
   },
   "e444204ef905639eabc6add550400f8718a1e46dee1f43bf3485874859c2a6c3": {
     "doc": "brainpalace-plugin/skills/using-brainpalace/references/troubleshooting-guide.md",
@@ -8622,7 +9199,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "Cached fresh verdict",
+    "evidence": "cache-hit re-emit",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/doc_sync/checkers/skills.py"
     ],
@@ -8661,11 +9238,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "Cached fresh verdict",
+    "evidence": "cache-hit re-emit",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/api/main.py"
     ],
-    "grounding_hash": "0a941101f8ab60d21a29f51cd4c22fb8d249535a70bf8938268bb29a313c46bd"
+    "grounding_hash": "eef38d2507a251cb53da09954cf47b63b29b3a91fe160d8e2fa4f3222ce3e027"
   },
   "e6e225e403bf85c7c4e0462cff37b2795e28f19b9fbeecd4f8570d70cc4f3961": {
     "doc": "brainpalace-plugin/skills/configuring-brainpalace/references/troubleshooting-guide.md",
@@ -8713,11 +9290,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "settings.py line 127: QUERY_CACHE_TTL: int = 3600  # TTL in seconds (1 hour)",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
-    "grounding_hash": "69c8d872d95d0d115ef6ac3725ad6f2cc41b5f7e14fd2d69590c62e62a823171"
+    "grounding_hash": "0d00da4aafbd52904b9ec0d3dfa750051eb28713118e4fa8bd736afc56568000"
   },
   "e8a91a2867f5f9e8103fa940f9666dd1a973d885620412256828e13a23e1fe77": {
     "doc": "docs/CONFIGURATION.md",
@@ -8726,11 +9303,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "settings.py: reranker.enabled default false",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
-    "grounding_hash": "69c8d872d95d0d115ef6ac3725ad6f2cc41b5f7e14fd2d69590c62e62a823171"
+    "grounding_hash": "0d00da4aafbd52904b9ec0d3dfa750051eb28713118e4fa8bd736afc56568000"
   },
   "e8de73b06e90792c989e884ed76e31362afafc674469ae4f7dee15ee161a6dd5": {
     "doc": "docs/PLUGIN_GUIDE.md",
@@ -8786,6 +9363,19 @@
     ],
     "grounding_hash": "9087288639b5c86fd03cd5a48b32587d15f3ed74ec8a189d2991b14fe32a2e39"
   },
+  "ea2925109929ec5bcc454cf20c1886a290364fc6084811fbe6a69db570e23e40": {
+    "doc": "docs/COMPUTE.md",
+    "claim": "Supported aggregation operations: sum, count, avg, max, min",
+    "grounding": "brainpalace-server/brainpalace_server/storage/record_store.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "_OPS = {'sum':'SUM','count':'COUNT','avg':'AVG','max':'MAX','min':'MIN'} at line 18",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/storage/record_store.py"
+    ],
+    "grounding_hash": "b5609b182ddd44d1e6b7ca0c1de4f55ad802973b73716adc8e1e01c4e211b83c"
+  },
   "ea692ddb6aebcdd14d74e9562a47d3a4c96bde84dbf01f1f5a85353b4ab423b9": {
     "doc": "brainpalace-plugin/commands/brainpalace-inject.md",
     "claim": "Keys in the core schema (chunk_id, source, etc.) cannot be overwritten",
@@ -8811,20 +9401,6 @@
       "brainpalace-cli/brainpalace_cli/commands/config.py"
     ],
     "grounding_hash": "e8d560f13e54eb91ba70764fffd3f486ce1f2002158f114931cf372eaaec57a7"
-  },
-  "eb3cfd18f1dc77f77788925d552adbb4a139db67532a5af54adbef75892257c7": {
-    "doc": "docs/USER_GUIDE.md",
-    "claim": "Plugin overview table: 33 Commands, 5 Agents, 2 Skills",
-    "grounding": "brainpalace-plugin/commands/ (33 .md files counted) + brainpalace-plugin/agents/ (5 .md files)",
-    "raw_verdict": "SUPPORTED",
-    "verdict": "SUPPORTED",
-    "grounding_tier": "code",
-    "evidence": "cached fresh",
-    "grounding_files": [
-      "brainpalace-plugin/agents/",
-      "brainpalace-plugin/commands/"
-    ],
-    "grounding_hash": "620a87628348d4813dd4bf1881bf5a7dc723d3a2909c1890e242549efacbf87e"
   },
   "eb4932e776f125becb98e4a013bd209abe62541bd427d309b4f7c0e175900844": {
     "doc": "brainpalace-plugin/skills/using-brainpalace/references/provider-configuration.md",
@@ -8859,11 +9435,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "settings.py: QUERY_CACHE_MAX_SIZE default 256",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
-    "grounding_hash": "69c8d872d95d0d115ef6ac3725ad6f2cc41b5f7e14fd2d69590c62e62a823171"
+    "grounding_hash": "0d00da4aafbd52904b9ec0d3dfa750051eb28713118e4fa8bd736afc56568000"
   },
   "ebb0c5de4a1f17987e9d9a7055eca08144c8533a0f4569716eeb018f5a920396": {
     "doc": "brainpalace-plugin/agents/setup-assistant.md",
@@ -8872,11 +9448,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "config.py documents the resolution order matching the prose list",
+    "evidence": "config.py implements config search order",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/config.py"
     ],
-    "grounding_hash": "e8d560f13e54eb91ba70764fffd3f486ce1f2002158f114931cf372eaaec57a7"
+    "grounding_hash": "585b87736edff4a419485f41a82ef40f9f1dea90a68512beb7382fe4c631cb3a"
   },
   "ebb892c7aea7c7f6407d03dbc496d8dae1a8b8651c776e312dcf1877d310f6d7": {
     "doc": "brainpalace-plugin/agents/setup-assistant.md",
@@ -8885,11 +9461,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "init.py walks the same resolution chain",
+    "evidence": "init.py implements config search order",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/init.py"
     ],
-    "grounding_hash": "3b764166a9c0cf23c605a56b221c158b8df0cf2874b6f40ced9c40b6239aada1"
+    "grounding_hash": "17b26a52da269e895e4c772cb50777a46594a1ee9095e687a91872a5e22d7c7e"
   },
   "ebc3d97567cae13be8e9f718803059f4458287e8544fb58386f7b4abd1da415f": {
     "doc": "docs/CONFIGURATION.md",
@@ -8898,11 +9474,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "settings.py: ALLOW_SPECIAL_TOKENS_IN_TEXT default true",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
-    "grounding_hash": "69c8d872d95d0d115ef6ac3725ad6f2cc41b5f7e14fd2d69590c62e62a823171"
+    "grounding_hash": "0d00da4aafbd52904b9ec0d3dfa750051eb28713118e4fa8bd736afc56568000"
   },
   "ec32b0f0fdcd9b4196e13d7d3945d4fdd051fab636a9293400fbf40edd42b45a": {
     "doc": "docs/DASHBOARD.md",
@@ -8950,7 +9526,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "Both verify_docs.py and sync_docs.py confirmed at their paths",
+    "evidence": "cache-hit re-emit",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/sync_docs.py",
       "brainpalace-cli/brainpalace_cli/commands/verify_docs.py"
@@ -9008,6 +9584,20 @@
       "brainpalace-server/brainpalace_server/models/query.py"
     ],
     "grounding_hash": "a2e8f529c3c0f057cd624841b967eb15f26edf360bcaf16444f5ab6686e5c679"
+  },
+  "edff0a3f8b767bc274bac859e367542e8b64687592af66ec81e28e1bc8f11d8e": {
+    "doc": "docs/COMPUTE.md",
+    "claim": "records.db is a separate file from the existing graph store (graph_store.db)",
+    "grounding": "brainpalace-server/brainpalace_server/storage/record_store.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "main.py:1296 RecordStore(Path(state_dir)/'records.db'); graph_store.py:152 db_path=self.persist_dir/'graph_store.db' \u2014 distinct files",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/storage/graph_store.py",
+      "brainpalace-server/brainpalace_server/storage/record_store.py"
+    ],
+    "grounding_hash": "d206af1c195b94afb93e184dbd13acaa8dbcc2edb34d17830b5b4cbd74eda81c"
   },
   "eeb6c1be9e0fe4c108f6189111691489a4c06b6ca8df9514df648e238a0d4025": {
     "doc": "docs/PLUGIN_GUIDE.md",
@@ -9148,7 +9738,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "optional_deps.py: EXTRA_DEPS maps these features to the correct packages",
+    "evidence": "cache-hit fresh re-emit",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/optional_deps.py"
     ],
@@ -9187,11 +9777,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "init.py line 1409: config_path = resolved_state_dir / 'config.json'",
+    "evidence": "config.json is the init marker used by init.py",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/init.py"
     ],
-    "grounding_hash": "3b764166a9c0cf23c605a56b221c158b8df0cf2874b6f40ced9c40b6239aada1"
+    "grounding_hash": "17b26a52da269e895e4c772cb50777a46594a1ee9095e687a91872a5e22d7c7e"
   },
   "f1ab28bc2d4e0221f38a86b5c9e0a03b2f8d432c910b6c3070afccb1938ad14e": {
     "doc": "docs/CONFIGURATION.md",
@@ -9200,11 +9790,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "settings.py line 31: CLAUDE_MODEL: str = 'claude-haiku-4-5-20251001'",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
-    "grounding_hash": "69c8d872d95d0d115ef6ac3725ad6f2cc41b5f7e14fd2d69590c62e62a823171"
+    "grounding_hash": "0d00da4aafbd52904b9ec0d3dfa750051eb28713118e4fa8bd736afc56568000"
   },
   "f2af28902670afcac92178032c33457570ae0bff99043dbe81ed6cc26c5f43ac": {
     "doc": "docs/QUICK_START.md",
@@ -9254,7 +9844,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "Cached fresh verdict",
+    "evidence": "cache-hit re-emit",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/services/file_watcher_service.py"
     ],
@@ -9267,7 +9857,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "scripts/setup.sh lines 346 and 783: box_red 'claude plugin update brainpalace@brainpalace-marketplace'",
+    "evidence": "cache-hit fresh re-emit",
     "grounding_files": [
       "scripts/setup.sh"
     ],
@@ -9280,11 +9870,24 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "Cached fresh verdict",
+    "evidence": "cache-hit re-emit",
     "grounding_files": [
       "brainpalace-plugin/hooks/pretooluse-subagent-guard-hook.sh"
     ],
     "grounding_hash": "0f490ddd00caf9dabcba84ea82bc3f25455b6231a2588a2aab59f2d6954cda8e"
+  },
+  "f4b1e6193b1866870806aa343d0592d263474b53e02a462726bf6ca499b2884e": {
+    "doc": "CLAUDE.md",
+    "claim": "Config resolves code < global < project with env overrides on top; provider_config.load_merged_config_dict / load_raw_config implement this",
+    "grounding": "brainpalace-server/brainpalace_server/config/provider_config.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "cache-hit re-emit",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/config/provider_config.py"
+    ],
+    "grounding_hash": "a7ebab41be4ad5e5798880e6e59adef8351191057b517b00e689b2d1650b7728"
   },
   "f4ca027b16309c6e45b78c81f10b534c99b4e37ec2ff2771780e59d1e980efd8": {
     "doc": "brainpalace-plugin/commands/brainpalace-query.md",
@@ -9324,6 +9927,33 @@
       "brainpalace-cli/brainpalace_cli/commands/mcp.py"
     ],
     "grounding_hash": "4f72c3092aaf0b5a9beeec3096e08d77d326c757f68f9948d81c432ff5798284"
+  },
+  "f80a21e83af776fda975e7a66940f31ef2c39b0adec9a26448c9010e3b094b6d": {
+    "doc": "docs/COMPUTE.md",
+    "claim": "Deterministic derived count records: files_touched (number of file entries), tools_used (number of tool calls), decisions (number of decisions), open_threads (number of open threads)",
+    "grounding": "brainpalace-server/brainpalace_server/services/session_records.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "_COUNT_FIELDS: (files_touched, lambda e:len(e.files_touched)), (tools_used, ...), (decisions,...), (open_threads,...) at lines 20-24",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/services/session_records.py"
+    ],
+    "grounding_hash": "e73d3ab3986eb1d559c54eb3caf84f18502dadc1dcebabc4c068bda62f6443da"
+  },
+  "f82acb68753037dbecb2238d790a06f726db2556a38472af072016ad1ba8a564": {
+    "doc": "brainpalace-plugin/commands/brainpalace-init.md",
+    "claim": "compute mode handles set-level questions (sum/count/avg, by-week/month, which most) over typed numeric records from sessions",
+    "grounding": "brainpalace-cli/brainpalace_cli/commands/init.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "init.py line 1242-1243: 'answer set-level questions (sum/count/avg, by-week/month, which most) over typed numeric records'; query_service.py confirms execution",
+    "grounding_files": [
+      "brainpalace-cli/brainpalace_cli/commands/init.py",
+      "brainpalace-server/brainpalace_server/services/query_service.py"
+    ],
+    "grounding_hash": "f27687b1f5533564dc2774c2381fe25c1f4ac6a87b8a4b0f89d41a2d198acdad"
   },
   "f8ee7d49bb29e8ae49996d06333fdd478dcf1c89f74ad4f8e6bbfb5dfcc4db89": {
     "doc": "docs/SESSION_INDEXING.md",
@@ -9384,11 +10014,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "settings.py: EMBEDDING_CACHE_MAX_DISK_MB default 500",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
-    "grounding_hash": "69c8d872d95d0d115ef6ac3725ad6f2cc41b5f7e14fd2d69590c62e62a823171"
+    "grounding_hash": "0d00da4aafbd52904b9ec0d3dfa750051eb28713118e4fa8bd736afc56568000"
   },
   "fa949379e9c00c4b0dcef2efec9c14ce75c0df01ee3a7601df88187109d3b1fe": {
     "doc": "docs/USER_GUIDE.md",
@@ -9397,7 +10027,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh",
+    "evidence": "cache-hit fresh re-emit",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/services/embedding_cache.py"
     ],
@@ -9488,12 +10118,25 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "Cached fresh verdict",
+    "evidence": "cache-hit re-emit",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/api/main.py",
       "brainpalace-server/brainpalace_server/config/session_config.py"
     ],
-    "grounding_hash": "b288bd897f723ffc70e9ea767e58f9cdb67a16a92aff755b6f4bfe7c25cf55ec"
+    "grounding_hash": "b56aa0e07facfb815582b7366f441a7e2c95ed1a4a29c144434a7e799193c506"
+  },
+  "fef9d065aa2248e87ce2c604f513c2a1fd0b5644d00a5de5010f22ac76be1b60": {
+    "doc": "docs/COMPUTE.md",
+    "claim": "RecordStore uses check_same_thread=False, WAL mode, busy_timeout=5000",
+    "grounding": "brainpalace-server/brainpalace_server/storage/record_store.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "sqlite3.connect(str(db_path), check_same_thread=False); PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000 at lines 55-57",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/storage/record_store.py"
+    ],
+    "grounding_hash": "b5609b182ddd44d1e6b7ca0c1de4f55ad802973b73716adc8e1e01c4e211b83c"
   },
   "ff04f98d467ee81fbd15eb602a3fa7413a14842baef2e81759635436c2d16ba8": {
     "doc": "docs/API_REFERENCE.md",
@@ -9502,11 +10145,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "runtime.json confirmed to contain base_url field written by start command",
+    "evidence": "",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/start.py"
     ],
-    "grounding_hash": "41255d0205249856f553793b8864cb948e6fcd086d2f1d283e738a4ac7b7dbb0"
+    "grounding_hash": "25b8b696d8da2e95f003034a69bff14cd321893a78a1bb61b13997d8d308f0ef"
   },
   "ff180854bac145e0fd744fee30c08c2b39b562704fdbb8ee65ecb988dd2f3fe7": {
     "doc": "brainpalace-plugin/README.md",
@@ -9542,11 +10185,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "Cached fresh verdict",
+    "evidence": "file exists at brainpalace-dashboard/tests/test_dashboard_parity.py",
     "grounding_files": [
       "brainpalace-dashboard/tests/test_dashboard_parity.py"
     ],
-    "grounding_hash": "de8a29020357d09ec1779e821cf25831a26f719127cfcfc5d184f8db2502b2cc"
+    "grounding_hash": "79d52ecd2bc81cdc87ea59f3a20e35aaf0235262af72b673050983d3723c8952"
   },
   "ffe03da3a48d6b535b2169f7683d3bc709ad10824b067bc1b64693d0acfaaa14": {
     "doc": "docs/MCP_SETUP.md",

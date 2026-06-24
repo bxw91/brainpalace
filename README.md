@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-20
+last_validated: 2026-06-24
 ---
 
 <div align="center">
@@ -62,7 +62,7 @@ same prerequisites and end with the same `brainpalace` CLI on your `PATH`.
 > bill; it draws on your subscription's usage limits). Pick this over the CLI
 > install if you're a Claude Code user — it installs the CLI + server for you.
 
-Richest UX — 33 slash commands, 5 agents, 2 skills. The setup wizard inside
+Richest UX — 34 slash commands, 5 agents, 2 skills. The setup wizard inside
 Claude Code installs the CLI + server, configures provider keys, initialises
 the project, starts the server, and runs the first index — all from one
 slash command.
@@ -183,7 +183,7 @@ with optional cloud providers for embeddings and summarisation.
 | **Server** (`brainpalace-rag`) | FastAPI backend — indexing pipeline, BM25 + vector + GraphRAG stores, REST API |
 | **CLI** (`brainpalace-cli`) | Click-based command-line client; primary interface for automation, mono-repos, and standalone use |
 | **MCP server** (`brainpalace mcp`) | Opt-in stdio shim for non-Claude-Code AI clients (VS Code / Copilot, Cursor, Kilo Code, Cline, Continue, Zed) |
-| **Claude Code plugin** | 33 slash commands, 5 agents, 2 skills for Claude Code users |
+| **Claude Code plugin** | 34 slash commands, 5 agents, 2 skills for Claude Code users |
 | **Web dashboard** (`brainpalace dashboard`) | Standalone browser control plane — manage every project server from one tab (instances, config, stats, jobs, cache, graph, sessions, logs, query history). Included with the CLI on Python 3.12+. See [DASHBOARD](docs/DASHBOARD.md) |
 
 ## Features
@@ -195,6 +195,11 @@ with optional cloud providers for embeddings and summarisation.
   localhost-only, optional bearer token). See [DASHBOARD](docs/DASHBOARD.md).
 - **Hybrid search** — BM25 + vector + GraphRAG, fused per query (`hybrid`,
   `multi`) or selectable per call (`bm25`, `vector`, `graph`).
+- **Compute query mode** — set-level questions over your sessions (sum/count/
+  average, grouped by ISO-week or month, "which … the most" superlatives) over
+  typed numeric records, instead of returning documents (`--mode compute`).
+  Counts (files touched, tools used, decisions, open threads) are derived **free**
+  from session summaries — no extra API call.
 - **Multi-language search** — BM25 tokenizes each document in its own natural
   language (stemming + stopwords), so keyword/hybrid search is precise for
   non-English docs. ~27 Snowball languages + a Croatian stemmer; `stem` or
@@ -276,6 +281,7 @@ with optional cloud providers for embeddings and summarisation.
 | `BM25` | Exact terms, error codes | "NullPointerException", "getUserById" |
 | `GRAPH` | Relationships, dependencies | "What classes use AuthService?" |
 | `MULTI` | Comprehensive search (all modes via RRF) | "Everything about data validation" |
+| `COMPUTE` | Set-level aggregates over your sessions (sum/count/avg, by week/month, superlatives) | "How many files did I touch this week?" |
 
 ## Usage Examples
 
@@ -428,7 +434,7 @@ Or via the CLI: [docs/PROVIDER_CONFIGURATION.md](docs/PROVIDER_CONFIGURATION.md)
 
 ## Claude Code Plugin
 
-The plugin ships **33 slash commands**, **5 agents**, and **2 skills**.
+The plugin ships **34 slash commands**, **5 agents**, and **2 skills**.
 Full reference: [docs/PLUGIN_GUIDE.md](docs/PLUGIN_GUIDE.md).
 
 | Category | Commands |
@@ -457,7 +463,7 @@ Full reference: [docs/PLUGIN_GUIDE.md](docs/PLUGIN_GUIDE.md).
 ```
 brainpalace/
 ├── brainpalace-plugin/                     # Claude Code plugin
-│   ├── commands/                            # 33 slash commands
+│   ├── commands/                            # 34 slash commands
 │   ├── agents/                              # 5 agents
 │   ├── skills/                              # 2 context skills
 │   └── templates/                           # mcp-config-claude-code.json + sessionstart hook

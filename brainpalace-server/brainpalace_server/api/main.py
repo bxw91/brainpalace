@@ -68,6 +68,7 @@ from .routers import (
     index_router,
     jobs_router,
     query_router,
+    records_router,
     runtime_router,
 )
 
@@ -434,6 +435,30 @@ def _apply_graphrag_yaml_overrides(provider_settings: "ProviderSettings") -> Non
         )
 
 
+def _apply_compute_yaml_overrides(provider_settings: "ProviderSettings") -> None:
+    """Apply compute: YAML config to ENABLE_COMPUTE / RECORD_EXTRACTION_ENABLED /
+    COMPUTE_MIN_CONFIDENCE settings — env vars win.
+
+    Mirrors _apply_graphrag_yaml_overrides exactly. For each compute setting, if
+    the corresponding environment variable is NOT set, and the compute: YAML
+    section provided a value, copy the YAML value onto the module-level `settings`
+    singleton. An explicit env var always takes precedence (12-factor).
+
+    Must run before any code that reads these settings.
+    """
+    compute = provider_settings.compute
+    for env_name, yaml_attr in (
+        ("ENABLE_COMPUTE", "enabled"),
+        ("RECORD_EXTRACTION_ENABLED", "record_extraction"),
+        ("COMPUTE_MIN_CONFIDENCE", "min_confidence"),
+    ):
+        if os.environ.get(env_name) is not None:
+            continue  # env-wins
+        value = getattr(compute, yaml_attr, None)
+        if value is not None:
+            setattr(settings, env_name, value)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Application lifespan manager.
@@ -515,6 +540,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # Phase G: apply graphrag: YAML config onto GRAPH_* settings.
         # Env vars win — this only fills settings the environment didn't set.
         _apply_graphrag_yaml_overrides(provider_settings)
+        # Phase 0: apply compute: YAML config onto compute settings.
+        _apply_compute_yaml_overrides(provider_settings)
     except Exception as e:
         logger.error(f"Failed to load provider configuration: {e}")
         # Continue with defaults - EmbeddingGenerator will handle provider creation
@@ -1175,6 +1202,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                                 project=Path(_proj)
                             ),
                             grace_hours=session_distill_grace_hours(),
+                            record_store=app.state.record_store,
                         )
                         app.state.session_distiller = distiller
                         logger.info(
@@ -1261,11 +1289,22 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         except Exception as exc:  # noqa: BLE001 — never block startup on git
             logger.warning("Git indexing setup failed: %s", exc)
 
+        # Task 9: construct RecordStore (one per server lifetime, SQLite WAL).
+        try:
+            from brainpalace_server.storage.record_store import RecordStore
+
+            app.state.record_store = RecordStore(Path(state_dir) / "records.db")
+            logger.info("RecordStore initialized: %s", state_dir / "records.db")
+        except Exception as exc:  # noqa: BLE001 — never block startup
+            app.state.record_store = None
+            logger.warning("RecordStore setup failed: %s", exc)
+
         # Create query service with storage_backend (Phase 9)
         query_service = QueryService(
             storage_backend=storage_backend,
             query_cache=query_cache,
             memory_service=memory_service,
+            record_store=app.state.record_store,
         )
         app.state.query_service = query_service
 
@@ -1612,6 +1651,7 @@ app.include_router(folders_router, prefix="/index/folders", tags=["Folders"])
 app.include_router(jobs_router, prefix="/index/jobs", tags=["Jobs"])
 app.include_router(query_router, prefix="/query", tags=["Querying"])
 app.include_router(runtime_router, prefix="/runtime", tags=["Runtime"])
+app.include_router(records_router, prefix="/records", tags=["Records"])
 from brainpalace_server.api.routers.memories import (  # noqa: E402 — late import, registered after app setup
     router as memories_router,
 )

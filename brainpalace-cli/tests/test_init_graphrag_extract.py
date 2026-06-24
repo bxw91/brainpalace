@@ -35,8 +35,8 @@ def test_decline_graphrag_extraction_writes_none_and_skips_install(
                 "--no-git-history",
                 "--no-archive",
             ],
-            # graphrag-extract=N, reranker-change=N (keep inherited), lemma=N, Proceed=Y
-            input="n\nn\nn\ny\n",
+            # graphrag-extract=N, reranker=N, lemma=N, compute=Y, Proceed=Y
+            input="n\nn\nn\ny\ny\n",
         )
     assert result.exit_code == 0, result.output
     cfg = _read(tmp_path / ".brainpalace")
@@ -64,8 +64,8 @@ def test_enable_graphrag_extraction_writes_langextract_and_installs(
                 "--no-git-history",
                 "--no-archive",
             ],
-            # graphrag-extract=Y, reranker-change=N (keep inherited), lemma=N, Proceed=Y
-            input="y\nn\nn\ny\n",
+            # graphrag-extract=Y, reranker=N, lemma=N, compute=Y, Proceed=Y
+            input="y\nn\nn\ny\ny\n",
         )
     assert result.exit_code == 0, result.output
     cfg = _read(tmp_path / ".brainpalace")
@@ -152,11 +152,11 @@ def test_decline_on_existing_project_reinit_writes_none(tmp_path, monkeypatch):
     with patch("brainpalace_cli.optional_deps.ensure_extra") as ensure:
         # Pre-existing ⇒ keep/delete/cancel first (keep), then prompts:
         # summarize=N, embed=N, archive=N, git=N, graphrag-extract=N,
-        # reranker-change=N, lemma=N, proceed=Y
+        # reranker-change=N, lemma=N, compute=Y, proceed=Y
         result = runner.invoke(
             initmod.init_command,
             ["--path", str(tmp_path)],
-            input="keep\nn\nn\nn\nn\nn\nn\nn\ny\n",
+            input="keep\nn\nn\nn\nn\nn\nn\nn\ny\ny\n",
         )
     assert result.exit_code == 0, result.output
     data = yaml.safe_load((sd / "config.yaml").read_text())
@@ -183,11 +183,11 @@ def test_enable_on_existing_project_reinit_writes_langextract(tmp_path, monkeypa
     runner = CliRunner()
     with patch("brainpalace_cli.optional_deps.ensure_extra") as ensure:
         # keep, summarize=N, embed=N, archive=N, git=N, graphrag-extract=Y,
-        # reranker-change=N, lemma=N, proceed=Y
+        # reranker-change=N, lemma=N, compute=Y, proceed=Y
         result = runner.invoke(
             initmod.init_command,
             ["--path", str(tmp_path)],
-            input="keep\nn\nn\nn\nn\ny\nn\nn\ny\n",
+            input="keep\nn\nn\nn\nn\ny\nn\nn\ny\ny\n",
         )
     assert result.exit_code == 0, result.output
     data = yaml.safe_load((sd / "config.yaml").read_text())

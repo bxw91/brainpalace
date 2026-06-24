@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-18
+last_validated: 2026-06-24
 ---
 
 # BrainPalace System Architecture
@@ -253,6 +253,35 @@ Layered on the core stack; each subsystem is opt-in and has a dedicated guide.
 | Git history | `indexing/git_loader.py`, `git_chunker.py`, `services/git_history_index_service.py` | Commits → `git_commit` chunks, incremental. ([GIT_HISTORY.md](GIT_HISTORY.md)) |
 | LSP cross-refs | `brainpalace_server/lsp/` | Opt-in typed symbol graph (calls/types/defined-at) from a language server. ([LSP_INTEGRATION.md](LSP_INTEGRATION.md)) |
 | Ranking signals | `services/query_service.py` | Time-decay (`created_at`) + stale-decision penalty layered into fusion. |
+| **Records & Compute** | `storage/record_store.py`, `models/record.py`, `services/session_records.py`, `services/compute_compiler.py`, `api/routers/records.py` | Typed numeric measurements → `compute` query mode. ([COMPUTE.md](COMPUTE.md)) |
+
+### Records & Compute
+
+Alongside the document/vector index, the graph store, and the session-turn
+index, BrainPalace maintains a fourth store: a **typed numeric records
+database** (`records.db`, SQLite only). Where the other stores answer "show me
+text about X", the Records store answers set-level numeric questions: totals,
+averages, per-week counts, superlatives.
+
+**Two seams connect the rest of the system to Records:**
+
+1. **Session extraction sink.** `SessionExtractService.store` — the common path
+   reached by the plugin SessionEnd flow and `brainpalace extract-session` —
+   calls `persist_records` after writing summaries and triplets. Two kinds of
+   records land per session: deterministic derived counts (`files_touched`,
+   `tools_used`, `decisions`, `open_threads`, all HIGH confidence `1.0`) and
+   any LLM-extracted numeric measurements from the session content.
+
+2. **`compute` query mode.** `QueryService._execute_compute_query` compiles the
+   natural-language query into an aggregation plan (metric + op + grouping +
+   optional time bounds), runs it against the record store via indexed column
+   scans, and returns `ComputeResult` rows. The auto-router in `hybrid` mode
+   tries compute first when the query expresses a set-level intent; it falls back
+   to normal hybrid retrieval when compute returns empty.
+
+The store is a dedicated SQLite file with pre-derived ISO-week and month bucket
+columns — no strftime at query time, no Postgres Records store, no new runtime
+dependencies. Full details: [COMPUTE.md](COMPUTE.md).
 
 ---
 

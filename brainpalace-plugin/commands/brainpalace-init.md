@@ -54,6 +54,10 @@ parameters:
     type: bool
     required: false
     default: ""
+  - name: compute
+    type: bool
+    required: false
+    default: ""
   - name: extract
     type: bool
     required: false
@@ -90,7 +94,7 @@ context: brainpalace
 agent: setup-assistant
 skills:
   - configuring-brainpalace
-last_validated: 2026-06-18
+last_validated: 2026-06-24
 ---
 
 # Initialize BrainPalace Project
@@ -125,6 +129,7 @@ Initializes the current project for BrainPalace by creating the necessary config
 | --yes / -y | No | false | Skip the confirmation prompt and apply defaults |
 | --sessions / --no-sessions | No | off (default/--yes do NOT embed) | INDEX this project's AI chat transcripts (billable); pass `--sessions` to enable |
 | --archive / --no-archive | No | on | ARCHIVE raw transcripts under `.brainpalace/` (free, independent of indexing) |
+| --compute / --no-compute | No | on | COMPUTE query mode — set-level questions (sum/count/avg, by-week/month, "which … most") over typed numeric records from sessions. Free: counts piggyback session summaries, no extra API call. Interactive runs ask; written to `compute.enabled` + `compute.record_extraction` only on opt-out (`--no-compute`). |
 | --force-monorepo-root | No | false | Allow init at a directory flagged as a monorepo root |
 | --json | No | false | Output as JSON |
 
@@ -410,6 +415,7 @@ This allows running multiple BrainPalace instances for different projects simult
 | --yes | bool | false | Skip the confirmation prompt and apply the full resolved plan. |
 | --sessions | bool | "" | INDEX this project's AI chat transcripts into searchable session memory (embeddings, billable). ON by default for new projects: interactive runs confirm (default yes), non-interactive runs enable it. Pass --no-sessions to opt out (archive still runs). |
 | --archive | bool | "" | ARCHIVE raw transcripts under .brainpalace/ as a durable backup (no embeddings, independent of indexing). ON by default. Pass --no-archive to opt out. |
+| --compute | bool | "" | COMPUTE query mode: answer set-level questions (sum/count/avg, by-week/month, 'which … most') over typed numeric records extracted from your sessions. ON by default (free — derived counts piggyback session summaries; no extra API call). Interactive runs ask. Pass --no-compute to disable the mode and its record extraction. |
 | --extract | bool | "" | SUMMARIZE each session into durable knowledge (summary, decisions, triplets). ON by default, summarized ONLY inside Claude Code (the plugin, free on your Claude Code subscription — no separate API bill). The server does not summarize on its own. Pass --no-extract to opt out. |
 | --git-history | bool | "" | INDEX this repo's git commit history (message + diff stat) as searchable chunks. OFF by default — commits can contain secrets, so this is a deliberate opt-in. Interactive runs ask (default no). |
 | --graphrag-extract | bool | "" | Extract a knowledge graph from document text (installs the optional langextract dep on enable). |

@@ -89,8 +89,8 @@ def test_init_sparse_when_reranker_inherited(tmp_path, monkeypatch):
         "--no-graphrag-extract",
     ]
     # Prompt order (all per-feature prompts suppressed by flags except reranker
-    # gate): reranker-change? n, lemma? n, Proceed y
-    r = _invoke(tmp_path, monkeypatch, args, input_str="n\nn\ny\n")
+    # gate): reranker-change? n, lemma? n, compute? y, Proceed y
+    r = _invoke(tmp_path, monkeypatch, args, input_str="n\nn\ny\ny\n")
     assert r.exit_code == 0, r.output
     cfg = _read(tmp_path / ".brainpalace")
     assert "reranker" not in (cfg or {}), (
@@ -116,8 +116,8 @@ def test_init_writes_reranker_override_when_changed(tmp_path, monkeypatch):
         "--no-git-history",
         "--no-graphrag-extract",
     ]
-    # reranker-change? y, enabled? false, lemma? n, Proceed y
-    r = _invoke(tmp_path, monkeypatch, args, input_str="y\nfalse\nn\ny\n")
+    # reranker-change? y, enabled? false, lemma? n, compute? y, Proceed y
+    r = _invoke(tmp_path, monkeypatch, args, input_str="y\nfalse\nn\ny\ny\n")
     assert r.exit_code == 0, r.output
     cfg = _read(tmp_path / ".brainpalace")
     assert cfg.get("reranker", {}).get("enabled") is False

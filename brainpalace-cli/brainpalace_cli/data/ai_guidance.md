@@ -51,6 +51,7 @@ Pick `--mode` for any inline search. Default to `hybrid` when unsure.
 | Exact symbol / error / token / file path | `--mode bm25` |
 | Relationships ("what calls X", "what imports Y") | `--mode graph` |
 | Maximum recall (ALL usages / references) | `--mode multi` |
+| Aggregation ("how many", "total", "which week had most") | `--mode compute` |
 
 Common flags: `--top-k N` (default 5), `--threshold F` (default 0.3),
 `--alpha F` (hybrid balance, 0=BM25…1=Vector, default 0.5), `--language CODE`
@@ -142,6 +143,46 @@ it nudges `Agent`/`Task` spawns whose prompt lacks a `brainpalace query --mode`
 directive (or the equivalent MCP query-tool `mode:` argument), and in opt-in
 `enforce` mode denies them; `research-assistant` is allowlisted. For a genuine
 exemption, open the prompt with `# BRAINPALACE_EXEMPT: <reason of 20+ chars>`.
+
+---
+
+## Compute Mode — Aggregation over Typed Records
+
+`--mode compute` answers set-level questions (sum/count/avg/superlative) over
+**typed numeric records** persisted from session distillation — not document
+chunks. It is **auto-routed**: queries containing "how many", "total", "which
+week had most", etc. are classified as compute-intent and routed to this mode
+automatically, falling back to `hybrid` when no metric resolves or records are
+empty.
+
+**What records exist:** HIGH-confidence records are populated from session
+distillation. Phase 1 derives counts automatically (files touched, tools used,
+decisions, open threads — unit `count`, confidence 1.0). LLM-extracted numeric
+measurements (weight, sales, etc.) are stored as PROVISIONAL until a teaching
+loop validates them (Phase 4). For now, rely on `compute` for count-type
+queries; treat other metrics as experimental until taught.
+
+**Supported operations:** `sum`, `count`, `avg` (explicit), plus superlatives
+(`which X had the most/least Y` → `sum` per group, ordered desc/asc, limit 1).
+Grouping by `week` (ISO), `month` (`YYYY-MM`), `source`, `subject`, or `unit`.
+
+**`--json` contract for compute:** `results` is always `[]`; rows live under
+`compute`. Each row: `label` (group key or `null`), `value` (float),
+`metric`, `op`, `group` (group_by or `null`), `unit`, `score`.
+
+```bash
+brainpalace query "how many files did I touch per week" --mode compute --json | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+if 'error' in d: sys.exit('brainpalace error: %s' % d['error'])
+for row in d.get('compute', []):
+    print(row['label'], row['value'], row['unit'])
+"
+```
+
+Kill-switches: `ENABLE_COMPUTE=false` disables compute globally;
+`RECORD_EXTRACTION_ENABLED=false` stops record persistence (compute returns
+empty). Config knobs also available under `compute:` in `.brainpalace/config.yaml`.
 
 ---
 

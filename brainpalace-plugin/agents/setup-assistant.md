@@ -33,7 +33,7 @@ allowed_tools:
   - "Edit(~/.config/brainpalace/**)"
   - "Write(.claude/brainpalace/**)"
   - "Edit(.claude/brainpalace/**)"
-last_validated: 2026-06-20
+last_validated: 2026-06-24
 ---
 
 # Setup Assistant Agent
@@ -421,6 +421,11 @@ drift. The questions are:
   **Opt-in, default OFF** (commit messages/diffs can contain secrets).
 - **GraphRAG document extraction** (`graphrag.doc_extractor` =
   `langextract` | `none`) — richer entity extraction from prose docs.
+- **Compute query mode** (`compute.enabled` + `compute.record_extraction`, and
+  `compute.min_confidence` in the wizard) — set-level questions (sum/count/avg,
+  by-week/month, "which … most") over typed numeric records from sessions.
+  **Default ON, free** (counts piggyback session summaries — no extra API call);
+  `init` writes the disabling values only on `--no-compute`.
 
 The **GLOBAL** path (`config wizard --global` / `brainpalace install`) also asks
 the **web-dashboard control-plane settings** — **autostart**

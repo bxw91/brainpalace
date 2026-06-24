@@ -31,6 +31,7 @@ from brainpalace_server.models import (
     QueryResponse,
     QueryResult,
 )
+from brainpalace_server.models.query import ComputeResult
 from brainpalace_server.providers import ProviderRegistry
 from brainpalace_server.storage import (
     StorageBackendProtocol,
@@ -164,6 +165,7 @@ class QueryService:
         storage_backend: StorageBackendProtocol | None = None,
         query_cache: QueryCacheService | None = None,
         memory_service: MemoryService | None = None,
+        record_store: object | None = None,
     ):
         """
         Initialize the query service.
@@ -208,6 +210,7 @@ class QueryService:
         self.graph_index_manager = graph_index_manager or get_graph_index_manager()
         self.query_cache = query_cache
         self.memory_service = memory_service
+        self.record_store = record_store  # Task 9: stored for Task 11 executor
 
     def is_ready(self) -> bool:
         """
@@ -323,6 +326,31 @@ class QueryService:
         else:
             stage1_request = request
 
+        # Auto-router: when mode is HYBRID and compute tells are present, try
+        # compute first. If it returns rows, return them immediately (set-level
+        # answer). Empty result → no metric resolved / no rows → fall through to
+        # normal hybrid retrieval (finding #4 — never return empty compute for
+        # an auto-routed query).
+        from brainpalace_server.services.query_router import classify_compute_intent
+
+        auto_compute = (
+            stage1_request.mode == QueryMode.HYBRID
+            and getattr(settings, "ENABLE_COMPUTE", True)
+            and getattr(self, "record_store", None) is not None
+            and classify_compute_intent(stage1_request.query)
+        )
+        if auto_compute:
+            compute_results = await self._execute_compute_query(stage1_request)
+            if compute_results:
+                elapsed = (time.time() - start_time) * 1000
+                return QueryResponse(
+                    results=[],
+                    compute=compute_results,
+                    query_time_ms=elapsed,
+                    total_results=len(compute_results),
+                )
+            # empty → fall through to normal hybrid retrieval (finding #4)
+
         # Read-only: vector/hybrid/multi need to embed the query text (a
         # provider call). On a cache miss, degrade to BM25 (purely lexical, no
         # network) so the server stays queryable offline. GRAPH and BM25 are
@@ -338,6 +366,20 @@ class QueryService:
                 stage1_request.mode.value,
             )
             stage1_request = stage1_request.model_copy(update={"mode": QueryMode.BM25})
+
+        # Compute early-return: aggregation rows are not documents — skip the
+        # entire retrieval tail (content-filter, hidden-source filter, time-decay,
+        # rerank, truncate). Privacy is preserved because _execute_compute_query
+        # applies exclude_sources internally.
+        if stage1_request.mode == QueryMode.COMPUTE:
+            compute_rows = await self._execute_compute_query(stage1_request)
+            elapsed = (time.time() - start_time) * 1000
+            return QueryResponse(
+                results=[],
+                compute=compute_rows,
+                query_time_ms=elapsed,
+                total_results=len(compute_rows),
+            )
 
         # Execute Stage 1 retrieval
         if stage1_request.mode == QueryMode.BM25:
@@ -864,6 +906,58 @@ class QueryService:
             return await self._execute_vector_query(request)
 
         return results[: request.top_k]
+
+    async def _execute_compute_query(  # noqa: E501
+        self, request: QueryRequest
+    ) -> list[ComputeResult]:
+        """Execute a compute (set-level aggregation) query over typed Records.
+
+        Returns an empty list when compute is disabled, no RecordStore is
+        attached, no metric resolves, or the store is empty — callers (auto-
+        router) treat empty as a signal to fall back to normal hybrid retrieval.
+        Explicit mode=compute returns the empty list directly (no fallback).
+        """
+        from brainpalace_server.config import settings as _settings
+        from brainpalace_server.models.query import ComputeResult
+        from brainpalace_server.services.compute_compiler import compile_compute
+
+        if not getattr(_settings, "ENABLE_COMPUTE", True):
+            return []
+        rs = getattr(self, "record_store", None)
+        if rs is None:
+            return []
+        plan = compile_compute(
+            request.query, rs.distinct_metrics(), rs.distinct_subjects()
+        )
+        if plan is None:
+            return []
+        exclude = ["session"] if hidden_session_source_types() else None
+        rows = rs.aggregate(
+            metric=plan.metric,
+            op=plan.op,
+            group_by=plan.group_by,
+            order=plan.order,
+            limit=plan.limit,
+            since=plan.since,
+            until=plan.until,
+            min_confidence=getattr(_settings, "COMPUTE_MIN_CONFIDENCE", 0.7),
+            exclude_sources=exclude,
+        )
+        maxv = max((abs(v) for _, v in rows), default=1.0) or 1.0
+        out = []
+        for gk, v in rows:
+            label = str(gk) if gk is not None else f"{plan.metric} {plan.op}"
+            out.append(
+                ComputeResult(
+                    label=label,
+                    value=float(v),
+                    metric=plan.metric,
+                    op=plan.op,
+                    group=gk,
+                    score=abs(float(v)) / maxv,
+                )
+            )
+        return out
 
     async def _execute_multi_query(self, request: QueryRequest) -> list[QueryResult]:
         """Execute multi-retrieval query combining vector, BM25, and graph.

@@ -34,6 +34,7 @@ from .commands import (
     plugin_group,
     query_command,
     recall_command,
+    records_group,
     remember_command,
     reset_command,
     session_path_command,
@@ -150,6 +151,7 @@ cli.add_command(install_session_hooks_command, name="install-session-hooks")
 cli.add_command(backfill_command, name="backfill-sessions")
 cli.add_command(drain_queue_command, name="drain-queue")
 cli.add_command(drain_tick_command, name="drain-tick")
+cli.add_command(records_group, name="records")
 
 # Register doc-sync maintenance commands (hidden; deterministic, never call an LLM)
 cli.add_command(sync_docs_command, name="sync-docs")

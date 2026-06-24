@@ -77,12 +77,26 @@ class QueryResult:
 
 
 @dataclass
+class ComputeRow:
+    """One compute-mode aggregation row."""
+
+    label: str
+    value: float
+    metric: str
+    op: str
+    group: str | None = None
+    unit: str | None = None
+    score: float = 0.0
+
+
+@dataclass
 class QueryResponse:
     """Query response with results."""
 
     results: list[QueryResult]
     query_time_ms: float
     total_results: int
+    compute: list[ComputeRow] | None = None
 
 
 @dataclass
@@ -303,10 +317,27 @@ class DocServeClient:
             for r in data.get("results", [])
         ]
 
+        raw_compute = data.get("compute")
+        compute_rows: list[ComputeRow] | None = None
+        if raw_compute is not None:
+            compute_rows = [
+                ComputeRow(
+                    label=c["label"],
+                    value=c["value"],
+                    metric=c["metric"],
+                    op=c["op"],
+                    group=c.get("group"),
+                    unit=c.get("unit"),
+                    score=c.get("score", 0.0),
+                )
+                for c in raw_compute
+            ]
+
         return QueryResponse(
             results=results,
             query_time_ms=data.get("query_time_ms", 0.0),
             total_results=data.get("total_results", len(results)),
+            compute=compute_rows,
         )
 
     def index(
