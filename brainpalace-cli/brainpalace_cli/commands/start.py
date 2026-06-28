@@ -519,6 +519,14 @@ def launch_server(
     "(overrides dashboard.autostart; also stops the server's self-heal from "
     "re-spawning one for its lifetime)",
 )
+@click.option(
+    "--no-activate",
+    is_flag=True,
+    hidden=True,
+    help="Internal: do NOT clear the activation marker (cli.await_first_start). "
+    "Passed by passive callers (the SessionStart hook) so only a genuine manual "
+    "start activates a deferred project.",
+)
 def start_command(
     path: str | None,
     host: str | None,
@@ -528,6 +536,7 @@ def start_command(
     json_output: bool,
     strict: bool,
     no_dashboard: bool,
+    no_activate: bool,
 ) -> None:
     """Start an BrainPalace server for this project.
 
@@ -593,6 +602,27 @@ def start_command(
                 )
             raise SystemExit(1)
 
+        def _activate_on_success() -> None:
+            """Clear the activation gate marker on a genuine manual start.
+
+            A successful ``brainpalace start`` (or dashboard "Start") is THE
+            activation event for a deferred (plugin-configured) project: future
+            sessions then autostart normally. ``--no-activate`` (passive callers)
+            skips this so only a user-typed start activates. Best-effort.
+            """
+            if no_activate:
+                return
+            try:
+                from ..config_schema import (
+                    read_await_first_start,
+                    write_await_first_start,
+                )
+
+                if read_await_first_start(state_dir):
+                    write_await_first_start(state_dir, False)
+            except Exception:  # noqa: BLE001 — flip is best-effort, never blocks
+                pass
+
         # Read configuration
         config = read_bind(state_dir)
 
@@ -603,6 +633,7 @@ def start_command(
         # a new port and double-write the shared data dir.
         reusable = find_reusable_server(project_root)
         if reusable:
+            _activate_on_success()
             dash = _ensure_dashboard(no_dashboard=no_dashboard, json_output=json_output)
             if json_output:
                 click.echo(
@@ -643,6 +674,7 @@ def start_command(
                         break
 
             if action == "running":
+                _activate_on_success()
                 dash = _ensure_dashboard(
                     no_dashboard=no_dashboard, json_output=json_output
                 )
@@ -746,6 +778,7 @@ def start_command(
 
             # Update global registry
             update_registry(project_root, state_dir)
+            _activate_on_success()
 
             dash = _ensure_dashboard(no_dashboard=no_dashboard, json_output=json_output)
             if not json_output:
@@ -779,6 +812,7 @@ def start_command(
             except ServerAlreadyRunningError as e:
                 # A healthy server for this project was found mid-launch (runtime
                 # state was missing/stale). Report it instead of duplicating.
+                _activate_on_success()
                 if json_output:
                     click.echo(
                         json.dumps(
@@ -821,6 +855,7 @@ def start_command(
 
             base_url = runtime_state["base_url"]
             pid = runtime_state["pid"]
+            _activate_on_success()
             stdout_log = runtime_state.get(
                 "log_file", str(state_dir / "logs" / "server.log")
             )

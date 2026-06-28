@@ -188,6 +188,19 @@ class InstanceService:
         runtime: dict[str, Any] = launch_server(
             project_root=root, state_dir=state_dir, host=host, port=port
         )
+        # Dashboard "Start" is a genuine MANUAL activation (vector 2): clear the
+        # activation gate marker so a deferred (plugin-configured) project starts
+        # autostarting normally from here on. Best-effort — never fail a start.
+        try:
+            from brainpalace_cli.config_schema import (
+                read_await_first_start,
+                write_await_first_start,
+            )
+
+            if read_await_first_start(state_dir):
+                write_await_first_start(state_dir, False)
+        except Exception:
+            pass
         return runtime
 
     def stop(self, id_: str, force: bool = False) -> dict[str, Any]:

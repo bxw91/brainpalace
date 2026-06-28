@@ -38,6 +38,10 @@ parameters:
     type: bool
     required: false
     default: ""
+  - name: defer-activation
+    type: bool
+    required: false
+    default: false
   - name: watch
     type: choice
     required: false
@@ -103,6 +107,17 @@ last_validated: 2026-06-28
 
 Initializes the current project for BrainPalace by creating the necessary configuration directory and files. This sets up per-project isolation, allowing each project to have its own BrainPalace instance with separate configuration and data.
 
+> **Plugin flow = configure, then YOU start it.** When run through the plugin,
+> init uses `--defer-activation`: it writes config but does **not** start the
+> server or index anything, and it arms a one-shot activation marker
+> (`cli.await_first_start`). While that marker is set, passive vectors (the
+> SessionStart hook, MCP `--ensure-server`) will **not** auto-start the project —
+> so a freshly-configured project stays quiet until you review it and start it
+> the first time yourself: `brainpalace start` (or the dashboard Instances →
+> Start). That manual start clears the marker; from then on it autostarts
+> normally. (A bare terminal `brainpalace init`, with no flag, keeps the old
+> behavior: start + index immediately.)
+
 > **Interactive flow — expand-on-ON grid.** A non-`--yes` `brainpalace init` opens
 > **directly on the review grid**, values resolved from `global < code` plus the
 > detected provider. Each division is a single line — `N. Label : field = value |
@@ -142,6 +157,7 @@ Initializes the current project for BrainPalace by creating the necessary config
 | --git-history / --no-git-history | No | off | Index this repo's git commit history (message + changed-file list) as searchable chunks. **Off by default** — commit messages/diffs can contain secrets, so it is a deliberate opt-in. Interactive runs ask (default no); written to `git_indexing.enabled` only when enabled. |
 | --migrate-graph-store / --no-migrate-graph-store | No | (ask) | On an **already-initialized** project still on the legacy `simple` graph store, upgrade `graphrag.store_type` to `sqlite` (persistent + temporal). Interactive runs ask (default **yes**); the existing graph is replayed into sqlite on next start (JSON kept for rollback). No effect on fresh inits or projects already on sqlite. |
 | --start / --no-start | No | on when interactive | Start the server after init |
+| --defer-activation / --plugin-managed | No | false | Configure but leave NOT running: implies `--no-start --no-watch` and arms the `cli.await_first_start` gate so passive vectors don't auto-start it until you start it once. Used by the plugin path; an explicit `--start` overrides it; no effect on an already-started project. |
 | --watch | No | auto (when starting) | Folder watch mode: `auto` (index + watch) or `off` |
 | --no-watch | No | false | Do not register/watch the project folder |
 | --yes / -y | No | false | Skip the confirmation prompt and apply defaults |
@@ -197,7 +213,8 @@ Initializes the current project for BrainPalace by creating the necessary config
 ### Run Initialization
 
 ```bash
-brainpalace init
+# Plugin path: configure only, leave it NOT running (you start it yourself).
+brainpalace init --defer-activation
 brainpalace init --path /my/project
 brainpalace init --port 8080
 brainpalace init --state-dir /custom/path
@@ -246,10 +263,14 @@ Project initialized successfully!
 
 Configuration file: .brainpalace/config.yaml
 
+Config saved — the server is NOT running, and it will not auto-start until you
+start it once. Review the config and start it the first time yourself:
+
 Next steps:
-  1. Start server: /brainpalace:brainpalace-start
-  2. Index documents: /brainpalace:brainpalace-index ./docs
-  3. Search: /brainpalace:brainpalace-search "your query"
+  1. Review config: /brainpalace:brainpalace-config (or `brainpalace config show`)
+  2. Start server (first time, by you): /brainpalace:brainpalace-start
+  3. Index documents: /brainpalace:brainpalace-index ./docs
+  4. Search: /brainpalace:brainpalace-search "your query"
 ```
 
 ## What Gets Created
@@ -428,6 +449,7 @@ This allows running multiple BrainPalace instances for different projects simult
 | --state-dir | directory | "" | Custom state directory for index data (default: .brainpalace) |
 | --force-monorepo-root | bool | false | Allow init at a directory whose CLAUDE.md flags it as a mono-repo workspace root. Use only if you really want a project-level state dir at the workspace root. |
 | --start | bool | "" | Start the server after init. Default: ON in an interactive terminal (after a confirmation) or with --yes; OFF in non-interactive/--json runs. --no-start forces config-only. |
+| --defer-activation | bool | false | Configure the project but leave it NOT running: implies --no-start and --no-watch, and writes a one-shot activation marker (cli.await_first_start) so passive vectors (the SessionStart hook, MCP --ensure-server) do NOT auto-start it until the user starts it once (`brainpalace start` or the dashboard Start). Used by the plugin setup path. An explicit --start overrides it. No effect on an already-started project. |
 | --watch | choice | "" | Folder watch mode when starting (auto = register + index project_root + live re-index). Default 'auto' when starting, else 'off'. |
 | --no-watch | bool | false | Do not register/watch the project folder (alias for --watch off). |
 | --yes | bool | false | Skip the confirmation prompt and apply the full resolved plan. |

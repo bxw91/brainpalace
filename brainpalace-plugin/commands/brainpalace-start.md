@@ -34,6 +34,10 @@ parameters:
     type: bool
     required: false
     default: false
+  - name: no-activate
+    type: bool
+    required: false
+    default: false
 context: brainpalace
 agent: setup-assistant
 skills:
@@ -349,4 +353,5 @@ Each started server is registered in the global registry (`~/.local/state/brainp
 | --json | bool | false | Output as JSON |
 | --strict | bool | false | Enable strict mode: fail on critical provider configuration errors |
 | --no-dashboard | bool | false | Do not bring up the web dashboard from this server, by any path (overrides dashboard.autostart; also stops the server's self-heal from re-spawning one for its lifetime) |
+| --no-activate | bool | false | Internal: do NOT clear the activation marker (cli.await_first_start). Passed by passive callers (the SessionStart hook) so only a genuine manual start activates a deferred project. |
 <!--/GENERATED-->

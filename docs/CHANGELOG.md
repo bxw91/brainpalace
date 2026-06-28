@@ -21,6 +21,12 @@ _Entries accumulate here between releases. The release step renames this to
 `## [YY.M.N] - DATE` and adds a fresh empty `## [Unreleased]` above it — never
 hand-number an unreleased section._
 
+## [26.6.54] - 2026-06-28
+
+### Added
+- **Plugin SessionStart install prompt.** When the plugin is loaded but the `brainpalace` CLI is absent, the SessionStart shim offers installation (AskUserQuestion → `/brainpalace-setup` or `/brainpalace-install`) every session until the CLI exists, instead of failing silently; a CLI-present-but-unindexed git project gets a one-time setup offer. Opt out with `BRAINPALACE_SETUP_NUDGE=off`.
+- **Activation gate — plugin configures, you start.** `brainpalace init --defer-activation` (the plugin path) writes config but leaves the project NOT running, arming `cli.await_first_start` so passive vectors (the SessionStart hook, MCP `--ensure-server`) won't auto-start it and the hook nudges "configured but not running". The first manual `brainpalace start` (or dashboard Instances → Start) clears the gate; bare terminal `brainpalace init` is unchanged.
+
 ## [26.6.53] - 2026-06-28
 
 ### Added

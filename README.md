@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-24
+last_validated: 2026-06-28
 ---
 
 <div align="center">
@@ -30,7 +30,7 @@ last_validated: 2026-06-24
 
 # BrainPalace
 
-**Local-first RAG for code & docs, with persistent session-chat memory for AI agents.**
+**Vector Graph RAG for code & docs with persistent session-chat memory for AI agents.**
 BM25 (multi-lang), vector, GraphRAG, hybrid search over your codebase and
 documentation — plus persistent session-chat memory (Claude Code transcripts only), chat
 session verbatim copy with summarisation and embedding, a temporal knowledge graph,
@@ -57,96 +57,35 @@ same prerequisites and end with the same `brainpalace` CLI on your `PATH`.
 
 ### Install as a Claude Code plugin
 
-> **Recommended if you use Claude Code.** Richest UX, and it summarises your
-> sessions for free on your Claude Code subscription (Haiku — no separate API
-> bill; it draws on your subscription's usage limits). Pick this over the CLI
-> install if you're a Claude Code user — it installs the CLI + server for you.
+> **Recommended if you use Claude Code.** Richest UX and it summarises your chat
+> sessions for through your Claude Code subscription (subagent calls to Haiku).
+> 34 slash commands, 5 agents, 2 skills.
 
-Richest UX — 34 slash commands, 5 agents, 2 skills. The setup wizard inside
-Claude Code installs the CLI + server, configures provider keys, initialises
-the project, starts the server, and runs the first index — all from one
-slash command.
-
-1. **Install the plugin:**
+**Install the plugin:**
 
    ```bash
    claude plugins marketplace add bxw91/brainpalace
    claude plugins install brainpalace@brainpalace-marketplace
    ```
 
-   Then **restart Claude Code** (or start a new session) — the plugin's hooks
-   and the `chat-session-extractor` agent load at session start.
-
-2. **Run the setup wizard** in Claude Code:
-
-   ```
-   /brainpalace-setup
-   ```
-
-3. **Update the plugin** later, from inside Claude Code (then restart):
-
-   ```bash
-   claude plugin update brainpalace@brainpalace-marketplace
-   ```
-
-Full Claude Code reference: [`docs/PLUGIN_GUIDE.md`](docs/PLUGIN_GUIDE.md).
+   Then **restart Claude Code** (or start a new session) and follow instructions. Full BrainPalace plugin reference : [`docs/PLUGIN_GUIDE.md`](docs/PLUGIN_GUIDE.md).
 
 ---
 
 ### Install as a CLI or MCP server
 
-> **Using Claude Code? Install the plugin instead** (above) — it includes
-> everything here plus free session summarisation on your Claude Code
-> subscription. This path is for CLI-only use or non-Claude-Code editors over MCP.
-
-Use this if you want `brainpalace` as a command-line tool or if you want to
-connect an MCP-capable editor (Cursor, VS Code Copilot, Cline, Continue, Kilo
-Code, Zed). One command does both — it will ask which MCP client to wire (or
-"none" for CLI-only) along the way. Nothing runs until you answer.
-
+Go to project where you want your first BrainPalace instance and copy :
 ```bash
 curl -sSL https://raw.githubusercontent.com/bxw91/brainpalace/main/scripts/setup.sh | bash
 ```
 
-That's it.
-
-**Update later** (auto-detects pipx/uv/pip):
-
-```bash
-brainpalace update
-```
-
-```bash
-brainpalace stop && brainpalace start
-```
-
-**Got more projects to index later?** The binary is installed once per machine;
-every new project just needs (full setup by default — opt out with `--no-start`
-/ `--no-sessions` / `--yes` for CI):
+**Got more projects to index later?** Go to project folder and type :
 
 ```bash
 brainpalace init
 ```
 
-How-to:
-[`docs/INSTALL.md → Adding more projects`](docs/INSTALL.md#adding-more-projects-after-the-first-install).
-
-**Want to remove it?** `brainpalace uninstall` runs a guided teardown — stops
-servers, removes plugins + MCP entries, then asks before deleting per-project
-and global state, and prints any leftover step:
-
-```bash
-brainpalace uninstall
-```
-
-If the binary is already gone, the bash mirror does the same:
-
-```bash
-curl -sSL https://raw.githubusercontent.com/bxw91/brainpalace/main/scripts/uninstall.sh | bash
-```
-
-Full teardown reference:
-[`docs/INSTALL.md → Full uninstall (teardown)`](docs/INSTALL.md#full-uninstall-teardown).
+How-To: [`docs/INSTALL.md`](docs/INSTALL.md).
 
 ---
 

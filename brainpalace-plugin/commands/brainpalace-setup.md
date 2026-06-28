@@ -581,11 +581,17 @@ The provider is configured globally — new projects inherit it.
 If Yes, run:
 
 ```bash
-brainpalace init
+brainpalace init --defer-activation
 ```
 
-This inherits the global config and by default starts server + indexes after a
-confirmation.
+This inherits the global config and writes the project's sparse config, but —
+because this is the plugin path — it does **not** start the server or index
+anything. `--defer-activation` arms the `cli.await_first_start` gate so passive
+vectors (the SessionStart hook, MCP `--ensure-server`) will NOT auto-start the
+project until the user starts it once. Tell the user to review the config and
+start it themselves (Step 11): `brainpalace start` (or the dashboard Instances →
+Start). That first manual start clears the gate; from then on it autostarts
+normally. (No effect if the project was already started before.)
 
 ### Step 10a: PostgreSQL (Only When Backend Is Postgres)
 
@@ -653,7 +659,7 @@ Write or update `storage.postgres.port` in the active config.yaml to use the dis
 docker exec brainpalace-postgres pg_isready -U brainpalace -d brainpalace
 ```
 
-### Step 11: Verify (only if a project was set up)
+### Step 11: Verify and hand off (only if a project was set up)
 
 If a project was initialised in Step 10:
 
@@ -661,8 +667,22 @@ If a project was initialised in Step 10:
 brainpalace status
 ```
 
-Confirm the server is healthy. If init was declined, skip — there is no
-project server to check yet.
+The project was configured with `--defer-activation`, so the server is **NOT
+running yet** — `status` shows it configured but down. This is expected. Do NOT
+start it for the user. Instead, tell them the two activation paths and let them
+start it the first time themselves:
+
+```
+BrainPalace is configured for this project but not running.
+Review the config, then start it the first time yourself:
+
+    brainpalace start          # or the dashboard Instances → Start
+
+It will not auto-start until you start it once; after that it autostarts
+normally.
+```
+
+If init was declined, skip — there is no project to check yet.
 
 ## Output
 
@@ -678,12 +698,15 @@ BrainPalace Setup
 [7]    Global config ... ~/.config/brainpalace/config.yaml [WRITTEN, chmod 600]
 [8]    Connectivity .... OK
 [9]    MCP client ...... <client or "skipped">
-[10]   Project ......... <initialised path or "skipped — run `brainpalace init` later">
-[11]   Verify .......... <OK or "skipped — no project initialised">
+[10]   Project ......... <configured (not started) at <path>, or "skipped — run `brainpalace init` later">
+[11]   Verify .......... <configured, NOT running — start it yourself: `brainpalace start`>
 
 Setup complete.
 
 The provider is configured globally — every `brainpalace init` inherits it.
+The project is configured but NOT running: start it the first time yourself
+with `brainpalace start` (or the dashboard Instances → Start). It will not
+auto-start until you do.
 ```
 
 ## Error Handling

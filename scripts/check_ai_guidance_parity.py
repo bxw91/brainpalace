@@ -36,7 +36,11 @@ HOOK_COPIES = (
     REPO / "brainpalace-cli/brainpalace_cli/data/hooks/sessionstart-hook.sh",
 )
 SHIM_MARKER = "brainpalace hook sessionstart"
-LEGACY_MARKERS = ("brainpalace whoami", "additionalContext", "<<'PY'")
+LEGACY_MARKERS = ("brainpalace whoami", "<<'PY'")
+# `additionalContext` is fat-hook logic the CLI must own — EXCEPT in the one
+# sanctioned CLI-missing branch (an absent CLI cannot announce itself, so the
+# plugin shim must). A shim carrying this marker may use `additionalContext`.
+SANCTION_MARKER = "SANCTIONED-CLI-MISSING-NUDGE"
 
 
 def _fail(errors: list[str], msg: str) -> None:
@@ -77,6 +81,12 @@ def main() -> int:
         for legacy in LEGACY_MARKERS:
             if legacy in text:
                 _fail(errors, f"{hook} still has legacy fat-hook logic ('{legacy}').")
+        if "additionalContext" in text and SANCTION_MARKER not in text:
+            _fail(
+                errors,
+                f"{hook} has fat-hook 'additionalContext' outside the sanctioned "
+                f"CLI-missing branch (missing '{SANCTION_MARKER}').",
+            )
     if len(shim_texts) == len(HOOK_COPIES) and len(set(shim_texts)) > 1:
         _fail(errors, "the two SessionStart hook copies differ — they must be identical.")
 

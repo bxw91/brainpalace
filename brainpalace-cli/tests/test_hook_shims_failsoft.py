@@ -9,6 +9,7 @@ that surfaced error BLOCKS the prompt. The shim must therefore swallow a failing
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import stat
@@ -54,9 +55,20 @@ def test_shim_failsoft_when_hook_command_missing(shim: Path, tmp_path: Path) -> 
 
 @pytest.mark.parametrize("shim", _SHIMS, ids=lambda s: s.name)
 def test_shim_noop_when_brainpalace_absent(shim: Path, tmp_path: Path) -> None:
-    # Not on PATH at all → existing guard exits 0 silently.
+    # Not on PATH at all → never block, never leak stderr.
     bindir = tmp_path / "bin"
     bindir.mkdir()
     res = _run_shim(shim, str(bindir))
     assert res.returncode == 0
-    assert res.stdout.strip() == ""
+    assert res.stderr.strip() == ""
+    if shim.name == "sessionstart-hook.sh":
+        # The sessionstart shim is the ONE exception: an absent CLI cannot
+        # announce itself, so the shim emits a single install directive that
+        # asks the model to offer installation. Must be valid JSON.
+        payload = json.loads(res.stdout)
+        ctx = payload["hookSpecificOutput"]["additionalContext"]
+        assert "AskUserQuestion" in ctx
+        assert "/brainpalace-install" in ctx or "/brainpalace-setup" in ctx
+    else:
+        # Every other shim stays strictly silent when the CLI is absent.
+        assert res.stdout.strip() == ""

@@ -81,6 +81,22 @@ def ensure_http_server(start: Path | None = None, timeout: int = 60) -> None:
             return  # uninitialised; tools will return a clear error
         if discover_server_url(start) is not None:
             return  # already healthy
+        # Passive-start gate (shared chokepoint). A project configured by the
+        # plugin path (`init --defer-activation`) and not yet manually started —
+        # or one with session-autostart disabled — must NOT be auto-started by an
+        # MCP client connecting. Leave the existing "server not running" tool
+        # error, matching this module's own "never auto-init" philosophy.
+        from brainpalace_cli.config_schema import passive_autostart_allowed
+
+        state_dir = resolve_state_dir_with_fallback(project)
+        if not passive_autostart_allowed(state_dir):
+            print(
+                "brainpalace mcp: --ensure-server skipped — project awaits first "
+                "manual start (or session-autostart disabled); run "
+                "`brainpalace start`.",
+                file=sys.stderr,
+            )
+            return
         _start_for(project, timeout=timeout)
     except Exception as exc:  # noqa: BLE001 — must not hang the MCP handshake
         print(f"brainpalace mcp: --ensure-server failed: {exc}", file=sys.stderr)

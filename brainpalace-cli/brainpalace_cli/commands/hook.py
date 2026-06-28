@@ -27,9 +27,10 @@ from typing import Any
 import click
 
 from ..ai_guidance import nudge
+from ..config_schema import passive_autostart_allowed, read_await_first_start
 from ..discovery import discover_project_dir, discover_server_url
 from ..doc_sync.triggers import is_interface_source
-from ..xdg_paths import get_xdg_config_dir
+from ..xdg_paths import get_xdg_config_dir, get_xdg_state_dir
 
 _DOCSYNC_NUDGE = (
     "Interface source changed — run `brainpalace sync-docs --fix` and commit the "
@@ -417,7 +418,12 @@ def _spawn_autostart(project: Path) -> None:
     try:
         prog = shutil.which("brainpalace") or sys.argv[0]
         subprocess.Popen(  # noqa: S603 — fixed argv, no shell
-            [prog, "start", "--json"],
+            # --no-activate: a passive (hook-spawned) start must NEVER clear the
+            # activation marker. Only a user-typed `brainpalace start` / dashboard
+            # Start activates a deferred project. Defence-in-depth: this path is
+            # already gated by `passive_autostart_allowed`, so it cannot fire while
+            # the marker is set — the flag guarantees the gate stays one-way.
+            [prog, "start", "--json", "--no-activate"],
             cwd=str(project),
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
@@ -471,20 +477,100 @@ def _spawn_dashboard_autostart(project: Path) -> None:
         pass
 
 
+def _setup_nudge_enabled() -> bool:
+    """Whether to offer first-time project setup on SessionStart.
+
+    Env ``BRAINPALACE_SETUP_NUDGE`` (off|false|0|disabled) opts out; default on.
+    """
+    val = os.getenv("BRAINPALACE_SETUP_NUDGE", "").strip().lower()
+    return val not in ("off", "false", "0", "disabled")
+
+
+_SETUP_NUDGE_DIRECTIVE = (
+    "NOTE: BrainPalace is installed and ready, but this project is not indexed "
+    "yet (no .brainpalace/ directory here). Use the AskUserQuestion tool to ask "
+    "the user whether to set BrainPalace up for this project now: (A) run "
+    "/brainpalace-setup to configure + index it, or (B) not now. Do NOT index "
+    "without asking first. Set BRAINPALACE_SETUP_NUDGE=off to silence this."
+)
+
+
+_AWAIT_FIRST_START_DIRECTIVE = (
+    "NOTE: BrainPalace is configured for this project but NOT running, and it "
+    "will not auto-start until you start it once. Tell the user to review the "
+    "config (the dashboard, or `brainpalace config show`) and start it the first "
+    "time themselves: `brainpalace start`, or the dashboard Instances -> Start. "
+    "Do NOT start it for them. Set BRAINPALACE_SETUP_NUDGE=off to silence this."
+)
+
+
+def _maybe_emit_setup_nudge() -> None:
+    """Offer one-time project setup when the CLI is present but the cwd isn't indexed.
+
+    Deliberately conservative so it never nags unrelated repos:
+      - opt out via ``BRAINPALACE_SETUP_NUDGE=off``;
+      - only inside a git working tree (a real project root);
+      - at most once per directory (a marker line in the XDG state dir).
+    Fail-soft: any error emits nothing — a hook must never block a session.
+    """
+    try:
+        if not _setup_nudge_enabled():
+            return
+        cwd = Path.cwd()
+        if not (cwd / ".git").exists():
+            return  # not a project root → stay silent (original no-nag behavior).
+        marker = get_xdg_state_dir() / "setup_nudged_dirs.txt"
+        seen: set[str] = set()
+        if marker.is_file():
+            seen = {
+                line.strip()
+                for line in marker.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            }
+        key = str(cwd.resolve())
+        if key in seen:
+            return  # already offered for this directory.
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        with marker.open("a", encoding="utf-8") as fh:
+            fh.write(key + "\n")
+        click.echo(
+            json.dumps(
+                {
+                    "hookSpecificOutput": {
+                        "hookEventName": "SessionStart",
+                        "additionalContext": _SETUP_NUDGE_DIRECTIVE,
+                    }
+                }
+            )
+        )
+    except Exception:  # noqa: BLE001 — a hook must never crash/block a session
+        pass
+
+
 def _emit_sessionstart() -> None:
     project = discover_project_dir(None)
     if project is None:
-        return  # whoami exit-1 equivalent: silent no-op for non-indexed projects.
+        # CLI installed but cwd not indexed → offer setup once (git repos only).
+        _maybe_emit_setup_nudge()
+        return
 
     msg = nudge()
     if not msg:
         return  # bundled guidance unavailable → fail soft, emit nothing.
 
+    state_dir = project / ".brainpalace"
     url = discover_server_url(None)
-    if url is None and _session_autostart_enabled():
-        # Indexed project, server down → bring it up (server + headless dashboard)
-        # in the background so this session can search without a manual `start`.
-        _spawn_autostart(project)
+    if url is None:
+        if passive_autostart_allowed(state_dir):
+            # Indexed project, server down → bring it up (server + headless
+            # dashboard) in the background so this session can search without a
+            # manual `start`.
+            _spawn_autostart(project)
+        elif read_await_first_start(state_dir) and _setup_nudge_enabled():
+            # State C: configured but never started. Passive start is gated off
+            # by the activation marker — emit a persistent reminder every session
+            # until the user starts it manually (which clears the marker).
+            msg += "\n\n" + _AWAIT_FIRST_START_DIRECTIVE
     if url:
         # Server up but the dashboard may have died (it is launched on
         # `brainpalace start`, not supervised; the server-down autostart above

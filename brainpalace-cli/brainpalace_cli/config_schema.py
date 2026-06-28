@@ -112,6 +112,7 @@ CLI_KNOWN_FIELDS = {
     "subagent_guard",
     "search_guard",
     "session_autostart",
+    "await_first_start",
 }
 # `cli.session_autostart` (bool, default True) — when a Claude Code session starts
 # in an indexed project whose server is down, the SessionStart hook spawns
@@ -443,6 +444,10 @@ _SECTION_SCHEMA: dict[str, dict[str, Any]] = {
             "session_autostart": (
                 bool,
                 "cli.session_autostart must be a boolean (true/false)",
+            ),
+            "await_first_start": (
+                bool,
+                "cli.await_first_start must be a boolean (true/false)",
             ),
         },
     },
@@ -984,3 +989,113 @@ def format_validation_errors(errors: list[ConfigValidationError]) -> str:
             lines.append(f"    Fix: {error.suggestion}")
         lines.append("")
     return "\n".join(lines)
+
+
+# --- Activation gate marker (cli.await_first_start) -------------------------
+#
+# `cli.await_first_start: true` marks a project configured by the PLUGIN path
+# (`brainpalace init --defer-activation`) that the user has NOT yet started
+# manually. While set, PASSIVE start vectors (the SessionStart hook and
+# `brainpalace mcp --ensure-server`) must NOT spawn a server — only an explicit
+# `brainpalace start` (or dashboard Instances -> Start) activates the project,
+# which clears the marker. Terminal `brainpalace init` (no flag) never writes it.
+def read_await_first_start(state_dir: Path) -> bool:
+    """True if the project at ``state_dir`` is configured but awaiting first start.
+
+    Reads ``cli.await_first_start`` from ``state_dir/config.yaml``. Best-effort:
+    any read/parse error returns False (fail toward allowing a start — never
+    block a project that has no marker).
+    """
+    try:
+        config_path = state_dir / "config.yaml"
+        if not config_path.is_file():
+            return False
+        data = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+        cli = data.get("cli")
+        return bool(isinstance(cli, dict) and cli.get("await_first_start") is True)
+    except (OSError, ValueError):
+        return False
+
+
+def write_await_first_start(state_dir: Path, value: bool) -> None:
+    """Set or clear ``cli.await_first_start`` in ``state_dir/config.yaml`` (sparse).
+
+    ``value=True`` writes the marker; ``value=False`` REMOVES the key (and an
+    emptied ``cli`` block) so the config stays sparse and the field inherits its
+    default. Preserves all other keys. Best-effort: errors are swallowed — the
+    marker is an optimisation, never a hard dependency.
+    """
+    try:
+        config_path = state_dir / "config.yaml"
+        data: dict[str, Any] = {}
+        if config_path.exists():
+            try:
+                data = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+            except (OSError, ValueError):
+                data = {}
+        cli = data.get("cli")
+        if not isinstance(cli, dict):
+            cli = {}
+        if value:
+            cli["await_first_start"] = True
+        else:
+            cli.pop("await_first_start", None)
+        if cli:
+            data["cli"] = cli
+        else:
+            data.pop("cli", None)
+        state_dir.mkdir(parents=True, exist_ok=True)
+        with open(config_path, "w", encoding="utf-8") as f:
+            yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
+    except OSError:
+        pass
+
+
+def resolve_session_autostart(state_dir: Path | None) -> bool:
+    """Resolve ``cli.session_autostart`` (global XDG + project, project wins).
+
+    Env override ``BRAINPALACE_SESSION_AUTOSTART`` (off|on) takes top precedence.
+    Default ``True``. Best-effort: any failure returns the default so callers fail
+    toward the documented on-by-default behaviour. ``state_dir`` supplies the
+    project layer; pass ``None`` to consult only the global config.
+    """
+    import os
+
+    env = os.getenv("BRAINPALACE_SESSION_AUTOSTART", "").strip().lower()
+    if env in ("off", "false", "0", "disabled"):
+        return False
+    if env in ("on", "true", "1", "enabled"):
+        return True
+    from .xdg_paths import get_xdg_config_dir
+
+    enabled = True
+    candidates: list[Path] = [get_xdg_config_dir() / "config.yaml"]
+    if state_dir is not None:
+        candidates.append(state_dir / "config.yaml")
+    for path in candidates:
+        try:
+            if path.is_file():
+                data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+                cli = data.get("cli")
+                if isinstance(cli, dict) and isinstance(
+                    cli.get("session_autostart"), bool
+                ):
+                    enabled = cli["session_autostart"]
+        except (OSError, ValueError):
+            continue
+    return enabled
+
+
+def passive_autostart_allowed(state_dir: Path) -> bool:
+    """Single chokepoint: may a PASSIVE vector spawn a server for this project?
+
+    True only when session-autostart is enabled AND the project is not awaiting
+    its first manual start (the activation gate). Both passive callers — the
+    SessionStart hook and the MCP ``--ensure-server`` lifecycle — funnel through
+    here, so any future passive vector inherits the gate for free. Manual callers
+    (``brainpalace start``, the dashboard "Start" action) bypass this entirely:
+    they start unconditionally and CLEAR the marker (activation event).
+    """
+    if read_await_first_start(state_dir):
+        return False
+    return resolve_session_autostart(state_dir)

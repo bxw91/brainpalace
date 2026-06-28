@@ -149,7 +149,14 @@ def test_spawn_autostart_is_detached_fire_and_forget(
     monkeypatch.setattr(hook.shutil, "which", lambda _: "/usr/bin/brainpalace")
     hook._spawn_autostart(Path("/proj"))
     assert len(calls) == 1
-    assert calls[0]["argv"] == ["/usr/bin/brainpalace", "start", "--json"]
+    # --no-activate: a passive (hook-spawned) start must never clear the
+    # activation gate marker — only a user-typed start activates a project.
+    assert calls[0]["argv"] == [
+        "/usr/bin/brainpalace",
+        "start",
+        "--json",
+        "--no-activate",
+    ]
 
 
 def test_hook_sessionstart_server_up_resurrects_dashboard(

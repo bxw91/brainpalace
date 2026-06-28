@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-24
+last_validated: 2026-06-28
 ---
 
 # BrainPalace Plugin Guide
@@ -45,6 +45,14 @@ The plugin ships a SessionStart hook
 reminder (and, when enabled, an injected project-context block) when Claude
 Code opens a directory that has a `.brainpalace/` index.
 
+### Updating the plugin
+
+Update later from inside Claude Code (then restart the session):
+
+```bash
+claude plugin update brainpalace@brainpalace-marketplace
+```
+
 ---
 
 ## Quick Setup
@@ -58,9 +66,13 @@ The fastest way to get started:
 This interactive wizard:
 1. Installs packages (`brainpalace-rag`, `brainpalace-cli`)
 2. Configures API keys
-3. Initializes your project
-4. Starts the server
-5. Indexes your documentation
+3. Initializes your project — **configure-only** (`init --defer-activation`):
+   it does not start the server or index, and won't auto-start
+
+Then **you** start it the first time yourself (it won't auto-start until you
+do): `brainpalace start` (or the dashboard Instances → Start), which also kicks
+off the first index. After that first manual start, the project autostarts
+normally on future sessions.
 
 Or step-by-step:
 

@@ -1158,6 +1158,7 @@ def _emit_init_result(
     plugin_present: bool = False,
     sessions_on: bool = False,
     embedding: tuple[str, str] | None = None,
+    await_first_start: bool = False,
 ) -> None:
     """Print the init result, including any post-init step outcomes."""
     # Register the project in the durable fleet store so the dashboard can list
@@ -1183,6 +1184,7 @@ def _emit_init_result(
                     "config": config,
                     "post_init_steps": post_init_steps,
                     "dashboard": _dashboard_from_steps(post_init_steps),
+                    "await_first_start": await_first_start,
                 },
                 indent=2,
             )
@@ -1216,7 +1218,16 @@ def _emit_init_result(
     # status lines were chores the user must perform.
     done: list[str] = []
     todo: list[str] = []
-    if not start_used:
+    if await_first_start:
+        # Deferred (plugin) init: config saved, server NOT running, and it will
+        # NOT auto-start until the user starts it once. Spell that out.
+        todo.append(
+            "Config saved — the server is [bold]not running[/]. Review it (the "
+            "dashboard or [bold]brainpalace config show[/]), then start it the "
+            "first time yourself: [bold]brainpalace start[/] (or the dashboard "
+            "Instances → Start). It will not auto-start until you do."
+        )
+    elif not start_used:
         todo.append("Run [bold]brainpalace start[/] to start the server")
     elif started_ok:
         done.append("Server started.")
@@ -1485,6 +1496,21 @@ def _start_and_watch(
     ),
 )
 @click.option(
+    "--defer-activation",
+    "--plugin-managed",
+    "defer_activation",
+    is_flag=True,
+    help=(
+        "Configure the project but leave it NOT running: implies --no-start and "
+        "--no-watch, and writes a one-shot activation marker "
+        "(cli.await_first_start) so passive vectors (the SessionStart hook, MCP "
+        "--ensure-server) do NOT auto-start it until the user starts it once "
+        "(`brainpalace start` or the dashboard Start). Used by the plugin setup "
+        "path. An explicit --start overrides it. No effect on an already-started "
+        "project."
+    ),
+)
+@click.option(
     "--watch",
     type=click.Choice(["off", "auto"], case_sensitive=False),
     default=None,
@@ -1626,6 +1652,7 @@ def init_command(
     state_dir: str | None,
     force_monorepo_root: bool,
     start: bool | None,
+    defer_activation: bool,
     watch: str | None,
     no_watch: bool,
     yes: bool,
@@ -1689,6 +1716,14 @@ def init_command(
         # all-on defaults apply only with consent (TTY confirm or --yes);
         # --json forces non-interactive.
         is_tty = _stdin_is_tty() and not json_output
+
+        # --defer-activation (plugin path): configure but do NOT start. An
+        # explicit --start beats it (the user is activating now); otherwise force
+        # config-only (no start, no watch) and arm the activation marker below.
+        defer_activation_effective = defer_activation and start is None
+        if defer_activation_effective:
+            start = False
+            no_watch = True
 
         plan = resolve_init_plan(
             start=start,
@@ -2389,6 +2424,26 @@ def init_command(
         except (OSError, Exception):
             config = {}
 
+        # Arm the activation gate ONLY for a deferred (plugin) init of a project
+        # that was never started (hardening item 5): re-running plugin init on an
+        # already-activated project must NOT re-gate its autostart. "Never
+        # activated" = absent from the durable known-projects fleet store (every
+        # `brainpalace start` / dashboard Start records it there).
+        armed_await_first_start = False
+        if defer_activation_effective:
+            try:
+                from brainpalace_cli import known_projects
+                from brainpalace_cli.config_schema import write_await_first_start
+
+                never_started = (
+                    str(project_root.resolve()) not in known_projects.load_existing()
+                )
+                if never_started:
+                    write_await_first_start(resolved_state_dir, True)
+                    armed_await_first_start = True
+            except Exception:
+                pass
+
         if plan.start:
             post_init_steps = _start_and_watch(
                 project_root=project_root,
@@ -2403,6 +2458,7 @@ def init_command(
             )
 
         _emit_init_result(
+            await_first_start=armed_await_first_start,
             project_root=project_root,
             resolved_state_dir=resolved_state_dir,
             config_path=config_path,
