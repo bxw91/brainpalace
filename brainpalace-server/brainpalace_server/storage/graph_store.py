@@ -52,6 +52,11 @@ class GraphStoreManager:
         # `status` reports the on-disk graph size at cold start without forcing a
         # full graph load. Reset by initialize()/clear() which set live counts.
         self._counts_hydrated = False
+        # Idempotent-submit dedup (H4/E4): in-memory set of
+        # (source_chunk_id, subject, predicate, obj) seen this session.
+        # Prevents a re-submitted or late-arriving subagent payload from writing
+        # duplicate edges. Cleared by clear() to stay consistent with the store.
+        self._seen_triplets: set[tuple[str | None, str, str, str]] = set()
 
     @classmethod
     def get_instance(
@@ -460,6 +465,15 @@ class GraphStoreManager:
             )
             return False
 
+        # Idempotent-submit dedup (H4/E4): skip identical edges already seen
+        # this session. Keyed on (source_chunk_id, subject, predicate, obj) so
+        # the same triplet from the same chunk is never written twice, even when
+        # a subagent resubmits after a provider already drained it.
+        _dedup_key = (source_chunk_id, subject, predicate, obj)
+        if _dedup_key in self._seen_triplets:
+            return False
+        self._seen_triplets.add(_dedup_key)
+
         try:
             from llama_index.core.graph_stores.types import EntityNode, Relation
 
@@ -626,6 +640,16 @@ class GraphStoreManager:
         result: list[dict[str, Any]] = store.search_nodes(text, limit=limit)
         return result
 
+    def top_nodes(self, limit: int = 20) -> list[dict[str, Any]]:
+        """Highest-degree hub nodes; empty on simple backend or disabled."""
+        if not settings.ENABLE_GRAPH_INDEX or self._graph_store is None:
+            return []
+        store = self._graph_store
+        if not hasattr(store, "top_nodes"):
+            return []
+        result: list[dict[str, Any]] = store.top_nodes(limit=limit)
+        return result
+
     def neighbors(
         self, node_ids: list[str], limit: int = 200
     ) -> dict[str, list[dict[str, Any]]]:
@@ -659,6 +683,7 @@ class GraphStoreManager:
         self._entity_count = 0
         self._relationship_count = 0
         self._last_updated = None
+        self._seen_triplets = set()  # reset dedup set to match cleared store
 
         # Remove persisted data
         persist_path = self.persist_dir / "graph_store.json"

@@ -54,10 +54,6 @@ parameters:
     type: text
     required: false
     default: ""
-  - name: generate-summaries
-    type: bool
-    required: false
-    default: false
   - name: force
     type: bool
     required: false
@@ -72,7 +68,7 @@ parameters:
     default: false
 skills:
   - using-brainpalace
-last_validated: 2026-06-20
+last_validated: 2026-06-24
 ---
 
 # Content Injection
@@ -109,7 +105,6 @@ At least one of `--script` or `--folder-metadata` must be provided.
 | --code-strategy | No | ast_aware | Code splitting: ast_aware or text_based |
 | --include-patterns | No | - | Additional glob include patterns |
 | --exclude-patterns | No | - | Additional glob exclude patterns |
-| --generate-summaries | No | false | Generate LLM summaries for better search |
 | --force | No | false | Force re-indexing (bypass manifest) |
 | --allow-external | No | false | Allow paths outside project directory |
 | --json | No | false | Output results as JSON |
@@ -192,7 +187,7 @@ def process_chunk(chunk: dict) -> dict:
     return chunk
 ```
 
-**Input keys available** (from chunk metadata; not the chunk text): `chunk_id`, `source`, `language`, `start_line`, `end_line`, and `section_summary` (optional). Additional metadata keys (`file_name`, `chunk_index`, `total_chunks`, `source_type`, etc.) are also present.
+**Input keys available** (from chunk metadata; not the chunk text): `chunk_id`, `source`, `language`, `start_line`, `end_line`, and `docstring` (optional). Additional metadata keys (`file_name`, `chunk_index`, `total_chunks`, `source_type`, etc.) are also present.
 
 **Constraints:**
 - Values must be scalars (str, int, float, bool) — lists and dicts are stripped for ChromaDB compatibility
@@ -263,7 +258,6 @@ brainpalace jobs --watch
 | --include-patterns | text | "" | Comma-separated additional include patterns (wildcards supported) |
 | --include-type | text | "" | Comma-separated file type presets to include (e.g., python,docs,typescript). Use 'brainpalace types list' to see all available presets. |
 | --exclude-patterns | text | "" | Comma-separated additional exclude patterns (wildcards supported) |
-| --generate-summaries | bool | false | Generate LLM summaries for code chunks to improve semantic search |
 | --force | bool | false | Force re-indexing even if embedding provider has changed |
 | --allow-external | bool | false | Allow indexing paths outside the project directory |
 | --json | bool | false | Output as JSON |

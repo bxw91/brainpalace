@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-18
+last_validated: 2026-06-25
 ---
 
 # Provider Configuration Reference
@@ -340,12 +340,15 @@ env-var value):
 | `extraction_model` | string | `GRAPH_EXTRACTION_MODEL` | Model for entity extraction |
 | `max_triplets_per_chunk` | int | `GRAPH_MAX_TRIPLETS_PER_CHUNK` | Max triplets per document chunk |
 | `use_code_metadata` | bool | `GRAPH_USE_CODE_METADATA` | Use AST metadata for code entities |
-| `use_llm_extraction` | bool | `GRAPH_USE_LLM_EXTRACTION` | Legacy: Anthropic LLM for doc extraction |
 | `traversal_depth` | int | `GRAPH_TRAVERSAL_DEPTH` | Depth for graph traversal in queries |
 | `rrf_k` | int | `GRAPH_RRF_K` | Reciprocal Rank Fusion constant for multi-retrieval |
-| `doc_extractor` | string | `GRAPH_DOC_EXTRACTOR` | `langextract` (multi-provider) or `none` |
-| `langextract_provider` | string | `GRAPH_LANGEXTRACT_PROVIDER` | Override provider for LangExtract |
-| `langextract_model` | string | `GRAPH_LANGEXTRACT_MODEL` | Override model for LangExtract |
+
+Doc-graph and session extraction are controlled by the `extraction` section:
+
+| Field | Type | Maps to env var | Description |
+|-------|------|-----------------|-------------|
+| `extraction.mode` | string | `EXTRACTION_MODE` | `off` (default) \| `subagent` (free) \| `auto` \| `provider` (BILLABLE) |
+| `extraction.grace_hours` | int | — | Hours before `auto` mode falls back to provider |
 
 #### Precedence: env vars > YAML > defaults
 

@@ -98,11 +98,6 @@ console = Console()
     help="Comma-separated additional exclude patterns (wildcards supported)",
 )
 @click.option(
-    "--generate-summaries",
-    is_flag=True,
-    help="Generate LLM summaries for code chunks to improve semantic search",
-)
-@click.option(
     "--force",
     is_flag=True,
     help="Force re-indexing even if embedding provider has changed",
@@ -128,7 +123,6 @@ def inject_command(
     include_patterns: str | None,
     include_type: str | None,
     exclude_patterns: str | None,
-    generate_summaries: bool,
     force: bool,
     allow_external: bool,
     json_output: bool,
@@ -202,7 +196,6 @@ def inject_command(
                 include_patterns=include_patterns_list,
                 include_types=include_types_list,
                 exclude_patterns=exclude_patterns_list,
-                generate_summaries=generate_summaries,
                 force=force,
                 allow_external=allow_external,
                 injector_script=resolved_script,

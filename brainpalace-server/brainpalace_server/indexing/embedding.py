@@ -1,12 +1,11 @@
 """Embedding generation using pluggable providers.
 
-This module provides embedding and summarization functionality using
-the configurable provider system. Providers are selected based on
-config.yaml or environment defaults.
+This module provides embedding functionality using the configurable
+provider system. Providers are selected based on config.yaml or
+environment defaults.
 """
 
 import logging
-import re
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Optional
 
@@ -14,10 +13,7 @@ from brainpalace_server.config.provider_config import load_provider_settings
 from brainpalace_server.providers.factory import ProviderRegistry
 
 if TYPE_CHECKING:
-    from brainpalace_server.providers.base import (
-        EmbeddingProvider,
-        SummarizationProvider,
-    )
+    from brainpalace_server.providers.base import EmbeddingProvider
 
 from .chunking import TextChunk
 
@@ -25,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 class EmbeddingGenerator:
-    """Generates embeddings and summaries using pluggable providers.
+    """Generates embeddings using pluggable providers.
 
     Supports batch processing with configurable batch sizes
     and automatic provider selection based on configuration.
@@ -34,15 +30,12 @@ class EmbeddingGenerator:
     def __init__(
         self,
         embedding_provider: Optional["EmbeddingProvider"] = None,
-        summarization_provider: Optional["SummarizationProvider"] = None,
     ):
         """Initialize the embedding generator.
 
         Args:
             embedding_provider: Optional embedding provider. If not provided,
                 creates one from configuration.
-            summarization_provider: Optional summarization provider. If not
-                provided, creates one from configuration.
         """
         # Load configuration
         self._settings = load_provider_settings()
@@ -55,34 +48,11 @@ class EmbeddingGenerator:
                 self._settings.embedding
             )
 
-        # Summarization is built LAZILY (on first summary), not here. Summaries
-        # are only needed for code-summary generation and already degrade
-        # gracefully to docstring extraction on failure. Building the provider
-        # eagerly made the whole server fail to start when the summarization
-        # provider's API key was absent (e.g. default summarization=anthropic
-        # with only OPENAI_API_KEY set) — even though embeddings, document
-        # indexing, and session memory only need the embedding provider.
-        self._summarization_provider = summarization_provider
-
         logger.info(
             f"EmbeddingGenerator initialized with "
             f"{self._embedding_provider.provider_name} embeddings "
-            f"({self._embedding_provider.model_name}); summarization "
-            f"({self._settings.summarization.provider}) is initialized on first use"
+            f"({self._embedding_provider.model_name})"
         )
-
-    def _ensure_summarization_provider(self) -> "SummarizationProvider":
-        """Lazily build (and cache) the summarization provider on first use.
-
-        Kept out of ``__init__`` so a missing summarization API key cannot crash
-        server startup; callers (``generate_summary``) handle build/usage errors
-        by falling back to docstring extraction.
-        """
-        if self._summarization_provider is None:
-            self._summarization_provider = ProviderRegistry.get_summarization_provider(
-                self._settings.summarization
-            )
-        return self._summarization_provider
 
     @property
     def model(self) -> str:
@@ -93,11 +63,6 @@ class EmbeddingGenerator:
     def embedding_provider(self) -> "EmbeddingProvider":
         """Get the embedding provider."""
         return self._embedding_provider
-
-    @property
-    def summarization_provider(self) -> "SummarizationProvider":
-        """Get the summarization provider (built lazily on first access)."""
-        return self._ensure_summarization_provider()
 
     async def embed_text(self, text: str) -> list[float]:
         """Generate embedding for a single text (cache-intercepted).
@@ -171,7 +136,25 @@ class EmbeddingGenerator:
 
         cache = get_embedding_cache()
         if cache is None:
-            return await self._embedding_provider.embed_texts(texts, progress_callback)
+            from brainpalace_server.services.usage_metrics import (  # noqa: PLC0415
+                current_usage_source,
+                record_usage,
+            )
+
+            embeddings, usage = await self._embedding_provider.embed_texts_with_usage(
+                texts, progress_callback
+            )
+            record_usage(
+                "embedding",
+                self._embedding_provider.provider_name,
+                self._embedding_provider.model_name,
+                current_usage_source(),
+                chunks=len(texts),
+                calls=1,
+                tokens_in=usage.tokens_in,
+                cache_read=usage.cache_read,
+            )
+            return embeddings
 
         dims = self._embedding_provider.get_dimensions()
         provider = self._embedding_provider.provider_name
@@ -191,9 +174,30 @@ class EmbeddingGenerator:
         miss_indices = [i for i, r in enumerate(results) if r is None]
 
         if miss_indices:
+            from brainpalace_server.services.usage_metrics import (  # noqa: PLC0415
+                current_usage_source,
+                record_usage,
+            )
+
             miss_texts = [texts[i] for i in miss_indices]
-            miss_embeddings = await self._embedding_provider.embed_texts(
+            (
+                miss_embeddings,
+                usage,
+            ) = await self._embedding_provider.embed_texts_with_usage(
                 miss_texts, progress_callback
+            )
+            # Meter only the misses — local-cache hits did no provider work, so
+            # they record nothing ("work in window", §6-F8). usage.cache_read is
+            # the provider-side prompt cache, distinct from our embedding cache.
+            record_usage(
+                "embedding",
+                provider,
+                model,
+                current_usage_source(),
+                chunks=len(miss_texts),
+                calls=1,
+                tokens_in=usage.tokens_in,
+                cache_read=usage.cache_read,
             )
             # Collect results and batch-write to cache in one transaction
             cache_items: list[tuple[str, list[float]]] = []
@@ -280,62 +284,6 @@ class EmbeddingGenerator:
             Number of dimensions in the embedding vector.
         """
         return self._embedding_provider.get_dimensions()
-
-    async def generate_summary(self, code_text: str) -> str:
-        """Generate a natural language summary of code.
-
-        Args:
-            code_text: The source code to summarize.
-
-        Returns:
-            Natural language summary of the code's functionality.
-        """
-        try:
-            provider = self._ensure_summarization_provider()
-            summary = await provider.summarize(code_text)
-
-            if summary and len(summary) > 10:
-                return summary
-            else:
-                logger.warning(
-                    f"{provider.provider_name} returned empty or too short summary"
-                )
-                return self._extract_fallback_summary(code_text)
-
-        except Exception as e:
-            logger.error(f"Failed to generate code summary: {e}")
-            return self._extract_fallback_summary(code_text)
-
-    def _extract_fallback_summary(self, code_text: str) -> str:
-        """Extract summary from docstrings or comments as fallback.
-
-        Args:
-            code_text: Source code to analyze.
-
-        Returns:
-            Extracted summary or empty string.
-        """
-        # Try to find Python docstrings
-        docstring_match = re.search(r'""".*?"""', code_text, re.DOTALL)
-        if docstring_match:
-            docstring = docstring_match.group(0)[3:-3]
-            if len(docstring) > 10:
-                return docstring[:200] + "..." if len(docstring) > 200 else docstring
-
-        # Try to find function/class comments
-        comment_match = re.search(
-            r"#.*(?:function|class|method|def)", code_text, re.IGNORECASE
-        )
-        if comment_match:
-            return comment_match.group(0).strip("#").strip()
-
-        # Last resort: first line if it looks like a comment
-        lines = code_text.strip().split("\n")
-        first_line = lines[0].strip()
-        if first_line.startswith(("#", "//", "/*")):
-            return first_line.lstrip("#/*").strip()
-
-        return ""
 
 
 # Singleton instance

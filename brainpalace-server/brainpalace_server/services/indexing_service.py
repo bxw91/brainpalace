@@ -480,7 +480,6 @@ class IndexingService:
             "tokenizer": tokenizer,
             "embedding_provider": provider,
             "embedding_model": model,
-            "summaries_enabled": bool(request.generate_summaries),
             "approximate": True,
         }
 
@@ -810,9 +809,7 @@ class IndexingService:
                         continue
 
                     try:
-                        code_chunker = CodeChunker(
-                            language=lang, generate_summaries=request.generate_summaries
-                        )
+                        code_chunker = CodeChunker(language=lang)
 
                         # Create progress callback with fixed offset for this language
                         def make_progress_callback(
@@ -916,8 +913,6 @@ class IndexingService:
                     "symbol_kind",
                     "start_line",
                     "end_line",
-                    "section_summary",
-                    "prev_section_summary",
                     "docstring",
                     "parameters",
                     "return_type",
@@ -965,12 +960,40 @@ class IndexingService:
                     pct = 15 + int((processed / total) * 35)
                     await progress_callback(pct, 100, f"Embedding: {processed}/{total}")
 
-            # The chunks list contains both TextChunk and CodeChunk,
-            # but both are TextChunk subclasses
-            embeddings = await self.embedding_generator.embed_chunks(
-                chunks,  # type: ignore
-                embedding_progress,
-            )
+            # The chunks list mixes prose (TextChunk) and source code
+            # (CodeChunk). Meter each under its own usage source ("doc" vs
+            # "code") so the dashboard separates real docs from code files,
+            # then reassemble the embeddings in the original chunk order.
+            from brainpalace_server.indexing.chunking import (
+                CodeChunk,
+            )  # noqa: PLC0415
+            from brainpalace_server.services.usage_metrics import (
+                usage_scope,
+            )  # noqa: PLC0415
+
+            async def _embed_scoped(group: list[Any], scope: str) -> list[list[float]]:
+                if not group:
+                    return []
+                with usage_scope(scope):
+                    return await self.embedding_generator.embed_chunks(
+                        group,
+                        embedding_progress,
+                    )
+
+            _code_chunks = [c for c in chunks if isinstance(c, CodeChunk)]
+            _doc_chunks = [c for c in chunks if not isinstance(c, CodeChunk)]
+            _doc_emb = await _embed_scoped(_doc_chunks, "doc")
+            _code_emb = await _embed_scoped(_code_chunks, "code")
+
+            _di = _ci = 0
+            embeddings = []
+            for _c in chunks:
+                if isinstance(_c, CodeChunk):
+                    embeddings.append(_code_emb[_ci])
+                    _ci += 1
+                else:
+                    embeddings.append(_doc_emb[_di])
+                    _di += 1
             logger.info(f"Generated {len(embeddings)} embeddings")
 
             # Step 4: Store in vector database

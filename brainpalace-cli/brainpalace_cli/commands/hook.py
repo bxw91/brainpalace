@@ -81,58 +81,54 @@ def hook_posttooluse() -> None:
         pass
 
 
-def _drain_directive(ids: list[str], remaining: int) -> str:
-    """Build the UserPromptSubmit extraction directive. Text lives HERE (CLI), not
-    in the installed shim, so a ``pip`` upgrade propagates wording changes."""
-    tail = f" ({remaining} more queued — draining gradually.)" if remaining else ""
-    return (
-        "Prior sessions are pending knowledge extraction: "
-        + " ".join(ids)
-        + ". Run the chat-session-extractor subagent on each (it submits via "
-        "`brainpalace submit-session`). Best-effort background curation — do it "
-        "alongside the user's request, don't block on it." + tail
-    )
-
-
 @hook_group.command("userpromptsubmit")
 def hook_userpromptsubmit() -> None:
-    """Drain a throttled batch of the session-summarization gap after a user turn.
+    """Drain one throttled batch of the unified extraction queue after a user turn.
 
-    Indexed projects only (silent no-op otherwise). Selection, byte budget, count
-    cap, and the 5-min cooldown live in ``drain-queue`` (unit-tested); this just
-    invokes it and, when sessions are drained, injects a directive asking the
-    in-session model to run the free ``chat-session-extractor`` subagent on each.
-    Empty drain / active cooldown → emit nothing. Never blocks.
+    Indexed projects only (silent no-op otherwise). Fetches ``source=all``
+    pending items, throttles docs + sessions per source, and — on a non-empty,
+    non-cooldown batch — injects ONE ids-only directive routing doc ids to a
+    single ``graph-triplet-extractor`` dispatch and session ids to one
+    ``chat-session-extractor`` each. Selection, byte budget, per-source caps and
+    the cooldown-on-emit live in :func:`extraction_drain.unified_drain`
+    (unit-tested). The directive carries **ids only, never chunk text** (H1).
+    Empty drain / active cooldown / server down → emit nothing. Never blocks.
     """
     try:
         # Lazy import: keeps the hook module light + avoids an import cycle.
-        from .session_drain import (
-            drain_queue,
+        from .extraction_drain import (
             resolve_budget,
             resolve_cooldown,
-            resolve_max_count,
+            resolve_doc_cap,
+            resolve_max_pending,
+            resolve_session_cap,
+            unified_drain,
         )
 
         root = discover_project_dir(None)
         if root is None:
             return  # not an indexed project → never touch it.
-        res = drain_queue(
+        url = discover_server_url(None)
+        if url is None:
+            return  # server down → fail open, inject nothing.
+        out = unified_drain(
             root,
-            budget=resolve_budget(root),
-            cap=resolve_max_count(root),
+            url=url,
+            doc_cap=resolve_doc_cap(root),
+            session_budget=resolve_budget(root),
+            session_cap=resolve_session_cap(root),
             cooldown=resolve_cooldown(root),
+            max_pending=resolve_max_pending(root),
         )
-        ids = res.get("drained") or []
-        if not ids:
-            return  # empty queue / active cooldown → inject nothing.
+        directive = out.get("directive")
+        if not directive:
+            return  # empty queue / active cooldown / error → inject nothing.
         click.echo(
             json.dumps(
                 {
                     "hookSpecificOutput": {
                         "hookEventName": "UserPromptSubmit",
-                        "additionalContext": _drain_directive(
-                            ids, int(res.get("remaining", 0) or 0)
-                        ),
+                        "additionalContext": directive,
                     }
                 }
             )

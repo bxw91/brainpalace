@@ -7,7 +7,6 @@ from unittest.mock import patch
 from brainpalace_cli.config import (
     BrainPalaceConfig,
     EmbeddingConfig,
-    ProjectConfig,
     ServerConfig,
     SummarizationConfig,
     get_server_url,
@@ -26,21 +25,6 @@ class TestServerConfig:
         assert config.host == "127.0.0.1"
         assert config.port == 8000
         assert config.auto_port is True
-
-
-class TestProjectConfig:
-    """Tests for ProjectConfig model."""
-
-    def test_default_values(self) -> None:
-        """Test default configuration values."""
-        config = ProjectConfig()
-        assert config.state_dir is None
-        assert config.project_root is None
-
-    def test_custom_state_dir(self) -> None:
-        """Test custom state directory."""
-        config = ProjectConfig(state_dir="/custom/path")
-        assert config.state_dir == "/custom/path"
 
 
 class TestEmbeddingConfig:
@@ -78,7 +62,6 @@ class TestBrainPalaceConfig:
         """Test default configuration values."""
         config = BrainPalaceConfig()
         assert config.server.url == "http://127.0.0.1:8000"
-        assert config.project.state_dir is None
         assert config.embedding.provider == "openai"
         assert config.summarization.provider == "anthropic"
 
@@ -86,12 +69,10 @@ class TestBrainPalaceConfig:
         """Test creating config from dictionary (as from YAML)."""
         config = BrainPalaceConfig(
             server={"url": "http://localhost:9000", "port": 9000},
-            project={"state_dir": "/custom/state"},
             embedding={"provider": "ollama", "model": "nomic-embed-text"},
         )
         assert config.server.url == "http://localhost:9000"
         assert config.server.port == 9000
-        assert config.project.state_dir == "/custom/state"
         assert config.embedding.provider == "ollama"
 
 
@@ -120,16 +101,6 @@ class TestLoadConfig:
         ):
             config = load_config(Path("/nonexistent"))
             assert config.server.url == "http://custom:8080"
-
-    def test_state_dir_env_override(self) -> None:
-        """Test state dir environment variable override."""
-        with patch.dict(
-            os.environ,
-            {"BRAINPALACE_STATE_DIR": "/env/state/dir"},
-            clear=True,
-        ):
-            config = load_config(Path("/nonexistent"))
-            assert config.project.state_dir == "/env/state/dir"
 
 
 class TestGetServerUrl:
@@ -183,19 +154,6 @@ class TestGetStateDir:
             state_dir = get_state_dir(project_root=Path("/fake/project"))
             assert state_dir == Path("/env/state")
 
-    def test_config_state_dir(self) -> None:
-        """Test state dir from config object."""
-        config = BrainPalaceConfig(project={"state_dir": "/config/state"})
-        with (
-            patch.dict(os.environ, {}, clear=True),
-            patch(
-                "brainpalace_cli.config._find_project_root",
-                return_value=Path("/fake/project"),
-            ),
-        ):
-            state_dir = get_state_dir(config=config, project_root=Path("/fake/project"))
-            assert state_dir == Path("/config/state")
-
 
 class TestConfigFileLoading:
     """Tests for loading config from YAML files."""
@@ -208,9 +166,6 @@ class TestConfigFileLoading:
 server:
   url: "http://test:8080"
   port: 8080
-
-project:
-  state_dir: "/test/state"
 
 embedding:
   provider: "ollama"
@@ -231,7 +186,6 @@ embedding:
                 config = load_config()
                 assert config.server.url == "http://test:8080"
                 assert config.server.port == 8080
-                assert config.project.state_dir == "/test/state"
                 assert config.embedding.provider == "ollama"
             finally:
                 # Restore any removed env vars

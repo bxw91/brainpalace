@@ -42,26 +42,31 @@ class TestInitCommand:
 
         state_dir = temp_project / ".brainpalace"
         assert state_dir.exists()
-        assert (state_dir / "config.json").exists()
+        assert (state_dir / "config.yaml").exists()
+        assert not (state_dir / "config.json").exists()
         assert (state_dir / "data").exists()
         assert (state_dir / "data" / "chroma_db").exists()
         assert (state_dir / "data" / "bm25_index").exists()
         assert (state_dir / "logs").exists()
 
     def test_init_writes_config(self, runner: CliRunner, temp_project: Path) -> None:
-        """Test that init writes the config.json file."""
+        """Test that init writes the config.yaml file with a bind: section."""
+        import yaml
+
         result = runner.invoke(
             init_command, ["--path", str(temp_project), "--port", "9000"]
         )
 
         assert result.exit_code == 0
 
-        config_path = temp_project / ".brainpalace" / "config.json"
-        config = json.loads(config_path.read_text())
+        config_path = temp_project / ".brainpalace" / "config.yaml"
+        assert config_path.exists()
+        config = yaml.safe_load(config_path.read_text())
 
-        assert config["port"] == 9000
-        assert config["auto_port"] is False
-        assert config["bind_host"] == "127.0.0.1"
+        bind = config.get("bind", {})
+        # --port 9000 writes port_range_start and disables auto_port.
+        assert bind.get("port_range_start") == 9000
+        assert bind.get("auto_port") is False
 
     def test_init_idempotent_when_already_initialized(
         self, runner: CliRunner, temp_project: Path
@@ -77,6 +82,8 @@ class TestInitCommand:
 
     def test_init_force_overwrites(self, runner: CliRunner, temp_project: Path) -> None:
         """Test that init --force overwrites existing config."""
+        import yaml
+
         # First init with port 8000
         runner.invoke(init_command, ["--path", str(temp_project), "--port", "8000"])
 
@@ -87,9 +94,10 @@ class TestInitCommand:
         )
         assert result.exit_code == 0
 
-        config_path = temp_project / ".brainpalace" / "config.json"
-        config = json.loads(config_path.read_text())
-        assert config["port"] == 9000
+        config_path = temp_project / ".brainpalace" / "config.yaml"
+        assert config_path.exists()
+        config = yaml.safe_load(config_path.read_text())
+        assert config.get("bind", {}).get("port_range_start") == 9000
 
     def test_init_json_output(self, runner: CliRunner, temp_project: Path) -> None:
         """Test that init --json outputs JSON."""
@@ -287,7 +295,8 @@ class TestCLIIntegration:
         result = runner.invoke(cli, ["init", "--path", str(temp_project)])
 
         assert result.exit_code == 0
-        assert (temp_project / ".brainpalace" / "config.json").exists()
+        assert (temp_project / ".brainpalace" / "config.yaml").exists()
+        assert not (temp_project / ".brainpalace" / "config.json").exists()
 
 
 class TestXdgRegistryPaths:

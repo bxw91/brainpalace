@@ -335,7 +335,6 @@ class QueryService:
 
         auto_compute = (
             stage1_request.mode == QueryMode.HYBRID
-            and getattr(settings, "ENABLE_COMPUTE", True)
             and getattr(self, "record_store", None) is not None
             and classify_compute_intent(stage1_request.query)
         )
@@ -807,10 +806,11 @@ class QueryService:
             traversal_depth: How many hops to traverse in graph.
 
         Returns:
-            List of QueryResult from graph retrieval.
+            List of QueryResult from graph retrieval. Empty when the graph is
+            not built (``ENABLE_GRAPH_INDEX`` off) — never an error.
 
         Raises:
-            ValueError: If GraphRAG is not enabled or backend is incompatible.
+            ValueError: If the storage backend is incompatible (non-chroma).
         """
         # Check backend compatibility for graph queries
         from brainpalace_server.storage import get_effective_backend_type
@@ -824,9 +824,10 @@ class QueryService:
             )
 
         if not settings.ENABLE_GRAPH_INDEX:
-            raise ValueError(
-                "GraphRAG not enabled. Set ENABLE_GRAPH_INDEX=true in environment."
-            )
+            # ENABLE_GRAPH_INDEX gates BUILDING the graph (its cost), not the
+            # query. With no graph built, a graph query is simply empty — like
+            # bm25/vector on an empty index — never an error.
+            return []
 
         # Get filter parameters (use getattr for backward compat with test mocks)
         entity_types = getattr(request, "entity_types", None)
@@ -921,8 +922,6 @@ class QueryService:
         from brainpalace_server.models.query import ComputeResult
         from brainpalace_server.services.compute_compiler import compile_compute
 
-        if not getattr(_settings, "ENABLE_COMPUTE", True):
-            return []
         rs = getattr(self, "record_store", None)
         if rs is None:
             return []

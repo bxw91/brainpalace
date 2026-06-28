@@ -43,14 +43,6 @@ beforeEach(() => {
   vi.mocked(client.getConfig).mockResolvedValue({
     embedding: { provider: "openai" },
   } as never);
-  // Runtime bind section folded into Config — give it a resolved payload so it
-  // renders without an error panel; these tests don't assert on it.
-  vi.mocked(client.getRuntimeConfigEffective).mockResolvedValue({
-    bind_host: { value: "127.0.0.1", source: "default", inherited: null },
-    port_range_start: { value: 8000, source: "default", inherited: null },
-    port_range_end: { value: 8100, source: "default", inherited: null },
-    auto_port: { value: true, source: "default", inherited: null },
-  } as never);
 });
 
 describe("Config tab", () => {
@@ -161,9 +153,3 @@ describe("Config tab", () => {
   });
 });
 
-it("points to the Runtime bind section for the config.json bind", async () => {
-  wrap(<Config instanceId="inst-1" />);
-  expect(
-    await screen.findByTestId("config-runtime-bind-note"),
-  ).toHaveTextContent(/config\.json.*Runtime bind/i);
-});

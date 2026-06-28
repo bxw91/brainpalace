@@ -45,11 +45,14 @@ class _FakeClient:
         self.status_response: IndexingStatus | None = None
         self.folders_response: list[FolderInfo] | None = None
         self.jobs_response: list[dict[str, Any]] | None = None
+        self.get_extraction_text_response: dict[str, Any] | None = None
+        self.submit_extraction_response: dict[str, Any] | None = None
         # Exception to raise from every method (simulates a failing client).
         self.raise_on_call: Exception | None = None
         # Spy state — what the most recent call_tool saw.
         self.last_query_args: dict[str, Any] | None = None
         self.last_jobs_limit: int | None = None
+        self.last_submit_extraction_payload: dict[str, Any] | None = None
 
     def __enter__(self) -> _FakeClient:
         return self
@@ -88,6 +91,23 @@ class _FakeClient:
             raise self.raise_on_call
         assert self.jobs_response is not None, "test forgot to set jobs_response"
         return self.jobs_response
+
+    def get_extraction_text(self, chunk_id: str) -> dict[str, Any]:
+        if self.raise_on_call is not None:
+            raise self.raise_on_call
+        assert (
+            self.get_extraction_text_response is not None
+        ), "test forgot to set get_extraction_text_response"
+        return self.get_extraction_text_response
+
+    def submit_extraction(self, payload: dict[str, Any]) -> dict[str, Any]:
+        self.last_submit_extraction_payload = payload
+        if self.raise_on_call is not None:
+            raise self.raise_on_call
+        assert (
+            self.submit_extraction_response is not None
+        ), "test forgot to set submit_extraction_response"
+        return self.submit_extraction_response
 
 
 def _install_fake_client(monkeypatch: pytest.MonkeyPatch, fake: _FakeClient) -> None:
@@ -359,3 +379,99 @@ def test_jobs_list_default_limit(monkeypatch: pytest.MonkeyPatch) -> None:
     asyncio.run(tools.jobs_list_tool(schemas.JobsListInput()))
 
     assert fake.last_jobs_limit == 20
+
+
+# ---------------------------------------------------------------------------
+# extraction_fetch (Task 5)
+# ---------------------------------------------------------------------------
+
+
+def test_extraction_fetch_happy_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    """extraction_fetch_tool returns the text dict from the server."""
+    fake = _FakeClient()
+    fake.get_extraction_text_response = {"chunk_id": "c1", "text": "hello world"}
+    _patch_discovery(monkeypatch)
+    _install_fake_client(monkeypatch, fake)
+
+    out = asyncio.run(
+        tools.extraction_fetch_tool(schemas.ExtractionFetchInput(chunk_id="c1"))
+    )
+
+    assert out == {"chunk_id": "c1", "text": "hello world"}
+
+
+def test_extraction_fetch_404_returns_err_dict(monkeypatch: pytest.MonkeyPatch) -> None:
+    """On a 404 ServerError, extraction_fetch_tool must return an error dict (no-op
+    signal to the agent, design E4) — NOT raise an exception."""
+    fake = _FakeClient()
+    fake.raise_on_call = ServerError("not found", status_code=404, detail="not pending")
+    _patch_discovery(monkeypatch)
+    _install_fake_client(monkeypatch, fake)
+
+    out = asyncio.run(
+        tools.extraction_fetch_tool(schemas.ExtractionFetchInput(chunk_id="missing"))
+    )
+
+    assert "error" in out
+    assert "404" in out["error"]
+
+
+def test_extraction_fetch_no_server(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_discovery(monkeypatch, url=None)
+    out = asyncio.run(
+        tools.extraction_fetch_tool(schemas.ExtractionFetchInput(chunk_id="c1"))
+    )
+    assert "error" in out
+    assert "no brainpalace server running" in out["error"]
+
+
+# ---------------------------------------------------------------------------
+# extraction_submit (Task 6)
+# ---------------------------------------------------------------------------
+
+
+def test_extraction_submit_happy_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    """extraction_submit_tool delegates to submit_extraction and returns its result."""
+    fake = _FakeClient()
+    fake.submit_extraction_response = {"status": "ok", "chunk_id": "c1"}
+    _patch_discovery(monkeypatch)
+    _install_fake_client(monkeypatch, fake)
+
+    payload = {"source": "doc", "chunk_id": "c1", "triplets": []}
+    out = asyncio.run(
+        tools.extraction_submit_tool(schemas.ExtractionSubmitInput(payload=payload))
+    )
+
+    assert out == {"status": "ok", "chunk_id": "c1"}
+    assert fake.last_submit_extraction_payload == payload
+
+
+def test_extraction_submit_no_server(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_discovery(monkeypatch, url=None)
+    out = asyncio.run(
+        tools.extraction_submit_tool(
+            schemas.ExtractionSubmitInput(
+                payload={"source": "doc", "chunk_id": "c1", "triplets": []}
+            )
+        )
+    )
+    assert "error" in out
+    assert "no brainpalace server running" in out["error"]
+
+
+def test_extraction_submit_server_error_maps(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _FakeClient()
+    fake.raise_on_call = ServerError("conflict", status_code=409, detail="duplicate")
+    _patch_discovery(monkeypatch)
+    _install_fake_client(monkeypatch, fake)
+
+    out = asyncio.run(
+        tools.extraction_submit_tool(
+            schemas.ExtractionSubmitInput(
+                payload={"source": "doc", "chunk_id": "c1", "triplets": []}
+            )
+        )
+    )
+
+    assert "error" in out
+    assert "409" in out["error"]

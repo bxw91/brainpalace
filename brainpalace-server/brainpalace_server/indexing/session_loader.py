@@ -12,6 +12,16 @@ The loader is deliberately tolerant: malformed lines and non-conversational
 record types (``queue-operation``, ``attachment``, ``file-history-snapshot``,
 …) are skipped rather than raised on, because transcript schemas drift across
 runtime versions.
+
+# seam: single tool-format parser
+**Tool seam.** This module (``load_session``) is the *only* Claude-Code-transcript
+record-format parser in the extraction path — the one place that reads CC record
+shape (``sessionId``, ``message.role``, ``type``, content blocks). To support
+another tool's transcripts, add a sibling parser that maps that format into the
+same ``(SessionMeta, list[Turn])`` pair; the drain queue, the subagents, and the
+graph/memory stores all consume only that pair and are format-agnostic. The
+session watcher discovers CC paths (``~/.claude/projects/**/*.jsonl``) but does
+no record-shape parsing — a second tool would add only its own discovery there.
 """
 
 from __future__ import annotations
@@ -221,6 +231,12 @@ def load_session(path: str | Path) -> tuple[SessionMeta, list[Turn]]:
     except OSError:
         return meta, turns
 
+    # `index` is a positional counter over emitted turns in file order. Incremental
+    # resume (session_distill_service) relies on it being STABLE and MONOTONIC: it
+    # slices new turns by `index > prior_offset`. That holds only while transcripts
+    # are APPEND-ONLY (lines appended, never inserted/reordered) — true for Claude
+    # Code JSONL. A tool that rewrote earlier lines would shift indices and mis-slice
+    # the resume delta (2b-5). New tool tags must preserve append-only ordering.
     index = 0
     seen_meta = False
     for raw in raw_lines:

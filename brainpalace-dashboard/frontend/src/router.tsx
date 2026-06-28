@@ -10,6 +10,7 @@ import { Overview } from "./tabs/Overview";
 import { Instances } from "./tabs/Instances";
 import { Settings } from "./tabs/Settings";
 import { GlobalConfig } from "./tabs/GlobalConfig";
+import { Usage } from "./tabs/Usage";
 import { Status } from "./tabs/Status";
 import { Config } from "./tabs/Config";
 import { Folders } from "./tabs/Folders";
@@ -36,6 +37,7 @@ export const TABS: TabDef[] = [
   { path: "/instances", label: "Instances", scope: "fleet" },
   { path: "/global-config", label: "Global config", scope: "fleet" },
   { path: "/settings", label: "Settings", scope: "fleet" },
+  { path: "/usage", label: "Usage", scope: "instance" },
   { path: "/status", label: "Status", scope: "instance" },
   { path: "/config", label: "Config", scope: "instance" },
   { path: "/folders", label: "Folders", scope: "instance" },
@@ -65,6 +67,7 @@ const overviewRoute = make("/", () => <Overview />);
 const instancesRoute = make("/instances", () => <Instances />);
 const globalConfigRoute = make("/global-config", () => <GlobalConfig />);
 const settingsRoute = make("/settings", () => <Settings />);
+const usageRoute = make("/usage", () => <Usage />);
 const statusRoute = make("/status", () => <Status />);
 const configRoute = make("/config", () => <Config />);
 const foldersRoute = make("/folders", () => <Folders />);
@@ -81,6 +84,7 @@ const routeTree = rootRoute.addChildren([
   instancesRoute,
   globalConfigRoute,
   settingsRoute,
+  usageRoute,
   statusRoute,
   configRoute,
   foldersRoute,

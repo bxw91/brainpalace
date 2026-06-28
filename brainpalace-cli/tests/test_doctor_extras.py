@@ -5,21 +5,24 @@ from brainpalace_cli.commands.doctor import extras_status_lines
 
 
 def test_enabled_missing_extra_reports_fix():
-    cfg = {"graphrag": {"doc_extractor": "langextract"}}
+    """bm25.engine=lemma still needs the lemma-hr extra — reports missing."""
+    cfg = {"bm25": {"engine": "lemma"}}
     with patch("brainpalace_cli.optional_deps.is_installed", return_value=False):
         lines = extras_status_lines(cfg)
-    assert any("graphrag" in ln and "missing" in ln.lower() for ln in lines)
+    assert any("lemma-hr" in ln and "missing" in ln.lower() for ln in lines)
 
 
 def test_enabled_installed_extra_reports_installed():
-    cfg = {"graphrag": {"doc_extractor": "langextract"}}
+    """bm25.engine=lemma with extra installed reports installed."""
+    cfg = {"bm25": {"engine": "lemma"}}
     with patch("brainpalace_cli.optional_deps.is_installed", return_value=True):
         lines = extras_status_lines(cfg)
-    assert any("graphrag" in ln and "installed" in ln.lower() for ln in lines)
+    assert any("lemma-hr" in ln and "installed" in ln.lower() for ln in lines)
 
 
 def test_declined_feature_not_reported():
-    cfg = {"graphrag": {"doc_extractor": "none"}}
+    """extraction.mode=subagent has no extra dep; no extras lines emitted."""
+    cfg = {"extraction": {"mode": "subagent"}}
     with patch("brainpalace_cli.optional_deps.is_installed", return_value=False):
         lines = extras_status_lines(cfg)
     assert lines == []

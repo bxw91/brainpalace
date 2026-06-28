@@ -6,7 +6,7 @@ context: brainpalace
 agent: setup-assistant
 skills:
   - configuring-brainpalace
-last_validated: 2026-06-18
+last_validated: 2026-06-28
 ---
 
 # Complete BrainPalace Setup
@@ -136,7 +136,7 @@ the provider chosen for embedding in Step 2 when it can also summarize
 (`openai` → OpenAI, `ollama` → Ollama); otherwise default to whichever
 summarization API key is already set in the environment (`OPENAI_API_KEY` →
 OpenAI, `ANTHROPIC_API_KEY` → Anthropic, `GEMINI_API_KEY` → Gemini), falling back
-to Anthropic. (Mirrors the CLI `config wizard` behavior — keep them aligned.)
+to Anthropic. (Mirrors the CLI `brainpalace init` / `config wizard` behavior — keep them aligned.)
 
 ```
 Which summarization provider would you like to use for BrainPalace?
@@ -524,27 +524,36 @@ The provider is configured globally — new projects inherit it.
 > PostgreSQL sub-flow below (Step 10a) BEFORE `brainpalace init` so the server
 > can connect on first start.
 
-> **Same question set as the wizard.** `brainpalace init` (sparse PROJECT config)
-> asks the **same project-config-backed questions** as the `config wizard` /
-> `install` GLOBAL flow above: embedding, summarizer, **reranker**,
+> **Same question set as `brainpalace init`.** `brainpalace init` (sparse PROJECT config)
+> asks the **same project-config-backed questions** as the `install` GLOBAL flow above
+> (and `brainpalace config wizard`, which is a back-compat alias of `init`'s editor):
+> embedding, summarizer, **reranker**,
 > **embed-sessions** (`session_indexing.enabled` — billable opt-in, default OFF),
 > **session-archive** (`session_indexing.archive.enabled` — free local backup of
-> full raw transcripts incl. secrets, default ON), **git-history**, and **GraphRAG
-> document extraction** (`graphrag.doc_extractor` = `langextract` | `none`). `init`
-> re-asks the per-project-overridable **reranker** (`reranker.enabled`)
-> behind an *"inherited from global — change for this project? [y/N]"* gate,
-> writing a sparse override only when changed; embedding/summarizer are not
-> re-asked via that gate (they resolve via env-detection / global inheritance).
+> full raw transcripts incl. secrets, default ON), **git-history**, and **doc-graph
+> + session extraction engine** (`extraction.mode` = `off` | `subagent` | `auto` |
+> `provider`). `init` re-asks the per-project-overridable **reranker**
+> (`reranker.enabled`) behind an *"inherited from global — change for this
+> project? [y/N]"* gate, writing a sparse override only when changed;
+> embedding/summarizer are not re-asked via that gate (they resolve via
+> env-detection / global inheritance).
+>
+> **Per-field scope:** Some fields are project-scoped only (e.g.
+> `session_indexing.archive.dir` — a project-relative path) and do NOT appear in
+> the global editor. Fields the project inherits from the global config are shown
+> as **"inherited from global"** in the review screen so you can tell which values
+> are project-specific overrides. `dashboard.*` (autostart, port, etc.) is a
+> separate fleet-wide surface — it appears in the dashboard Settings tab and in
+> the `init --global` dashboard step, but NOT in the per-project registry.
 
 > **Opt-in optional-dep rule.** Enabling a feature whose "yes" needs an optional
 > server extra triggers a download — **auto-installed on yes** (auto-detecting
 > pipx → uv → pip), or the **exact install command is printed** if no manager is
-> detected. Declining writes the disabling value (e.g. `graphrag.doc_extractor:
-> none`) so the server's "not installed" warning never fires; optional deps are
-> never auto-installed just because a feature is default-ON in code. Extras:
-> GraphRAG doc-extraction → `langextract`; BM25 `lemma` engine → `simplemma`;
-> postgres backend → `asyncpg` + `sqlalchemy`. `brainpalace doctor` reports
-> optional-extra status for enabled features.
+> detected. `extraction.mode: subagent` is free (Claude Code Haiku, no extra dep);
+> `provider`/`auto` use your configured summarization provider (BILLABLE, also
+> needs `EXTRACTION_PROVIDER_ENABLED=true`). Optional extras: BM25 `lemma` engine
+> → `simplemma`; postgres backend → `asyncpg` + `sqlalchemy`. `brainpalace doctor`
+> reports optional-extra status for enabled features.
 
 > **Session summarization:** `brainpalace init` enables it by default and writes
 > `mode: subagent` — sessions are summarized **only inside Claude Code**. Since

@@ -69,6 +69,7 @@ ENDPOINT_SURFACES: dict[str, str] = {
     # --- graph ---
     "/git/reindex": "Graph (rebuild)",
     "/graph/nodes": "Graph (browser search)",
+    "/graph/top": "Graph (browser start — top hubs)",
     "/graph/neighbors": "Graph (browser expand)",
     # --- sessions ---
     "/sessions/reindex": "Sessions (re-index)",
@@ -99,6 +100,18 @@ ENDPOINT_SURFACES: dict[str, str] = {
         "unsurfaced: maintenance action (re-score low-confidence records); "
         "CLI-driven, no dashboard panel yet"
     ),
+    "/extraction/pending": (
+        "unsurfaced: AI-drain queue selector, consumed by the CC drain command, "
+        "not a dashboard action"
+    ),
+    "/extraction/submit": (
+        "unsurfaced: AI-drain submit (triplets/session), not a dashboard action"
+    ),
+    "/extraction/text/{chunk_id}": (
+        "unsurfaced: id-based chunk text fetch for the subagent executor, "
+        "not a dashboard action"
+    ),
+    "/metrics/usage": "Usage (telemetry tab)",
 }
 
 # Every CLI command -> "tab/action" it maps to, or "cli_only: <reason>".
@@ -111,8 +124,7 @@ CLI_DASHBOARD_COVERAGE: dict[str, str] = {
     "context": "cli_only: agent context block, not user-facing",
     "dashboard": "cli_only: launches the dashboard itself",
     "doctor": "cli_only: local diagnostics CLI",
-    "drain-queue": "Jobs (queue drains via job worker)",
-    "drain-tick": ("cli_only: single job-worker tick, internal scheduler hook"),
+    "extraction": "cli_only: AI subagent extraction executor, not a UI surface",
     "dump-interface": "cli_only: hidden doc-sync introspection, not a UI surface",
     "folders": "Folders",
     "hook": "cli_only: internal hook dispatcher, not a user command",

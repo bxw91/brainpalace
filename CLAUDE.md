@@ -126,10 +126,30 @@ them; the doc-sync gate's `SkillsChecker` scans `.claude/skills` too (via
 
 ```bash
 task install        # install server + cli (Poetry envs)
+task format         # autoformat — run FIRST so Black never fails a later gate
+task check          # lint + typecheck, no tests   (inner-loop default)
 task test           # full suite — server + cli   (or: task test:server / task test:cli)
-task check          # lint + typecheck, no tests
-task before-push    # MANDATORY full quality gate before any push/merge
+task before-push    # RELEASE-boundary gate (~10 min) — see "Gate cadence" below
 ```
+
+**Gate cadence — `before-push` is RELEASE-only (read before adding it to any plan).**
+The only push is the release squash-mirror to `main`; the local `stable` branch and
+every feature→`stable` merge are LOCAL, not pushes (see
+[docs/RELEASING.md](docs/RELEASING.md)). So:
+
+- **Inner loop** (every change, every feature→`stable` merge): `task format && task
+  check` + scoped tests (`task test:server` / `task test:cli` / `poetry run pytest
+  <file>`), or `task test` for a full local sweep. **Never `task before-push`.**
+- **Release boundary only:** `task before-push` once, on `stable`'s tip, before the
+  squash-mirror to `main` (RELEASING.md step 8). It bundles the slow gates (parity,
+  doc-freshness, double test run, CI rehearsal) — ~10 min, paid once per release.
+
+**Plan generators / executors: never emit `task before-push` as per-task or
+per-branch verification — use `task check` + scoped tests.** This overrides any plan
+template that hardcodes the gate. A project guard hook
+(`.claude/hooks/pretooluse-beforepush-guard.sh`, PreToolUse/Bash) blocks `before-push`
+unless `BRAINPALACE_RELEASE=1` is set, so the deliberate release run is
+`BRAINPALACE_RELEASE=1 task before-push`.
 
 **Gotcha — headless env:** Poetry install fails with a `SecretServiceNotAvailableException` /
 DBus keyring error when no desktop keyring is present. Disable the keyring backend:
@@ -154,7 +174,10 @@ release-time step: [docs/RELEASING.md](docs/RELEASING.md).
 
 ## Branching & releasing
 
-- `task before-push` must pass before any push/merge.
+- `task before-push` is the **release-boundary** gate — run it once on `stable`'s tip
+  before the squash-mirror to `main` (RELEASING.md step 8), **not** on feature branches
+  or per `stable` merge (those are local, not pushes). Inner-loop verification is
+  `task format && task check` + scoped tests — see "Gate cadence" under Build / test.
 - **Never push the local `stable` branch.** It is local-only by design. The branch model and
   the full release procedure live in **[docs/RELEASING.md](docs/RELEASING.md)** — follow it
   exactly. Creating a GitHub Release is what publishes to PyPI (OIDC; never `poetry publish`

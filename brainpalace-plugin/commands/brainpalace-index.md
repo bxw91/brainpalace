@@ -9,11 +9,11 @@ parameters:
   - name: chunk-size
     type: integer
     required: false
-    default: 512
+    default: ""
   - name: chunk-overlap
     type: integer
     required: false
-    default: 50
+    default: ""
   - name: no-recursive
     type: bool
     required: false
@@ -42,10 +42,6 @@ parameters:
     type: text
     required: false
     default: ""
-  - name: generate-summaries
-    type: bool
-    required: false
-    default: false
   - name: force
     type: bool
     required: false
@@ -70,9 +66,13 @@ parameters:
     type: bool
     required: false
     default: false
+  - name: "yes"
+    type: bool
+    required: false
+    default: false
 skills:
   - using-brainpalace
-last_validated: 2026-06-20
+last_validated: 2026-06-24
 ---
 
 # Index Documents
@@ -103,7 +103,6 @@ Indexes documents at the specified path for semantic search. Processes markdown,
 | --code-strategy | No | ast_aware | Code splitting strategy: ast_aware or text_based |
 | --include-patterns | No | - | Additional glob include patterns |
 | --exclude-patterns | No | - | Additional glob exclude patterns |
-| --generate-summaries | No | false | Generate LLM summaries for better search quality |
 | --estimate | No | false | Print an approximate embedding-token estimate and exit — does NOT index. Uses the same .gitignore/exclude/file-type rules as a real index. |
 | --force | No | false | Force re-indexing (bypass manifest, evict all prior chunks) |
 | --allow-external | No | false | Allow indexing paths outside the project directory |
@@ -117,7 +116,7 @@ Indexes documents at the specified path for semantic search. Processes markdown,
 /brainpalace:brainpalace-index ./project --include-type python,docs
 /brainpalace:brainpalace-index ./src --include-type typescript --include-patterns "*.json"
 /brainpalace:brainpalace-index ./docs --force
-/brainpalace:brainpalace-index ./src --include-code --chunk-size 1024 --generate-summaries
+/brainpalace:brainpalace-index ./src --include-code --chunk-size 1024
 /brainpalace:brainpalace-index ./src --allow-external
 ```
 
@@ -158,7 +157,7 @@ brainpalace folders add <path> --watch auto --debounce 10
 
 **With all options:**
 ```bash
-brainpalace index <path> --include-code --include-type python,docs --chunk-size 1024 --generate-summaries --force
+brainpalace index <path> --include-code --include-type python,docs --chunk-size 1024 --force
 ```
 
 ### Expected Output
@@ -277,8 +276,8 @@ brainpalace index <path> --force
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | --url | text | "" | BrainPalace server URL (default: from config or http://127.0.0.1:8000) |
-| --chunk-size | integer | 512 | Target chunk size in tokens (default: 512) |
-| --chunk-overlap | integer | 50 | Overlap between chunks in tokens (default: 50) |
+| --chunk-size | integer | "" | Target chunk size in tokens (advanced; default 512). |
+| --chunk-overlap | integer | "" | Token overlap between chunks (advanced; default 50). |
 | --no-recursive | bool | false | Don't scan folder recursively |
 | --include-code | bool | true | Index source code files alongside documents (default: ON). Use --no-code for doc-only repos. |
 | --languages | text | "" | Comma-separated list of programming languages to index |
@@ -286,11 +285,11 @@ brainpalace index <path> --force
 | --include-patterns | text | "" | Comma-separated additional include patterns (wildcards supported) |
 | --include-type | text | "" | Comma-separated file type presets to include (e.g., python,docs,typescript). Use 'brainpalace types list' to see all available presets. |
 | --exclude-patterns | text | "" | Comma-separated additional exclude patterns (wildcards supported) |
-| --generate-summaries | bool | false | Generate LLM summaries for code chunks to improve semantic search |
 | --force | bool | false | Force re-indexing even if embedding provider has changed |
 | --allow-external | bool | false | Allow indexing paths outside the project directory |
 | --watch | choice | "" | Enable ('auto') or disable ('off') live re-index on file changes for this folder. Default: leave the folder's current setting unchanged. |
 | --watch-debounce | integer | "" | Debounce window in seconds before a watched folder re-indexes. |
 | --estimate | bool | false | Estimate approximate embedding-token usage and exit — do not index. |
 | --json | bool | false | Output as JSON |
+| --yes | bool | false | Skip interactive confirmation prompts (e.g. extraction-backlog warning). |
 <!--/GENERATED-->

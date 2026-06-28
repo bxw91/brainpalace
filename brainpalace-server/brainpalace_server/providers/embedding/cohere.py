@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 import cohere
 
-from brainpalace_server.providers.base import BaseEmbeddingProvider
+from brainpalace_server.providers.base import BaseEmbeddingProvider, Usage
 from brainpalace_server.providers.exceptions import AuthenticationError, ProviderError
 
 if TYPE_CHECKING:
@@ -139,6 +139,43 @@ class CohereEmbeddingProvider(BaseEmbeddingProvider):
                     self.provider_name,
                 )
             return [list(emb) for emb in embeddings]
+        except Exception as e:
+            raise ProviderError(
+                f"Failed to generate batch embeddings: {e}",
+                self.provider_name,
+                cause=e,
+            ) from e
+
+    async def _embed_batch_with_usage(
+        self, texts: list[str]
+    ) -> tuple[list[list[float]], Usage]:
+        """Batch embed returning Cohere billed token usage by value (§6-F3).
+
+        Reads response.meta.billed_units.input_tokens.
+        Uses getattr(..., 0) or 0 everywhere so absent fields → 0 (truthful).
+        """
+        try:
+            response = await self._client.embed(
+                texts=texts,
+                model=self._model,
+                input_type=self._input_type,
+                truncate=self._truncate,
+            )
+            embeddings = response.embeddings.float_
+            if embeddings is None:
+                raise ProviderError(
+                    "No embeddings returned from Cohere",
+                    self.provider_name,
+                )
+            meta = getattr(response, "meta", None)
+            billed = getattr(meta, "billed_units", None) if meta is not None else None
+            usage = Usage(
+                tokens_in=int(getattr(billed, "input_tokens", 0) or 0),
+                tokens_out=0,
+                cache_read=0,
+                cache_write=0,
+            )
+            return [list(emb) for emb in embeddings], usage
         except Exception as e:
             raise ProviderError(
                 f"Failed to generate batch embeddings: {e}",

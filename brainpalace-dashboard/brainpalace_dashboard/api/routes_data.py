@@ -58,6 +58,12 @@ async def providers(id_: str) -> Any:
     return await _call(id_, "GET", "/health/providers")
 
 
+@router.get("/metrics/usage")
+async def metrics_usage(id_: str, window: str = "24h") -> Any:
+    """Windowed usage/spend telemetry (the server's ``GET /metrics/usage``)."""
+    return await _call(id_, "GET", "/metrics/usage", params={"window": window})
+
+
 @router.get("/postgres")
 async def postgres(id_: str) -> Any:
     return await _call(id_, "GET", "/health/postgres")
@@ -138,6 +144,11 @@ async def graph_neighbors(id_: str, node: str, limit: int = 200) -> Any:
     return await _call(
         id_, "GET", "/graph/neighbors", params={"node": node, "limit": limit}
     )
+
+
+@router.get("/graph/top")
+async def graph_top(id_: str, limit: int = 20) -> Any:
+    return await _call(id_, "GET", "/graph/top", params={"limit": limit})
 
 
 @router.get("/memories")

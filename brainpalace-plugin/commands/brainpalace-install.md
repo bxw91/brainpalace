@@ -6,7 +6,7 @@ context: brainpalace
 agent: setup-assistant
 skills:
   - configuring-brainpalace
-last_validated: 2026-06-20
+last_validated: 2026-06-28
 ---
 
 # Install BrainPalace Packages
@@ -244,27 +244,28 @@ Next steps:
   3. Start server: /brainpalace:brainpalace-start
 ```
 
-> **What the config / init questions cover.** Both the GLOBAL `config wizard`
-> (and `brainpalace install`'s own prompts) and the per-project `brainpalace init`
-> ask the **same project-config-backed question set**: embedding, summarizer,
+> **What the config / init questions cover.** Both the GLOBAL `brainpalace init --global`
+> (and `brainpalace install`'s own prompts; `config wizard --global` is a back-compat
+> alias) and the per-project `brainpalace init` ask the **same project-config-backed question set**: embedding, summarizer,
 > **reranker**, **embed-sessions** (`session_indexing.enabled` — billable opt-in,
 > default OFF), **session-archive** (`session_indexing.archive.enabled` — free
 > local backup of full raw transcripts incl. secrets, default ON), **git-history**
-> (default OFF), and **GraphRAG document extraction** (`graphrag.doc_extractor` =
-> `langextract` | `none`). `init` re-asks the per-project-overridable
-> **reranker** (`reranker.enabled`) behind an *"inherited from global — change
-> for this project? [y/N]"* gate; embedding/summarizer are not re-asked via that
-> gate (they resolve via env-detection / global inheritance).
+> (default OFF), and **doc-graph + session extraction engine**
+> (`extraction.mode` = `off` | `subagent` | `auto` | `provider`). `init`
+> re-asks the per-project-overridable **reranker** (`reranker.enabled`) behind
+> an *"inherited from global — change for this project? [y/N]"* gate;
+> embedding/summarizer are not re-asked via that gate (they resolve via
+> env-detection / global inheritance).
 
 > **Opt-in optional-dep rule.** Enabling a feature whose "yes" needs an optional
 > server extra triggers a download — **auto-installed on yes** using the package
 > manager detected here (pipx → uv → pip), or the **exact install command is
-> printed** if none is detected. Declining writes the disabling value (e.g.
-> `graphrag.doc_extractor: none`) so the server's "not installed" warning never
-> fires; optional deps are never auto-installed just because a feature is
-> default-ON in code. Extras: GraphRAG doc-extraction → `langextract`; BM25
-> `lemma` engine → `simplemma`; postgres backend → `asyncpg` + `sqlalchemy`.
-> `brainpalace doctor` reports optional-extra status for enabled features.
+> printed** if none is detected. `extraction.mode: subagent` is free (Claude Code
+> Haiku, no extra dep); `provider`/`auto` use your configured summarization
+> provider (BILLABLE, also needs `EXTRACTION_PROVIDER_ENABLED=true`). Optional
+> extras: BM25 `lemma` engine → `simplemma`; postgres backend → `asyncpg` +
+> `sqlalchemy`. `brainpalace doctor` reports optional-extra status for enabled
+> features.
 
 ---
 

@@ -42,7 +42,8 @@ class TestHealthEndpoints:
         data = response.json()
         assert data["status"] in ["healthy", "indexing", "degraded"]
         assert "timestamp" in data
-        # /health may append a "(from source)" suffix on editable/source checkouts
+        # /health may append a "(from <branch> <commit>)" / "(from source)" suffix
+        # on editable/source checkouts
         assert data["version"].startswith(__version__)
 
     def test_health_check_exposes_project_root(self, client, mock_vector_store):

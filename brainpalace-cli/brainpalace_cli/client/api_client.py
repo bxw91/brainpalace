@@ -352,7 +352,6 @@ class DocServeClient:
         include_patterns: list[str] | None = None,
         exclude_patterns: list[str] | None = None,
         include_types: list[str] | None = None,
-        generate_summaries: bool = False,
         force: bool = False,
         allow_external: bool = False,
         injector_script: str | None = None,
@@ -375,7 +374,6 @@ class DocServeClient:
             include_patterns: Additional include patterns.
             exclude_patterns: Additional exclude patterns.
             include_types: File type preset names (e.g., ["python", "docs"]).
-            generate_summaries: Generate LLM summaries for code chunks.
             force: Bypass deduplication and force a new job.
             allow_external: Allow paths outside the project directory.
             injector_script: Path to Python script exporting process_chunk().
@@ -397,7 +395,6 @@ class DocServeClient:
             "code_chunk_strategy": code_chunk_strategy,
             "include_patterns": include_patterns,
             "exclude_patterns": exclude_patterns,
-            "generate_summaries": generate_summaries,
             "force": force,
         }
         if include_types is not None:
@@ -434,7 +431,6 @@ class DocServeClient:
         include_patterns: list[str] | None = None,
         exclude_patterns: list[str] | None = None,
         include_types: list[str] | None = None,
-        generate_summaries: bool = False,
         chunk_size: int = 512,
         chunk_overlap: int = 50,
     ) -> dict[str, Any]:
@@ -450,7 +446,6 @@ class DocServeClient:
             "include_code": include_code,
             "include_patterns": include_patterns,
             "exclude_patterns": exclude_patterns,
-            "generate_summaries": generate_summaries,
             "chunk_size": chunk_size,
             "chunk_overlap": chunk_overlap,
         }
@@ -643,3 +638,23 @@ class DocServeClient:
         return self._request(
             "POST", "/sessions/distill", json={"paths": paths, "force": force}
         )
+
+    # ----- Graph-extraction drain queue (Plan 3) ------------------------
+
+    def get_extraction_pending(self, limit: int, source: str = "all") -> dict[str, Any]:
+        """Fetch a bounded batch of pending extraction items (Plan 3).
+
+        ``source`` filters the queue server-side: ``doc`` (skips the session
+        archive scan — findings 3-5/3-6), ``session``, or ``all`` (default).
+        """
+        return self._request(
+            "GET", f"/extraction/pending?limit={limit}&source={source}"
+        )
+
+    def get_extraction_text(self, chunk_id: str) -> dict[str, Any]:
+        """Fetch one pending chunk's text by id (404 when not pending)."""
+        return self._request("GET", f"/extraction/text/{chunk_id}")
+
+    def submit_extraction(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Submit an extraction payload (doc triplets or session extraction)."""
+        return self._request("POST", "/extraction/submit", json=payload)

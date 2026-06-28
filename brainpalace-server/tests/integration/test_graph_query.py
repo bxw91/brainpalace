@@ -193,7 +193,12 @@ class TestGraphQueryMode:
     def test_graph_query_disabled(
         self, client_graph_disabled, mock_graph_index_manager
     ):
-        """Test graph query returns error when disabled."""
+        """Graph query is empty (not an error) when the graph is disabled.
+
+        ENABLE_GRAPH_INDEX gates BUILDING the graph, not the query — a graph
+        query with no graph built returns empty, like bm25/vector on an empty
+        index, instead of refusing.
+        """
         response = client_graph_disabled.post(
             "/query/",
             json={
@@ -203,9 +208,8 @@ class TestGraphQueryMode:
             },
         )
 
-        # Should return 500 with error message about graph not enabled
-        assert response.status_code == 500
-        assert "not enabled" in response.json()["detail"].lower()
+        assert response.status_code == 200
+        assert response.json()["results"] == []
 
 
 class TestMultiQueryMode:

@@ -17,7 +17,7 @@ from rich.panel import Panel
 
 from brainpalace_cli.config import resolve_project_root
 from brainpalace_cli.migration import resolve_state_dir_with_fallback
-from brainpalace_cli.xdg_paths import get_xdg_config_dir, migrate_legacy_paths
+from brainpalace_cli.xdg_paths import migrate_legacy_paths
 
 console = Console()
 
@@ -25,10 +25,6 @@ STATE_DIR_NAME = ".brainpalace"
 LOCK_FILE = "brainpalace.lock"
 PID_FILE = "brainpalace.pid"
 RUNTIME_FILE = "runtime.json"
-
-# Bind-config keys that resolve project (config.json) > global (XDG config.json)
-# > code default. Only these are inherited from the global layer.
-BIND_KEYS = ("bind_host", "port_range_start", "port_range_end", "auto_port")
 
 # A live server busy indexing can miss a health probe; retry before deciding it
 # is unresponsive (and never replace it with a duplicate).
@@ -89,39 +85,36 @@ def _dashboard_json(dash: dict[str, Any] | None) -> dict[str, Any]:
     }
 
 
-def read_global_bind() -> dict[str, Any]:
-    """Machine-wide bind defaults from the XDG ``config.json`` (bind keys only).
+def read_bind(state_dir: Path) -> dict[str, Any]:
+    """Read bind configuration from ``config.yaml`` (project → global merge).
 
-    The parallel of the global ``config.yaml`` for the runtime bind: a project
-    that does not pin a bind key inherits it from here, before the code default.
-    Returns ``{}`` when the file is absent or unreadable.
+    Calls ``load_merged_config_dict`` with the project file so global XDG
+    ``config.yaml`` bind keys are inherited for any key the project omits —
+    same ``code < global < project`` precedence as every other config block.
+    Returns all four bind keys with their code defaults so call-sites can use
+    plain dict access without worrying about missing keys.
     """
-    path = get_xdg_config_dir() / "config.json"
-    if not path.exists():
-        return {}
+    from brainpalace_server.config.bind_config import BindConfig  # noqa: PLC0415
+    from brainpalace_server.config.provider_config import (  # noqa: PLC0415
+        load_merged_config_dict,
+    )
+
+    config_path = state_dir / "config.yaml"
+    merged = load_merged_config_dict(config_path if config_path.exists() else None)
+    block = merged.get("bind") if isinstance(merged, dict) else None
+    if not isinstance(block, dict):
+        block = {}
+    fields = {k: v for k, v in block.items() if k in BindConfig.model_fields}
     try:
-        loaded = json.loads(path.read_text())
-    except Exception:
-        return {}
-    if not isinstance(loaded, dict):
-        return {}
-    return {k: loaded[k] for k in BIND_KEYS if k in loaded}
-
-
-def read_config(state_dir: Path) -> dict[str, Any]:
-    """Read bind configuration: project ``config.json`` over global bind defaults.
-
-    A bind key the project omits is inherited from the machine-wide XDG
-    ``config.json`` (``read_global_bind``), then the code default applied by the
-    ``config.get(key, <default>)`` call sites. Non-bind keys in the project file
-    pass through unchanged.
-    """
-    merged: dict[str, Any] = dict(read_global_bind())
-    config_path = state_dir / "config.json"
-    if config_path.exists():
-        project: dict[str, Any] = json.loads(config_path.read_text())
-        merged.update(project)
-    return merged
+        cfg = BindConfig(**fields)
+    except (ValueError, TypeError):
+        cfg = BindConfig()
+    return {
+        "bind_host": cfg.bind_host,
+        "port_range_start": cfg.port_range_start,
+        "port_range_end": cfg.port_range_end,
+        "auto_port": cfg.auto_port,
+    }
 
 
 def read_runtime(state_dir: Path) -> dict[str, Any] | None:
@@ -327,7 +320,31 @@ def resolve_bind_port(config: dict[str, Any], bind_host: str, port: int | None) 
         if available_port is None:
             raise RuntimeError(f"No available port in range {start_port}-{end_port}")
         return available_port
-    return int(config.get("port", 8000))
+    return int(config.get("port_range_start", 8000))
+
+
+def _rotate_if_oversized(path: Path, max_bytes: int, backups: int) -> None:
+    """Size-rotate a captured stdout/stderr redirect file at spawn time.
+
+    The server's stdout/stderr is appended to ``logs/server.log`` /
+    ``logs/server.err`` for the whole process lifetime — unrotated, those grow
+    without bound (the stderr copy reached tens of MB). Rotate when the file is
+    over ``max_bytes``: ``x`` -> ``x.1`` -> ``x.2`` …, discarding past
+    ``backups``. No-op when the file is small or absent.
+    """
+    try:
+        if not path.exists() or path.stat().st_size <= max_bytes:
+            return
+        oldest = path.with_name(f"{path.name}.{backups}")
+        if oldest.exists():
+            oldest.unlink()
+        for i in range(backups - 1, 0, -1):
+            src = path.with_name(f"{path.name}.{i}")
+            if src.exists():
+                src.rename(path.with_name(f"{path.name}.{i + 1}"))
+        path.rename(path.with_name(f"{path.name}.1"))
+    except OSError:
+        pass  # never block a server launch on log rotation
 
 
 def build_server_command(bind_host: str, bind_port: int) -> list[str]:
@@ -366,7 +383,7 @@ def launch_server(
     from datetime import datetime, timezone
     from uuid import uuid4
 
-    config = read_config(state_dir)
+    config = read_bind(state_dir)
     bind_host = host or config.get("bind_host", "127.0.0.1")
 
     # Defense-in-depth: never spawn a second server for the same project, even
@@ -397,6 +414,11 @@ def launch_server(
     log_dir.mkdir(parents=True, exist_ok=True)
     stdout_log = log_dir / "server.log"
     stderr_log = log_dir / "server.err"
+
+    # Cap the captured redirect logs (5MB x 2 backups each) so they can't grow
+    # without bound across the daemon's lifetime.
+    _rotate_if_oversized(stdout_log, max_bytes=5_000_000, backups=2)
+    _rotate_if_oversized(stderr_log, max_bytes=5_000_000, backups=2)
 
     with (
         open(stdout_log, "a") as stdout_f,
@@ -572,7 +594,7 @@ def start_command(
             raise SystemExit(1)
 
         # Read configuration
-        config = read_config(state_dir)
+        config = read_bind(state_dir)
 
         # Cross-install reuse: a live, healthy server for THIS project may be
         # recorded in the GLOBAL registry even when this project's runtime.json

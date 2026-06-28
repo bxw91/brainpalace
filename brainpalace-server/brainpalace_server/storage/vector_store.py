@@ -11,6 +11,7 @@ from chromadb.config import Settings as ChromaSettings
 
 from brainpalace_server.config import settings
 from brainpalace_server.providers.exceptions import ProviderMismatchError
+from brainpalace_server.storage_paths import STATE_SUBDIR
 
 logger = logging.getLogger(__name__)
 
@@ -780,7 +781,7 @@ class VectorStoreManager:
         persist = Path(self.persist_dir)
         if persist.parent.name != "data":
             return None  # legacy/non-standard layout — skip the marker
-        return persist.parent.parent / "heal-events.jsonl"
+        return persist.parent.parent / STATE_SUBDIR / "heal-events.jsonl"
 
     def _record_heal_event(
         self, reason: str, physical: int | None, live: int, recovered: int
@@ -827,7 +828,7 @@ class VectorStoreManager:
         persist = Path(persist_dir)
         if persist.parent.name != "data":
             return {"count": 0, "total_dropped": 0, "last": None}
-        path = persist.parent.parent / "heal-events.jsonl"
+        path = persist.parent.parent / STATE_SUBDIR / "heal-events.jsonl"
         if not path.exists():
             return {"count": 0, "total_dropped": 0, "last": None}
         events: list[dict[str, Any]] = []
@@ -1018,7 +1019,7 @@ class VectorStoreManager:
         persist = Path(self.persist_dir)
         if persist.parent.name != "data":
             return None
-        return persist.parent.parent / "compact-events.jsonl"
+        return persist.parent.parent / STATE_SUBDIR / "compact-events.jsonl"
 
     def _record_compact_event(self, event: dict[str, Any]) -> None:
         """Append one compaction event (best-effort audit, never raises)."""
@@ -1029,6 +1030,7 @@ class VectorStoreManager:
         from datetime import datetime, timezone  # noqa: PLC0415
 
         try:
+            path.parent.mkdir(parents=True, exist_ok=True)
             record = {"ts": datetime.now(timezone.utc).isoformat(), **event}
             with path.open("a", encoding="utf-8") as fh:
                 fh.write(json.dumps(record) + "\n")

@@ -23,6 +23,21 @@ from brainpalace_server.indexing.document_loader import LoadedDocument
 # ---------------------------------------------------------------------------
 
 
+def test_code_chunk_metadata_has_no_summary_fields():
+    """Code-chunk summarization removed: section_summary metadata is gone."""
+    md = ChunkMetadata(
+        chunk_id="c1",
+        source="x.py",
+        file_name="x.py",
+        chunk_index=0,
+        total_chunks=1,
+        source_type="code",
+    )
+    assert not hasattr(md, "section_summary")
+    assert not hasattr(md, "prev_section_summary")
+    assert "section_summary" not in md.to_dict()
+
+
 def test_text_language_defaults_none_and_serializes():
     m = ChunkMetadata(
         chunk_id="chunk_abc123",

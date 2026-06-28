@@ -158,7 +158,7 @@ async def test_compact_writes_audit_event(tmp_path) -> None:
     result = await store.compact_if_bloated(min_dead=1, dead_ratio=0.5)
 
     assert result is not None
-    events_file = tmp_path / "compact-events.jsonl"
+    events_file = tmp_path / "state" / "compact-events.jsonl"
     assert events_file.exists()
     event = json.loads(events_file.read_text().strip().splitlines()[-1])
     assert event["dead_rows_reclaimed"] == 10

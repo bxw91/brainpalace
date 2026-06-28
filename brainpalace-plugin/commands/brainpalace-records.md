@@ -4,7 +4,7 @@ description: Manage typed numeric records (compute mode) — stats and revalidat
 parameters:
 skills:
   - using-brainpalace
-last_validated: 2026-06-23
+last_validated: 2026-06-24
 ---
 
 # BrainPalace Records

@@ -50,13 +50,8 @@ def print_token_estimate(console: Console, est: dict[str, Any]) -> None:
         if session_tokens:
             _segments.append(f"[dim]sessions[/] ~{session_tokens:,}")
         console.print("    " + " · ".join(_segments))
-    if est.get("summaries_enabled"):
-        console.print(
-            "  [yellow]Note:[/] code summaries are ON — that adds a separate "
-            "LLM (summarisation) bill on top of these embedding tokens."
-        )
     console.print(
-        "  [dim]Approximate: provider tokenizers, overlap and summaries vary "
+        "  [dim]Approximate: provider tokenizers and overlap vary "
         "the real figure (±~30%). First index is full; re-index is cheaper "
         "(embedding cache).[/]\n"
     )

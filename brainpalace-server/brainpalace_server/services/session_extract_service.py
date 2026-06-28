@@ -175,7 +175,12 @@ class SessionExtractService:
                 )
             )
 
-        embeddings = await embedder.embed_chunks(chunks)
+        from brainpalace_server.services.usage_metrics import (
+            usage_scope,
+        )  # noqa: PLC0415
+
+        with usage_scope("session"):
+            embeddings = await embedder.embed_chunks(chunks)
         await storage_backend.upsert_documents(
             ids=[c.chunk_id for c in chunks],
             embeddings=embeddings,

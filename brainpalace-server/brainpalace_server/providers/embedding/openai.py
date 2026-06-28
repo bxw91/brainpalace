@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 from openai import AsyncOpenAI
 
-from brainpalace_server.providers.base import BaseEmbeddingProvider
+from brainpalace_server.providers.base import BaseEmbeddingProvider, Usage
 from brainpalace_server.providers.exceptions import AuthenticationError, ProviderError
 
 if TYPE_CHECKING:
@@ -121,6 +121,39 @@ class OpenAIEmbeddingProvider(BaseEmbeddingProvider):
                 input=texts,
             )
             return [item.embedding for item in response.data]
+        except Exception as e:
+            raise ProviderError(
+                f"Failed to generate batch embeddings: {e}",
+                self.provider_name,
+                cause=e,
+            ) from e
+
+    async def _embed_batch_with_usage(
+        self, texts: list[str]
+    ) -> tuple[list[list[float]], Usage]:
+        """Batch embed returning OpenAI token usage by value (§6-F3).
+
+        Reads usage.prompt_tokens and usage.prompt_tokens_details.cached_tokens.
+        Uses getattr(..., 0) or 0 everywhere so absent fields → 0 (truthful).
+        """
+        try:
+            response = await self._client.embeddings.create(
+                model=self._model,
+                input=texts,
+            )
+            u = getattr(response, "usage", None)
+            pt_details = getattr(u, "prompt_tokens_details", None) if u else None
+            usage = (
+                Usage(
+                    tokens_in=int(getattr(u, "prompt_tokens", 0) or 0),
+                    tokens_out=0,
+                    cache_read=int(getattr(pt_details, "cached_tokens", 0) or 0),
+                    cache_write=0,
+                )
+                if u is not None
+                else Usage()
+            )
+            return [item.embedding for item in response.data], usage
         except Exception as e:
             raise ProviderError(
                 f"Failed to generate batch embeddings: {e}",

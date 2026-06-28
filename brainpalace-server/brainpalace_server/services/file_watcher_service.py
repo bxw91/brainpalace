@@ -195,6 +195,19 @@ class FileWatcherService:
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._last_enqueue_at: dict[str, float] = {}
 
+        # Task 4d: optional pending store for backpressure; injected via
+        # set_doc_pending_store after startup.
+        self._doc_pending_store: object | None = None
+        self._watcher_paused: bool = False  # hysteresis state
+
+    def set_doc_pending_store(self, store: object | None) -> None:
+        """Inject the DocPendingStore for backpressure (Task 4d).
+
+        When set, ``_enqueue_for_folder`` skips enqueuing new watch-triggered
+        jobs while the extraction queue is at the high-water mark.
+        """
+        self._doc_pending_store = store
+
     @property
     def watched_folder_count(self) -> int:
         """Number of folders currently being watched."""
@@ -351,6 +364,48 @@ class FileWatcherService:
                 "read-only: skipping watcher reindex enqueue for %s", folder_path
             )
             return
+        # Task 4d: skip enqueueing when the extraction queue is at the
+        # high-water mark.  The watcher will fire again on the next file
+        # event, so coverage is delayed — never dropped.
+        if self._doc_pending_store is not None:
+            try:
+                from brainpalace_server.config.extraction_config import (
+                    load_extraction_config,
+                )
+                from brainpalace_server.services.backpressure import (
+                    should_pause_indexing,
+                )
+
+                _ext_cfg = load_extraction_config()
+                _max_pending = _ext_cfg.max_pending
+                if _max_pending > 0:
+                    _count = int(
+                        getattr(self._doc_pending_store, "count_pending", lambda: 0)()
+                    )
+                    _pause = should_pause_indexing(
+                        _count, _max_pending, resumed=self._watcher_paused
+                    )
+                    if _pause:
+                        if not self._watcher_paused:
+                            logger.warning(
+                                "File-watcher enqueue paused: extraction queue at %d "
+                                "items (>= max_pending=%d). Will resume below %d.",
+                                _count,
+                                _max_pending,
+                                int(_max_pending * 0.8),
+                            )
+                            self._watcher_paused = True
+                        return
+                    elif self._watcher_paused:
+                        logger.info(
+                            "File-watcher enqueue resumed: extraction queue at %d "
+                            "items (< low-water %d).",
+                            _count,
+                            int(_max_pending * 0.8),
+                        )
+                        self._watcher_paused = False
+            except Exception:  # noqa: BLE001 — never block the watcher
+                pass
         try:
             # Post-enqueue cooldown: collapse delayed-inotify replays that
             # arrive after a prior job already transitioned to DONE.

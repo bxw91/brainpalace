@@ -33,7 +33,7 @@ def test_real_world_config_validates_clean() -> None:
             "watch_debounce_ms": 30000,
             "archive": {"enabled": True},
         },
-        "session_extraction": {"mode": "subagent", "quiescence_seconds": 1800},
+        "session_extraction": {"quiescence_seconds": 1800},
         "reranker": {"enabled": True, "provider": "sentence-transformers"},
     }
     assert cs.validate_config_dict(cfg) == []
@@ -108,35 +108,25 @@ def test_indexing_type_errors_caught() -> None:
 
 
 def test_compute_block_validates_clean() -> None:
-    cfg = {
-        "compute": {
-            "enabled": True,
-            "record_extraction": True,
-            "min_confidence": 0.7,
-        }
-    }
+    cfg = {"compute": {"min_confidence": 0.7}}
     assert cs.validate_config_dict(cfg) == []
 
 
 def test_compute_is_known_top_level_key() -> None:
     assert "compute" in cs.VALID_TOP_LEVEL_KEYS
-    assert {"enabled", "record_extraction", "min_confidence"} <= (
-        cs.COMPUTE_KNOWN_FIELDS
-    )
+    # compute has no switches — only the confidence floor is configurable
+    assert cs.COMPUTE_KNOWN_FIELDS == {"min_confidence"}
 
 
 def test_compute_unknown_field_caught() -> None:
     errs = cs.validate_config_dict({"compute": {"bogus": 1}})
     assert any(e.field == "compute.bogus" for e in errs)
-
-
-def test_compute_type_errors_caught() -> None:
-    errs = cs.validate_config_dict(
-        {"compute": {"enabled": "yes", "record_extraction": "no"}}
-    )
-    fields = {e.field for e in errs}
-    assert "compute.enabled" in fields
-    assert "compute.record_extraction" in fields
+    # the removed switches are now unknown fields
+    for removed in ("enabled", "record_extraction"):
+        assert any(
+            e.field == f"compute.{removed}"
+            for e in cs.validate_config_dict({"compute": {removed: True}})
+        )
 
 
 def test_compute_min_confidence_out_of_range_caught() -> None:

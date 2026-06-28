@@ -23,11 +23,15 @@ def _invoke(args):
             "tokenizer": "tiktoken:cl100k_base",
             "embedding_provider": "openai",
             "embedding_model": "text-embedding-3-small",
-            "summaries_enabled": False,
             "approximate": True,
         }
         result = runner.invoke(index_command, args)
     return result, inst
+
+
+def test_index_command_has_no_generate_summaries_option():
+    res = CliRunner().invoke(index_command, ["--help"])
+    assert "--generate-summaries" not in res.output
 
 
 def test_index_passes_watch_auto(tmp_path):

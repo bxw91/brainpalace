@@ -4,7 +4,7 @@ description: Manage the curated memory namespace (list, show, delete, obsolete)
 parameters:
 skills:
   - using-brainpalace
-last_validated: 2026-06-19
+last_validated: 2026-06-24
 ---
 
 # BrainPalace Memories

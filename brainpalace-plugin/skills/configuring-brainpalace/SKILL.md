@@ -17,7 +17,7 @@ metadata:
   category: ai-tools
   author: bxw91
   last_validated: 2026-06-13
-last_validated: 2026-06-18
+last_validated: 2026-06-28
 ---
 
 # Configuring BrainPalace
@@ -105,11 +105,62 @@ brainpalace status
 
 ## Setup Wizard
 
-The canonical entry point for a complete guided setup is `/brainpalace-setup`. It asks all configuration questions interactively before running any CLI commands, then writes a comprehensive `config.yaml`.
+The canonical entry point for a complete guided setup is `/brainpalace-setup`. It
+asks all configuration questions interactively before running any CLI commands,
+then writes a sparse `config.yaml`.
 
-### Wizard Configuration Questions
+`brainpalace init` is the **single CLI config editor**. It branches on project state:
 
-The wizard asks the following questions in sequence:
+- **Fresh project** — an interactive run opens **directly on the review grid**,
+  values resolved from `global < code` (plus the detected provider). The grid
+  **expands on ON**: each division is one line (`N. Label : field = value | …`)
+  listing every non-empty visible field of an ON or pure-config division (secrets
+  included), collapsing a toggleable OFF division to its gate value; empty fields
+  are omitted and a selector-dependent field (e.g. `storage.postgres`) shows only
+  when its selector is active; descriptions show only when you drill in to edit.
+  Edit by division
+  number / `[A]ll` (drilling edits all of a division's fields, gate asked first),
+  then `[C]ontinue` accepts → token estimate → optional server start. (The
+  previous linear wall of consent questions is gone.)
+- **Already-initialized project** — drops directly into the review editor.
+- **`init --global`** — edits the machine-wide XDG config
+  (`~/.config/brainpalace/config.yaml`) without a project root.
+
+`brainpalace config wizard` (and `wizard --global`) is a **back-compat alias**
+of `init` (`init --global`). The bespoke per-field prompt flow has been replaced
+by the unified review editor.
+
+### Review Grid UX
+
+An interactive `brainpalace init` opens **directly on the review grid**, values
+resolved from `global < code` plus the detected provider. The grid **expands on
+ON**: each division is a single line — `N. Label : field = value | …` — listing
+**every** visible field of an **ON** (its enable/mode gate active) or pure-config
+division — secrets included, shown in full (terminal-trusted; empty renders `()`,
+booleans `on`/`off`) — and collapsing a toggleable **OFF** division to its gate
+value. Empty fields are omitted, and a selector-dependent field shows only when
+its selector is active (e.g. `storage.postgres` only under `backend = postgres`).
+Section descriptions show **only when you drill in to edit**. Type:
+
+- A **division number** to drill in and edit **all** its fields (the enable/mode
+  gate is asked first; a sub-block whose gate is OFF is skipped)
+- **`A`** to walk every division in sequence
+- **`C`** to accept (writes nothing if unchanged — sparse invariant)
+- **`E`** to cancel and roll back
+
+Provider/model picks render as **numbered lists** (type the number or the raw
+value). Billable/secret (consent) fields — embed-sessions, git-history,
+graphrag-extraction — are **never plain-prompted**: they prompt with their
+warning **only when you edit that division**. Accepting the grid without touching
+them leaves each opt-in billable field at its resolved default (**OFF**) — no
+silent spend. Section names and descriptions are single-sourced with the web
+dashboard (the CLI registry `config_fields.GROUP_ORDER` / `GROUP_DESCRIPTIONS`).
+
+### Questions Asked by the Setup Flow
+
+The `/brainpalace-setup` agent collects the same information the `init` review
+grid exposes (the grid shows every division up front rather than asking in a
+fixed sequence); the agent asks in this order:
 
 | Step | Question | Config Keys Set |
 |------|----------|----------------|
@@ -119,32 +170,57 @@ The wizard asks the following questions in sequence:
 | 5 | GraphRAG | `graphrag.enabled`, `graphrag.store_type`, `graphrag.use_code_metadata` |
 | 6 | Default Query Mode | Written as YAML comment: `# query.default_mode` |
 
-> **BM25 language is not a wizard step.** Set it via `brainpalace init --language <iso>` / `brainpalace folders add <path> --language <iso>`, or by editing the `bm25:` block in `config.yaml` directly — the config wizard does not ask about it.
+> **BM25 language is not a setup-wizard step.** Set it via
+> `brainpalace init --language <iso>` / `brainpalace folders add <path> --language <iso>`,
+> or by editing the `bm25:` block in `config.yaml` directly.
 
 > **Unified question set (init · install · config wizard).** `brainpalace init`
-> (sparse PROJECT config) and `brainpalace install` / `brainpalace config wizard`
-> (GLOBAL config) ask the **same project-config-backed questions**, so the
-> front-ends never drift: embedding provider/model, summarizer provider/model,
-> **reranker** (enabled), **embed-sessions** (`session_indexing.enabled` — billable
-> opt-in, default OFF), **session-archive** (`session_indexing.archive.enabled` —
-> free local backup of full raw transcripts incl. secrets, default ON),
-> **git-history** (`git_indexing.enabled` + `depth`, default OFF), and **GraphRAG
-> document extraction** (`graphrag.doc_extractor` = `langextract` | `none`).
-> `init` additionally re-asks the per-project-overridable **reranker**
-> (`reranker.enabled`) behind an *"inherited from global — change for this
-> project? [y/N]"* gate, writing a **sparse override only when changed**;
-> embedding/summarizer are not re-asked via that gate (they resolve via
-> env-detection / global inheritance).
+> (sparse PROJECT config) and `brainpalace install` / `brainpalace init --global`
+> (`config wizard --global` is a back-compat alias; GLOBAL config) ask the **same
+> project-config-backed questions**, so the front-ends never drift: embedding
+> provider/model, summarizer provider/model, **reranker** (enabled),
+> **embed-sessions** (`session_indexing.enabled` — billable opt-in, default OFF),
+> **session-archive** (`session_indexing.archive.enabled` — free local backup of
+> full raw transcripts incl. secrets, default ON), **git-history**
+> (`git_indexing.enabled` + `depth`, default OFF), and **doc-graph + session
+> extraction engine** (`extraction.mode` = `off` | `subagent` | `auto` |
+> `provider`). On an interactive fresh `init`, all of these are presented up front
+> in the **review grid**; billable/secret consent fields (embed-sessions,
+> git-history, graphrag-extraction) prompt with their warning **only when you
+> drill into their division**, and opt-in billable fields stay **OFF** if you
+> accept without editing them. `reranker.enabled` is an ordinary grid field;
+> embedding/summarizer resolve via env-detection / global inheritance.
+
+> **Single source.** The review screen, `init`, and the dashboard Config tab all
+> derive their fields (order, labels, help, enum choices) from one CLI **field
+> registry** (`config_fields.py`) — the three front-ends cannot drift.
+
+> **Per-field scope — global vs project.** Each field in the registry declares a
+> `scope`: `"both"` (default — appears in both the project and global editors),
+> `"project"` (project editor only — e.g. `session_indexing.archive.dir`, a
+> project-relative path that makes no sense globally), or `"global"` (reserved
+> for future global-only fields). `init --global`'s CLI review screen silently
+> omits project-scoped fields; the CLI project editor (`init`) shows all fields,
+> as do both dashboard tabs (the dashboard does not apply the scope filter). When editing the project layer,
+> the CLI editor shows an **"inherited from global"** note next to each field
+> whose value comes from the global config rather than a project-level override.
+
+> **`dashboard.*` is a separate surface.** Control-plane settings (dashboard
+> autostart, port, poll interval, etc.) live under `dashboard:` in the global
+> config and are edited via the **dashboard Settings tab** or the
+> `init --global` dashboard step — NOT in the per-project registry. These are
+> fleet-wide process-control knobs, not per-project config. The CLI step writes
+> only the canonical fields validated by `config_schema.DASHBOARD_KNOWN_FIELDS`
+> so the two surfaces stay in sync.
 
 > **Opt-in optional-dep rule.** Enabling a feature whose "yes" needs an optional
 > server extra triggers a download — **auto-installed on yes** (auto-detecting
 > pipx → uv → pip), or the **exact install command is printed** if no manager is
-> detected. Declining writes the disabling value (e.g. `graphrag.doc_extractor: none`)
-> so the server's "not installed" warning never fires; optional deps are never
-> auto-installed just because a feature is default-ON in code. Extras: GraphRAG
-> doc-extraction → `langextract`; BM25 `lemma` engine → `simplemma`; postgres
-> backend → `asyncpg` + `sqlalchemy`. `brainpalace doctor` reports optional-extra
-> status for enabled features.
+> detected. `extraction.mode: subagent` is free (Claude Code Haiku, no extra dep);
+> `provider`/`auto` use your configured summarization provider (BILLABLE, also
+> needs `EXTRACTION_PROVIDER_ENABLED=true`). Optional extras: BM25 `lemma` engine
+> → `simplemma`; postgres backend → `asyncpg` + `sqlalchemy`. `brainpalace doctor`
+> reports optional-extra status for enabled features.
 
 ### Embedding Provider Options
 
@@ -172,9 +248,9 @@ The wizard asks the following questions in sequence:
 | Google Gemini | `gemini` | `gemini-3.1-flash-lite` (cheapest; premium e.g. `gemini-3.5-flash` or `gemini-3.1-pro-preview` can be set manually) | Requires `GEMINI_API_KEY` |
 | Grok (xAI) | `grok` | `grok-4-fast` | Requires `XAI_API_KEY` |
 
-### Config.yaml Written by Wizard
+### Config.yaml Written by Init / Setup
 
-After answering all questions, the wizard writes a comprehensive `config.yaml` covering:
+After answering all questions, `brainpalace init` (or the setup agent) writes a sparse `config.yaml` covering:
 - `embedding.*` — provider, model, api_key or api_key_env, optional base_url
 - `summarization.*` — provider, model, api_key or api_key_env, optional base_url
 - `storage.*` — backend selection and (if PostgreSQL) connection settings

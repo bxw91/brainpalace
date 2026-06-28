@@ -85,6 +85,8 @@ class TestResolveStoragePaths:
             "logs",
             "manifests",
             "embedding_cache",  # Phase 16
+            "db",
+            "state",
         }
         assert set(paths.keys()) == expected_keys
 

@@ -39,6 +39,48 @@ def test_status_proxy(monkeypatch):
     assert any(c[:2] == ("GET", "/health/status") for c in fp.calls)
 
 
+def test_metrics_usage_proxy(monkeypatch):
+    fp = FakeProxy()
+    monkeypatch.setattr(rd, "proxy", fp)
+    client = TestClient(create_app())
+    resp = client.get("/dashboard/api/instances/abc/metrics/usage?window=7d")
+    assert resp.status_code == 200
+    call = next(c for c in fp.calls if c[1] == "/metrics/usage")
+    assert call[0] == "GET" and call[3] == {"window": "7d"}
+
+
+def test_metrics_usage_proxy_default_window(monkeypatch):
+    fp = FakeProxy()
+    monkeypatch.setattr(rd, "proxy", fp)
+    client = TestClient(create_app())
+    resp = client.get("/dashboard/api/instances/abc/metrics/usage")
+    assert resp.status_code == 200
+    call = next(c for c in fp.calls if c[1] == "/metrics/usage")
+    assert call[3] == {"window": "24h"}
+
+
+def test_graph_top_proxy(monkeypatch):
+    """The /graph/top hub-seed route must proxy to the server (regression: it
+    was missing, so the request fell through to the SPA and returned HTML)."""
+    fp = FakeProxy()
+    monkeypatch.setattr(rd, "proxy", fp)
+    client = TestClient(create_app())
+    resp = client.get("/dashboard/api/instances/abc/graph/top?limit=5")
+    assert resp.status_code == 200
+    call = next(c for c in fp.calls if c[1] == "/graph/top")
+    assert call[0] == "GET" and call[3] == {"limit": 5}
+
+
+def test_graph_top_proxy_default_limit(monkeypatch):
+    fp = FakeProxy()
+    monkeypatch.setattr(rd, "proxy", fp)
+    client = TestClient(create_app())
+    resp = client.get("/dashboard/api/instances/abc/graph/top")
+    assert resp.status_code == 200
+    call = next(c for c in fp.calls if c[1] == "/graph/top")
+    assert call[3] == {"limit": 20}
+
+
 def test_clear_cache_proxy(monkeypatch):
     fp = FakeProxy()
     monkeypatch.setattr(rd, "proxy", fp)

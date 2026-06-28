@@ -17,7 +17,7 @@ from brainpalace_cli.commands.backfill import (
 def _project(tmp_path: Path, mode: str) -> Path:
     state = tmp_path / ".brainpalace"
     state.mkdir(parents=True)
-    (state / "config.yaml").write_text(f"session_extraction:\n  mode: {mode}\n")
+    (state / "config.yaml").write_text(f"extraction:\n  mode: {mode}\n")
     return tmp_path
 
 
@@ -33,11 +33,10 @@ def _transcripts(dir_: Path, sids: list[str]) -> Path:
 # --------------------------------------------------------------------------- #
 
 
-def test_read_extract_mode_default_subagent(tmp_path):
-    # No config / no block ⇒ subagent (never the billable provider engine),
-    # mirroring the server's SessionExtractionConfig default.
+def test_read_extract_mode_default_off(tmp_path):
+    # No config / no extraction block ⇒ off (cost-safe default).
     (tmp_path / ".brainpalace").mkdir()
-    assert read_extract_mode(tmp_path) == "subagent"
+    assert read_extract_mode(tmp_path) == "off"
 
 
 def test_read_extract_mode_off_from_yaml_bool(tmp_path):

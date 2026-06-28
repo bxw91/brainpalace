@@ -42,13 +42,19 @@ class MigrationResult:
 # ---------------------------------------------------------------------------
 
 
-def _migrate_use_llm_extraction(
+_DEAD_GRAPHRAG_KEYS = frozenset(
+    {"use_llm_extraction", "doc_extractor", "langextract_provider", "langextract_model"}
+)
+
+
+def _strip_langextract_keys(
     config: dict[str, Any],
 ) -> tuple[dict[str, Any], list[str]]:
-    """Migrate graphrag.use_llm_extraction -> graphrag.doc_extractor.
+    """Strip dead langextract / doc_extractor keys from the graphrag section (M2.1).
 
-    Phase 34 decision: `use_llm_extraction` (bool) was renamed to
-    `doc_extractor` (str: "langextract" | "none").
+    These keys are inert since Plan 4 removed the langextract extraction path.
+    They are silently dropped on load — NOT mapped to extraction.mode or any
+    provider config (no surprise billing).
 
     Args:
         config: Config dict (will NOT be mutated; a deep copy is made).
@@ -58,22 +64,15 @@ def _migrate_use_llm_extraction(
     """
     changes: list[str] = []
     config = copy.deepcopy(config)
-    graphrag = config.get("graphrag", {})
+    graphrag = config.get("graphrag")
+    if not isinstance(graphrag, dict):
+        return config, changes
 
-    if "use_llm_extraction" in graphrag:
-        old_val = graphrag.pop("use_llm_extraction")
-        if old_val:
-            graphrag["doc_extractor"] = "langextract"
-            changes.append(
-                "graphrag.use_llm_extraction=True -> graphrag.doc_extractor=langextract"
-            )
-        else:
-            changes.append(
-                "graphrag.use_llm_extraction=False -> removed"
-                " (default: no doc extraction)"
-            )
+    for key in sorted(_DEAD_GRAPHRAG_KEYS & graphrag.keys()):
+        graphrag.pop(key)
+        changes.append(f"graphrag.{key} removed (langextract path no longer exists)")
+    if changes:
         config["graphrag"] = graphrag
-
     return config, changes
 
 
@@ -84,7 +83,7 @@ def _migrate_use_llm_extraction(
 MigrationFn = Callable[[dict[str, Any]], tuple[dict[str, Any], list[str]]]
 
 MIGRATIONS: list[MigrationFn] = [
-    _migrate_use_llm_extraction,
+    _strip_langextract_keys,
 ]
 
 

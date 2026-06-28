@@ -9,6 +9,80 @@ from fastapi.testclient import TestClient
 from brainpalace_server.api.routers.health import router
 
 
+def _client_with_extraction(
+    *,
+    extraction_mode_doc="off",
+    graphrag_enabled=False,
+    extraction_provider_enabled=False,
+    summarization_available=False,
+    summarization_label=None,
+    doc_pending_count=0,
+):
+    """Minimal app state for testing the doc_graph_extraction feature block."""
+    app = FastAPI()
+    app.include_router(router)
+
+    backend = MagicMock()
+    backend.is_initialized = True
+
+    async def _get_count(where=None):
+        return 0
+
+    backend.get_count = AsyncMock(side_effect=_get_count)
+
+    indexing_service = MagicMock()
+    indexing_service.get_status = AsyncMock(
+        return_value={
+            "status": "idle",
+            "total_doc_chunks": 0,
+            "total_code_chunks": 0,
+            "indexed_folders": [],
+            "supported_languages": [],
+            "graph_index": {"enabled": False},
+            "completed_at": None,
+        }
+    )
+    indexing_service.get_document_count = AsyncMock(return_value=0)
+    indexing_service.get_document_counts_by_type = AsyncMock(
+        return_value={"code": 0, "doc": 0, "total": 0}
+    )
+
+    app.state.indexing_service = indexing_service
+    app.state.storage_backend = backend
+    app.state.job_service = None
+    app.state.vector_store = None
+    app.state.embedding_cache = None
+    app.state.query_cache = None
+    app.state.file_watcher_service = SimpleNamespace(
+        is_running=False, watched_folder_count=0
+    )
+    app.state.session_indexing_config = SimpleNamespace(
+        enabled=False, archive=SimpleNamespace(retain_days=0)
+    )
+    app.state.session_index_enabled = False
+    app.state.session_archive_enabled = False
+    app.state.session_reconciler = None
+    app.state.memory_service = None
+    app.state.session_archive_service = None
+
+    # Extraction-specific state stashed at lifespan (Task 2)
+    app.state.extraction_mode_doc = extraction_mode_doc
+    app.state.graphrag_enabled = graphrag_enabled
+    app.state.extraction_provider_enabled = extraction_provider_enabled
+    app.state.summarization_available = summarization_available
+    app.state.summarization_label = summarization_label
+
+    # Pending store stub with configurable count
+    if doc_pending_count > 0:
+        pending_store = MagicMock()
+        pending_store.count_pending = MagicMock(return_value=doc_pending_count)
+        app.state.doc_pending_store = pending_store
+    else:
+        app.state.doc_pending_store = None
+
+    return TestClient(app)
+
+
 def _client(
     *,
     session_enabled,
@@ -183,3 +257,126 @@ def test_session_memory_includes_archive_counts():
     assert sm["archived_files"] == 3
     assert sm["archived_bytes"] == 1234
     assert sm["tombstoned"] == 1
+
+
+def test_session_archive_reports_pending_backlog(monkeypatch):
+    # The to-summarize backlog (un-distilled archived sessions) is surfaced on
+    # the session_archive block, regardless of mode (like doc "un-graphed").
+    monkeypatch.setattr(
+        "brainpalace_server.services.session_distill_service.pending_sessions",
+        lambda *a, **k: [("s1", "/a/s1"), ("s2", "/a/s2"), ("s3", "/a/s3")],
+    )
+    client = _client(
+        session_enabled=False,
+        session_running=False,
+        curated=0,
+        session_chunks=0,
+        archive_enabled=True,
+        archive_stats={
+            "archived_sessions": 5,
+            "archived_files": 5,
+            "archived_bytes": 100,
+            "tombstoned": 0,
+        },
+    )
+    client.app.state.project_root = "/proj"
+    client.app.state.extraction_archive_dir = "/proj/.brainpalace/sessions"
+    sa = client.get("/status").json()["features"]["session_archive"]
+    assert sa["pending_summarization"] == 3
+
+
+def test_session_archive_pending_defaults_zero_without_root(monkeypatch):
+    # No project_root/archive_dir wired ⇒ advisory backlog defaults to 0 and the
+    # status call never fails (best-effort).
+    monkeypatch.setattr(
+        "brainpalace_server.services.session_distill_service.pending_sessions",
+        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("must not be called")),
+    )
+    client = _client(
+        session_enabled=True,
+        session_running=True,
+        curated=0,
+        session_chunks=0,
+        archive_enabled=True,
+        archive_stats={
+            "archived_sessions": 1,
+            "archived_files": 1,
+            "archived_bytes": 1,
+            "tombstoned": 0,
+        },
+    )
+    sa = client.get("/status").json()["features"]["session_archive"]
+    assert sa["pending_summarization"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Task 5 — doc_graph_extraction feature block (C2 + M1 + spec §12)
+# ---------------------------------------------------------------------------
+
+
+def test_features_doc_graph_extraction_off_no_pending():
+    client = _client_with_extraction(extraction_mode_doc="off", graphrag_enabled=True)
+    dge = client.get("/status").json()["features"]["doc_graph_extraction"]
+    assert dge["state"] == "off"
+    assert dge["pending"] == 0
+    assert dge["ungraphed"] is False  # M1: ungraphed only when off AND pending > 0
+
+
+def test_features_doc_graph_extraction_off_with_pending():
+    # M1: off + pending → ungraphed=True, NOT "pending" in wording
+    client = _client_with_extraction(
+        extraction_mode_doc="off", graphrag_enabled=True, doc_pending_count=5
+    )
+    dge = client.get("/status").json()["features"]["doc_graph_extraction"]
+    assert dge["state"] == "off"
+    assert dge["pending"] == 5
+    assert dge["ungraphed"] is True
+
+
+def test_features_doc_graph_extraction_subagent():
+    client = _client_with_extraction(
+        extraction_mode_doc="subagent", graphrag_enabled=True, doc_pending_count=3
+    )
+    dge = client.get("/status").json()["features"]["doc_graph_extraction"]
+    assert dge["state"] == "subagent"
+    assert dge["pending"] == 3
+    assert dge["ungraphed"] is False
+
+
+def test_features_doc_graph_extraction_provider_active():
+    client = _client_with_extraction(
+        extraction_mode_doc="provider",
+        graphrag_enabled=True,
+        extraction_provider_enabled=True,
+        summarization_available=True,
+        summarization_label="anthropic:claude-haiku-4-5",
+        doc_pending_count=2,
+    )
+    dge = client.get("/status").json()["features"]["doc_graph_extraction"]
+    assert dge["state"] == "provider"
+    assert dge["provider"] == "anthropic:claude-haiku-4-5"
+    assert dge["pending"] == 2
+
+
+def test_features_doc_graph_extraction_provider_unavailable():
+    # provider/auto requested but no usable provider or lock is off
+    client = _client_with_extraction(
+        extraction_mode_doc="provider",
+        graphrag_enabled=True,
+        extraction_provider_enabled=False,
+        summarization_available=False,
+    )
+    dge = client.get("/status").json()["features"]["doc_graph_extraction"]
+    assert dge["state"] == "unavailable"
+
+
+def test_features_doc_graph_extraction_state_is_valid():
+    # Generic: state must always be one of the 4 values
+    for mode in ("off", "subagent", "provider", "auto"):
+        client = _client_with_extraction(
+            extraction_mode_doc=mode, graphrag_enabled=True
+        )
+        dge = client.get("/status").json()["features"]["doc_graph_extraction"]
+        assert dge["state"] in ("off", "subagent", "provider", "unavailable")
+    assert isinstance(dge["pending"], int)
+    assert isinstance(dge["ungraphed"], bool)

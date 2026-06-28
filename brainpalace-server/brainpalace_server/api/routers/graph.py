@@ -38,6 +38,21 @@ async def search_nodes(
 
 
 @router.get(
+    "/top",
+    summary="Highest-degree hub nodes",
+    description="Most-connected entities (active-edge degree), no search "
+    "needed — seeds the dashboard graph browser on open. 503 when graph "
+    "indexing is disabled.",
+)
+async def top_nodes(
+    limit: int = Query(20, ge=1, le=100),
+) -> dict[str, Any]:
+    _require_graph_enabled()
+    mgr = get_graph_store_manager()
+    return {"nodes": mgr.top_nodes(limit=limit)}
+
+
+@router.get(
     "/neighbors",
     summary="Expand one node's neighborhood",
     description="Active edges touching the node plus every connected node — "

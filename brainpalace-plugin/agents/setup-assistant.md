@@ -33,7 +33,7 @@ allowed_tools:
   - "Edit(~/.config/brainpalace/**)"
   - "Write(.claude/brainpalace/**)"
   - "Edit(.claude/brainpalace/**)"
-last_validated: 2026-06-24
+last_validated: 2026-06-28
 ---
 
 # Setup Assistant Agent
@@ -404,10 +404,21 @@ export RERANKER_MODEL=cross-encoder/ms-marco-MiniLM-L-6-v2
 
 ## `brainpalace init` / `config wizard` — the unified question set
 
-`brainpalace init` (writes a **sparse PROJECT** config) and
-`brainpalace install` / `brainpalace config wizard` (write the **GLOBAL** config)
-ask the **same project-config-backed question set**, so the two front-ends never
-drift. The questions are:
+`brainpalace init` and `brainpalace config wizard` (a back-compat **alias** of
+`init`'s editor) write a **sparse PROJECT** config; `brainpalace install` /
+`brainpalace init --global` / `brainpalace config wizard --global` write the
+**GLOBAL** config. All of them ask the **same project-config-backed question
+set**, so the front-ends never drift. They — and the dashboard Config tab —
+derive every field (order, labels, help, enum choices) from one CLI **field
+registry** (`config_fields.py`); the editor shows provider/model picks as
+**numbered lists** (type the number or the value). An interactive
+`brainpalace init` opens **directly on the review grid**: the resolved config
+grouped by division (values resolved from `global < code` plus the detected
+provider) — type a division number to edit, `[A]ll`, `[C]ontinue`, or `[E]xit`.
+Billable/secret (consent) fields are never plain-prompted — they prompt with
+their warning **only when you edit their division**, and opt-in billable fields
+stay **OFF** if you accept the grid without touching them (the previous linear
+question wall is removed). The questions are:
 
 - **Embedding** provider + model
 - **Summarizer** provider + model
@@ -419,13 +430,16 @@ drift. The questions are:
   holds **full transcripts incl. user turns / secrets.**
 - **Git history** (`git_indexing.enabled` + `depth`) — index commit history.
   **Opt-in, default OFF** (commit messages/diffs can contain secrets).
-- **GraphRAG document extraction** (`graphrag.doc_extractor` =
-  `langextract` | `none`) — richer entity extraction from prose docs.
-- **Compute query mode** (`compute.enabled` + `compute.record_extraction`, and
-  `compute.min_confidence` in the wizard) — set-level questions (sum/count/avg,
+- **Doc-graph + session extraction engine** (`extraction.mode` =
+  `off` | `subagent` | `auto` | `provider`) — entity extraction from prose docs
+  and session summarization. `subagent` is free (Claude Code Haiku); `provider`/
+  `auto` use the configured summarization provider (BILLABLE).
+- **Compute query mode** (`compute.min_confidence` in the wizard; no switches —
+  always selectable, empty without records) — set-level questions (sum/count/avg,
   by-week/month, "which … most") over typed numeric records from sessions.
-  **Default ON, free** (counts piggyback session summaries — no extra API call);
-  `init` writes the disabling values only on `--no-compute`.
+  **Free** (counts piggyback session summaries — no extra API call). Records are
+  extracted whenever session extraction runs; `init` neither asks about compute
+  nor writes a `compute:` block.
 
 The **GLOBAL** path (`config wizard --global` / `brainpalace install`) also asks
 the **web-dashboard control-plane settings** — **autostart**
@@ -433,29 +447,40 @@ the **web-dashboard control-plane settings** — **autostart**
 dashboard) and **dashboard port** (`dashboard.port`, default 8787) — written to the
 `dashboard:` block. These are **global-only** (they govern the fleet-wide dashboard
 process, not a single project), so `brainpalace init` does **not** ask them; the
-dashboard's Settings tab edits the same block.
+dashboard's Settings tab edits the same block. `dashboard.*` is a **separate
+fleet-wide surface** — it does NOT appear in the per-project config registry or the
+Config/Global Config tabs; the CLI step writes only canonical fields validated by
+`DASHBOARD_KNOWN_FIELDS` so the two surfaces cannot drift.
 
-`init` additionally **re-asks the per-project-overridable reranker**
-(`reranker.enabled`) behind an *"inherited from global — change for
-this project? [y/N]"* gate, writing a **sparse override only when the answer
-diverges** from the inherited value. Decline and the project file omits the key so
-it keeps inheriting global. Embedding/summarizer are not re-asked via that gate
-(they resolve via env-detection / global inheritance).
+**Per-field scope:** Fields in the registry carry a `scope` tag (`"both"`,
+`"project"`, or `"global"`). `init --global`'s CLI review screen silently omits
+project-scoped fields (e.g. `session_indexing.archive.dir`
+— a project-relative path). When editing the project layer, each field whose value
+comes from the global config (rather than a project override) is shown with an
+**"inherited from global"** note — so you can see at a glance which settings are
+project-specific overrides vs globally inherited.
+
+`reranker.enabled` is an ordinary grid field: edit it from its division and the
+write stays **sparse** (a project override only when the value diverges from the
+inherited one; leave it untouched and the project file omits the key so it keeps
+inheriting global). Embedding/summarizer are not edited via a separate gate (they
+resolve via env-detection / global inheritance).
 
 ### Opt-in optional-dep rule
 
 Some "yes" answers need an optional **server extra**. When the user enables such a
 feature, the extra is **downloaded automatically** (auto-detecting pipx → uv →
 pip); if no manager is detected, the **exact install command is printed** instead.
-Declining writes the **disabling value** (e.g. `graphrag.doc_extractor: none`) so
-the server's "not installed" warning never fires. Optional deps are **never**
+Declining writes the **disabling value** (e.g. `extraction.mode: off`) so the
+server's "not installed" warning never fires. Optional deps are **never**
 auto-installed just because a feature is default-ON in code.
 
-| Feature enabled            | Extra                  |
-| -------------------------- | ---------------------- |
-| GraphRAG doc-extraction    | `langextract`          |
-| BM25 `lemma` engine        | `simplemma`            |
-| Postgres storage backend   | `asyncpg` + `sqlalchemy` |
+| Feature enabled            | Extra / cost                              |
+| -------------------------- | ----------------------------------------- |
+| Doc-graph extraction       | `extraction.mode: subagent` — free        |
+| Doc-graph (provider/auto)  | Your summarization provider — **BILLABLE** |
+| BM25 `lemma` engine        | `simplemma`                               |
+| Postgres storage backend   | `asyncpg` + `sqlalchemy`                 |
 
 `brainpalace doctor` reports optional-extra status for the enabled features.
 

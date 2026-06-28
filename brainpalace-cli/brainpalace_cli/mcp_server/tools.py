@@ -34,6 +34,8 @@ from brainpalace_cli.discovery import discover_project_dir, discover_server_url
 from ..ai_guidance import render as _render_guidance
 from .schemas import (
     AiGuideInput,
+    ExtractionFetchInput,
+    ExtractionSubmitInput,
     FoldersListInput,
     JobsListInput,
     MemorizeInput,
@@ -228,6 +230,36 @@ async def recall_tool(inp: RecallInput) -> dict[str, Any]:
 
 async def session_context_tool(inp: SessionContextInput) -> dict[str, Any]:
     return await asyncio.to_thread(_session_context_sync, inp)
+
+
+def _extraction_fetch_sync(inp: ExtractionFetchInput) -> dict[str, Any]:
+    url = discover_server_url(_start_path(inp.path))
+    if url is None:
+        return _err(_NO_SERVER_MSG)
+    try:
+        with DocServeClient(base_url=url) as client:
+            return client.get_extraction_text(inp.chunk_id)
+    except Exception as exc:  # noqa: BLE001 — 404 → no-op signal to the agent
+        return _client_error_to_dict(exc)
+
+
+def _extraction_submit_sync(inp: ExtractionSubmitInput) -> dict[str, Any]:
+    url = discover_server_url(_start_path(inp.path))
+    if url is None:
+        return _err(_NO_SERVER_MSG)
+    try:
+        with DocServeClient(base_url=url) as client:
+            return client.submit_extraction(inp.payload)
+    except Exception as exc:  # noqa: BLE001
+        return _client_error_to_dict(exc)
+
+
+async def extraction_fetch_tool(inp: ExtractionFetchInput) -> dict[str, Any]:
+    return await asyncio.to_thread(_extraction_fetch_sync, inp)
+
+
+async def extraction_submit_tool(inp: ExtractionSubmitInput) -> dict[str, Any]:
+    return await asyncio.to_thread(_extraction_submit_sync, inp)
 
 
 async def ai_guide_tool(inp: AiGuideInput) -> dict[str, Any]:

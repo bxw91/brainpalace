@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 import google.genai as genai
 from google.genai.types import GenerateContentConfig
 
-from brainpalace_server.providers.base import BaseSummarizationProvider
+from brainpalace_server.providers.base import BaseSummarizationProvider, Usage
 from brainpalace_server.providers.exceptions import AuthenticationError, ProviderError
 
 if TYPE_CHECKING:
@@ -67,6 +67,38 @@ class GeminiSummarizationProvider(BaseSummarizationProvider):
                 config=self._generation_config,
             )
             return str(response.text)
+        except Exception as e:
+            raise ProviderError(
+                f"Failed to generate text: {e}",
+                self.provider_name,
+                cause=e,
+            ) from e
+
+    async def generate_with_usage(self, prompt: str) -> tuple[str, Usage]:
+        """Generate text and return Gemini token usage by value (§6-F3).
+
+        Reads usage_metadata.prompt_token_count, candidates_token_count, and
+        cached_content_token_count from the SDK response.
+        Uses getattr(..., 0) or 0 everywhere so absent fields → 0 (truthful).
+        """
+        try:
+            response = await self._client.aio.models.generate_content(
+                model=self._model,
+                contents=prompt,
+                config=self._generation_config,
+            )
+            um = getattr(response, "usage_metadata", None)
+            usage = (
+                Usage(
+                    tokens_in=int(getattr(um, "prompt_token_count", 0) or 0),
+                    tokens_out=int(getattr(um, "candidates_token_count", 0) or 0),
+                    cache_read=int(getattr(um, "cached_content_token_count", 0) or 0),
+                    cache_write=0,
+                )
+                if um is not None
+                else Usage()
+            )
+            return str(response.text), usage
         except Exception as e:
             raise ProviderError(
                 f"Failed to generate text: {e}",

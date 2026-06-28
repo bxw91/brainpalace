@@ -105,22 +105,14 @@ ExtractMode = Literal["auto", "subagent", "provider", "off"]
 
 
 class SessionExtractionConfig(BaseModel):
-    """Parsed ``session_extraction:`` block — selects the distillation engine.
+    """Parsed ``session_extraction:`` block — quiescence gate for session distillation.
 
-    Authoritative engine selector. ``init`` writes ``subagent``: session
-    summarization happens ONLY inside Claude Code (the plugin's subagent, free on
-    your Claude Code subscription). The server never falls back to a paid
-    provider on its own — if Claude Code did not summarize a session, it simply
-    stays un-summarized. ``--no-extract`` ⇒ ``off``. Absent block ⇒ default
-    ``subagent``. ``provider`` (server-side LLM distillation, possibly metered)
-    and ``auto`` (subagent with a 24h provider safety net) remain available only
-    as explicit opt-in.
+    The engine selector (mode) has moved to the shared ``extraction.mode`` field
+    (``ExtractionConfig``). This block now only carries the quiescence gate; the
+    ``{k: v ... if k in model_fields}`` filter silently discards any stray ``mode:``
+    key left in existing configs.
     """
 
-    mode: ExtractMode = Field(
-        default="subagent",
-        description="subagent (plugin-only, default) | auto | provider | off.",
-    )
     quiescence_seconds: int = Field(
         default=1800,
         ge=0,
@@ -131,13 +123,13 @@ class SessionExtractionConfig(BaseModel):
 def load_session_extraction_config(
     config_path: Path | None = None,
 ) -> SessionExtractionConfig:
-    """Load the ``session_extraction:`` block; default ``subagent`` if absent.
+    """Load the ``session_extraction:`` block; parses only ``quiescence_seconds``.
 
-    Precedence: the project ``.brainpalace/config.yaml`` (resolved by
-    :func:`_find_config_file`, which walks up from CWD) wins over the global XDG
-    config. An invalid/malformed block falls back to the ``subagent`` default
-    rather than raising — a config typo must never silently switch on paid
-    server-side distillation.
+    The engine selector (mode) has moved to ``extraction.mode``; this function
+    no longer reads or exposes it. Precedence: the project ``.brainpalace/config.yaml``
+    (resolved by :func:`_find_config_file`, which walks up from CWD) wins over the
+    global XDG config. An invalid/malformed block falls back to defaults rather than
+    raising.
     """
     block: dict[str, Any] | None = None
     try:
@@ -153,14 +145,10 @@ def load_session_extraction_config(
     fields = {
         k: v for k, v in block.items() if k in SessionExtractionConfig.model_fields
     }
-    # YAML 1.1 parses an unquoted ``off`` as the boolean False — restore the
-    # intended "off" string so hand-written `mode: off` works without quotes.
-    if fields.get("mode") is False:
-        fields["mode"] = "off"
     try:
         return SessionExtractionConfig(**fields)
     except ValueError as exc:
-        logger.warning("Invalid session_extraction block, using subagent: %s", exc)
+        logger.warning("Invalid session_extraction block, using defaults: %s", exc)
         return SessionExtractionConfig()
 
 
@@ -310,9 +298,9 @@ def session_recall_flags(config_path: Path | None = None) -> tuple[bool, bool]:
     except Exception:  # noqa: BLE001 — never break a query on config resolution
         index_enabled = True
     try:
-        summarization_enabled = (
-            load_session_extraction_config(config_path).mode != "off"
-        )
+        from brainpalace_server.config.extraction_config import resolve_extraction_mode
+
+        summarization_enabled = resolve_extraction_mode("session", config_path) != "off"
     except Exception:  # noqa: BLE001
         summarization_enabled = True
     return bool(index_enabled), bool(summarization_enabled)

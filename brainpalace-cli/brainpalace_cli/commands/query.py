@@ -90,10 +90,11 @@ def _maybe_print_ai_hint() -> None:
     ),
     help=(
         "Retrieval mode: 'vector' (semantic similarity), 'bm25' (keyword matching), "
-        "'hybrid' (vector+bm25), 'graph' (knowledge graph relationships, requires "
-        "ENABLE_GRAPH_INDEX=true), 'multi' (fusion of vector+bm25+graph), "
-        "'compute' (set-level aggregation over typed numeric records, requires "
-        "ENABLE_COMPUTE=true). Default: hybrid."
+        "'hybrid' (vector+bm25), 'graph' (knowledge graph relationships; empty "
+        "unless the graph is built — ENABLE_GRAPH_INDEX gates building it), "
+        "'multi' (fusion of vector+bm25+graph), "
+        "'compute' (set-level aggregation over typed numeric records; empty "
+        "unless record extraction has populated them). Default: hybrid."
     ),
 )
 @click.option(

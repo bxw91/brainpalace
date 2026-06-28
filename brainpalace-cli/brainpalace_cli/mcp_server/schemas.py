@@ -8,7 +8,7 @@ context (see the "tool description context cost" risk in the Phase Q plan).
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -89,3 +89,13 @@ class AiGuideInput(BaseModel):
             "nudge = one-line reminder. CORE is already in the server instructions."
         ),
     )
+
+
+class ExtractionFetchInput(BaseModel):
+    chunk_id: str = Field(..., description="Pending chunk id to fetch text for")
+    path: str | None = Field(default=None, description=_PATH_DESC)
+
+
+class ExtractionSubmitInput(BaseModel):
+    payload: dict[str, Any] = Field(..., description="Extraction payload to submit")
+    path: str | None = Field(default=None, description=_PATH_DESC)

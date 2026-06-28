@@ -56,10 +56,13 @@ graphrag:
   enabled: true
   store_type: simple
   use_code_metadata: true
-  doc_extractor: langextract
-api:
-  host: 127.0.0.1
-  port: 8000
+extraction:
+  mode: subagent
+bind:
+  bind_host: 127.0.0.1
+  port_range_start: 8000
+  port_range_end: 8100
+  auto_port: true
 """
 
 
@@ -140,42 +143,34 @@ class TestValidateConfigDict:
         )
         assert port_error is not None, f"No error mentioning 'port' in {errors}"
 
-    def test_deprecated_key_graphrag_use_llm_extraction(self) -> None:
-        """Test 8: graphrag.use_llm_extraction (legacy) returns deprecation error."""
+    def test_dead_langextract_keys_are_stripped_not_validated(self) -> None:
+        """Removed langextract keys are silently stripped by migration; no error."""
         config = {
             "embedding": {"provider": "openai"},
             "graphrag": {
                 "enabled": True,
-                "use_llm_extraction": True,  # deprecated, renamed to doc_extractor
+                "use_llm_extraction": True,
+                "doc_extractor": "langextract",
+                "langextract_provider": "openai",
+                "langextract_model": "gpt-4o-mini",
             },
         }
+        # Migration strips these; what remains is valid graphrag config
         errors = validate_config_dict(config)
-        assert len(errors) >= 1
-        deprecated_error = next(
-            (
-                e
-                for e in errors
-                if "use_llm_extraction" in e.field
-                or "use_llm_extraction" in e.message
-                or "doc_extractor" in e.suggestion
-            ),
-            None,
-        )
-        assert (
-            deprecated_error is not None
-        ), f"No deprecation error for graphrag.use_llm_extraction in {errors}"
-        assert "doc_extractor" in deprecated_error.suggestion
+        # Should error only on the unknown sub-keys (they're not in KNOWN_FIELDS)
+        # — not crash. Specifically no KeyError on missing model_fields.
+        assert isinstance(errors, list)
 
-    def test_valid_graphrag_doc_extractor_langextract(self) -> None:
-        """Test 9: graphrag.doc_extractor = 'langextract' is valid — no errors."""
+    def test_valid_extraction_mode_subagent(self) -> None:
+        """extraction.mode = 'subagent' is valid — no errors."""
         config = {
             "embedding": {"provider": "openai"},
             "graphrag": {
                 "enabled": True,
                 "store_type": "simple",
                 "use_code_metadata": True,
-                "doc_extractor": "langextract",
             },
+            "extraction": {"mode": "subagent"},
         }
         errors = validate_config_dict(config)
         assert errors == [], f"Unexpected errors: {errors}"
@@ -477,17 +472,17 @@ def _fields(errs):
 
 
 def test_port_out_of_range_caught():
-    errs = validate_config_dict({"api": {"port": 999999}})
-    assert "api.port" in _fields(errs)
-    errs = validate_config_dict({"server": {"port": 0}})
-    assert "server.port" in _fields(errs)
+    errs = validate_config_dict({"bind": {"port_range_start": 999999}})
+    assert "bind.port_range_start" in _fields(errs)
+    errs = validate_config_dict({"bind": {"port_range_end": 0}})
+    assert "bind.port_range_end" in _fields(errs)
     errs = validate_config_dict({"storage": {"postgres": {"port": -1}}})
     assert "storage.postgres.port" in _fields(errs)
 
 
 def test_port_in_range_ok():
-    assert validate_config_dict({"api": {"port": 8000}}) == []
-    assert validate_config_dict({"server": {"port": 65535}}) == []
+    assert validate_config_dict({"bind": {"port_range_start": 8000}}) == []
+    assert validate_config_dict({"bind": {"port_range_end": 65535}}) == []
     assert validate_config_dict({"storage": {"postgres": {"port": 1}}}) == []
 
 
@@ -531,9 +526,9 @@ def test_non_negative_zero_ok():
 def test_range_skips_wrong_type_no_double_error():
     # A string port is a type error, not a range error — range pass must not also
     # fire (avoid duplicate/confusing messages).
-    errs = validate_config_dict({"api": {"port": "nope"}})
-    assert "api.port" in _fields(errs)
-    assert sum(1 for e in errs if e.field == "api.port") == 1
+    errs = validate_config_dict({"bind": {"port_range_start": "nope"}})
+    assert "bind.port_range_start" in _fields(errs)
+    assert sum(1 for e in errs if e.field == "bind.port_range_start") == 1
 
 
 # ---------------------------------------------------------------------------

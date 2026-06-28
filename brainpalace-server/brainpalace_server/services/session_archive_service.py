@@ -75,6 +75,19 @@ class SessionArchiveService:
     def manifest_entry(self, session_id: str) -> dict[str, Any] | None:
         return self._manifest.get(session_id)
 
+    def known_session_ids(self) -> set[str]:
+        """All session_ids the archive currently tracks (for orphan pruning).
+
+        Includes both the manifest key (a ``<parent>/<stem>`` composite for
+        subagents) and each entry's own ``session_id``, so a caller can test
+        sidecar/marker stems against it (2b-6)."""
+        ids: set[str] = set(self._manifest.keys())
+        for entry in self._manifest.values():
+            sid = entry.get("session_id")
+            if sid:
+                ids.add(str(sid))
+        return ids
+
     def _put_manifest(self, session_id: str, entry: dict[str, Any]) -> None:
         self._manifest[session_id] = entry
         self._save(self._manifest_path, self._manifest)
@@ -83,6 +96,52 @@ class SessionArchiveService:
         if session_id in self._manifest:
             del self._manifest[session_id]
             self._save(self._manifest_path, self._manifest)
+
+    # --- retention ---
+    def prune(self, retain_days: int, now: Any | None = None) -> list[str]:
+        """Delete tool-tagged date folders older than ``retain_days`` days.
+
+        Folders are named ``YYYY-MM-DD-<tool>``; the date prefix is compared to
+        ``now - retain_days``. ``retain_days <= 0`` keeps everything forever
+        (matches the index-side retention semantics). Manifest entries pointing
+        at a removed folder are dropped so the manifest stays consistent. Best
+        effort: a folder that can't be parsed or removed is skipped, never
+        raised. Returns the names of the folders removed.
+        """
+        import datetime as _dt
+
+        if retain_days <= 0 or not self.archive_dir.exists():
+            return []
+        today = now or _dt.date.today()
+        cutoff = today - _dt.timedelta(days=int(retain_days))
+        removed: list[str] = []
+        for child in self.archive_dir.iterdir():
+            if not child.is_dir():
+                continue
+            try:
+                folder_date = _dt.date.fromisoformat(child.name[:10])
+            except ValueError:
+                continue  # 'undated-...' and any non-date folder are kept
+            if folder_date >= cutoff:
+                continue
+            try:
+                shutil.rmtree(child)
+            except OSError as exc:
+                logger.warning("Could not prune archive folder %s: %s", child, exc)
+                continue
+            removed.append(child.name)
+
+        if removed:
+            stale = {
+                sid
+                for sid, entry in self._manifest.items()
+                if entry.get("archived_dir") in removed
+            }
+            if stale:
+                for sid in stale:
+                    self._manifest.pop(sid, None)
+                self._save(self._manifest_path, self._manifest)
+        return removed
 
     # --- sync ---
 

@@ -36,12 +36,8 @@ class TestGraphRAGConfigDefaults:
         assert grc.extraction_model is None
         assert grc.max_triplets_per_chunk is None
         assert grc.use_code_metadata is None
-        assert grc.use_llm_extraction is None
         assert grc.traversal_depth is None
         assert grc.rrf_k is None
-        assert grc.doc_extractor is None
-        assert grc.langextract_provider is None
-        assert grc.langextract_model is None
 
     def test_graphrag_config_standalone_defaults(self) -> None:
         """GraphRAGConfig() itself has all fields None."""
@@ -64,7 +60,7 @@ class TestGraphRAGConfigFullSection:
     """Case 1 — full graphrag: section is parsed with correct values."""
 
     def test_full_graphrag_section_parsed(self) -> None:
-        """All 12 GraphRAGConfig fields are populated from a dict."""
+        """GraphRAGConfig fields populated from dict; langextract fields removed."""
         raw = {
             "graphrag": {
                 "enabled": True,
@@ -73,12 +69,8 @@ class TestGraphRAGConfigFullSection:
                 "extraction_model": "gpt-4o",
                 "max_triplets_per_chunk": 10,
                 "use_code_metadata": False,
-                "use_llm_extraction": True,
                 "traversal_depth": 3,
                 "rrf_k": 60,
-                "doc_extractor": "langextract",
-                "langextract_provider": "anthropic",
-                "langextract_model": "claude-3-haiku",
             }
         }
         settings = ProviderSettings(**raw)
@@ -90,12 +82,8 @@ class TestGraphRAGConfigFullSection:
         assert grc.extraction_model == "gpt-4o"
         assert grc.max_triplets_per_chunk == 10
         assert grc.use_code_metadata is False
-        assert grc.use_llm_extraction is True
         assert grc.traversal_depth == 3
         assert grc.rrf_k == 60
-        assert grc.doc_extractor == "langextract"
-        assert grc.langextract_provider == "anthropic"
-        assert grc.langextract_model == "claude-3-haiku"
 
     def test_graphrag_config_direct_construction(self) -> None:
         """GraphRAGConfig can be constructed directly with all fields."""
@@ -129,12 +117,8 @@ class TestGraphRAGConfigPartialSection:
         assert grc.extraction_model is None
         assert grc.max_triplets_per_chunk is None
         assert grc.use_code_metadata is None
-        assert grc.use_llm_extraction is None
         assert grc.traversal_depth is None
         assert grc.rrf_k is None
-        assert grc.doc_extractor is None
-        assert grc.langextract_provider is None
-        assert grc.langextract_model is None
 
     def test_only_store_type_and_index_path_set(self) -> None:
         """Only store_type and index_path set — all other fields stay None."""
@@ -155,9 +139,6 @@ class TestGraphRAGConfigPartialSection:
             ("max_triplets_per_chunk", 5),
             ("traversal_depth", 2),
             ("rrf_k", 42),
-            ("doc_extractor", "none"),
-            ("langextract_provider", "openai"),
-            ("langextract_model", "gpt-4o-mini"),
         ],
     )
     def test_single_field_set_rest_none(self, field: str, value: object) -> None:
@@ -226,3 +207,49 @@ class TestLoadProviderSettingsGraphRAG:
         # The info log must mention graphrag and the new doc reference
         assert "graphrag" in caplog.text.lower()
         assert "PROVIDER_CONFIGURATION.md" in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# Guard tests: langextract fields must NOT exist after R1 removal
+# ---------------------------------------------------------------------------
+
+
+class TestLangextractFieldsRemoved:
+    """R1 guard: the 4 inert langextract/doc_extractor fields must be absent."""
+
+    def test_graphrag_config_has_no_use_llm_extraction(self) -> None:
+        assert "use_llm_extraction" not in GraphRAGConfig.model_fields
+
+    def test_graphrag_config_has_no_doc_extractor(self) -> None:
+        assert "doc_extractor" not in GraphRAGConfig.model_fields
+
+    def test_graphrag_config_has_no_langextract_provider(self) -> None:
+        assert "langextract_provider" not in GraphRAGConfig.model_fields
+
+    def test_graphrag_config_has_no_langextract_model(self) -> None:
+        assert "langextract_model" not in GraphRAGConfig.model_fields
+
+    def test_settings_has_no_graph_use_llm_extraction(self) -> None:
+        from brainpalace_server.config.settings import Settings
+
+        assert (
+            not hasattr(
+                Settings.model_fields.get("GRAPH_USE_LLM_EXTRACTION", None), "default"
+            )
+            and "GRAPH_USE_LLM_EXTRACTION" not in Settings.model_fields
+        )
+
+    def test_settings_has_no_graph_doc_extractor(self) -> None:
+        from brainpalace_server.config.settings import Settings
+
+        assert "GRAPH_DOC_EXTRACTOR" not in Settings.model_fields
+
+    def test_settings_has_no_graph_langextract_provider(self) -> None:
+        from brainpalace_server.config.settings import Settings
+
+        assert "GRAPH_LANGEXTRACT_PROVIDER" not in Settings.model_fields
+
+    def test_settings_has_no_graph_langextract_model(self) -> None:
+        from brainpalace_server.config.settings import Settings
+
+        assert "GRAPH_LANGEXTRACT_MODEL" not in Settings.model_fields

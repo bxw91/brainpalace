@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-24
+last_validated: 2026-06-27
 ---
 
 # API Reference
@@ -320,9 +320,9 @@ compute), `results` is always `[]` and aggregation rows appear under `compute`:
 | `unit` | string or null | Unit if present on the records |
 | `score` | float 0..1 | Value normalised for display ordering only |
 
-Compute results are never cached. When `ENABLE_COMPUTE=false` or no metric
-resolves, `compute` is `[]` (explicit `mode=compute`) or the query falls back to
-`hybrid` (auto-routed). See [COMPUTE.md](COMPUTE.md) for the full contract.
+Compute results are never cached. When no records exist or no metric resolves,
+`compute` is `[]` (explicit `mode=compute`) or the query falls back to `hybrid`
+(auto-routed). See [COMPUTE.md](COMPUTE.md) for the full contract.
 
 **Document retrieval response** `200 OK`:
 
@@ -439,8 +439,8 @@ copying them (ADR 0001).
 ### Records Endpoints
 
 Typed numeric records store (Phase 0/1). Records are populated automatically
-at session persist when `RECORD_EXTRACTION_ENABLED=true` and session extraction
-is on. See [COMPUTE.md](COMPUTE.md).
+at session persist whenever session extraction is on (no separate switch). See
+[COMPUTE.md](COMPUTE.md).
 
 #### GET /records/stats
 
@@ -539,7 +539,6 @@ Enqueue a job to index documents from a folder. Returns immediately with a job I
   "include_code": true,
   "supported_languages": ["python", "typescript"],
   "code_chunk_strategy": "ast_aware",
-  "generate_summaries": false,
   "force": false,
   "include_patterns": ["docs/**/*.md", "src/**/*.py"],
   "include_types": ["python", "docs"],
@@ -563,7 +562,6 @@ Enqueue a job to index documents from a folder. Returns immediately with a job I
 | `include_code` | boolean | `false` | Include source code files |
 | `supported_languages` | array | `null` | Languages to index |
 | `code_chunk_strategy` | string | `"ast_aware"` | `"ast_aware"` or `"text_based"` |
-| `generate_summaries` | boolean | `false` | Generate LLM summaries for code chunks |
 | `force` | boolean | `false` | Force re-indexing even if embedding provider changed |
 | `include_patterns` | array | `null` | Glob patterns to include |
 | `include_types` | array | `null` | File type presets (e.g., `["python", "docs"]`) |
@@ -595,7 +593,7 @@ Enqueue a job to index documents from a folder. Returns immediately with a job I
 
 #### POST /index/add
 
-Enqueue a job to add documents from another folder to the existing index. Same request body as `POST /index` (without `generate_summaries`, `injector_script`, `folder_metadata_file`, `dry_run`, `watch_mode`, `watch_debounce_seconds`).
+Enqueue a job to add documents from another folder to the existing index. Same request body as `POST /index` (without `injector_script`, `folder_metadata_file`, `dry_run`, `watch_mode`, `watch_debounce_seconds`).
 
 **Query Parameters**:
 
@@ -974,7 +972,6 @@ interface IndexRequest {
   include_code?: boolean;           // default false
   supported_languages?: string[];
   code_chunk_strategy?: "ast_aware" | "text_based"; // default "ast_aware"
-  generate_summaries?: boolean;     // default false
   force?: boolean;                  // default false
   include_patterns?: string[];
   include_types?: string[];         // file type presets, e.g. ["python", "docs"]

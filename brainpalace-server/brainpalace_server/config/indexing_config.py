@@ -64,6 +64,30 @@ class IndexingConfig(BaseModel):
             "Over the cap the job fails with a budget error unless force_budget."
         ),
     )
+    exclude_patterns: list[str] = Field(
+        default_factory=lambda: [
+            "**/node_modules/**",
+            "**/__pycache__/**",
+            "**/.venv/**",
+            "**/venv/**",
+            "**/.git/**",
+            "**/dist/**",
+            "**/build/**",
+            "**/target/**",
+            "**/.next/**",
+            "**/.nuxt/**",
+            "**/coverage/**",
+            "**/.pytest_cache/**",
+            "**/.mypy_cache/**",
+            "**/.tox/**",
+            "**/egg-info/**",
+            "**/*.egg-info/**",
+            "**/.claude/**",
+            "**/.claude-plugin/**",
+            "**/.brainpalace/**",
+        ],
+        description="Glob patterns excluded from indexing (one per row).",
+    )
 
 
 def _env_int(name: str, current: int) -> int:

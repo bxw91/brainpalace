@@ -5,8 +5,6 @@ from __future__ import annotations
 
 UNDOCUMENTED_COMMANDS: dict[str, str] = {
     "hook": "hidden: internal SessionStart dispatcher, not user-facing",
-    "drain-tick": "hidden: internal job-worker tick",
-    "drain-queue": "hidden: internal job-queue drain",
     "submit-session": "hidden: internal session-submit shim",
     "backfill-sessions": "maintenance one-off, not a plugin command",
     "session-path": "internal path helper",

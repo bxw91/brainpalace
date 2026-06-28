@@ -8,13 +8,13 @@ from typing import Any, Literal
 from fastapi import APIRouter, HTTPException, Request
 
 from brainpalace_server import version_display
+from brainpalace_server.config.extraction_config import resolve_extraction_mode
 from brainpalace_server.config.provider_config import (
     _find_config_file,
     load_provider_settings,
     validate_provider_config,
 )
 from brainpalace_server.config.runtime_mode import is_read_only
-from brainpalace_server.config.session_config import load_session_extraction_config
 from brainpalace_server.indexing import get_embedding_generator
 from brainpalace_server.models import HealthStatus, IndexingStatus
 from brainpalace_server.models.health import ProviderHealth, ProvidersStatus
@@ -325,6 +325,24 @@ async def indexing_status(request: Request) -> dict[str, Any]:
         except Exception:  # noqa: BLE001
             pass
 
+    # Session backlog (un-distilled, quiescent archived sessions) — surfaced
+    # regardless of mode, mirroring the doc "un-graphed" count. This is the
+    # to-summarize queue depth; with summarization off it stays a backlog the
+    # drain will not touch (the /extraction/pending endpoint is mode-gated).
+    # Best-effort: a scan of the archive markers; never fails the status call.
+    session_pending = 0
+    _proj = getattr(request.app.state, "project_root", None)
+    _arch_dir = getattr(request.app.state, "extraction_archive_dir", None)
+    if archive_service is not None and _proj and _arch_dir:
+        try:
+            from brainpalace_server.services.session_distill_service import (
+                pending_sessions,
+            )
+
+            session_pending = len(pending_sessions(_proj, _arch_dir))
+        except Exception:  # noqa: BLE001 — backlog count is advisory only
+            session_pending = 0
+
     from brainpalace_server.config.git_config import load_git_indexing_config
     from brainpalace_server.config.settings import get_settings
 
@@ -372,6 +390,8 @@ async def indexing_status(request: Request) -> dict[str, Any]:
             ),
             "archived_bytes": int(archive_stats["archived_bytes"]),
             "tombstoned": int(archive_stats["tombstoned"]),
+            # to-summarize backlog (advisory; surfaced regardless of mode).
+            "pending_summarization": int(session_pending),
         },
         "graph_index": graph_index_info or {"enabled": False},
         "lsp": {
@@ -388,10 +408,8 @@ async def indexing_status(request: Request) -> dict[str, Any]:
     _app_settings = get_settings()
     rs = getattr(request.app.state, "record_store", None)
     data["features"]["records"] = {
-        "enabled": bool(getattr(_app_settings, "ENABLE_COMPUTE", True)),
-        "extraction_enabled": bool(
-            getattr(_app_settings, "RECORD_EXTRACTION_ENABLED", True)
-        ),
+        # Compute has no switches: always selectable, empty without records;
+        # records are extracted whenever session extraction runs.
         "total": rs.record_count() if rs else 0,
         "unverified": (
             rs.count_unverified(
@@ -445,17 +463,75 @@ async def indexing_status(request: Request) -> dict[str, Any]:
     # plugin subagent and the provider distiller write the unified marker.
     project_root = getattr(request.app.state, "project_root", "") or ""
     try:
-        extract_mode = load_session_extraction_config().mode
+        extract_mode = resolve_extraction_mode("session")
     except Exception:  # noqa: BLE001
-        extract_mode = "auto"
+        extract_mode = "off"
     data["features"]["session_extraction"] = summarization_coverage(
         project_root, int(archive_stats["archived_sessions"]), extract_mode
     )
+
+    # Doc-graph extraction feature block (Plan 4 §12, C2, M1).
+    # Reads the lifespan-stashed values — never re-reads config per request.
+    data["features"]["doc_graph_extraction"] = _doc_graph_extraction_feature(request)
 
     # Read-only mode flag (master provider kill switch).
     data["features"]["read_only"] = is_read_only()
 
     return data
+
+
+def _doc_graph_extraction_feature(request: Request) -> dict[str, Any]:
+    """Build the ``doc_graph_extraction`` feature block (Plan 4, spec §12).
+
+    Reads only lifespan-stashed ``app.state.*`` values (C2: no per-request
+    config disk reads; a config change needs a restart to refresh).
+
+    ``state`` values:
+    - ``off``         — graphrag off, or mode=off
+    - ``subagent``    — graphrag on + mode=subagent
+    - ``provider``    — graphrag on + provider/auto + provider available + lock on
+    - ``unavailable`` — graphrag on + provider/auto + provider missing or lock off
+
+    M1 semantics: chunks in ``off`` mode are "un-graphed" (the ledger exists,
+    they could be extracted by toggling the mode), NOT "pending" (which implies
+    a running extractor). ``ungraphed`` is True only when ``state == off`` and
+    ``pending > 0``.
+    """
+    st = request.app.state
+    mode = getattr(st, "extraction_mode_doc", "off")
+    store = getattr(st, "doc_pending_store", None)
+    pending = int(store.count_pending()) if store is not None else 0
+    graphrag_on = bool(getattr(st, "graphrag_enabled", False))
+
+    state: str
+    provider: str | None = None
+
+    if graphrag_on and mode in ("provider", "auto"):
+        if getattr(st, "summarization_available", False) and getattr(
+            st, "extraction_provider_enabled", False
+        ):
+            provider = getattr(st, "summarization_label", None)
+            state = "provider"
+        else:
+            # provider/auto requested but no usable provider OR lock off
+            state = "unavailable"
+    elif graphrag_on and mode == "subagent":
+        state = "subagent"
+    else:
+        state = "off"
+
+    # M1: pending chunks in ``off`` are "un-graphed" (extraction not running),
+    # not "awaiting" (which implies a consumer is processing them).
+    ungraphed = state == "off" and pending > 0
+
+    return {
+        "mode": mode,
+        "graphrag_enabled": graphrag_on,
+        "pending": pending,
+        "ungraphed": ungraphed,
+        "provider": provider,
+        "state": state,
+    }
 
 
 def count_done_markers(project_root: str | Path) -> int:

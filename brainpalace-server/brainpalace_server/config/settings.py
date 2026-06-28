@@ -1,10 +1,8 @@
 """Application configuration using Pydantic settings."""
 
-import json
 import logging
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -92,16 +90,8 @@ class Settings(BaseSettings):
     GRAPH_EXTRACTION_MODEL: str = "claude-haiku-4-5"  # Model for entity extraction
     GRAPH_MAX_TRIPLETS_PER_CHUNK: int = 10  # Max triplets per document chunk
     GRAPH_USE_CODE_METADATA: bool = True  # Use AST metadata for code entities
-    # Legacy: Anthropic LLM for doc extraction (superseded by GRAPH_DOC_EXTRACTOR)
-    GRAPH_USE_LLM_EXTRACTION: bool = False
     GRAPH_TRAVERSAL_DEPTH: int = 2  # Depth for graph traversal in queries
     GRAPH_RRF_K: int = 60  # Reciprocal Rank Fusion constant for multi-retrieval
-    # "langextract" (multi-provider) or "none"; overrides GRAPH_USE_LLM_EXTRACTION
-    GRAPH_DOC_EXTRACTOR: str = "langextract"
-    # Override provider for LangExtract (default: from summarization config)
-    GRAPH_LANGEXTRACT_PROVIDER: str = ""
-    # Override model for LangExtract (default: from summarization config)
-    GRAPH_LANGEXTRACT_MODEL: str = ""
 
     # Job Queue Configuration (Feature 115)
     BRAINPALACE_MAX_QUEUE: int = 100  # Max pending jobs in queue
@@ -161,9 +151,9 @@ class Settings(BaseSettings):
     # Requires the per-language server binary installed (fail-soft if absent).
     BRAINPALACE_LSP_LANGUAGES: str = ""
 
-    # Compute query mode (Phase 0 — compute-foundation)
-    RECORD_EXTRACTION_ENABLED: bool = True  # extract typed numeric records at persist
-    ENABLE_COMPUTE: bool = True  # compute query mode (aggregation)
+    # Compute query mode (Phase 0 — compute-foundation). No switches: the mode
+    # is always selectable and empty without records; records are extracted
+    # whenever session extraction runs (gated by extraction.mode).
     COMPUTE_MIN_CONFIDENCE: float = Field(default=0.7, ge=0.0, le=1.0)
 
     model_config = SettingsConfigDict(
@@ -185,24 +175,3 @@ def get_settings() -> Settings:
 
 
 settings = get_settings()
-
-
-def load_project_config(state_dir: Path) -> dict[str, Any]:
-    """Load project configuration from state directory.
-
-    Precedence: CLI flags > env vars > project config > defaults
-
-    Args:
-        state_dir: Path to the state directory containing config.json.
-
-    Returns:
-        Dictionary of configuration values from config.json, or empty dict.
-    """
-    config_path = state_dir / "config.json"
-    if config_path.exists():
-        try:
-            with open(config_path) as f:
-                return json.load(f)  # type: ignore[no-any-return]
-        except (json.JSONDecodeError, OSError) as e:
-            logger.warning(f"Failed to load project config from {config_path}: {e}")
-    return {}

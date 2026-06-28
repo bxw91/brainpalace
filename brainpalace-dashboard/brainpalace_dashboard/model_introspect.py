@@ -13,9 +13,9 @@ server), so ``brainpalace_server.config.*`` is always importable wherever the
 dashboard runs.
 
 What the models cannot express (kept as small fallbacks in ``ui_schema``):
-- ``storage.backend`` / ``graphrag.store_type`` / ``graphrag.doc_extractor`` are
-  plain ``str`` validated by a ``field_validator``, not ``Literal``/``Enum``, so
-  their options are not in the annotation — supplied via ``ENUM_FALLBACKS``.
+- ``storage.backend`` / ``graphrag.store_type`` are plain ``str`` validated by a
+  ``field_validator``, not ``Literal``/``Enum``, so their options are not in the
+  annotation — supplied via ``ENUM_FALLBACKS``.
 - ``graphrag.*`` defaults to ``None`` in the model (the real default lives in
   ``settings.py``); the effective defaults are supplied via ``DEFAULT_FALLBACKS``.
 - ``storage.postgres`` is a free-form ``dict`` (no nested model); its sub-fields
@@ -28,50 +28,24 @@ import enum
 import types
 from typing import Any, Literal, Union, get_args, get_origin
 
-from brainpalace_server.config.bm25_config import BM25Config
-from brainpalace_server.config.git_config import GitIndexingConfig
-from brainpalace_server.config.provider_config import (
-    ComputeConfig,
-    EmbeddingConfig,
-    GraphRAGConfig,
-    RerankerConfig,
-    StorageConfig,
-    SummarizationConfig,
-)
-from brainpalace_server.config.query_log_config import QueryLogConfig
-from brainpalace_server.config.session_config import (
-    SessionArchiveConfig,
-    SessionExtractionConfig,
-    SessionIndexingConfig,
-)
+# SECTION_MODELS / NESTED_MODELS are CANONICAL in the CLI field registry
+# (brainpalace_cli.config_fields) — the dashboard depends on the CLI, so it
+# re-exports them here to keep ONE list. (Dependency direction: server <- cli <-
+# dashboard; the CLI must never import the dashboard.)
+from brainpalace_cli.config_fields import NESTED_MODELS, SECTION_MODELS
 from pydantic import BaseModel
 from pydantic_core import PydanticUndefined
 
-#: section key -> pydantic model. The single source for that section's fields,
-#: types, and defaults. Sections WITHOUT a model (``api`` / ``server`` /
-#: ``project`` — runtime-bind & machine identity) are not here; ui_schema keeps
-#: them hidden/read-only.
-SECTION_MODELS: dict[str, type[BaseModel]] = {
-    "embedding": EmbeddingConfig,
-    "summarization": SummarizationConfig,
-    "reranker": RerankerConfig,
-    "storage": StorageConfig,
-    "graphrag": GraphRAGConfig,
-    "query_log": QueryLogConfig,
-    "bm25": BM25Config,
-    "git_indexing": GitIndexingConfig,
-    "session_indexing": SessionIndexingConfig,
-    "session_extraction": SessionExtractionConfig,
-    "compute": ComputeConfig,
-}
-
-#: dotpath of a model field that is itself a nested pydantic model -> that model.
-#: Rendered as its own controls (a group, or — for the archive — its own
-#: section). ``storage.postgres`` is NOT here: it is a raw dict, handled from
-#: config_schema in ui_schema.
-NESTED_MODELS: dict[str, type[BaseModel]] = {
-    "session_indexing.archive": SessionArchiveConfig,
-}
+__all__ = [
+    "SECTION_MODELS",
+    "NESTED_MODELS",
+    "widget_and_options",
+    "field_default",
+    "model_field_names",
+    "derive_field",
+    "nested_field",
+    "nested_field_names",
+]
 
 
 def _unwrap_optional(annotation: Any) -> Any:

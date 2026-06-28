@@ -26,6 +26,7 @@ from brainpalace_server.indexing.git_loader import load_commits, resolve_commit_
 from brainpalace_server.services.indexing_service import (
     enforce_token_budget,
 )
+from brainpalace_server.storage_paths import state_file_path
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +49,7 @@ class GitHistoryIndexService:
     # -- last-sha persistence ---------------------------------------------
 
     def _state_path(self) -> Path | None:
-        return self.state_dir / _STATE_FILE if self.state_dir else None
+        return state_file_path(self.state_dir, _STATE_FILE) if self.state_dir else None
 
     def _load_state(self) -> dict[str, str]:
         path = self._state_path()
@@ -136,7 +137,12 @@ class GitHistoryIndexService:
             logger.info(
                 "Git embedding budget check ok: ~%d tokens (limit %d)", _tok, _budget
             )
-            embeddings = await self.embedding_generator.embed_chunks(new_chunks)
+            from brainpalace_server.services.usage_metrics import (
+                usage_scope,
+            )  # noqa: PLC0415
+
+            with usage_scope("git"):
+                embeddings = await self.embedding_generator.embed_chunks(new_chunks)
             await self.storage_backend.upsert_documents(
                 ids=[c.chunk_id for c in new_chunks],
                 embeddings=embeddings,

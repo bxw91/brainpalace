@@ -8,7 +8,7 @@ parameters:
     default: false
 skills:
   - using-brainpalace
-last_validated: 2026-06-19
+last_validated: 2026-06-24
 ---
 
 # BrainPalace MCP
@@ -65,6 +65,8 @@ brainpalace mcp --ensure-server
 | Tool | Description |
 |------|-------------|
 | `ai_guide` |  |
+| `extraction_fetch` |  |
+| `extraction_submit` |  |
 | `folders_list` |  |
 | `jobs_list` |  |
 | `memorize` |  |

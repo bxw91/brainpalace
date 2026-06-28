@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-24
+last_validated: 2026-06-28
 ---
 
 # Compute Query Mode & Records Subsystem
@@ -10,7 +10,7 @@ document retrieval, compute returns aggregated rows, not text chunks.
 
 > **Status — Phase 0–1.** The records store and the `compute` query mode are
 > live. Records are populated from session extraction. **This repo has
-> `session_extraction.mode: off`**, so compute returns empty here until that is
+> `extraction.mode: off`**, so compute returns empty here until that is
 > changed — that is expected, not a defect.
 
 ## What it is and when to use it
@@ -111,8 +111,8 @@ with `score_confidence`-determined confidence.
 
 ### Prerequisite: session extraction must be on
 
-Records are persisted only when `session_extraction.mode != off`. With the
-default `mode: subagent`, summaries are produced **inside Claude Code** (free on
+Records are persisted only when `extraction.mode != off`. With
+`mode: subagent`, summaries are produced **inside Claude Code** (free on
 the subscription model, no server-side metered cost) and posted to `/extract`,
 which is when the server persists records. With `mode: off` (as in this repo),
 no extraction runs and the record store stays empty.
@@ -170,7 +170,7 @@ Compute honors the same hard-off as session retrieval. When **session recall is
 disabled** — session vector indexing is off, or session extraction is `mode: off`
 (the two flags `session_recall_flags()` resolves, the same ones that hide session
 chunks from search) — records with `source="session"` are excluded from every
-aggregate. There is no per-query override. On this repo `session_extraction.mode:
+aggregate. There is no per-query override. On this repo `extraction.mode:
 off` already engages it, which is why `brainpalace status` reads *"Session Recall:
 … disabled data hidden"*.
 
@@ -213,20 +213,20 @@ always `[]` for a compute response.
 Three flat knobs in `Settings` (env vars + runtime read), mirroring the graphrag
 pattern:
 
+Compute query mode has no switches — it is always selectable and returns empty
+without records. Records are extracted automatically whenever session
+extraction runs (gated by `extraction.mode`); there is no
+record-extraction toggle. The only compute knob is the confidence floor.
+
 | Env var | Default | Description |
 |---------|---------|-------------|
-| `ENABLE_COMPUTE` | `true` | Master switch for the compute query mode |
-| `RECORD_EXTRACTION_ENABLED` | `true` | Extract typed numeric records at session persist |
 | `COMPUTE_MIN_CONFIDENCE` | `0.7` | Floor for records entering aggregates (0..1) |
 
-A `compute:` section in `.brainpalace/config.yaml` surfaces the same three
-knobs. An absent key inherits the env/default value; the env var wins when both
-are set.
+The `compute:` section in `.brainpalace/config.yaml` surfaces the same knob. An
+absent key inherits the env/default value; the env var wins when both are set.
 
 ```yaml
 compute:
-  enabled: true             # null = inherit env / default
-  record_extraction: true   # null = inherit
   min_confidence: 0.7       # null = inherit
 ```
 

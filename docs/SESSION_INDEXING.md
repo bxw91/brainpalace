@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-22
+last_validated: 2026-06-28
 ---
 
 # Session Indexing
@@ -272,7 +272,7 @@ off:
 | Feature OFF | Hidden from every query/search |
 |-------------|--------------------------------|
 | Vector indexing (`session_indexing.enabled: false`) | `session_turn` chunks |
-| Summarization (`session_extraction.mode: off`) | `session_summary` + `session_decision` chunks, and auto-promoted (`origin != user`) curated memory |
+| Summarization (`extraction.mode: off`) | `session_summary` + `session_decision` chunks, and auto-promoted (`origin != user`) curated memory |
 
 Rationale: a disabled feature's data can be **stale**, so it must not leak into
 results or the SessionStart context block. Manually-saved facts
@@ -448,7 +448,7 @@ backfill-sessions` just confirms archiving is on.
 ## Session summarization — `subagent` default (Claude-Code-only)
 
 `brainpalace init` enables session summarization by default and writes
-`session_extraction.mode: subagent` to `.brainpalace/config.yaml`. In `subagent`
+`extraction.mode: subagent` to `.brainpalace/config.yaml`. In `subagent`
 mode summaries are produced **only inside Claude Code** (the plugin, free on your
 subscription). **The server never summarizes on its own and never calls a paid
 provider.** If Claude Code did not summarize a session, it simply stays
@@ -475,14 +475,14 @@ un-summarized — no surprise API bill.
 > **‡ Server-side summarization needs TWO locks lifted.** The provider distiller
 > is **disabled by default** (`SESSION_DISTILL_ENABLED` absent ⇒ off), *independently*
 > of `mode`. So `provider`/`auto` only ever bill when **both** hold:
-> `session_extraction.mode: provider` (or `auto`) **and** `SESSION_DISTILL_ENABLED=true`
+> `extraction.mode: provider` (or `auto`) **and** `SESSION_DISTILL_ENABLED=true`
 > (`1`/`true`/`yes`/`on`). This second lock is mode-independent, so it also keeps
 > any pre-existing `mode: auto` config from billing until you deliberately enable
 > it. To turn on server-side summarization:
 >
 > ```bash
 > # 1. choose the engine
-> #    .brainpalace/config.yaml → session_extraction.mode: provider
+> #    .brainpalace/config.yaml → extraction.mode: provider
 > # 2. lift the global lock for the server process
 > export SESSION_DISTILL_ENABLED=true
 > ```
@@ -513,8 +513,8 @@ when you opt into `provider` or `auto` AND set `SESSION_DISTILL_ENABLED=true`.**
 With both locks lifted there is **no code path that silently skips a session.**
 The *only* ways summarization does not happen are:
 
-1. `session_extraction.mode: off` (`brainpalace init --no-extract`),
-2. `session_extraction.mode: subagent` *(the default — plugin-only, no server fallback)*, or
+1. `extraction.mode: off` (`brainpalace init --no-extract`),
+2. `extraction.mode: subagent` *(the default — plugin-only, no server fallback)*, or
 3. `SESSION_DISTILL_ENABLED` unset/false *(the default — provider distiller disabled)*.
 
 Otherwise (under `provider`/`auto` with the switch on) everything is **retried until it succeeds** —

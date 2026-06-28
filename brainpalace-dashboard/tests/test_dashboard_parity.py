@@ -19,13 +19,9 @@ from brainpalace_dashboard.ui_schema import (
     build_ui_schema,
 )
 
-# Model-less sections (runtime bind / machine identity) have no pydantic model;
-# their fields are sourced from config_schema and are fully hidden / read-only.
-_MODELLESS = {
-    "api": cs.API_KNOWN_FIELDS,
-    "server": cs.SERVER_KNOWN_FIELDS,
-    "project": cs.PROJECT_KNOWN_FIELDS,
-}
+# All config sections are now model-backed (bind→BindConfig, server→ServerConfig,
+# the rest via their pydantic models). No modelless sections remain.
+_MODELLESS: dict[str, set[str]] = {}
 
 
 def _all_schema_dotpaths() -> set[str]:
@@ -189,6 +185,8 @@ _DASHBOARD_ROUTE_PREFIXES = (
     "/context",
     "/runtime",
     "/records",
+    "/extraction",
+    "/metrics",
 )
 
 
@@ -231,3 +229,38 @@ def test_readonly_fields_valid_and_not_hidden() -> None:
     assert not overlap, f"fields both hidden and read-only: {sorted(overlap)}"
     # Every read-only field must have a non-empty reason.
     assert all(DASHBOARD_READONLY_FIELDS.values())
+
+
+def test_dashboard_fields_are_in_registry_or_allowlisted() -> None:
+    """Every top-level field the dashboard renders is sourced from the CLI field
+    registry (FIELD_SPECS) or explicitly allowlisted (hidden/read-only/the raw
+    postgres group). Guards the registry as the single source for the form."""
+    from brainpalace_cli import config_fields as cf
+
+    from brainpalace_dashboard.ui_schema import (
+        DASHBOARD_HIDDEN_FIELDS,
+        DASHBOARD_READONLY_FIELDS,
+        build_ui_schema,
+    )
+
+    # All sections are model-backed now; nothing relies on a modelless fallback.
+    modelless: set[str] = set()
+    for section in build_ui_schema()["sections"]:
+        for field in section["fields"]:
+            if field.get("widget") == "group":
+                continue  # storage.postgres raw dict — not model-backed
+            dp = field["dotpath"]
+            assert (
+                dp in cf.FIELD_SPECS
+                or dp in DASHBOARD_HIDDEN_FIELDS
+                or dp in DASHBOARD_READONLY_FIELDS
+                or dp.split(".")[0] in modelless
+            ), dp
+
+
+def test_group_order_equals_section_order() -> None:
+    from brainpalace_cli import config_fields as cf
+
+    from brainpalace_dashboard.ui_schema import SECTION_ORDER
+
+    assert cf.GROUP_ORDER == SECTION_ORDER

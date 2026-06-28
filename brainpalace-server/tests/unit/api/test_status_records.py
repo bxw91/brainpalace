@@ -74,8 +74,9 @@ def test_status_includes_records_block():
     assert rb["total"] == 5
     assert rb["unverified"] == 2
     assert rb["metrics"] == ["sales"]
-    assert "enabled" in rb
-    assert "extraction_enabled" in rb
+    # compute mode has no switches — no enable/extraction flags in the block
+    assert "enabled" not in rb
+    assert "extraction_enabled" not in rb
 
 
 def test_status_records_absent_store_emits_zeros():
@@ -129,5 +130,6 @@ def test_status_records_absent_store_emits_zeros():
     assert rb["total"] == 0
     assert rb["unverified"] == 0
     assert rb["metrics"] == []
-    assert "enabled" in rb
-    assert "extraction_enabled" in rb
+    # compute mode has no switches — no enable/extraction flags in the block
+    assert "enabled" not in rb
+    assert "extraction_enabled" not in rb

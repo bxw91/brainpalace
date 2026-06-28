@@ -103,7 +103,6 @@ def test_job_worker_surfaces_budget_error_as_failed_job():
         chunk_size=512,
         chunk_overlap=50,
         recursive=True,
-        generate_summaries=False,
         force=False,
     )
 

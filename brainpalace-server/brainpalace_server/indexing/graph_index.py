@@ -12,10 +12,8 @@ from typing import Any
 from brainpalace_server.config import settings
 from brainpalace_server.indexing.graph_extractors import (
     CodeMetadataExtractor,
-    LangExtractExtractor,
     LLMEntityExtractor,
     get_code_extractor,
-    get_langextract_extractor,
     get_llm_extractor,
 )
 from brainpalace_server.models.graph import (
@@ -40,23 +38,21 @@ class GraphIndexManager:
     """Manages graph index building and querying.
 
     Coordinates:
-    - Entity extraction from documents (LLM, LangExtract, and code metadata)
+    - Entity extraction from documents (LLM and code metadata)
     - Triplet storage in GraphStoreManager
     - Graph-based retrieval for queries
 
     Extraction routing:
     - source_type == "code"     → CodeMetadataExtractor (AST, no API key)
-    - source_type == "document" → LangExtractExtractor (multi-provider) when
-                                   GRAPH_DOC_EXTRACTOR == "langextract"
-    - Legacy fallback           → LLMEntityExtractor when GRAPH_USE_LLM_EXTRACTION
+    - source_type == "document" → deferred via DocPendingStore to async reconciler
 
     All operations are no-ops when ENABLE_GRAPH_INDEX is False.
 
     Attributes:
         graph_store: The underlying graph store manager.
-        llm_extractor: LLM-based entity extractor (legacy Anthropic-only).
+        llm_extractor: LLM-based entity extractor (retained for direct API use).
         code_extractor: Code metadata extractor.
-        langextract_extractor: Multi-provider document extractor.
+        pending_store: Optional per-chunk pending queue (deferred doc extraction).
     """
 
     def __init__(
@@ -64,7 +60,7 @@ class GraphIndexManager:
         graph_store: GraphStoreManager | None = None,
         llm_extractor: LLMEntityExtractor | None = None,
         code_extractor: CodeMetadataExtractor | None = None,
-        langextract_extractor: LangExtractExtractor | None = None,
+        pending_store: Any | None = None,
     ) -> None:
         """Initialize graph index manager.
 
@@ -72,14 +68,12 @@ class GraphIndexManager:
             graph_store: Graph store manager (defaults to singleton).
             llm_extractor: LLM extractor (defaults to singleton).
             code_extractor: Code extractor (defaults to singleton).
-            langextract_extractor: LangExtract extractor (defaults to singleton).
+            pending_store: Optional per-chunk pending queue (deferred doc extraction).
         """
         self.graph_store = graph_store or get_graph_store_manager()
         self.llm_extractor = llm_extractor or get_llm_extractor()
         self.code_extractor = code_extractor or get_code_extractor()
-        self.langextract_extractor = (
-            langextract_extractor or get_langextract_extractor()
-        )
+        self.pending_store = pending_store
         self._last_build_time: datetime | None = None
         self._last_triplet_count: int = 0
         self._lsp_extractor: Any | None = None  # lazy (Phase 150, opt-in)
@@ -127,7 +121,6 @@ class GraphIndexManager:
             "graph_index.build_from_documents: starting",
             extra={
                 "document_count": total_docs,
-                "llm_extraction": settings.GRAPH_USE_LLM_EXTRACTION,
                 "code_metadata": settings.GRAPH_USE_CODE_METADATA,
             },
         )
@@ -168,6 +161,17 @@ class GraphIndexManager:
                 "relationship_count": self.graph_store.relationship_count,
             },
         )
+
+        # Record code-AST triplets — best-effort; never breaks the caller (§6-F5).
+        if total_triplets > 0:
+            try:
+                from brainpalace_server.services.usage_metrics import (  # noqa: PLC0415
+                    record_usage,
+                )
+
+                record_usage("code-ast", "", "", "code", triplets=total_triplets)
+            except Exception:  # noqa: BLE001
+                pass
 
         return total_triplets
 
@@ -217,23 +221,15 @@ class GraphIndexManager:
                 )
                 triplets.extend(lsp_triplets)
 
-        # 2. Extract from document chunks using LangExtract (multi-provider)
-        if (
-            text
-            and source_type != "code"
-            and settings.GRAPH_DOC_EXTRACTOR == "langextract"
-        ):
-            doc_triplets = self.langextract_extractor.extract_triplets(
-                text, source_chunk_id=chunk_id
-            )
-            triplets.extend(doc_triplets)
-
-        # 3. Legacy LLM extraction (Anthropic-only fallback)
-        elif settings.GRAPH_USE_LLM_EXTRACTION and text and source_type != "code":
-            llm_triplets = self.llm_extractor.extract_triplets(
-                text, source_chunk_id=chunk_id
-            )
-            triplets.extend(llm_triplets)
+        # 2. Document chunks — DEFER to the async reconciler via the pending store
+        #    (spec §8 — no synchronous LLM burst at index time). When no store is
+        #    wired the chunk is silently skipped; code-AST extraction is unaffected.
+        if text and source_type != "code":
+            if self.pending_store is not None:
+                # Split git-commit chunks out from doc-file chunks so the queue
+                # backlog widget can report them separately (same pending table).
+                kind = "git" if source_type == "git_commit" else "doc"
+                self.pending_store.mark_pending(chunk_id, text, kind=kind)
 
         return triplets
 

@@ -96,7 +96,11 @@ function ShellInner({ children }: { children: ReactNode }) {
   const selectServer = () => go("/");
   const selectInstance = (id: string) => {
     setSelectedId(id);
-    go("/status");
+    // Land on the FIRST instance-scoped tab (TABS order), not a hardcoded
+    // path — so reordering tabs (e.g. Usage before Status) is respected.
+    const firstInstanceTab =
+      TABS.find((t) => t.scope === "instance")?.path ?? "/status";
+    go(firstInstanceTab);
   };
 
   return (

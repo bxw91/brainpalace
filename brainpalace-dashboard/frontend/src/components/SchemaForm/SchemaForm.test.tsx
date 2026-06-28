@@ -442,11 +442,11 @@ describe("SchemaForm", () => {
           description: "Distills a finished chat into a summary.",
           fields: [
             {
-              key: "mode",
-              dotpath: "session_extraction.mode",
-              label: "Mode",
-              widget: "enum",
-              options: ["subagent", "off"],
+              key: "quiescence_seconds",
+              dotpath: "session_extraction.quiescence_seconds",
+              label: "Quiescence seconds",
+              widget: "int",
+              options: [],
             },
           ],
         },

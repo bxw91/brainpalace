@@ -7,11 +7,12 @@
 # stale. See CLAUDE.md → "AI-guidance parity" and the sessionstart-hook for the
 # pattern.
 #
-# Drains the per-project session-summarization gap AFTER a user turn (NOT at
-# startup): selection, byte budget, count cap, and the 5-min cooldown live in
-# `drain-queue`; on a non-empty drain the CLI injects a directive asking the
-# in-session model to run the free `chat-session-extractor` subagent. Indexed
-# projects only; empty drain / active cooldown → emit nothing.
+# Drains the per-project extraction queue AFTER a user turn (NOT at startup):
+# source=all pending batch selection, per-source caps, and the 5-min cooldown
+# live in the CLI; on a non-empty drain the CLI injects an ids-only directive
+# routing doc ids → graph-triplet-extractor and session ids →
+# chat-session-extractor. Indexed projects only; empty batch / active cooldown
+# → emit nothing.
 #
 # Fail-soft: never block a session. CLI absent from PATH — or present but too old
 # to have the `hook` command (plugin newer than the installed CLI) — must no-op

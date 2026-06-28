@@ -20,7 +20,7 @@ parameters:
     default: false
 skills:
   - using-brainpalace
-last_validated: 2026-06-19
+last_validated: 2026-06-24
 ---
 
 # BrainPalace Doctor
@@ -76,6 +76,6 @@ brainpalace doctor --fix
 |------|------|---------|-------------|
 | --url | text | "" | Server URL to probe (default: resolved from runtime.json or config). |
 | --json | bool | false | Emit machine-readable JSON. |
-| --fix | bool | false | Apply safe, idempotent, offline fixes (add .brainpalace/ to .gitignore, create state dir + stub config.json). Will not touch API keys, network, or user code. Re-runs the report after fixing. |
+| --fix | bool | false | Apply safe, idempotent, offline fixes (add .brainpalace/ to .gitignore, create state dir + stub config.yaml). Will not touch API keys, network, or user code. Re-runs the report after fixing. |
 | --reap | bool | false | Kill orphan server processes not referenced by a live registry entry (leaked servers that hold ports). Runs before the diagnostics. |
 <!--/GENERATED-->

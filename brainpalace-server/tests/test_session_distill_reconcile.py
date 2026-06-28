@@ -119,19 +119,45 @@ async def test_auto_defers_when_plugin_present_and_fresh(tmp_path):
 
 @pytest.mark.asyncio
 async def test_auto_safety_net_when_plugin_present_but_stale(tmp_path):
+    # Task 4f: the safety net now fires on the activity-anchored grace gate
+    # (subagent absent for a whole window + first request seen), not transcript
+    # age. server_start_ts well in the past + no last-drain + first_request_seen
+    # → past grace → eligible → safety net fires.
     t = _write_transcript(tmp_path / "s.jsonl", "s")
-    old = time.time() - 48 * 3600
-    os.utime(t, (old, old))
+    _make_quiescent(t)  # quiescent (idle) but otherwise young
     summ = CannedSummarizer(_VALID)
     d = SessionDistiller(
         summarizer=summ,
         mode="auto",
         plugin_present=lambda: True,
         grace_hours=24,
+        server_start_ts=time.time() - 48 * 3600,
+        first_request_seen=lambda: True,
         **_deps(tmp_path),
     )
     assert await d.maybe_distill(t) is not None  # safety net fired
     assert is_marked(tmp_path, "s")
+
+
+@pytest.mark.asyncio
+async def test_auto_cold_start_defers_even_past_grace(tmp_path):
+    # Cold-start gate: no HTTP request seen yet → never eligible, even with the
+    # grace window long elapsed since server start (would-be safety net suppressed).
+    t = _write_transcript(tmp_path / "s.jsonl", "s")
+    _make_quiescent(t)
+    summ = CannedSummarizer(_VALID)
+    d = SessionDistiller(
+        summarizer=summ,
+        mode="auto",
+        plugin_present=lambda: True,
+        grace_hours=24,
+        server_start_ts=time.time() - 48 * 3600,
+        first_request_seen=lambda: False,
+        **_deps(tmp_path),
+    )
+    assert await d.maybe_distill(t) is None  # cold start → deferred
+    assert summ.calls == 0
+    assert not is_marked(tmp_path, "s")
 
 
 @pytest.mark.asyncio

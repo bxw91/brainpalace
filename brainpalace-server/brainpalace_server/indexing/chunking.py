@@ -64,8 +64,6 @@ class ChunkMetadata:
     symbol_kind: str | None = None  # "function", "class", "method", etc.
     start_line: int | None = None  # 1-based line number
     end_line: int | None = None  # 1-based line number
-    section_summary: str | None = None  # AI-generated summary
-    prev_section_summary: str | None = None  # Previous section summary
     docstring: str | None = None  # Extracted docstring
     parameters: list[str] | None = None  # Function parameters as strings
     return_type: str | None = None  # Function return type
@@ -109,10 +107,6 @@ class ChunkMetadata:
             data["start_line"] = self.start_line
         if self.end_line is not None:
             data["end_line"] = self.end_line
-        if self.section_summary:
-            data["section_summary"] = self.section_summary
-        if self.prev_section_summary:
-            data["prev_section_summary"] = self.prev_section_summary
         if self.docstring:
             data["docstring"] = self.docstring
         if self.parameters:
@@ -169,8 +163,6 @@ class CodeChunk:
         symbol_kind: str | None = None,
         start_line: int | None = None,
         end_line: int | None = None,
-        section_summary: str | None = None,
-        prev_section_summary: str | None = None,
         docstring: str | None = None,
         parameters: list[str] | None = None,
         return_type: str | None = None,
@@ -194,8 +186,6 @@ class CodeChunk:
             symbol_kind=symbol_kind,
             start_line=start_line,
             end_line=end_line,
-            section_summary=section_summary,
-            prev_section_summary=prev_section_summary,
             docstring=docstring,
             parameters=parameters,
             return_type=return_type,
@@ -455,7 +445,6 @@ class CodeChunker:
         chunk_lines: int | None = None,
         chunk_lines_overlap: int | None = None,
         max_chars: int | None = None,
-        generate_summaries: bool = False,
     ):
         """
         Initialize the code chunker.
@@ -465,13 +454,11 @@ class CodeChunker:
             chunk_lines: Target chunk size in lines. Defaults to 40.
             chunk_lines_overlap: Line overlap between chunks. Defaults to 15.
             max_chars: Maximum characters per chunk. Defaults to 1500.
-            generate_summaries: Whether to generate LLM summaries for chunks.
         """
         self.language = language
         self.chunk_lines = chunk_lines or 40
         self.chunk_lines_overlap = chunk_lines_overlap or 15
         self.max_chars = max_chars or 1500
-        self.generate_summaries = generate_summaries
 
         # Initialize LlamaIndex CodeSplitter for AST-aware chunking
         self.code_splitter = CodeSplitter(
@@ -483,12 +470,6 @@ class CodeChunker:
 
         # Initialize tree-sitter parser
         self._setup_language()
-
-        # Initialize embedding generator for summaries (only if needed)
-        if self.generate_summaries:
-            from .embedding import get_embedding_generator
-
-            self.embedding_generator = get_embedding_generator()
 
         # Initialize tokenizer for token counting
         self.tokenizer = tiktoken.get_encoding("cl100k_base")
@@ -910,26 +891,6 @@ class CodeChunker:
             return chunks
 
         chunks = await asyncio.to_thread(_do_code_chunk)
-
-        # Generate summaries (async LLM calls) after thread returns
-        if self.generate_summaries:
-            for chunk in chunks:
-                if chunk.text.strip():
-                    try:
-                        summary = await self.embedding_generator.generate_summary(
-                            chunk.text
-                        )
-                        chunk.metadata.section_summary = summary
-                        logger.debug(
-                            f"Generated summary for chunk "
-                            f"{chunk.chunk_index}: {summary[:50]}..."
-                        )
-                    except Exception as e:
-                        logger.warning(
-                            f"Failed to generate summary for chunk "
-                            f"{chunk.chunk_index}: {e}"
-                        )
-                        chunk.metadata.section_summary = ""
 
         logger.info(
             f"Code chunked {document.source} into {len(chunks)} chunks "

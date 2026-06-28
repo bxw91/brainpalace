@@ -28,10 +28,10 @@ def is_initialized_state_dir(state_dir: Path) -> bool:
     """True if a ``.brainpalace/`` (or legacy) dir is an initialized project.
 
     A directory counts as a real project root only when it holds one of the
-    initialized markers: ``config.json`` (the canonical marker — ``brainpalace
-    init`` writes it unconditionally), ``config.yaml`` (also written by
-    ``brainpalace init``), or ``runtime.json`` (written by a running server). A
-    bare scaffold (only ``data/`` dirs, created as a side effect) has none of
+    initialized markers: ``config.yaml`` (the canonical marker — ``brainpalace
+    init`` writes it), ``runtime.json`` (written by a running server), or the
+    legacy ``config.json`` (retired, but still detected so old projects resolve).
+    A bare scaffold (only ``data/`` dirs, created as a side effect) has none of
     these and returns ``False`` so discovery walks past it to the true project /
     git root.
 

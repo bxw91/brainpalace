@@ -176,57 +176,6 @@ export async function unsetGlobalConfig(
 }
 
 // ---------------------------------------------------------------------------
-// Per-project runtime bind — config.json (bind_host / port range / auto_port).
-// Read by the CLI at server start; changes need a RESTART to take effect.
-// ---------------------------------------------------------------------------
-
-export type RuntimeConfig = {
-  bind_host: string;
-  port_range_start: number;
-  port_range_end: number;
-  auto_port: boolean;
-};
-
-export const getRuntimeConfig = (id: string) =>
-  get(`/instances/${id}/runtime-config`, (j) => j as RuntimeConfig);
-
-export const getRuntimeConfigEffective = (id: string) =>
-  get(`/instances/${id}/runtime-config/effective`, (j) => j as EffectiveConfig);
-
-// Machine-wide bind defaults (XDG config.json) — every project inherits these
-// before the code default. The CLI honors them at server start.
-export const getGlobalRuntimeConfigEffective = () =>
-  get("/global-runtime-config/effective", (j) => j as EffectiveConfig);
-
-export async function patchGlobalRuntimeConfig(
-  values: Record<string, unknown>,
-  unset: string[] = [],
-): Promise<{ ok: boolean; restart_required: boolean }> {
-  const r = await fetch(`${BASE}/global-runtime-config`, {
-    method: "PATCH",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ values, unset, restart: false }),
-  });
-  if (!r.ok) throw await readError(r); // 422 -> { errors: [...] }
-  return r.json();
-}
-
-export async function patchRuntimeConfig(
-  id: string,
-  values: Partial<RuntimeConfig>,
-  restart: boolean,
-  unset: string[] = [],
-): Promise<{ ok: boolean; restarted: boolean; restart_required: boolean }> {
-  const r = await fetch(`${BASE}/instances/${id}/runtime-config`, {
-    method: "PATCH",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ values, unset, restart }),
-  });
-  if (!r.ok) throw await readError(r); // 422 -> { errors: [...] }
-  return r.json();
-}
-
-// ---------------------------------------------------------------------------
 // Control-plane ("server") settings — the dashboard's own config, distinct from
 // per-instance config. (`dashboard:` block in the XDG config.yaml.)
 // ---------------------------------------------------------------------------
@@ -520,5 +469,105 @@ export const getGraphNeighbors = (id: string, node: string, limit = 200) =>
     `/instances/${id}/graph/neighbors?${new URLSearchParams({ node, limit: String(limit) })}`,
   );
 
+// Highest-degree hubs — seeds the browser with no search (GET /graph/top).
+export const getGraphTopNodes = (id: string, limit = 20) =>
+  getData<{ nodes: GraphNodeHit[] }>(
+    `/instances/${id}/graph/top?${new URLSearchParams({ limit: String(limit) })}`,
+  );
+
 export const testProviders = (id: string) =>
   actData<ProviderTestResult>(`/instances/${id}/providers/test`, "POST");
+
+// ---------------------------------------------------------------------------
+// Usage telemetry (Plan 5 — GET /metrics/usage).
+// ---------------------------------------------------------------------------
+
+/** One row in `totals` — per-dimension window rollup. */
+export type UsageTotalRow = {
+  channel: string;
+  provider: string;
+  model: string;
+  source: string;
+  chunks: number;
+  calls: number;
+  triplets: number;
+  tokens_in: number;
+  tokens_out: number;
+  cache_read: number;
+  cache_write: number;
+  errors: number;
+};
+
+/**
+ * One row in `series` — per-time-bucket counts, tokens split by channel
+ * (§6-F7). `bucket` is the slot-start in unix minutes (downsampled to
+ * `bucket_size` minutes by the server per window).
+ */
+export type UsageSeriesRow = {
+  bucket: number;
+  chunks: number;
+  calls: number;
+  triplets: number;
+  embed_tokens_in: number;
+  embed_cache_read: number;
+  llm_tokens_in: number;
+  llm_tokens_out: number;
+  llm_cache_read: number;
+  llm_cache_write: number;
+};
+
+/** One row in `series_by_source` — token measures per time-bucket per source. */
+export type UsageSourceSeriesRow = {
+  bucket: number;
+  channel: string;
+  source: string;
+  tokens_in: number;
+  tokens_out: number;
+  cache_read: number;
+  cache_write: number;
+};
+
+/** One row in `queue` — latest gauge sample per source. */
+export type UsageQueueRow = {
+  source: string;
+  depth: number;
+  sampled_at: number; // unix timestamp
+  active?: boolean; // false = the feature that drains this source is off
+};
+
+/** Full response from GET /metrics/usage. */
+export type UsageMetrics = {
+  window: string;
+  now_bucket: number; // current minute bucket
+  bucket_size: number; // series downsample size, in minutes
+  totals: UsageTotalRow[];
+  series: UsageSeriesRow[];
+  series_by_source: UsageSourceSeriesRow[];
+  queue: UsageQueueRow[];
+};
+
+/**
+ * Fetch windowed usage telemetry for an instance.
+ * A 503 (usage_metrics.enabled=false) surfaces as InstanceUnreachableError
+ * with upstreamStatus=503 so the tab can show the disabled state.
+ */
+export async function getUsageMetrics(
+  instanceId: string,
+  window = "24h",
+): Promise<UsageMetrics> {
+  const r = await fetch(
+    `${BASE}/instances/${instanceId}/metrics/usage?window=${window}`,
+  );
+  if (r.status === 502 || r.status === 503) {
+    const body = (await readError(r)) as Record<string, unknown>;
+    throw new InstanceUnreachableError(
+      (body?.detail as string) ?? "usage metrics unavailable",
+      r.status,
+    );
+  }
+  if (!r.ok) {
+    const body = (await readError(r)) as Record<string, unknown>;
+    throw new Error((body?.detail as string) ?? r.statusText);
+  }
+  return (await r.json()) as UsageMetrics;
+}

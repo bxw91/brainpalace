@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-18
+last_validated: 2026-06-24
 ---
 
 # Code Indexing Deep Dive
@@ -167,7 +167,6 @@ code_chunker = CodeChunker(
     chunk_lines=40,           # Target chunk size in lines
     chunk_lines_overlap=15,   # Overlap between chunks
     max_chars=1500,           # Maximum characters per chunk
-    generate_summaries=False, # Optional LLM summaries
 )
 ```
 
@@ -387,17 +386,7 @@ brainpalace query "VectorStoreManager" --mode bm25
 brainpalace query "manages vector storage" --mode hybrid
 ```
 
-### 5. Generate Summaries for Better Semantic Search
-
-Enable LLM summaries for improved concept matching:
-
-```bash
-brainpalace index /project --generate-summaries
-```
-
-**Trade-off**: Adds ~50% to indexing time but improves vector search relevance.
-
-### 6. Tune Chunk Sizes for Your Codebase
+### 5. Tune Chunk Sizes for Your Codebase
 
 Adjust chunk parameters for different code styles:
 
@@ -460,14 +449,12 @@ brainpalace index /project --chunk-size 400 --overlap 50
 **Symptoms**: Indexing takes much longer than expected.
 
 **Causes**:
-1. LLM summary generation enabled
-2. Large files with complex AST
-3. Many small files (overhead per file)
+1. Large files with complex AST
+2. Many small files (overhead per file)
 
 **Solutions**:
-1. Disable summaries: `--no-generate-summaries`
-2. Exclude generated files: Use `.gitignore` patterns
-3. Index in batches: Split large codebases
+1. Exclude generated files: Use `.gitignore` patterns
+2. Index in batches: Split large codebases
 
 ### Memory Issues During Indexing
 

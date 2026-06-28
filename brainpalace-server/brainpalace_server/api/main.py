@@ -12,6 +12,7 @@ import asyncio
 import logging
 import os
 import socket
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -59,7 +60,12 @@ from brainpalace_server.storage import (
     get_storage_backend,
     set_vector_store,
 )
-from brainpalace_server.storage_paths import resolve_state_dir, resolve_storage_paths
+from brainpalace_server.storage_paths import (
+    db_path,
+    resolve_state_dir,
+    resolve_storage_paths,
+    state_file_path,
+)
 
 from .routers import (
     cache_router,
@@ -333,7 +339,7 @@ _INDEX_BACKEND_MARKER = ".index_backend"
 
 def _read_index_backend_marker(state_dir: Path) -> str | None:
     try:
-        p = state_dir / _INDEX_BACKEND_MARKER
+        p = state_file_path(state_dir, _INDEX_BACKEND_MARKER)
         return p.read_text(encoding="utf-8").strip() or None if p.is_file() else None
     except OSError:
         return None
@@ -341,7 +347,9 @@ def _read_index_backend_marker(state_dir: Path) -> str | None:
 
 def _write_index_backend_marker(state_dir: Path, backend: str) -> None:
     try:
-        (state_dir / _INDEX_BACKEND_MARKER).write_text(backend, encoding="utf-8")
+        state_file_path(state_dir, _INDEX_BACKEND_MARKER).write_text(
+            backend, encoding="utf-8"
+        )
     except OSError as exc:  # best-effort — never block startup on the marker
         logger.warning("Could not write index-backend marker: %s", exc)
 
@@ -413,12 +421,8 @@ def _apply_graphrag_yaml_overrides(provider_settings: "ProviderSettings") -> Non
         ("GRAPH_EXTRACTION_MODEL", "extraction_model"),
         ("GRAPH_MAX_TRIPLETS_PER_CHUNK", "max_triplets_per_chunk"),
         ("GRAPH_USE_CODE_METADATA", "use_code_metadata"),
-        ("GRAPH_USE_LLM_EXTRACTION", "use_llm_extraction"),
         ("GRAPH_TRAVERSAL_DEPTH", "traversal_depth"),
         ("GRAPH_RRF_K", "rrf_k"),
-        ("GRAPH_DOC_EXTRACTOR", "doc_extractor"),
-        ("GRAPH_LANGEXTRACT_PROVIDER", "langextract_provider"),
-        ("GRAPH_LANGEXTRACT_MODEL", "langextract_model"),
     ]
     applied: list[str] = []
     for env_name, yaml_attr in mapping:
@@ -436,8 +440,7 @@ def _apply_graphrag_yaml_overrides(provider_settings: "ProviderSettings") -> Non
 
 
 def _apply_compute_yaml_overrides(provider_settings: "ProviderSettings") -> None:
-    """Apply compute: YAML config to ENABLE_COMPUTE / RECORD_EXTRACTION_ENABLED /
-    COMPUTE_MIN_CONFIDENCE settings — env vars win.
+    """Apply compute: YAML config to COMPUTE_MIN_CONFIDENCE — env vars win.
 
     Mirrors _apply_graphrag_yaml_overrides exactly. For each compute setting, if
     the corresponding environment variable is NOT set, and the compute: YAML
@@ -447,11 +450,7 @@ def _apply_compute_yaml_overrides(provider_settings: "ProviderSettings") -> None
     Must run before any code that reads these settings.
     """
     compute = provider_settings.compute
-    for env_name, yaml_attr in (
-        ("ENABLE_COMPUTE", "enabled"),
-        ("RECORD_EXTRACTION_ENABLED", "record_extraction"),
-        ("COMPUTE_MIN_CONFIDENCE", "min_confidence"),
-    ):
+    for env_name, yaml_attr in (("COMPUTE_MIN_CONFIDENCE", "min_confidence"),):
         if os.environ.get(env_name) is not None:
             continue  # env-wins
         value = getattr(compute, yaml_attr, None)
@@ -479,6 +478,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     # Record server start time for the /runtime/ endpoint (B8).
     app.state.started_at = datetime.now(timezone.utc).isoformat()
+    # Task 4f: monotonic-ish wall clock for the auto-grace baseline (a restart
+    # resets the provider grace window) + the cold-start gate (no auto-drain until
+    # the first HTTP request arrives — set by the middleware below).
+    app.state.server_start_ts = time.time()
+    app.state.first_request_seen = False
 
     # Hard-disable ChromaDB telemetry (PostHog) before any client is created.
     # The config off-switch is broken in chromadb 0.5.x, so neutralize directly.
@@ -628,6 +632,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         logger.info("Server log file: %s", log_path)
     except Exception as exc:  # noqa: BLE001 — never block startup on log file
         logger.warning("Could not set up server log file: %s", exc)
+
+    # Drop /health access-log spam (dashboard/CLI poll it every couple seconds —
+    # it was ~95% of the captured stdout log volume).
+    try:
+        from brainpalace_server.logging_filters import (
+            install_health_check_access_filter,
+        )
+
+        install_health_check_access_filter()
+    except Exception as exc:  # noqa: BLE001 — never block startup on log filter
+        logger.debug("Could not install health-check access filter: %s", exc)
 
     # Phase M: pin GRAPH_INDEX_PATH to the project-resolved path before any
     # code triggers GraphStoreManager.get_instance(). Phase I covered the
@@ -852,17 +867,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             settings.QUERY_CACHE_MAX_SIZE,
         )
 
-        # Load project config for exclude patterns
-        exclude_patterns = None
-        if state_dir:
-            from brainpalace_server.config.settings import load_project_config
+        # Load exclude patterns from the indexing: block (config.yaml).
+        # Previously read from config.json; now resolved via IndexingConfig (Task 11).
+        from brainpalace_server.config.indexing_config import (  # noqa: PLC0415
+            load_indexing_config,
+        )
 
-            project_config = load_project_config(state_dir)
-            exclude_patterns = project_config.get("exclude_patterns")
-            if exclude_patterns:
-                logger.info(
-                    f"Using exclude patterns from config: {exclude_patterns[:3]}..."
-                )
+        _idx_cfg = load_indexing_config(
+            (state_dir / "config.yaml") if state_dir else None
+        )
+        exclude_patterns: list[str] | None = _idx_cfg.exclude_patterns or None
+        if exclude_patterns:
+            logger.info(
+                f"Using exclude patterns from config: {exclude_patterns[:3]}..."
+            )
 
         # Initialize FolderManager for indexed folder tracking (Phase 12)
         if state_dir is not None:
@@ -1046,6 +1064,76 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         else:
             app.state.session_context_service = None
 
+        # Per-chunk extraction pending queue (Unified Extraction, Plan 2).
+        # MUST be constructed BEFORE the session-reconciler block below: that
+        # block (archive ON by default) builds the doc adapter referencing
+        # app.state.doc_pending_store, so the attribute has to exist (store or
+        # None) by then or the whole session setup aborts on AttributeError.
+        try:
+            from brainpalace_server.storage.extraction_pending import DocPendingStore
+
+            app.state.doc_pending_store = DocPendingStore(
+                db_path(state_dir, "extraction_pending.db")
+            )
+            # Wire the pending store into the graph index manager used by the job
+            # worker so doc chunks are deferred (not extracted inline at index time).
+            if (
+                hasattr(app.state, "indexing_service")
+                and app.state.indexing_service is not None
+            ):
+                app.state.indexing_service.graph_index_manager.pending_store = (
+                    app.state.doc_pending_store
+                )
+        except Exception as exc:  # noqa: BLE001 — never block startup
+            app.state.doc_pending_store = None
+            logger.warning("DocPendingStore setup failed: %s", exc)
+
+        # Shared extraction engine (Plan 4) — resolve mode/flags ONCE here and
+        # stash on app.state. Adapters/endpoints/health read app.state.* (never
+        # re-read config per call). A key/config change needs a restart to refresh
+        # (consistent with how every other config applies). This is the C1
+        # keystone: the doc drain is decoupled from sessions via these values.
+        from brainpalace_server.config.extraction_config import (
+            extraction_provider_enabled,
+            load_extraction_config,
+            resolve_extraction_mode,
+        )
+
+        _ext = load_extraction_config()
+        app.state.extraction_mode_doc = resolve_extraction_mode("doc")
+        app.state.extraction_mode_session = resolve_extraction_mode("session")
+        app.state.extraction_provider_enabled = extraction_provider_enabled()
+        app.state.extraction_grace_hours = _ext.grace_hours
+        app.state.extraction_drain_batch = _ext.drain_batch_size
+        app.state.extraction_drain_cooldown = _ext.drain_cooldown_seconds
+        # graphrag.enabled maps onto ENABLE_GRAPH_INDEX at load (env wins).
+        app.state.graphrag_enabled = bool(getattr(settings, "ENABLE_GRAPH_INDEX", True))
+        # Provider availability for status (C2, key-present, no network).
+        _sm = load_provider_settings().summarization
+        app.state.summarization_label = (
+            f"{_sm.provider}:{_sm.model}"
+            if _sm and getattr(_sm, "model", None)
+            else (getattr(_sm, "provider", None) if _sm else None)
+        )
+        app.state.summarization_available = bool(
+            _sm
+            and (
+                str(getattr(_sm, "provider", "")).lower() == "ollama"
+                or _sm.get_api_key()
+            )
+        )
+
+        # Doc-graph provider drain runs INDEPENDENT of session capabilities
+        # (C1/§4): graphrag on + provider/auto mode + the H2 provider lock +
+        # a pending store + writable. Two cost locks: mode AND env (H2).
+        doc_extraction_would_run = (
+            app.state.graphrag_enabled
+            and app.state.extraction_mode_doc in ("provider", "auto")
+            and app.state.extraction_provider_enabled
+            and app.state.doc_pending_store is not None
+            and not read_only
+        )
+
         # Session archive + indexing (Phase 050) — two INDEPENDENT capabilities.
         #   archive: copy raw transcripts (durable backup, no embeddings). ON by
         #     default incl. existing projects (absent block). SESSION_ARCHIVE_ENABLED.
@@ -1077,20 +1165,26 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             # those are OFF, so the three capabilities work individually.
             from brainpalace_server.config.session_config import (
                 load_session_extraction_config,
-                session_distill_enabled,
                 session_distill_grace_hours,
             )
 
+            # extraction.mode (stashed in app.state.extraction_mode_session) governs
+            # both doc-graph and session consumers; the shared provider lock is the
+            # second billable gate (mode ∈ {provider,auto} AND the env lock).
+            # extract_cfg supplies only quiescence_seconds (session-only timing gate).
             extract_cfg = load_session_extraction_config()
             distill_would_run = (
-                extract_cfg.mode in ("provider", "auto")
-                and session_distill_enabled()
+                app.state.extraction_mode_session in ("provider", "auto")
+                and app.state.extraction_provider_enabled
                 and bool(app.state.project_root)
                 and not read_only
             )
 
             if (
-                caps.archive_enabled or caps.index_enabled or distill_would_run
+                caps.archive_enabled
+                or caps.index_enabled
+                or distill_would_run
+                or doc_extraction_would_run
             ) and app.state.project_root:
                 from brainpalace_server.services.session_index_service import (
                     encode_project_to_sessions_dir,
@@ -1163,7 +1257,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 # blocks startup; failure leaves distiller=None (archive still runs).
                 distiller = None
                 try:
-                    extract_mode = extract_cfg.mode
+                    extract_mode = app.state.extraction_mode_session
                     if distill_would_run:
                         from brainpalace_server.indexing import (
                             get_embedding_generator,
@@ -1185,10 +1279,26 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                             )
 
                             distill_graph = get_graph_store_manager()
+                        from brainpalace_server.config.model_windows import (
+                            resolve_chunk_chars,
+                        )
+                        from brainpalace_server.services.provider_budget import (
+                            is_billable,
+                        )
+
                         _proj = app.state.project_root
+                        _summ_settings = load_provider_settings().summarization
+                        _summ_provider = str(getattr(_summ_settings, "provider", ""))
+                        _summ_model = str(getattr(_summ_settings, "model", ""))
+                        _chunk_chars = resolve_chunk_chars(
+                            provider_context_tokens=_ext.provider_context_tokens,
+                            distill_chunk_chars=_ext.distill_chunk_chars,
+                            provider=_summ_provider,
+                            model=_summ_model,
+                        )
                         distiller = _distill.SessionDistiller(
                             summarizer=ProviderRegistry.get_summarization_provider(
-                                load_provider_settings().summarization
+                                _summ_settings
                             ),
                             embedder=get_embedding_generator(),
                             storage_backend=storage_backend,
@@ -1198,11 +1308,21 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                             digest_path=str(Path(_proj) / "BRAINPALACE_DECISIONS.md"),
                             mode=extract_mode,
                             idle_seconds=extract_cfg.quiescence_seconds,
+                            chunk_chars=_chunk_chars,
                             plugin_present=lambda: claude_plugin_installed(
                                 project=Path(_proj)
                             ),
                             grace_hours=session_distill_grace_hours(),
                             record_store=app.state.record_store,
+                            max_chunks=(
+                                _ext.provider_session_max_chunks
+                                if is_billable(_summ_settings)
+                                else 0
+                            ),
+                            server_start_ts=app.state.server_start_ts,
+                            first_request_seen=lambda: bool(
+                                getattr(app.state, "first_request_seen", False)
+                            ),
                         )
                         app.state.session_distiller = distiller
                         logger.info(
@@ -1221,9 +1341,92 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                     archive_service is not None
                     or sess_svc is not None
                     or distiller is not None
+                    or doc_extraction_would_run
                 ):
+                    # Ordering contract (2-8): the doc adapter + reconciler below
+                    # consume the Plan 4 lifespan-resolved extraction state
+                    # (app.state.extraction_*) and the doc_pending_store, both wired
+                    # EARLIER in this block. Fail fast + loud if a future reorder
+                    # moves this ahead of the resolution, instead of silently
+                    # mis-wiring the drain (the df359c4c class of bug). Cheap check,
+                    # not stripped under -O.
+                    if not hasattr(app.state, "extraction_mode_doc") or not hasattr(
+                        app.state, "extraction_drain_batch"
+                    ):
+                        raise RuntimeError(
+                            "extraction engine not resolved before reconciler wiring "
+                            "— resolve mode/flags onto app.state first (lifespan "
+                            "ordering bug)"
+                        )
+
+                    from brainpalace_server.providers.factory import ProviderRegistry
+                    from brainpalace_server.services.doc_extraction_adapter import (
+                        DocExtractionAdapter,
+                    )
+                    from brainpalace_server.services.session_extraction_adapter import (
+                        SessionExtractionAdapter,
+                    )
                     from brainpalace_server.services.session_reconciler import (
+                        ExtractionDrainState,
                         SessionReconciler,
+                    )
+                    from brainpalace_server.storage.graph_store import (
+                        get_graph_store_manager,
+                    )
+
+                    _archive_dir_str = (
+                        str(archive_service.archive_dir)
+                        if archive_service is not None
+                        else str(app.state.project_root)
+                    )
+                    app.state.extraction_archive_dir = (
+                        _archive_dir_str  # for /extraction/pending session gap
+                    )
+
+                    def _make_doc_provider() -> Any:
+                        return ProviderRegistry.get_summarization_provider(
+                            load_provider_settings().summarization
+                        )
+
+                    doc_adapter = (
+                        DocExtractionAdapter(
+                            store=app.state.doc_pending_store,
+                            graph_store=get_graph_store_manager(),
+                            provider_factory=_make_doc_provider,
+                            graphrag_enabled=app.state.graphrag_enabled,
+                            mode=app.state.extraction_mode_doc,
+                            provider_enabled=app.state.extraction_provider_enabled,
+                            grace_hours=app.state.extraction_grace_hours,
+                            project_root=str(app.state.project_root),
+                            server_start_ts=app.state.server_start_ts,
+                            first_request_seen=lambda: bool(
+                                getattr(app.state, "first_request_seen", False)
+                            ),
+                        )
+                        if app.state.doc_pending_store is not None
+                        else None
+                    )
+                    session_adapter = SessionExtractionAdapter(
+                        distiller=distiller,
+                        project_root=str(app.state.project_root),
+                        archive_dir=_archive_dir_str,
+                    )
+                    adapters = [
+                        a for a in (doc_adapter, session_adapter) if a is not None
+                    ]
+
+                    # Task 4b: billable-only per-hour provider spend cap. Skipped
+                    # for keyless/local providers (Ollama) — no $ cost.
+                    from brainpalace_server.services.provider_budget import (
+                        ProviderBudget,
+                        is_billable,
+                    )
+
+                    _provider_billable = is_billable(_sm)
+                    _provider_budget = (
+                        ProviderBudget(_ext.max_provider_items_per_hour)
+                        if _provider_billable
+                        else None
                     )
 
                     reconciler = SessionReconciler(
@@ -1234,6 +1437,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                         session_cfg=session_cfg,
                         caps=caps,
                         distiller=distiller,
+                        adapters=adapters,
+                        drain_state=ExtractionDrainState(),
+                        drain_max_count=app.state.extraction_drain_batch,
+                        drain_cooldown=app.state.extraction_drain_cooldown,
+                        provider_budget=_provider_budget,
+                        provider_billable=_provider_billable,
                     )
                     await reconciler.start()
                     app.state.session_reconciler = reconciler
@@ -1293,11 +1502,55 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         try:
             from brainpalace_server.storage.record_store import RecordStore
 
-            app.state.record_store = RecordStore(Path(state_dir) / "records.db")
-            logger.info("RecordStore initialized: %s", state_dir / "records.db")
+            _records_db = db_path(state_dir, "records.db")
+            app.state.record_store = RecordStore(_records_db)
+            logger.info("RecordStore initialized: %s", _records_db)
         except Exception as exc:  # noqa: BLE001 — never block startup
             app.state.record_store = None
             logger.warning("RecordStore setup failed: %s", exc)
+
+        # Usage telemetry store (own sqlite file; best-effort; gated by config).
+        try:
+            from brainpalace_server.config.usage_metrics_config import (  # noqa: PLC0415
+                load_usage_metrics_config,
+            )
+            from brainpalace_server.services.usage_metrics import (  # noqa: PLC0415
+                set_usage_store,
+            )
+            from brainpalace_server.storage.usage_metrics_store import (  # noqa: PLC0415
+                UsageMetricsStore,
+            )
+
+            _um_cfg = load_usage_metrics_config()
+            app.state.usage_metrics_config = _um_cfg
+            if _um_cfg.enabled and state_dir is not None:
+                _um_db = db_path(state_dir, "usage_metrics.db")
+                _um_store = UsageMetricsStore(_um_db)
+                _um_store.prune(int(time.time()) // 60, _um_cfg.retain_days)
+                set_usage_store(_um_store)
+                app.state.usage_metrics_store = _um_store
+                logger.info("Usage metrics store initialized: %s", _um_db)
+            else:
+                app.state.usage_metrics_store = None
+                logger.info("Usage metrics disabled")
+        except Exception as exc:  # noqa: BLE001 — telemetry must never block startup
+            app.state.usage_metrics_store = None
+            logger.warning("Usage metrics store setup failed: %s", exc)
+
+        # Wire the usage metrics store into the session reconciler for tick-prune
+        # (§6-F6): the reconciler is constructed before the store, so we set it
+        # after both are ready. Best-effort — a missing reconciler is a no-op.
+        _recon = getattr(app.state, "session_reconciler", None)
+        if _recon is not None and app.state.usage_metrics_store is not None:
+            try:
+                _recon._usage_metrics_store = app.state.usage_metrics_store
+                _recon._usage_metrics_retain_days = (
+                    getattr(app.state, "usage_metrics_config", None)
+                    and app.state.usage_metrics_config.retain_days
+                    or 30
+                )
+            except Exception:  # noqa: BLE001
+                pass
 
         # Create query service with storage_backend (Phase 9)
         query_service = QueryService(
@@ -1321,7 +1574,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             ql_cfg = load_query_log_config()
             if ql_cfg.enabled and state_dir is not None:
                 query_log_service = QueryLogService(
-                    state_dir / "query_log.db",
+                    db_path(state_dir, "query_log.db"),
                     enabled=True,
                     retention_days=ql_cfg.retention_days,
                 )
@@ -1405,6 +1658,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             _job_worker.set_folder_manager(folder_manager)
             # Wire JobWorker to QueryCacheService (Phase 17)
             _job_worker.set_query_cache(query_cache)
+            # Task 4d: wire backpressure store so the worker can check the
+            # extraction-pending queue depth before scheduling new file batches.
+            _job_worker.set_doc_pending_store(
+                getattr(app.state, "doc_pending_store", None)
+            )
+            # Task 4d: wire backpressure store to file-watcher so watch-triggered
+            # enqueues are skipped when the extraction queue is at high-water.
+            _file_watcher.set_doc_pending_store(
+                getattr(app.state, "doc_pending_store", None)
+            )
         else:
             # No state directory - create minimal job service for backward compat
             # Jobs will not be persisted in this mode
@@ -1469,6 +1732,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             _job_worker.set_folder_manager(folder_manager)
             # Wire JobWorker to QueryCacheService (Phase 17)
             _job_worker.set_query_cache(query_cache)
+            # Task 4d: wire backpressure store (no-state-dir path)
+            _job_worker.set_doc_pending_store(
+                getattr(app.state, "doc_pending_store", None)
+            )
+            # Task 4d: wire backpressure store to file-watcher (no-state-dir path)
+            _file_watcher.set_doc_pending_store(
+                getattr(app.state, "doc_pending_store", None)
+            )
 
         # Wire JobWorker git deps + enqueue boot git-history job (Issue #15).
         # Runs after both the state-dir and no-state-dir branches have started
@@ -1569,6 +1840,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     reset_query_cache()
 
+    # Close usage metrics store and deregister the recorder.
+    _um_store_shutdown = getattr(app.state, "usage_metrics_store", None)
+    if _um_store_shutdown is not None:
+        try:
+            from brainpalace_server.services.usage_metrics import set_usage_store
+
+            set_usage_store(None)
+            _um_store_shutdown.close()
+            logger.info("Usage metrics store closed")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Usage metrics store close failed: %s", exc)
+
     # Close storage backend if it has a close method (PostgreSQL pool)
     shutdown_backend = getattr(app.state, "storage_backend", None)
     if shutdown_backend is not None and hasattr(shutdown_backend, "close"):
@@ -1638,6 +1921,9 @@ from brainpalace_server import self_heal  # noqa: E402
 async def _self_heal_registration(
     request: Request, call_next: Callable[[Request], Awaitable[Response]]
 ) -> Response:
+    # Task 4f cold-start gate: the auto-grace provider drain never runs until the
+    # system is live (a request has arrived). Cheap + idempotent.
+    app.state.first_request_seen = True
     return await self_heal.registration_middleware(app)(request, call_next)
 
 
@@ -1677,6 +1963,16 @@ from brainpalace_server.api.routers.graph import (  # noqa: E402 — late import
 )
 
 app.include_router(graph_browse_router, prefix="/graph", tags=["Graph"])
+from brainpalace_server.api.routers.extraction import (  # noqa: E402 — late import, registered after app setup
+    router as extraction_router,
+)
+
+app.include_router(extraction_router, prefix="/extraction", tags=["Extraction"])
+from brainpalace_server.api.routers.metrics import (  # noqa: E402 — late import, registered after app setup
+    router as metrics_router,
+)
+
+app.include_router(metrics_router, prefix="/metrics", tags=["Metrics"])
 
 
 @app.get("/", include_in_schema=False)

@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 from anthropic import AsyncAnthropic
 
-from brainpalace_server.providers.base import BaseSummarizationProvider
+from brainpalace_server.providers.base import BaseSummarizationProvider, Usage
 from brainpalace_server.providers.exceptions import AuthenticationError, ProviderError
 
 if TYPE_CHECKING:
@@ -80,6 +80,39 @@ class AnthropicSummarizationProvider(BaseSummarizationProvider):
             )
             # Extract text from response
             return response.content[0].text  # type: ignore[union-attr]
+        except Exception as e:
+            raise ProviderError(
+                f"Failed to generate text: {e}",
+                self.provider_name,
+                cause=e,
+            ) from e
+
+    async def generate_with_usage(self, prompt: str) -> tuple[str, Usage]:
+        """Generate text and return Anthropic token usage by value (§6-F3).
+
+        Reads input_tokens, output_tokens, cache_read_input_tokens, and
+        cache_creation_input_tokens from the SDK response usage block.
+        Uses getattr(..., 0) or 0 for every field so absent fields → 0 (truthful).
+        """
+        try:
+            response = await self._client.messages.create(
+                model=self._model,
+                max_tokens=self._max_tokens,
+                temperature=self._temperature,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            u = getattr(response, "usage", None)
+            usage = (
+                Usage(
+                    tokens_in=int(getattr(u, "input_tokens", 0) or 0),
+                    tokens_out=int(getattr(u, "output_tokens", 0) or 0),
+                    cache_read=int(getattr(u, "cache_read_input_tokens", 0) or 0),
+                    cache_write=int(getattr(u, "cache_creation_input_tokens", 0) or 0),
+                )
+                if u is not None
+                else Usage()
+            )
+            return response.content[0].text, usage  # type: ignore[union-attr]
         except Exception as e:
             raise ProviderError(
                 f"Failed to generate text: {e}",

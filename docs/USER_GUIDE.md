@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-24
+last_validated: 2026-06-28
 ---
 
 # BrainPalace User Guide
@@ -161,7 +161,7 @@ Two env knobs tune the thresholds:
 | Flag | Effect |
 |------|--------|
 | `--json` | Emit a machine-readable report (used by the plugin setup check). |
-| `--fix` | Apply safe, idempotent, offline fixes only — add `.brainpalace/` to `.gitignore`, create a stub state dir + `config.json`. Never touches API keys, the network, or your code. Re-runs the report afterward. |
+| `--fix` | Apply safe, idempotent, offline fixes only — add `.brainpalace/` to `.gitignore`, create a stub state dir. Never touches API keys, the network, or your code. Re-runs the report afterward. |
 | `--url <URL>` | Probe a specific server URL instead of the auto-resolved one. |
 
 Any command that can't reach the server also prints a context-sensitive
@@ -319,7 +319,7 @@ otherwise the query falls back to normal hybrid retrieval. You can also force
 `--mode compute` explicitly.
 
 Records are populated from session extraction — compute is empty until
-`session_extraction.mode != off`. Full details: [COMPUTE.md](COMPUTE.md).
+`extraction.mode != off`. Full details: [COMPUTE.md](COMPUTE.md).
 
 ---
 
@@ -472,14 +472,6 @@ When reranking is enabled, results include additional metadata:
 ```
 /brainpalace-index ./src --include-type python
 /brainpalace-index ./project --include-type python,docs
-```
-
-### Generate Code Summaries
-
-Improves semantic search for code by generating LLM descriptions:
-
-```
-/brainpalace-index ./src --generate-summaries
 ```
 
 ### Supported Languages
@@ -1047,7 +1039,7 @@ The CLI resolves the server URL in this priority:
 1. **Environment variable**: `BRAINPALACE_URL`
 2. **Runtime file**: `.brainpalace/runtime.json` (searches cwd upward)
 3. **Owning project, server down**: if an owning `.brainpalace/` project is found but no live server validates, the CLI raises `ServerNotReachableError` (it does **not** fall through to config.yaml)
-4. **Config file**: `config.yaml` `server.url` — consulted only when the cwd has no owning `.brainpalace/` project
+4. **Runtime file fallback**: default of `http://127.0.0.1:8000` when no owning project is found
 5. **Default**: `http://127.0.0.1:8000`
 
 ### Config Discovery Order
@@ -1398,7 +1390,7 @@ Precedence (union — anything ignored by any source is excluded):
 
 1. `ALWAYS_EXCLUDED_DIR_NAMES` (`.brainpalace` — hardcoded).
 2. `DocumentLoader.DEFAULT_EXCLUDE_PATTERNS` (built-in).
-3. Project `config.json` `exclude_patterns` (overrides #2 if present).
+3. Project `config.yaml` `indexing.exclude_patterns` (overrides #2 if present).
 4. Project `.gitignore` files at any depth.
 
 ### Opting Out

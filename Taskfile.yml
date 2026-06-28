@@ -234,6 +234,12 @@ tasks:
     cmds:
       - task: dashboard:parity
 
+  lint:config-parity:
+    desc: "Fail if a config model field is missing from the CLI field registry or mis-roled"
+    dir: ./{{.CLI_DIR}}
+    cmds:
+      - "{{.POETRY}} run python -m brainpalace_cli.config_parity"
+
   lint:changelog:
     desc: "Fail if an Unreleased/current-release changelog entry exceeds 3 sentences"
     cmds:
@@ -292,6 +298,7 @@ tasks:
     cmds:
       - task: lint
       - task: typecheck
+      - task: lint:config-parity
 
   # ===================
   # Pre-Push Workflow

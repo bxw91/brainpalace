@@ -47,8 +47,25 @@ def test_neighbors():
     mgr.neighbors.assert_called_once_with(["n1"], limit=100)
 
 
+def test_top_nodes():
+    mgr = MagicMock()
+    mgr.top_nodes.return_value = [
+        {"id": "n1", "name": "QueryService", "label": "Class", "degree": 9}
+    ]
+    with (
+        patch.object(graph_mod.settings, "ENABLE_GRAPH_INDEX", True),
+        patch.object(graph_mod, "get_graph_store_manager", return_value=mgr),
+    ):
+        c = TestClient(_app())
+        r = c.get("/graph/top?limit=15")
+    assert r.status_code == 200
+    assert r.json()["nodes"][0]["degree"] == 9
+    mgr.top_nodes.assert_called_once_with(limit=15)
+
+
 def test_503_when_graph_disabled():
     with patch.object(graph_mod.settings, "ENABLE_GRAPH_INDEX", False):
         c = TestClient(_app())
         assert c.get("/graph/nodes?q=x").status_code == 503
+        assert c.get("/graph/top").status_code == 503
         assert c.get("/graph/neighbors?node=n1").status_code == 503

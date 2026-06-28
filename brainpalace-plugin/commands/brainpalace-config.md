@@ -1,49 +1,79 @@
 ---
 name: brainpalace-config
-description: 12-step wizard to configure all BrainPalace settings — providers, storage, GraphRAG, reranking, caching, file watcher, chunking, and server deployment
+description: Configure all BrainPalace settings interactively via the unified registry-driven editor — providers, storage, GraphRAG, reranking, sessions, git-history, and more
 parameters: []
 context: brainpalace
 agent: setup-assistant
 skills:
   - configuring-brainpalace
-last_validated: 2026-06-18
+last_validated: 2026-06-28
 ---
 
 # Configure BrainPalace
 
 ## Purpose
 
-Guides users through configuring all aspects of BrainPalace across 12 wizard steps:
-1. **Providers** - Ollama (local/free) or cloud providers (OpenAI, Anthropic, Gemini)
-2. **Storage backend** - ChromaDB (local-first) or PostgreSQL + pgvector
-3. **Indexing excludes** - Detect and exclude large directories (node_modules, .venv, etc.)
-4. **GraphRAG** - Knowledge graph extraction and indexing (AST, LangExtract; sqlite or simple store)
-5. **Caching** - Embedding cache and query result cache configuration
-6. **File watcher** - Automatic re-indexing when files change
-7. **Reranking** - Two-stage search quality with cross-encoder reranking
-8. **Chunking and search tuning** - Chunk size, overlap, top-k, and similarity threshold
-9. **Server and deployment** - Host, port, instance mode, and multi-project setup
-10. **BM25 language** - Project default natural language for BM25 tokenization (`bm25.language`, `bm25.engine`)
-11. **Web dashboard (global only)** - When run with `--global`, asks whether `brainpalace start` should auto-start the web dashboard (`dashboard.autostart`, default ON) and the dashboard port (`dashboard.port`, default 8787). These are control-plane settings written to the `dashboard:` block of the global XDG config; the dashboard's own Settings tab edits the same block.
+`brainpalace init` is the **single config editor** for all BrainPalace settings.
+It branches on project state:
 
-> **Unified question set.** This wizard and `brainpalace init` share the same
-> project-config-backed questions, so the front-ends never drift: embedding,
-> summarizer, **reranker**, **embed-sessions** (`session_indexing.enabled` —
-> billable opt-in, default OFF), **session-archive**
-> (`session_indexing.archive.enabled` — free local backup of full raw transcripts
-> incl. secrets, default ON), **git-history** (`git_indexing.enabled` + `depth`,
-> default OFF), and **GraphRAG document extraction** (`graphrag.doc_extractor` =
-> `langextract` | `none`). When run by `brainpalace init`, the per-project
-> **reranker** (`reranker.enabled`) is re-asked behind an *"inherited from
-> global — change for this project? [y/N]"* gate, writing a sparse override only
-> when changed; embedding/summarizer are not re-asked via that gate (they resolve
-> via env-detection / global inheritance).
+- **Fresh project** — an interactive run opens **directly on the review grid**,
+  values resolved from `global < code` plus the detected provider. The grid
+  **expands on ON**: each division is one line (`N. Label : field = value | …`)
+  listing every non-empty visible field of an ON or pure-config division (secrets
+  included), collapsing a toggleable OFF division to its gate value; empty fields
+  are omitted and a selector-dependent field (e.g. `storage.postgres`) shows only
+  when its selector is active; descriptions show only when you drill in to edit.
+  Edit by division
+  number / `[A]ll` (drilling edits all of a division's fields, gate asked first),
+  then `[C]ontinue` accepts → token estimate → optional server start.
+  Billable/secret consent fields (sessions, git-history, extraction) prompt with
+  their warning only when you edit them; the previous linear question sequence is
+  gone.
+- **Already-initialized project** — drops directly into the review editor so you
+  can change any config field without re-running the full setup.
+- **`init --global`** — edits the machine-wide XDG config
+  (`~/.config/brainpalace/config.yaml`); no project root required.
+
+`brainpalace config wizard` (and `wizard --global`) is a **back-compat alias**
+of `brainpalace init` (`init --global`). The bespoke 12-step wizard prompt flow
+has been replaced by the unified review editor.
+
+> **Review grid UX — expand-on-ON.** An interactive `init` opens **directly on the
+> grid** over every config division (Embedding, Summarization, Reranker, Storage,
+> GraphRAG, Query Log, BM25, Git Indexing, Session Vector Indexing, Session
+> Summarization, Extraction Engine, Compute, Usage Metrics), values resolved from
+> `global < code` plus the detected provider. Each division is a single line
+> (`N. Label : field = value | …`): an **ON** or pure-config division lists
+> **every** visible field (secrets shown in full — terminal-trusted; empty renders
+> `()`, booleans `on`/`off`); a toggleable **OFF** division collapses to its gate
+> value. Section descriptions show only when you drill in to edit. Type a **division
+> number** to drill in and edit
+> **all** its fields (the enable/mode gate is asked first; a sub-block whose gate is
+> OFF is skipped), **`A`** to walk every division, **`C`** to accept (writes nothing
+> if unchanged — sparse invariant), or **`E`** to cancel. Billable/secret consent
+> fields are never plain-prompted — they prompt with their warning **only when you
+> drill into their division**, and opt-in billable fields stay **OFF** if you accept
+> the grid without touching them. Section names/descriptions are single-sourced with
+> the web dashboard.
 >
-> **Global-only:** `config wizard --global` additionally asks the web-dashboard
-> control-plane settings — **autostart** (`dashboard.autostart`, default ON) and
-> **dashboard port** (`dashboard.port`, default 8787) — written to the
-> `dashboard:` block of the XDG config. These are NOT asked per-project (they
-> govern the fleet-wide dashboard process, not a single project).
+> **Single source.** Fields, labels, help text, and enum choices all derive from
+> the CLI field registry (`config_fields.py`). The review screen, the dashboard
+> Config tab, and the consent block share the same registry — the three
+> front-ends cannot drift.
+>
+> **Global-only:** `init --global` (or `wizard --global`) additionally prompts
+> the web-dashboard control-plane settings — **autostart** (`dashboard.autostart`,
+> default ON) and **dashboard port** (`dashboard.port`, default 8787) — written
+> to the `dashboard:` block of the XDG config. These are NOT asked per-project.
+> `dashboard.*` is a **separate fleet-wide surface** (dashboard Settings tab +
+> this CLI step); it is NOT part of the per-project config registry and does NOT
+> appear in the Config/Global Config tabs.
+>
+> **Per-field scope:** `init --global`'s CLI review screen shows all registry
+> fields except project-scoped ones (e.g.
+> `session_indexing.archive.dir` — a project-relative path). When editing a
+> project layer, fields inherited from the global config are marked
+> **"inherited from global"** so you know which overrides are project-specific.
 
 ## Usage
 
@@ -628,7 +658,7 @@ The CLI wizard prompt text mirrors the current command implementation:
 - `3) sqlite + AST for code + LangExtract for docs`
 - `4) AST for code only`
 
-### If Option 2 (AST + LangExtract, simple JSON persistence):
+### If Option 2 (AST + doc extraction, subagent, simple JSON persistence):
 
 Add to config.yaml:
 
@@ -637,18 +667,11 @@ graphrag:
   enabled: true
   store_type: "simple"
   use_code_metadata: true
-  doc_extractor: "langextract"
+extraction:
+  mode: "subagent"
 ```
 
-Or via environment variables:
-```bash
-export ENABLE_GRAPH_INDEX=true
-export GRAPH_STORE_TYPE=simple          # in-memory JSON (no temporal validity)
-export GRAPH_USE_CODE_METADATA=true     # AST-based relationship extraction
-export GRAPH_DOC_EXTRACTOR=langextract  # LangExtract for document chunks
-```
-
-### If Option 3 (sqlite + AST + LangExtract):
+### If Option 3 (sqlite + AST + doc extraction, subagent):
 
 The `sqlite` store is built on the Python stdlib `sqlite3` — no extra dependency
 to install. It is persistent across restarts and adds temporal validity
@@ -661,7 +684,8 @@ graphrag:
   enabled: true
   store_type: "sqlite"
   use_code_metadata: true
-  doc_extractor: "langextract"
+extraction:
+  mode: "subagent"
 ```
 
 ### If Option 4 (AST only):
@@ -678,13 +702,11 @@ graphrag:
 brainpalace reset --yes && brainpalace index ./your-docs
 ```
 
-> **Opt-in optional-dep rule.** Choosing a `doc_extractor: langextract` option
-> needs the optional server extra `langextract`. When the user enables it, the
-> extra is **auto-installed** (auto-detecting pipx → uv → pip); if no manager is
-> detected, the **exact install command is printed** instead. Choosing an
-> AST-only / `doc_extractor: none` option writes the disabling value so the
-> server's "not installed" warning never fires — optional deps are never
-> auto-installed just because a feature is default-ON in code. The same rule
+> **Extraction engine (`extraction.mode`).** Controls how doc-graph triplets AND
+> session distillation are processed. `subagent` = free (Claude Code Haiku, no API
+> cost); `provider` = server-side LLM (BILLABLE — also needs
+> `EXTRACTION_PROVIDER_ENABLED=true`); `auto` = subagent + paid safety-net after
+> `grace_hours`; `off` = code-AST graph only (default, cost-safe). The same rule
 > applies to the BM25 `lemma` engine (`simplemma`) and the postgres backend
 > (`asyncpg` + `sqlalchemy`). `brainpalace doctor` reports optional-extra status
 > for enabled features.

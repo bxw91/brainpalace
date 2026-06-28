@@ -244,7 +244,6 @@ class TestJobWorkerPassesIncludeTypes:
             chunk_size=job.chunk_size,
             chunk_overlap=job.chunk_overlap,
             recursive=job.recursive,
-            generate_summaries=job.generate_summaries,
             supported_languages=job.supported_languages,
             include_patterns=job.include_patterns,
             include_types=job.include_types,

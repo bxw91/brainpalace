@@ -3,10 +3,25 @@
 import logging
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from enum import Enum
 from typing import Protocol, runtime_checkable
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class Usage:
+    """Token usage returned BY VALUE from a provider call (§6-F3).
+
+    Zero fields are truthful for providers/SDKs that don't report a given
+    counter. Never held as a shared instance field — always returned by value.
+    """
+
+    tokens_in: int = 0
+    tokens_out: int = 0
+    cache_read: int = 0
+    cache_write: int = 0
 
 
 class EmbeddingProviderType(str, Enum):
@@ -81,6 +96,14 @@ class EmbeddingProvider(Protocol):
         Returns:
             Number of dimensions in the embedding vector.
         """
+        ...
+
+    async def embed_texts_with_usage(
+        self,
+        texts: list[str],
+        progress_callback: Callable[[int, int], Awaitable[None]] | None = None,
+    ) -> "tuple[list[list[float]], Usage]":
+        """Embed texts and return usage counters by value (§6-F3)."""
         ...
 
     @property
@@ -185,6 +208,49 @@ class BaseEmbeddingProvider(ABC):
 
         return all_embeddings
 
+    async def _embed_batch_with_usage(
+        self, texts: list[str]
+    ) -> "tuple[list[list[float]], Usage]":
+        """Batch embed returning usage by value (§6-F3).
+
+        Default delegates to _embed_batch() with zero Usage. Override in
+        concrete providers to read real SDK usage fields.
+        """
+        return await self._embed_batch(texts), Usage()
+
+    async def embed_texts_with_usage(
+        self,
+        texts: list[str],
+        progress_callback: Callable[[int, int], Awaitable[None]] | None = None,
+    ) -> "tuple[list[list[float]], Usage]":
+        """Embed all texts and accumulate Usage across batches (§6-F3).
+
+        Existing embed_texts() signature is unchanged; this sibling batches via
+        _embed_batch_with_usage() and sums the Usage fields.
+        """
+        if not texts:
+            return [], Usage()
+
+        all_emb: list[list[float]] = []
+        ti = to = cr = cw = 0
+
+        for i in range(0, len(texts), self._batch_size):
+            batch = texts[i : i + self._batch_size]
+            emb, u = await self._embed_batch_with_usage(batch)
+            all_emb.extend(emb)
+            ti += u.tokens_in
+            to += u.tokens_out
+            cr += u.cache_read
+            cw += u.cache_write
+
+            if progress_callback:
+                await progress_callback(
+                    min(i + self._batch_size, len(texts)),
+                    len(texts),
+                )
+
+        return all_emb, Usage(ti, to, cr, cw)
+
     @abstractmethod
     async def _embed_batch(self, texts: list[str]) -> list[list[float]]:
         """Provider-specific batch embedding implementation."""
@@ -250,6 +316,15 @@ class BaseSummarizationProvider(ABC):
     async def generate(self, prompt: str) -> str:
         """Provider-specific text generation."""
         ...
+
+    async def generate_with_usage(self, prompt: str) -> "tuple[str, Usage]":
+        """Generate text and return token usage by value (§6-F3).
+
+        Default wraps generate() with zero Usage — truthful for providers that
+        don't override this method. Override in concrete providers to read real
+        SDK usage fields.
+        """
+        return await self.generate(prompt), Usage()
 
     @property
     @abstractmethod

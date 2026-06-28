@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-24
+last_validated: 2026-06-28
 ---
 
 # Configuration Reference
@@ -34,9 +34,54 @@ Settings are resolved in this order (first match wins):
 
 1. **Command-line flags**: `brainpalace start --port 8080`
 2. **Environment variables**: `export API_PORT=8080`
-3. **Project config**: `.brainpalace/config.json`
+3. **Project config**: `.brainpalace/config.yaml`
 4. **Global config**: `~/.config/brainpalace/config.yaml` (XDG, preferred; legacy `~/.brainpalace/config.yaml` is deprecated and logs a warning)
 5. **Built-in defaults**: Defined in `settings.py`
+
+> **Note:** The legacy `.brainpalace/config.json` is retired. The runtime bind
+> (`bind_host`, `port_range_start`, `port_range_end`, `auto_port`) now lives in the
+> `config.yaml` `bind:` section, and `exclude_patterns` in the `indexing:` section —
+> both editable in the dashboard and `brainpalace init`, inherited project→global like
+> every other key. The resolved port stays in `.brainpalace/runtime.json` (written by a
+> running server). (`chunk_size`/`chunk_overlap` are advanced per-run flags on
+> `brainpalace index`, not config keys — the built-in 512/50 suit nearly all corpora.)
+
+### Global vs project editor — per-field scope
+
+`brainpalace init --global` and the dashboard **Global Config tab** render the same
+per-project registry fields as the project editor. The `init --global` CLI review
+grid additionally omits fields whose `scope` is `"project"` only — for example
+`session_indexing.archive.dir` (a project-relative path that makes no sense in a
+global default); the dashboard tab does not apply this scope filter. When editing
+the project layer, each
+field whose effective value comes from the global config (rather than a project
+override) is annotated **"inherited from global"** in the review grid.
+
+An interactive `brainpalace init` opens **directly on this review grid** — values
+resolved from `global < code` plus the detected provider — rather than walking a
+linear sequence of consent questions. The grid **expands on ON**: each division is
+a single line — `N. Label : field = value | field = value | …` — that lists
+**every** visible field of an ON (its enable/mode gate active) or pure-config
+division — secrets included, shown in full (the terminal is trusted) — and
+collapses a toggleable OFF division to just its gate value. Empty fields
+(blank/None, `{}`, `[]`) are **omitted** from the overview, and a field that
+depends on a selector is shown only when that selector is active — e.g.
+`storage.postgres` appears only while `storage.backend = postgres`, never under
+`chroma` (the same `visible_when` rule the dashboard uses, single-sourced from
+`config_fields.FIELD_VISIBLE_WHEN`). Booleans render `on`/`off`. Section
+descriptions are shown **only when you drill in to edit**, not in the overview. Edit by division number or
+`[A]ll`; drilling a division edits **all** its fields, asking the enable/mode gate
+first and skipping a sub-block when its gate is OFF. `[C]ontinue` accepts;
+billable/secret consent fields (embed-sessions, git-history, graphrag-extraction)
+prompt with their warning only when you edit them, and opt-in billable fields stay
+**OFF** on a plain accept. Section names and descriptions are single-sourced with
+the web dashboard (the CLI registry `config_fields.GROUP_ORDER` /
+`GROUP_DESCRIPTIONS`).
+
+`dashboard.*` (autostart, port, poll interval, etc.) is a **separate fleet-wide
+control-plane surface** — edited via the dashboard **Settings tab** or the
+`init --global` dashboard step, NOT through the per-project config registry. It does
+not appear in the Config or Global Config tabs.
 
 ---
 
@@ -241,7 +286,7 @@ export GRAPH_STORE_TYPE="simple"
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `GRAPH_USE_CODE_METADATA` | `true` | Extract from AST metadata |
-| `GRAPH_USE_LLM_EXTRACTION` | `false` | Legacy flag: use LLM for entity extraction (superseded by `GRAPH_DOC_EXTRACTOR`) |
+| `EXTRACTION_MODE` | `off` | Doc-graph + session extraction engine: `off` \| `subagent` (free) \| `auto` \| `provider` (BILLABLE) |
 | `GRAPH_EXTRACTION_MODEL` | `claude-haiku-4-5` | LLM model for extraction |
 | `GRAPH_MAX_TRIPLETS_PER_CHUNK` | `10` | Limit per chunk |
 
@@ -508,18 +553,21 @@ and env vars win over YAML when both are set.
 
 ### Environment variables
 
+The `compute` query mode has **no switches** — like `bm25`/`vector` it is always
+selectable and simply returns empty when no records exist. (Unlike `graph`,
+which is gated by `ENABLE_GRAPH_INDEX`.) Records are extracted automatically
+whenever session extraction runs (gated by `extraction.mode`); there is
+no separate record-extraction toggle. The only compute knob is the confidence
+floor below.
+
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `ENABLE_COMPUTE` | `true` | Master switch for the `compute` query mode (aggregation). Set `false` to disable compute entirely — the mode still exists but returns empty. |
-| `RECORD_EXTRACTION_ENABLED` | `true` | Extract typed numeric records at each session persist (counts + LLM measurements). Set `false` to stop accumulating new records without disabling query. |
 | `COMPUTE_MIN_CONFIDENCE` | `0.7` | Confidence floor for records entering aggregates (0.0–1.0). Records below this threshold are stored but excluded from compute results by default. With the default 0.7, only HIGH-confidence records (`1.0`) are summed. |
 
 ### `compute:` config.yaml section
 
 ```yaml
 compute:
-  enabled: true             # null = inherit env / default (ENABLE_COMPUTE)
-  record_extraction: true   # null = inherit (RECORD_EXTRACTION_ENABLED)
   min_confidence: 0.7       # null = inherit (COMPUTE_MIN_CONFIDENCE)
 ```
 
@@ -529,12 +577,6 @@ vars win over YAML when both are set.
 **Examples**:
 
 ```bash
-# Disable the compute mode while keeping record accumulation
-export ENABLE_COMPUTE="false"
-
-# Stop extracting new records (query still works on existing ones)
-export RECORD_EXTRACTION_ENABLED="false"
-
 # Lower the floor to include PROVISIONAL records (confidence >= 0.6)
 export COMPUTE_MIN_CONFIDENCE="0.6"
 ```
@@ -666,42 +708,52 @@ export BM25_INDEX_PATH="/data/brainpalace/bm25"
 
 ## Per-Project Configuration
 
-### config.json
+### config.yaml — `bind:` and `indexing:` sections
 
-Create `.brainpalace/config.json` for project-specific settings:
+The runtime bind and chunking knobs live in `.brainpalace/config.yaml` (the legacy
+`config.json` is retired). Both sections are model-backed, so they render and are
+editable in the dashboard Config tab and the `brainpalace init` review grid, and are
+inherited project→global like every other key:
 
-```json
-{
-  "bind_host": "127.0.0.1",
-  "port_range_start": 8000,
-  "port_range_end": 8100,
-  "auto_port": true,
-  "chunk_size": 512,
-  "chunk_overlap": 50,
-  "exclude_patterns": [
-    "**/node_modules/**",
-    "**/__pycache__/**",
-    "**/.venv/**",
-    "**/venv/**",
-    "**/.git/**",
-    "**/dist/**",
-    "**/build/**",
-    "**/target/**"
-  ]
-}
+```yaml
+bind:
+  bind_host: "127.0.0.1"
+  port_range_start: 8000
+  port_range_end: 8100
+  auto_port: true
+indexing:
+  exclude_patterns:
+    - "**/node_modules/**"
+    - "**/__pycache__/**"
+    - "**/.venv/**"
+    - "**/venv/**"
+    - "**/.git/**"
+    - "**/dist/**"
+    - "**/build/**"
+    - "**/target/**"
 ```
 
 ### Configuration Schema
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `bind_host` | string | `"127.0.0.1"` | Server bind address |
-| `port_range_start` | integer | `8000` | Start of port range for auto-port |
-| `port_range_end` | integer | `8100` | End of port range for auto-port |
-| `auto_port` | boolean | `true` | Automatically find available port |
-| `chunk_size` | integer | `512` | Chunk size in tokens |
-| `chunk_overlap` | integer | `50` | Chunk overlap in tokens |
-| `exclude_patterns` | array | (see example) | Glob patterns to exclude from indexing |
+| `bind.bind_host` | string | `"127.0.0.1"` | Server bind address (loopback by default — see security note) |
+| `bind.port_range_start` | integer | `8000` | Start of port range for auto-port |
+| `bind.port_range_end` | integer | `8100` | End of port range for auto-port |
+| `bind.auto_port` | boolean | `true` | Automatically find available port |
+| `indexing.exclude_patterns` | array | (see example) | Glob patterns to exclude from indexing |
+
+> **Chunk size/overlap** are advanced per-run flags on `brainpalace index`
+> (`--chunk-size`, `--chunk-overlap`; defaults 512 / 50), not config keys — the
+> built-in defaults suit nearly all corpora.
+
+> ⚠️ **Security — the API is unauthenticated.** BrainPalace binds `127.0.0.1`
+> (loopback) by default and assumes a single-user, localhost trust model: the
+> write endpoints (e.g. the graph-extraction **submit** path, which mutates the
+> knowledge graph and can spend embedding budget) have **no auth**. Setting
+> `bind_host` / `--host` to a non-loopback address (`0.0.0.0`) exposes every
+> endpoint to the network — only do so on a trusted network or behind a reverse
+> proxy that adds authentication.
 
 ---
 
@@ -787,24 +839,25 @@ GRAPH_USE_CODE_METADATA=true
 GRAPH_USE_LLM_EXTRACTION=false  # Code metadata is sufficient
 ```
 
-Project config (`.brainpalace/config.json`):
+Project config (`.brainpalace/config.yaml`):
 
-```json
-{
-  "bind_host": "127.0.0.1",
-  "port_range_start": 8000,
-  "port_range_end": 8100,
-  "auto_port": true,
-  "chunk_size": 800,
-  "chunk_overlap": 100,
-  "exclude_patterns": [
-    "**/node_modules/**",
-    "**/__pycache__/**",
-    "**/dist/**",
-    "**/build/**"
-  ]
-}
+```yaml
+bind:
+  bind_host: "127.0.0.1"
+  port_range_start: 8000
+  port_range_end: 8100
+  auto_port: true
+indexing:
+  exclude_patterns:
+    - "**/node_modules/**"
+    - "**/__pycache__/**"
+    - "**/dist/**"
+    - "**/build/**"
 ```
+
+> Larger chunks for code? Use `brainpalace index --chunk-size 800 --chunk-overlap 100`
+> (or the `DEFAULT_CHUNK_SIZE`/`DEFAULT_CHUNK_OVERLAP` env vars) — chunk sizing is a
+> per-run flag, not a config key.
 
 ### Documentation-Only Setup
 
@@ -824,20 +877,17 @@ ENABLE_GRAPH_INDEX=false
 
 Project config:
 
-```json
-{
-  "bind_host": "127.0.0.1",
-  "port_range_start": 8000,
-  "port_range_end": 8100,
-  "auto_port": true,
-  "chunk_size": 400,
-  "chunk_overlap": 50,
-  "exclude_patterns": [
-    "**/node_modules/**",
-    "**/__pycache__/**",
-    "**/.git/**"
-  ]
-}
+```yaml
+bind:
+  bind_host: "127.0.0.1"
+  port_range_start: 8000
+  port_range_end: 8100
+  auto_port: true
+indexing:
+  exclude_patterns:
+    - "**/node_modules/**"
+    - "**/__pycache__/**"
+    - "**/.git/**"
 ```
 
 ### Cost-Optimized Setup

@@ -354,38 +354,26 @@ class GraphRAGConfig(BaseModel):
     use_code_metadata: bool | None = Field(
         default=None, description="Use AST metadata for code entities"
     )
-    use_llm_extraction: bool | None = Field(
-        default=None, description="Legacy: Anthropic LLM for doc extraction"
-    )
     traversal_depth: int | None = Field(
         default=None, description="Depth for graph traversal in queries"
     )
     rrf_k: int | None = Field(
         default=None, description="Reciprocal Rank Fusion constant for multi-retrieval"
     )
-    doc_extractor: str | None = Field(
-        default=None, description="'langextract' (multi-provider) or 'none'"
-    )
-    langextract_provider: str | None = Field(
-        default=None, description="Override provider for LangExtract"
-    )
-    langextract_model: str | None = Field(
-        default=None, description="Override model for LangExtract"
-    )
 
 
 class ComputeConfig(BaseModel):
     """`compute:` section of config.yaml. All-None so an absent key leaves the
     Settings default; the lifespan override copies set keys onto the flat
-    ENABLE_COMPUTE / RECORD_EXTRACTION_ENABLED / COMPUTE_MIN_CONFIDENCE (env wins)."""
+    COMPUTE_MIN_CONFIDENCE (env wins).
 
-    enabled: bool | None = Field(
-        default=None, description="Master switch for the compute query mode"
-    )
-    record_extraction: bool | None = Field(
-        default=None,
-        description="Extract typed numeric records at session persist",
-    )
+    Compute query mode has no switches — like bm25/vector it is always
+    selectable and returns empty when no records exist (unlike graph, which is
+    gated by ENABLE_GRAPH_INDEX). Records are extracted whenever session
+    extraction runs (gated by extraction.mode); there is no separate
+    record-extraction toggle. ``min_confidence`` only tunes which stored records
+    enter aggregates."""
+
     min_confidence: float | None = Field(
         default=None,
         ge=0.0,

@@ -37,9 +37,8 @@ def test_every_known_field_is_present_or_hidden():
         "reranker": cs.RERANKER_KNOWN_FIELDS,
         "storage": cs.STORAGE_KNOWN_FIELDS,
         "graphrag": cs.GRAPHRAG_KNOWN_FIELDS,
-        "api": cs.API_KNOWN_FIELDS,
+        "bind": cs.BIND_KNOWN_FIELDS,
         "server": cs.SERVER_KNOWN_FIELDS,
-        "project": cs.PROJECT_KNOWN_FIELDS,
         "query_log": cs.QUERY_LOG_KNOWN_FIELDS,
         "bm25": cs.BM25_KNOWN_FIELDS,
         "git_indexing": cs.GIT_INDEXING_KNOWN_FIELDS,
@@ -92,12 +91,12 @@ def test_path_filter_uses_stringlist_widget():
 
 
 def test_session_archiving_is_its_own_section():
-    """The archive (raw COPY) renders as its own top-level 'Session Archiving'
-    section, NOT a sub-group of Session Vector Indexing. Keys stay under
+    """The archive (raw COPY) renders as its own top-level 'Chat Session : Archiving'
+    section, NOT a sub-group of Chat Session : Vector Indexing. Keys stay under
     session_indexing.archive.*."""
     ui = build_ui_schema()
     arch = next(s for s in ui["sections"] if s["key"] == "session_archiving")
-    assert arch["label"] == "Session Archiving"
+    assert arch["label"] == "Chat Session : Archiving"
     child_keys = {c["key"] for c in arch["fields"]}
     assert child_keys == {"enabled", "dir", "retain_days", "reconcile_seconds"}
     enabled = next(c for c in arch["fields"] if c["key"] == "enabled")
@@ -107,11 +106,19 @@ def test_session_archiving_is_its_own_section():
     assert retain["widget"] == "int"
     # Vector Indexing no longer carries the archive as a nested group.
     si = next(s for s in ui["sections"] if s["key"] == "session_indexing")
-    assert si["label"] == "Session Vector Indexing"
+    assert si["label"] == "Chat Session : Vector Indexing"
     assert not any(f["key"] == "archive" for f in si["fields"])
     # Summarization renamed too.
     sx = next(s for s in ui["sections"] if s["key"] == "session_extraction")
-    assert sx["label"] == "Session Summarization"
+    assert sx["label"] == "Chat Session : Summarization"
+
+
+def test_summarization_section_relabeled():
+    """Shared summarization section is no longer mislabeled as code/doc."""
+    ui = build_ui_schema()
+    sec = next(s for s in ui["sections"] if s["key"] == "summarization")
+    assert sec["label"] == "Summarization"
+    assert "code" not in sec.get("help", "").lower()
 
 
 def test_unhidden_fields_not_in_hidden_map():
@@ -195,11 +202,11 @@ def test_query_log_section_renders():
     assert retention["help"] == "0 = keep forever"
 
 
-def test_identity_fields_emitted_readonly():
-    """state_dir / project_root are surfaced (not hidden) and marked read-only."""
+def test_ordinary_fields_not_readonly():
+    """No config field is read-only now (the legacy project identity card was
+    removed; project_root lives in runtime.json + the Instances view)."""
     ui = build_ui_schema()
     by_path = {f["dotpath"]: f for sec in ui["sections"] for f in sec["fields"]}
-    assert by_path["project.state_dir"]["readonly"] is True
-    assert by_path["project.project_root"]["readonly"] is True
-    # An ordinary editable field carries no readonly flag (or False).
+    assert "project.state_dir" not in by_path
+    assert "project.project_root" not in by_path
     assert not by_path["graphrag.enabled"].get("readonly", False)

@@ -2,9 +2,22 @@
 
 from __future__ import annotations
 
-import json
-
 import brainpalace_cli.commands.start as start_mod
+
+# Default bind stub used across all tests: a 127.0.0.1:8000 range with
+# auto_port=True so find_available_port is called (not the fixed-port path).
+# Tests that need a deterministic port override ``read_bind`` themselves.
+_DEFAULT_BIND = {
+    "bind_host": "127.0.0.1",
+    "port_range_start": 8000,
+    "port_range_end": 8100,
+    "auto_port": True,
+}
+
+
+def _stub_read_bind(bind: dict):
+    """Return a monkeypatch-compatible stub for read_bind."""
+    return lambda sd: bind
 
 
 def test_launch_server_is_callable_and_returns_runtime(tmp_path, monkeypatch):
@@ -25,14 +38,25 @@ def test_launch_server_is_callable_and_returns_runtime(tmp_path, monkeypatch):
     monkeypatch.setattr(start_mod.subprocess, "Popen", fake_popen)
     monkeypatch.setattr(start_mod, "check_health", lambda url, timeout=3.0: True)
     monkeypatch.setattr(start_mod, "update_registry", lambda *a, **k: None)
+    # Stub read_bind: avoids the BindConfig → providers → MCP import chain that
+    # fails on Python 3.12 when subprocess.Popen is replaced by a plain callable
+    # (class-body annotation ``subprocess.Popen[bytes]`` is not subscriptable).
+    # Also pin an explicit port so base_url is deterministic.
+    monkeypatch.setattr(
+        start_mod,
+        "read_bind",
+        _stub_read_bind(
+            {
+                "bind_host": "127.0.0.1",
+                "port_range_start": 8123,
+                "port_range_end": 8123,
+                "auto_port": False,
+            }
+        ),
+    )
 
     state_dir = tmp_path / ".brainpalace"
     state_dir.mkdir()
-    # Real CLI config lives in config.json; pin an explicit port with auto_port off
-    # so the resolved base_url is deterministic.
-    (state_dir / "config.json").write_text(
-        json.dumps({"bind_host": "127.0.0.1", "port": 8123, "auto_port": False})
-    )
 
     runtime = start_mod.launch_server(
         project_root=tmp_path, state_dir=state_dir, host=None, port=None, timeout=5
@@ -64,12 +88,10 @@ def test_launch_server_sets_strict_env(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(start_mod, "check_health", lambda url, timeout=3.0: True)
     monkeypatch.setattr(start_mod, "update_registry", lambda *a, **k: None)
+    monkeypatch.setattr(start_mod, "read_bind", _stub_read_bind(_DEFAULT_BIND))
 
     state_dir = tmp_path / ".brainpalace"
     state_dir.mkdir()
-    (state_dir / "config.json").write_text(
-        json.dumps({"bind_host": "127.0.0.1", "port": 8124, "auto_port": False})
-    )
 
     start_mod.launch_server(
         project_root=tmp_path, state_dir=state_dir, timeout=5, strict=True
@@ -95,12 +117,10 @@ def test_launch_server_sets_no_dashboard_env(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(start_mod, "check_health", lambda url, timeout=3.0: True)
     monkeypatch.setattr(start_mod, "update_registry", lambda *a, **k: None)
+    monkeypatch.setattr(start_mod, "read_bind", _stub_read_bind(_DEFAULT_BIND))
 
     state_dir = tmp_path / ".brainpalace"
     state_dir.mkdir()
-    (state_dir / "config.json").write_text(
-        json.dumps({"bind_host": "127.0.0.1", "port": 8126, "auto_port": False})
-    )
 
     start_mod.launch_server(
         project_root=tmp_path, state_dir=state_dir, timeout=5, no_dashboard=True
@@ -125,12 +145,10 @@ def test_launch_server_raises_on_unhealthy(tmp_path, monkeypatch):
     monkeypatch.setattr(start_mod.subprocess, "Popen", lambda cmd, **kw: FakeProc())
     monkeypatch.setattr(start_mod, "check_health", lambda url, timeout=3.0: False)
     monkeypatch.setattr(start_mod, "update_registry", lambda *a, **k: None)
+    monkeypatch.setattr(start_mod, "read_bind", _stub_read_bind(_DEFAULT_BIND))
 
     state_dir = tmp_path / ".brainpalace"
     state_dir.mkdir()
-    (state_dir / "config.json").write_text(
-        json.dumps({"bind_host": "127.0.0.1", "port": 8125, "auto_port": False})
-    )
 
     import pytest
 

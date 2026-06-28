@@ -28,6 +28,7 @@ from brainpalace_cli.config import (
     resolve_project_root,
     resolve_project_root_with_strategy,
 )
+from brainpalace_cli.xdg_paths import is_initialized_state_dir
 
 #: Severity returned by every diagnostic check.
 SEVERITY_OK = "ok"
@@ -141,8 +142,8 @@ def _check_project_init(
     surprised by which directory wins; the strategy label tells them.
     """
     strategy_msg = _RESOLVE_STRATEGY_LABEL.get(resolved_via, resolved_via)
-    config_path = state_dir / "config.json"
-    if config_path.exists():
+    config_path = state_dir / "config.yaml"
+    if is_initialized_state_dir(state_dir):
         return CheckResult(
             "project_initialized",
             SEVERITY_OK,
@@ -155,7 +156,7 @@ def _check_project_init(
     return CheckResult(
         "project_initialized",
         SEVERITY_FAIL,
-        (f"No {STATE_DIR_NAME}/config.json under {project_root} " f"({strategy_msg})"),
+        (f"No {STATE_DIR_NAME}/config.yaml under {project_root} " f"({strategy_msg})"),
         fix="Run `brainpalace init` in your project directory.",
         details={
             "project_root": str(project_root),
@@ -570,6 +571,63 @@ def _check_collection_sizes(
     )
 
 
+def _check_doc_graph_extraction(
+    status_payload: dict[str, Any] | None,
+) -> CheckResult:
+    """One-line state check for doc-graph extraction (Plan 4, M1).
+
+    Informational — never fails. Surfaces the extraction state so
+    un-graphed chunks and misconfigured providers are visible in doctor output.
+    """
+    if not status_payload:
+        return CheckResult(
+            "doc_graph_extraction",
+            SEVERITY_OK,
+            "Server unreachable — doc-graph extraction state unavailable.",
+        )
+    dge = (status_payload.get("features") or {}).get("doc_graph_extraction")
+    if not isinstance(dge, dict):
+        return CheckResult(
+            "doc_graph_extraction",
+            SEVERITY_OK,
+            "Doc-graph extraction state not reported by this server version.",
+        )
+    state = str(dge.get("state", "off"))
+    pending = int(dge.get("pending", 0) or 0)
+    ungraphed = bool(dge.get("ungraphed", False))
+    provider = dge.get("provider")
+
+    if state == "off":
+        if ungraphed:
+            msg = (
+                f"off — {pending:,} un-graphed chunks "
+                f"(set extraction.mode to enable)"
+            )
+        else:
+            msg = "off (no un-graphed chunks)"
+        return CheckResult("doc_graph_extraction", SEVERITY_OK, msg)
+    if state == "subagent":
+        return CheckResult(
+            "doc_graph_extraction",
+            SEVERITY_OK,
+            f"on (subagent) — {pending:,} pending",
+        )
+    if state == "provider":
+        label = f" ({provider})" if provider else ""
+        return CheckResult(
+            "doc_graph_extraction",
+            SEVERITY_OK,
+            f"on (provider{label}) — {pending:,} pending",
+        )
+    # unavailable
+    return CheckResult(
+        "doc_graph_extraction",
+        SEVERITY_WARN,
+        "unavailable — provider/auto mode but no usable provider or lock off "
+        "(set EXTRACTION_PROVIDER_ENABLED=true)",
+    )
+
+
 def _fetch_memory_count(server_url: str) -> int | None:
     """Best-effort GET /memories/ → total. Tolerates old servers / errors."""
     try:
@@ -701,11 +759,6 @@ def run_doctor(server_url_override: str | None = None) -> DoctorReport:
     if cfg and cfg.embedding.provider.lower() == "cohere":
         checks.append(_check_optional_dep("cohere", "cohere", "cohere"))
 
-    # langextract is surfaced by the doctor's "Optional extras" section, gated on
-    # graphrag.doc_extractor == "langextract" (the precise signal for that dep).
-    # No standalone graphrag.enabled-gated langextract row here — it would double-
-    # report the same dependency.
-
     checks.append(_check_gitignore(project_root))
 
     server_check = _check_server(server_url, runtime_file)
@@ -723,6 +776,7 @@ def run_doctor(server_url_override: str | None = None) -> DoctorReport:
     checks.append(_check_graph_size(status_payload, _graph_max_nodes()))
     checks.append(_check_index_staleness(project_root, status_payload, _stale_days()))
     checks.append(_check_collection_sizes(status_payload, memory_count))
+    checks.append(_check_doc_graph_extraction(status_payload))
 
     return DoctorReport(
         project_root=str(project_root),
@@ -758,22 +812,18 @@ def apply_safe_fixes(report: DoctorReport) -> list[str]:
                 gi.write_text(line)
             actions.append(f"Added {STATE_DIR_NAME}/ to {gi}.")
         elif check.name == "project_initialized" and check.status == SEVERITY_FAIL:
-            # Create the state dir + a minimal config.json shell so a follow-up
-            # `brainpalace init` (or any command) has something to read.
+            # Create the state dir + a minimal config.yaml shell so a follow-up
+            # `brainpalace init` (or any command) has something to read. The
+            # project root is derived from the .brainpalace parent, not persisted.
             state_dir.mkdir(parents=True, exist_ok=True)
-            cfg_json = state_dir / "config.json"
-            if not cfg_json.exists():
-                cfg_json.write_text(
-                    json.dumps(
-                        {
-                            "project_root": str(project_root),
-                            "created_by": "brainpalace doctor --fix",
-                        },
-                        indent=2,
-                    )
-                    + "\n"
+            cfg_yaml = state_dir / "config.yaml"
+            if not cfg_yaml.exists():
+                cfg_yaml.write_text(
+                    "# Created by `brainpalace doctor --fix`.\n"
+                    "# Run `brainpalace init` to configure providers and indexing.\n"
+                    "project: {}\n"
                 )
-                actions.append(f"Created {cfg_json}.")
+                actions.append(f"Created {cfg_yaml}.")
     return actions
 
 

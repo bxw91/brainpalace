@@ -95,7 +95,12 @@ class SessionIndexService:
                 _tok,
                 _budget,
             )
-            embeddings = await self.embedding_generator.embed_chunks(new_chunks)
+            from brainpalace_server.services.usage_metrics import (
+                usage_scope,
+            )  # noqa: PLC0415
+
+            with usage_scope("session"):
+                embeddings = await self.embedding_generator.embed_chunks(new_chunks)
             await self.storage_backend.upsert_documents(
                 ids=[c.chunk_id for c in new_chunks],
                 embeddings=embeddings,

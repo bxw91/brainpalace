@@ -284,7 +284,7 @@ def test_apply_safe_fixes_adds_gitignore_entry(
 def test_doctor_fix_flag_creates_state_dir(
     isolated_cwd: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """--fix end-to-end: stub config.json gets created when project not initialized."""
+    """--fix end-to-end: stub config.yaml gets created when project not initialized."""
 
     def fake_git(args, *_, **__):  # type: ignore[no-untyped-def]
         return subprocess.CompletedProcess(
@@ -303,7 +303,8 @@ def test_doctor_fix_flag_creates_state_dir(
     # State dir created → fix actions should mention either config.json or
     # gitignore (both apply on a clean tmp dir).
     assert payload["applied_fixes"], "expected at least one safe fix action"
-    assert (isolated_cwd / ".brainpalace" / "config.json").exists()
+    assert (isolated_cwd / ".brainpalace" / "config.yaml").exists()
+    assert not (isolated_cwd / ".brainpalace" / "config.json").exists()
 
 
 # ---------------------------------------------------------------------------

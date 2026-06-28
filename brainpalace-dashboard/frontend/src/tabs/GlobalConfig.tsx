@@ -8,7 +8,6 @@ import {
   patchGlobalConfig,
 } from "../api/client";
 import { SchemaForm } from "../components/SchemaForm/SchemaForm";
-import { RuntimeSection } from "./Runtime";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { DataConflictDialog } from "../components/DataConflictDialog";
 import { useToast } from "../components/Toast";
@@ -191,9 +190,6 @@ export function GlobalConfig() {
         localSource="global"
         onSave={(values, unset) => setPendingSave({ values, unset })}
       />
-      {/* Machine-wide runtime bind defaults (config.json) — every project
-          inherits these before the code default; the CLI honors them at start. */}
-      <RuntimeSection scope="global" />
       <ConfirmDialog
         open={!!pendingSave}
         tone="default"

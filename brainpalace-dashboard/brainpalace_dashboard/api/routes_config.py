@@ -27,15 +27,10 @@ from brainpalace_dashboard.services.instances import (
     InstanceService,
 )
 from brainpalace_dashboard.services.proxy import ProxyService
-from brainpalace_dashboard.services.runtime_config_svc import (
-    RuntimeConfigError,
-    RuntimeConfigService,
-)
 
 router = APIRouter(prefix="/dashboard/api", tags=["config"])
 config_service = ConfigService()
 instance_service = InstanceService()
-runtime_config_service = RuntimeConfigService()
 proxy_service = ProxyService()
 
 
@@ -265,70 +260,3 @@ def unset_global_config(body: ConfigUnset) -> Any:
     same shape as the per-instance unset, so the form updates in place.
     """
     return config_service.unset_global(body.dotpaths)
-
-
-# --------------------------------------------------------------------------- #
-# Per-project runtime bind — config.json (bind_host / port range / auto_port).
-# Read by the CLI at server start; changes need a RESTART to take effect.
-# --------------------------------------------------------------------------- #
-@router.get("/instances/{id_}/runtime-config")
-def get_runtime_config(id_: str) -> dict[str, Any]:
-    try:
-        return runtime_config_service.read(_state_dir_for(id_))
-    except InstanceNotFound:
-        raise HTTPException(status_code=404, detail="instance not found") from None
-
-
-@router.get("/instances/{id_}/runtime-config/effective")
-def get_runtime_config_effective(id_: str) -> dict[str, Any]:
-    """Per-field effective bind value + provenance (file > code default).
-
-    Powers the inherit-first control for the Runtime bind section folded into the
-    Config tab; the editable value still comes from GET /runtime-config.
-    """
-    try:
-        return runtime_config_service.effective(_state_dir_for(id_))
-    except InstanceNotFound:
-        raise HTTPException(status_code=404, detail="instance not found") from None
-
-
-@router.get("/global-runtime-config/effective")
-def get_global_runtime_config_effective() -> dict[str, Any]:
-    """Per-field effective bind for the GLOBAL layer (global file > code default).
-
-    Powers the machine-wide Runtime bind editor on the Global Config tab; a
-    project that omits a bind key inherits these before the code default.
-    """
-    return runtime_config_service.effective_global()
-
-
-@router.patch("/global-runtime-config", response_model=None)
-def patch_global_runtime_config(body: ConfigPatch) -> Any:
-    """Write the machine-wide bind defaults (XDG config.json); staged set + unset."""
-    try:
-        runtime_config_service.write_global(body.values, body.unset)
-    except RuntimeConfigError as e:
-        return JSONResponse(status_code=422, content={"errors": e.errors})
-    # Global bind changes apply to each project server on its next start.
-    return {"ok": True, "restart_required": True}
-
-
-@router.patch("/instances/{id_}/runtime-config", response_model=None)
-def patch_runtime_config(id_: str, body: ConfigPatch) -> Any:
-    try:
-        state_dir = _state_dir_for(id_)
-    except InstanceNotFound:
-        raise HTTPException(status_code=404, detail="instance not found") from None
-    try:
-        runtime_config_service.write(state_dir, body.values, body.unset)
-    except RuntimeConfigError as e:
-        return JSONResponse(status_code=422, content={"errors": e.errors})
-    restarted = False
-    if body.restart:
-        try:
-            instance_service.restart(id_)
-            restarted = True
-        except Exception as e:  # surface but don't lose the saved config
-            return {"ok": True, "restarted": False, "restart_error": str(e)}
-    # Bind changes only apply on restart — flag it so the UI can prompt.
-    return {"ok": True, "restarted": restarted, "restart_required": not restarted}

@@ -14,6 +14,8 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+from brainpalace_server.storage_paths import state_file_path
+
 logger = logging.getLogger(__name__)
 
 
@@ -60,7 +62,7 @@ class FolderManager:
             state_dir: Directory for persistent state storage
         """
         self.state_dir = state_dir
-        self.jsonl_path = state_dir / "indexed_folders.jsonl"
+        self.jsonl_path = state_file_path(state_dir, "indexed_folders.jsonl")
         self._lock = asyncio.Lock()
         self._cache: dict[str, FolderRecord] = {}
 

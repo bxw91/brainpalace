@@ -28,12 +28,6 @@ class OptionalExtra:
 
 
 REGISTRY: dict[str, OptionalExtra] = {
-    "graphrag": OptionalExtra(
-        "graphrag",
-        "langextract",
-        "GraphRAG document extraction needs an extra download (langextract).",
-        ("langextract",),
-    ),
     "lemma-hr": OptionalExtra(
         "lemma-hr",
         "simplemma",
@@ -145,7 +139,7 @@ def ensure_extra(extra: str, *, assume_yes: bool) -> EnsureResult:
     print(f"  Installing optional extra '{extra}' ({' '.join(REGISTRY[extra].deps)})…")
     try:
         # Stream the package manager's output straight to the user's terminal so
-        # they see download/build progress (this can take a while for langextract).
+        # they see download/build progress.
         result = subprocess.run(argv)
     except OSError:
         _print_manual(extra, version)

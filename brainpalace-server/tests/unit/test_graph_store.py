@@ -259,6 +259,27 @@ class TestGraphStoreManagerOperations:
         assert result is False
 
     @patch("brainpalace_server.storage.graph_store.settings")
+    def test_add_triplet_dedups_identical(
+        self, mock_settings: MagicMock, graph_persist_dir: Path
+    ):
+        """Identical (source_chunk_id, subject, predicate, obj) must not be re-added."""
+        mock_settings.ENABLE_GRAPH_INDEX = True
+
+        manager = GraphStoreManager(graph_persist_dir)
+        manager.initialize()
+
+        kw = {"subject": "A", "predicate": "calls", "obj": "B", "source_chunk_id": "c1"}
+        assert manager.add_triplet(**kw) is True
+        assert manager.add_triplet(**kw) is False  # exact dup → not re-added
+        # different object is a new edge
+        assert (
+            manager.add_triplet(
+                subject="A", predicate="calls", obj="C", source_chunk_id="c1"
+            )
+            is True
+        )
+
+    @patch("brainpalace_server.storage.graph_store.settings")
     def test_clear_graph(self, mock_settings: MagicMock, graph_persist_dir: Path):
         """Test clearing the graph."""
         mock_settings.ENABLE_GRAPH_INDEX = True

@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-18
+last_validated: 2026-06-25
 ---
 
 # BrainPalace Installation Guide
@@ -139,7 +139,7 @@ pip install "brainpalace-rag[graphrag]" brainpalace-cli
 | Extra | Includes | Use Case |
 |-------|----------|----------|
 | (none) | Core RAG, ChromaDB, BM25, LlamaIndex | Basic document search |
-| `graphrag` | + langextract, graph stores (sqlite built-in) | GraphRAG (all projects) |
+| `graphrag` | graph stores (sqlite built-in; doc extraction via subagent, free) | GraphRAG (all projects) |
 
 ---
 

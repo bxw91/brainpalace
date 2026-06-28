@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-20
+last_validated: 2026-06-25
 ---
 
 # Deployment Guide
@@ -381,6 +381,16 @@ Set up alerts for:
 ### Network Security
 
 By default, BrainPalace binds to `127.0.0.1`, accessible only from localhost.
+
+> ⚠️ **The API is unauthenticated.** BrainPalace assumes a single-user, loopback
+> trust model — no endpoint requires auth. In particular the **write** endpoints
+> mutate state without a credential: the graph-extraction submit path writes
+> triplets to the knowledge graph and, for sessions, runs embedding/storage (real
+> cost), and the pending-drain path lets any caller read/drain the queue. Binding a
+> non-loopback address (`--host 0.0.0.0`, e.g. the Docker example below) exposes
+> all of this to the network. **Never bind non-loopback without putting an
+> authenticating reverse proxy in front** (see below) or restricting access at the
+> network layer.
 
 **For network access**, use a reverse proxy:
 

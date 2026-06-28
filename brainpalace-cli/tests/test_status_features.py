@@ -174,3 +174,119 @@ def test_status_renders_session_summarization_on():
     out = result.output
     assert "Summarization" in out
     assert "subagent" in out
+
+
+# ---------------------------------------------------------------------------
+# Task 6 — render_doc_graph_extraction_row (pure renderer, M1 wording)
+# ---------------------------------------------------------------------------
+
+
+def test_render_doc_graph_extraction_subagent_with_pending():
+    from brainpalace_cli.commands.status import render_doc_graph_extraction_row
+
+    row = render_doc_graph_extraction_row(
+        {"state": "subagent", "pending": 7, "ungraphed": False, "provider": None}
+    )
+    assert "on (subagent)" in row
+    assert "7" in row
+
+
+def test_render_doc_graph_extraction_off_with_ungraphed():
+    # M1: off + pending → "un-graphed", NOT "pending"
+    from brainpalace_cli.commands.status import render_doc_graph_extraction_row
+
+    row = render_doc_graph_extraction_row(
+        {"state": "off", "pending": 3, "ungraphed": True, "provider": None}
+    )
+    assert "off" in row
+    assert "un-graphed" in row
+    assert "pending" not in row.lower().replace("un-graphed", "")
+
+
+def test_render_doc_graph_extraction_off_no_pending():
+    from brainpalace_cli.commands.status import render_doc_graph_extraction_row
+
+    row = render_doc_graph_extraction_row(
+        {"state": "off", "pending": 0, "ungraphed": False, "provider": None}
+    )
+    assert "off" in row
+
+
+def test_render_doc_graph_extraction_provider():
+    from brainpalace_cli.commands.status import render_doc_graph_extraction_row
+
+    row = render_doc_graph_extraction_row(
+        {
+            "state": "provider",
+            "pending": 2,
+            "ungraphed": False,
+            "provider": "anthropic:claude-haiku-4-5",
+        }
+    )
+    assert "on (provider" in row
+    assert "anthropic:claude-haiku-4-5" in row
+
+
+def test_render_doc_graph_extraction_unavailable():
+    from brainpalace_cli.commands.status import render_doc_graph_extraction_row
+
+    row = render_doc_graph_extraction_row(
+        {"state": "unavailable", "pending": 0, "ungraphed": False, "provider": None}
+    )
+    assert "unavailable" in row.lower()
+
+
+def test_status_renders_doc_graph_extraction_row():
+    # Integration: the row appears in the CLI output table
+    result = _invoke(
+        {
+            "doc_graph_extraction": {
+                "state": "subagent",
+                "pending": 4,
+                "ungraphed": False,
+                "mode": "subagent",
+                "graphrag_enabled": True,
+                "provider": None,
+            },
+        }
+    )
+    assert result.exit_code == 0, result.output
+    out = result.output
+    assert "Doc Graph" in out
+    assert "subagent" in out
+
+
+# ---------------------------------------------------------------------------
+# Session Queue (to-summarize backlog) row
+# ---------------------------------------------------------------------------
+
+
+def test_render_session_queue_with_backlog():
+    from brainpalace_cli.commands.status import render_session_queue_row
+
+    row = render_session_queue_row({"pending_summarization": 3})
+    assert "3 pending" in row
+    assert "subagent/auto" in row
+
+
+def test_render_session_queue_empty():
+    from brainpalace_cli.commands.status import render_session_queue_row
+
+    assert "empty" in render_session_queue_row({"pending_summarization": 0})
+    assert "empty" in render_session_queue_row({})  # missing key → 0
+
+
+def test_status_renders_session_queue_row():
+    result = _invoke(
+        {
+            "session_archive": {
+                "enabled": True,
+                "archived_files": 5,
+                "archived_bytes": 0,
+                "retain_days": 0,
+                "pending_summarization": 3,
+            },
+        }
+    )
+    assert result.exit_code == 0, result.output
+    assert "Session Queue" in result.output

@@ -86,7 +86,8 @@ async def test_load_jsonl_v7_records_missing_watch_fields() -> None:
         state_dir.mkdir()
         docs_dir = Path(tmpdir) / "docs"
         docs_dir.mkdir()
-        jsonl_path = state_dir / "indexed_folders.jsonl"
+        jsonl_path = state_dir / "state" / "indexed_folders.jsonl"
+        jsonl_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Write a v7.0-style record WITHOUT watch fields
         v7_record = {
@@ -121,7 +122,8 @@ async def test_load_jsonl_mixed_records() -> None:
         old_docs_dir.mkdir()
         new_docs_dir = Path(tmpdir) / "new-docs"
         new_docs_dir.mkdir()
-        jsonl_path = state_dir / "indexed_folders.jsonl"
+        jsonl_path = state_dir / "state" / "indexed_folders.jsonl"
+        jsonl_path.parent.mkdir(parents=True, exist_ok=True)
 
         v7_record = {
             "folder_path": str(old_docs_dir),

@@ -1,9 +1,10 @@
 """MCP server wiring for BrainPalace.
 
-Registers the nine v1 tools with the official ``mcp`` SDK (``query``,
+Registers the eleven v1 tools with the official ``mcp`` SDK (``query``,
 ``status``, ``whoami``, ``folders_list``, ``jobs_list``, ``recall``,
-``session_context``, ``ai_guide`` are read-only; ``memorize`` writes a
-curated memory), parses each call's arguments through the matching
+``session_context``, ``ai_guide``, ``extraction_fetch`` are read-only;
+``memorize`` writes a curated memory; ``extraction_submit`` submits
+extraction payloads), parses each call's arguments through the matching
 Pydantic schema, and dispatches to the matching handler in
 :mod:`brainpalace_cli.mcp.tools`. The authoritative tool list is the
 ``TOOL_REGISTRY`` dict below — keep this docstring in sync with it.
@@ -33,6 +34,8 @@ from pydantic import BaseModel
 from ..ai_guidance import core as _core_guidance
 from .schemas import (
     AiGuideInput,
+    ExtractionFetchInput,
+    ExtractionSubmitInput,
     FoldersListInput,
     JobsListInput,
     MemorizeInput,
@@ -44,6 +47,8 @@ from .schemas import (
 )
 from .tools import (
     ai_guide_tool,
+    extraction_fetch_tool,
+    extraction_submit_tool,
     folders_list_tool,
     jobs_list_tool,
     memorize_tool,
@@ -83,6 +88,13 @@ _TOOL_DESCRIPTIONS: dict[str, str] = {
         "BrainPalace usage guide (modes, rules, gotchas); "
         "tier=full for the full guide."
     ),
+    "extraction_fetch": (
+        "Fetch one pending chunk's text by id. Returns {chunk_id, text}, "
+        "or {error} when not pending (no-op signal)."
+    ),
+    "extraction_submit": (
+        "Submit extracted triplets or session extraction payload to BrainPalace."
+    ),
 }
 
 # Maps tool name → (schema class, async handler). The schema parses and
@@ -97,6 +109,8 @@ _DISPATCH: dict[str, tuple[type[BaseModel], Any]] = {
     "recall": (RecallInput, recall_tool),
     "session_context": (SessionContextInput, session_context_tool),
     "ai_guide": (AiGuideInput, ai_guide_tool),
+    "extraction_fetch": (ExtractionFetchInput, extraction_fetch_tool),
+    "extraction_submit": (ExtractionSubmitInput, extraction_submit_tool),
 }
 
 

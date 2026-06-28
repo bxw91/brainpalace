@@ -28,7 +28,6 @@ def _ok() -> dict[str, object]:
                 "tokenizer": "heuristic(chars/4)",
                 "embedding_provider": "ollama",
                 "embedding_model": "x",
-                "summaries_enabled": False,
                 "approximate": True,
             }
         ),

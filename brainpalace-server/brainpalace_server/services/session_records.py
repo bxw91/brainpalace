@@ -78,10 +78,10 @@ def records_to_store(extraction: Any, *, ingested_at: str) -> list[Any]:
 
 
 def persist_records(store: Any, extraction: Any, *, ingested_at: str) -> int:
-    # Late import matches existing usage pattern in session_extract_service
-    from brainpalace_server.config import settings
-
-    if store is None or not getattr(settings, "RECORD_EXTRACTION_ENABLED", True):
+    # Records are persisted whenever session extraction reaches this sink —
+    # there is no separate record-extraction switch. Whether extraction runs
+    # at all is gated upstream by extraction.mode.
+    if store is None:
         return 0
     recs = derived_count_records(
         extraction, ingested_at=ingested_at

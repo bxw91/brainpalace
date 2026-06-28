@@ -186,13 +186,13 @@ def test_setup_wizard_step6_cache_awareness(setup_wizard_content: str) -> None:
     )
 
 
-def test_config_wizard_step7_includes_ast_plus_langextract_option(
+def test_config_wizard_step7_includes_extraction_mode_option(
     config_wizard_content: str,
 ) -> None:
-    """Step 7 must expose AST+LangExtract as a first-class GraphRAG option."""
-    assert "AST + LangExtract" in config_wizard_content, (
-        "Step 7 in brainpalace-config.md must explicitly include an "
-        "AST + LangExtract top-level option for mixed repositories."
+    """Step 7 must expose extraction.mode as the doc-graph extraction knob."""
+    assert "extraction.mode" in config_wizard_content, (
+        "Step 7 in brainpalace-config.md must include extraction.mode "
+        "as the knob for doc-graph + session extraction."
     )
 
 

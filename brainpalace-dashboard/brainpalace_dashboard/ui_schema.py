@@ -1,78 +1,49 @@
-"""Generate a UI form schema from config_schema (single source of truth).
+"""Generate a UI form schema from the config models (single source of truth).
 
-Every known config field renders automatically. The OVERRIDES dict only
-improves presentation (labels, presets, bounds, secret flags, visibility).
-Fields intentionally not rendered must be listed in DASHBOARD_HIDDEN_FIELDS
-with a reason — enforced by the parity gate (plan 08).
+Every known config field renders automatically. Field ORDER, LABEL, and HELP
+come from the CLI field registry (``brainpalace_cli.config_fields``); the local
+OVERRIDES dict only carries the values the registry does not own (presets,
+bounds, secret flags, placeholders, visibility). Fields intentionally not
+rendered must be listed in DASHBOARD_HIDDEN_FIELDS with a reason — enforced by
+the parity gate (plan 08).
 
-Correctness note (verified against brainpalace-cli source):
-``read_config(state_dir)`` reads the runtime bind host/port from ``config.json``
-(keys ``bind_host`` / ``port_range_*`` / ``auto_port``), NOT from the
-``server.*`` / ``api.*`` sections of ``config.yaml``. Those YAML sections are
-part of the validated schema but editing them here would be a no-op for the
-running server, so they are hidden rather than shipped as dead controls.
+Bind note: the runtime bind (``bind_host`` / ``port_range_*`` / ``auto_port``) is
+a first-class ``config.yaml`` ``bind:`` section backed by ``BindConfig``. It
+auto-renders here like any other registry section. ``server:`` retains only
+``read_only``; the legacy ``api:`` section and dead ``server.url/host/port/auto_port``
+fields are retired.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
+from brainpalace_cli import config_fields as cf
 from brainpalace_cli import config_schema as cs
 from brainpalace_cli.providers import PROVIDERS
 
 from brainpalace_dashboard import model_introspect as mi
 
-# Section render order + human labels.
-SECTION_ORDER: list[tuple[str, str]] = [
-    ("embedding", "Embedding"),
-    ("summarization", "Code & Doc Summarization"),
-    ("reranker", "Reranker"),
-    ("storage", "Storage"),
-    ("graphrag", "GraphRAG"),
-    ("api", "API"),
-    ("server", "Server"),
-    ("project", "Project"),
-    ("query_log", "Query Log"),
-    ("bm25", "BM25"),
-    ("git_indexing", "Git Indexing"),
-    ("session_indexing", "Session Vector Indexing"),
-    ("session_extraction", "Session Summarization"),
-    ("compute", "Compute"),
-]
+# Section render order + human labels — sourced from the CLI registry (single
+# source); a rename in cf.GROUP_ORDER reflects here automatically.
+SECTION_ORDER: list[tuple[str, str]] = list(cf.GROUP_ORDER)
 
-# Optional one-line "what this section does" intros, rendered under the header.
-SECTION_DESCRIPTIONS: dict[str, str] = {
-    "server": "Server-level switches. The bind host/port are NOT here — they live "
-    "in config.json (the Runtime bind section). read_only turns the server "
-    "query-only: no embedding, summarization, or index writes.",
-    "project": "Identity paths for THIS project, set by `brainpalace init` and "
-    "shown read-only. Editing them would break instance discovery, so they are "
-    "not editable here.",
-    "storage": "Where indexed vectors live. chroma is the zero-setup local "
-    "default; postgres is for shared/larger deployments.",
-    "graphrag": "The knowledge graph (entities + relationships) that powers "
-    "graph and multi query modes.",
-    "git_indexing": "Index git history so past commits and decisions are "
-    "searchable alongside code.",
-    "session_archiving": "COPIES raw chat transcripts verbatim to a local folder "
-    "— a free, durable backup. Does NOT embed or summarize; just the raw store.",
-    "session_indexing": "EMBEDS raw chat transcripts into vectors for semantic "
-    "recall (billable). Separate from the copy (Session Archiving) and the "
-    "summary (Session Summarization).",
-    "session_extraction": "DISTILLS a finished chat transcript into a structured "
-    "summary, decisions, and graph triples — the curated 'memory'. Not a copy "
-    "(Session Archiving) and not an embed (Session Vector Indexing).",
-    "compute": "Aggregation query mode that sums typed numeric records extracted "
-    "from sessions. Powers the compute query mode.",
-}
+# Section intros — sourced from the CLI registry (single source).
+SECTION_DESCRIPTIONS: dict[str, str] = dict(cf.GROUP_DESCRIPTIONS)
 
-# Sections WITHOUT a pydantic model: runtime bind (api/server) and machine
-# identity (project). Their fields come from config_schema and are fully
-# hidden / read-only (see DASHBOARD_HIDDEN_FIELDS / DASHBOARD_READONLY_FIELDS).
-_MODELLESS_SECTION_FIELDS: dict[str, set[str]] = {
-    "api": cs.API_KNOWN_FIELDS,
-    "server": cs.SERVER_KNOWN_FIELDS,
-    "project": cs.PROJECT_KNOWN_FIELDS,
+# All config sections are now model-backed (bind/server via BindConfig/ServerConfig,
+# the rest via their pydantic models). The legacy modelless `project` identity card
+# was removed — project_root lives in runtime.json + the Instances view, and the
+# state-dir location is a BRAINPALACE_STATE_DIR env-only bootstrap knob.
+_MODELLESS_SECTION_FIELDS: dict[str, set[str]] = {}
+
+
+# A rendered section whose CONFIG keys live under a different dotpath namespace.
+# `session_archiving` renders as its own section but its keys are the nested
+# `session_indexing.archive.*` leaves (single-sourced with the CLI registry, where
+# the archive specs are reassigned to the `session_archiving` group).
+SECTION_DOTPATH_PREFIX: dict[str, str] = {
+    "session_archiving": "session_indexing.archive",
 }
 
 
@@ -83,59 +54,33 @@ def _section_known(section: str) -> set[str]:
     truth), so a field added to the model auto-surfaces. The model-less runtime/
     identity sections fall back to config_schema.
     """
+    if section == "session_archiving":
+        return set(SESSION_ARCHIVE_FIELDS)
     if section in mi.SECTION_MODELS:
         return mi.model_field_names(section)
     return _MODELLESS_SECTION_FIELDS.get(section, set())
 
 
-# Explicit field order within a section (fields not listed are appended
-# alphabetically). `provider` leads the provider-backed sections so the choice
-# that drives the rest of the form is on top (issues #2/#5/#6/#11).
-SECTION_FIELD_ORDER: dict[str, list[str]] = {
-    "embedding": ["provider", "model", "base_url", "api_key_env", "api_key"],
-    "summarization": ["provider", "model", "base_url", "api_key_env", "api_key"],
-    "reranker": ["enabled", "provider", "model", "base_url"],
-}
+# Field order within a section is single-sourced from cf.SECTION_FIELD_ORDER
+# (baked into FieldSpec.order); see _ordered_fields.
 
 # Enum options that the model annotation CANNOT express — these fields are plain
 # `str` validated by a field_validator (not Literal/Enum), so the choices live in
-# config_schema. Every OTHER enum (providers, bm25.engine, session_extraction.mode)
+# config_schema. Every OTHER enum (providers, bm25.engine, extraction.mode, etc.)
 # derives its options straight from the model annotation via model_introspect.
 ENUM_FALLBACKS: dict[str, list[str]] = {
     "storage.backend": sorted(cs.VALID_STORAGE_BACKENDS),
     "graphrag.store_type": sorted(cs.VALID_GRAPHRAG_STORE_TYPES),
-    "graphrag.doc_extractor": sorted(cs.VALID_DOC_EXTRACTORS),
 }
 
 # Effective defaults the model itself cannot give: graphrag.* default to None in
 # the model (an absent YAML key defers to the env/Settings layer), so the
 # *effective* defaults are mirrored here from settings.py (GRAPH_*). Every other
 # section's defaults derive from the model.
-DEFAULT_FALLBACKS: dict[str, Any] = {
-    "graphrag.enabled": True,
-    "graphrag.store_type": "sqlite",
-    "graphrag.use_code_metadata": True,
-    "graphrag.doc_extractor": "langextract",
-    "compute.enabled": True,
-    "compute.record_extraction": True,
-    "compute.min_confidence": 0.7,
-}
-
-# Provider/api_key/base_url help text — purpose + expected values + default.
-# (Issues #3/#4/#8/#10/#11.) Reranker fields too.
-_API_KEY_HELP = (
-    "Optional. A literal API key stored in config.yaml (discouraged — secrets in "
-    "a file). Prefer the 'API key env var' which names an environment variable. "
-    "Empty = use the env var."
-)
-_API_KEY_ENV_HELP = (
-    "Name of the environment variable holding the API key (e.g. OPENAI_API_KEY). "
-    "Empty = the provider's conventional default env var."
-)
-_BASE_URL_HELP = (
-    "Custom API endpoint (e.g. Ollama http://localhost:11434, or an "
-    "OpenAI-compatible proxy). Empty = provider default."
-)
+# Single-sourced from the CLI registry so the dashboard and the `init` review grid
+# resolve the same effective default for settings-fallback fields (graphrag.*,
+# compute.min_confidence). Do NOT redefine here — edit cf.DEFAULT_FALLBACKS.
+DEFAULT_FALLBACKS: dict[str, Any] = cf.DEFAULT_FALLBACKS
 
 
 def _model_presets(kind: str) -> list[str]:
@@ -149,219 +94,66 @@ def _model_presets(kind: str) -> list[str]:
     return list(seen)
 
 
-# Presentation overrides ONLY. Keys are dotpaths.
+# Presentation overrides for the values the registry does NOT own: secret flags,
+# model presets, placeholders, numeric bounds, and visible_when conditions.
+# LABELS and HELP are sourced from the CLI field registry
+# (brainpalace_cli.config_fields) — the single source — and were migrated out of
+# here verbatim; do not re-add label/help for a model-backed field. (Non-model
+# fields like storage.postgres.* still keep their label/help here.)
 OVERRIDES: dict[str, dict[str, Any]] = {
-    "embedding.provider": {
-        "help": "Embedding provider. Drives the model choices, base URL, and "
-        "expected API-key env var below.",
-    },
-    "summarization.provider": {
-        "help": "Summarization provider for code/doc summaries. Drives the model "
-        "choices, base URL, and expected API-key env var below.",
-    },
-    "embedding.api_key": {
-        "secret": True,
-        "label": "API key (inline — prefer env var)",
-        "help": _API_KEY_HELP,
-    },
-    "summarization.api_key": {
-        "secret": True,
-        "label": "API key (inline — prefer env var)",
-        "help": _API_KEY_HELP,
-    },
+    "embedding.api_key": {"secret": True},
+    "summarization.api_key": {"secret": True},
     "storage.postgres.password": {"secret": True},
-    "embedding.api_key_env": {
-        "label": "API key env var",
-        "placeholder": "OPENAI_API_KEY",
-        "help": _API_KEY_ENV_HELP,
-    },
-    "summarization.api_key_env": {
-        "label": "API key env var",
-        "placeholder": "ANTHROPIC_API_KEY",
-        "help": _API_KEY_ENV_HELP,
-    },
-    "embedding.base_url": {"help": _BASE_URL_HELP},
-    "summarization.base_url": {"help": _BASE_URL_HELP},
-    "embedding.model": {
-        "presets": _model_presets("embedding"),
-        "help": "Embedding model. Presets follow the selected provider; pick "
-        "Custom… for any other model.",
-    },
-    "summarization.model": {
-        "presets": _model_presets("summarization"),
-        "help": "Summarization model. Presets follow the selected provider; pick "
-        "Custom… for any other model.",
-    },
-    "reranker.enabled": {
-        "label": "Enabled",
-        "help": "Two-stage retrieval: after the first stage (bm25/vector/hybrid) "
-        "returns candidates, a local cross-encoder rescores each (query, chunk) "
-        "pair and reorders by relevance. No API cost (local model); adds a little "
-        "query latency. Default: off.",
-    },
-    "reranker.provider": {
-        "help": "sentence-transformers = local cross-encoder, no API cost, no base "
-        "URL (recommended). ollama = prompt-based scoring served by Ollama; "
-        "works with any chat model but is slower and needs a base URL.",
-    },
-    "reranker.model": {
-        "presets": _model_presets("reranker"),
-        "help": "sentence-transformers: a cross-encoder model (empty = built-in "
-        "default cross-encoder/ms-marco-MiniLM-L-6-v2). ollama: any chat model "
-        "(e.g. llama3.2:1b) used for prompt-based relevance scoring.",
-    },
-    "reranker.base_url": {"help": _BASE_URL_HELP},
-    "storage.backend": {
-        "help": "chroma = local on-disk vector DB, single process, zero setup "
-        "(default). postgres = shared/multi-client store for larger or "
-        "multi-user deployments; requires a running PostgreSQL and the "
-        "PostgreSQL fields below.",
-    },
-    "graphrag.enabled": {
-        "label": "Enabled",
-        "help": "Master switch for the knowledge graph (entities + relationships "
-        "mined from code and docs). Powers graph/multi query modes.",
-    },
-    "graphrag.store_type": {
-        "help": "simple = in-memory graph, rebuilt on every server start, with NO "
-        "temporal (versioned-over-time) edges — lightest, ephemeral. "
-        "sqlite = persistent on-disk graph that supports the temporal "
-        "knowledge graph (edges versioned over time). Default and recommended: "
-        "sqlite.",
-    },
-    "graphrag.doc_extractor": {
-        "help": "langextract = also mine graph entities/relationships from docs. "
-        "none = code graph only (skip doc extraction).",
-    },
-    "graphrag.use_code_metadata": {
-        "label": "Use code metadata",
-        "help": "Enrich graph nodes with code-structure metadata (symbols, "
-        "signatures) for richer graph queries. Default: on.",
-    },
-    "git_indexing.enabled": {
-        "label": "Enabled",
-        "help": "Index git history (commit messages + changed paths) so past "
-        "decisions are searchable. Default: off.",
-    },
-    "git_indexing.depth": {
-        "label": "History depth (commits)",
-        "min": 0,
-        "help": "How many commits back to index. 0 = full history. Default: 0.",
-    },
-    "git_indexing.max_files": {
-        "label": "Max files per commit",
-        "min": 0,
-        "help": "Skip commits touching more than this many files (cuts noise from "
-        "bulk/vendor commits). Default: 50.",
-    },
-    "session_extraction.mode": {
-        "help": "Which engine distills a finished chat into a summary + decisions. "
-        "subagent = a Claude Code plugin subagent does it locally (free; "
-        "default). provider = the configured summarization provider (a cloud "
-        "LLM — may be METERED/paid). auto = pick automatically, with a 24h "
-        "safety net that can fire the paid provider path. off = disabled.",
-    },
-    "query_log.enabled": {"label": "Enable query history"},
-    "query_log.retention_days": {
-        "label": "Retention (days)",
-        "min": 0,
-        "max": 365,
-        "help": "0 = keep forever",
-    },
-    # postgres section is only meaningful when storage.backend == postgres
-    "storage.postgres": {
-        "visible_when": {"field": "storage.backend", "equals": "postgres"}
-    },
-    "embedding.params": {
-        "help": "Extra provider params (key/value). Passed through to the client.",
-    },
-    "summarization.params": {
-        "help": "Extra provider params (key/value). Passed through to the client.",
-    },
-    "reranker.params": {
-        "help": "Extra reranker params (key/value). Passed through to the client.",
-    },
-    "git_indexing.path_filter": {
-        "help": "Path globs to include when indexing git history (one per row).",
-    },
-    "session_indexing.archive.dir": {
-        "label": "Archive directory",
-        "help": "Where raw transcripts are copied (relative to project or absolute).",
-    },
-    "session_indexing.archive.retain_days": {
-        "label": "Retain (days)",
-        "min": 0,
-        "help": "0 = keep forever.",
-    },
-    "session_indexing.archive.reconcile_seconds": {
-        "label": "Reconcile interval (s)",
-        "min": 1,
-        "help": "How often the archive copy/index sweep runs.",
-    },
-    # bm25: detect is per-document language auto-detection, NOT a BM25 on/off.
-    # language is the default/fallback used when detection is off or low-confidence
-    # — the two are complementary, not mutually exclusive (issue #12, option a).
-    "bm25.detect": {
-        "label": "Auto-detect language (per document)",
-        "help": "Detect each document's language individually (py3langid). When "
-        "off, every document uses the default language below. Default: off.",
-    },
-    "bm25.language": {
-        "label": "Default / fallback language",
-        "help": "Tokenizer language used as the default, and the fallback when "
-        "auto-detect is off or below the confidence threshold. Default: en.",
-    },
-    "bm25.detect_min_confidence": {
-        "label": "Auto-detect min confidence",
-        "help": "Below this confidence, a document falls back to the default "
-        "language. Only used when auto-detect is on. Default: 0.6.",
-        "visible_when": {"field": "bm25.detect", "equals": "true"},
-    },
-    "session_indexing.sessions_dir": {
-        "label": "Transcript source dir (override)",
-        "help": "Where to read AI chat transcripts from. Empty = auto "
-        "(~/.claude/projects/...). This is the SOURCE, not the archive "
-        "directory (see Session archive below).",
-    },
+    "embedding.api_key_env": {"placeholder": "OPENAI_API_KEY"},
+    "summarization.api_key_env": {"placeholder": "ANTHROPIC_API_KEY"},
+    "embedding.model": {"presets": _model_presets("embedding")},
+    "summarization.model": {"presets": _model_presets("summarization")},
+    "reranker.model": {"presets": _model_presets("reranker")},
+    "git_indexing.depth": {"min": 0},
+    "git_indexing.max_files": {"min": 0},
+    "extraction.grace_hours": {"min": 0},
+    "extraction.drain_batch_size": {"min": 1},
+    "extraction.drain_cooldown_seconds": {"min": 0},
+    "query_log.retention_days": {"min": 0, "max": 365},
+    "session_indexing.archive.retain_days": {"min": 0},
+    "session_indexing.archive.reconcile_seconds": {"min": 1},
 }
 
+
+def _visible_when(dotpath: str) -> dict[str, str] | None:
+    """Dashboard ``visible_when`` derived from the CLI single source
+    (``cf.FIELD_VISIBLE_WHEN``) so the two surfaces never drift."""
+    cond = cf.FIELD_VISIBLE_WHEN.get(dotpath)
+    return {"field": cond[0], "equals": cond[1]} if cond else None
+
+
 # Fields deliberately not shown in the form (parity gate requires a reason).
-DASHBOARD_HIDDEN_FIELDS: dict[str, str] = {
-    # server.* / api.* live in config.yaml's schema but the runtime bind reads
-    # config.json (bind_host/port_range/auto_port). Editing them here is a no-op;
-    # they are editable via the per-instance Runtime panel (config.json) instead.
-    "server.url": "runtime bind comes from config.json, not config.yaml; no-op here",
-    "server.host": "runtime bind comes from config.json, not config.yaml; no-op here",
-    "server.port": "runtime bind comes from config.json, not config.yaml; no-op here",
-    "server.auto_port": (
-        "runtime bind comes from config.json, not config.yaml; no-op here"
-    ),
-    "api.host": "runtime bind comes from config.json, not config.yaml; no-op here",
-    "api.port": "runtime bind comes from config.json, not config.yaml; no-op here",
-    # GraphRAGConfig models several legacy/internal knobs that are not part of
-    # the user-facing surface (tuning internals, a superseded extraction path,
-    # and persistence paths set by the server). The four user-facing graphrag
-    # controls (enabled / store_type / use_code_metadata / doc_extractor) render;
-    # the rest are hidden here with a reason so a genuinely NEW graphrag field
+# Dashboard-only hides + the CLI grid-hidden set (cf.GRID_HIDDEN_FIELDS) merged in
+# below, so a field the CLI review grid suppresses is hidden here too (parity).
+_DASHBOARD_ONLY_HIDDEN: dict[str, str] = {
+    # GraphRAGConfig models several internal knobs that are not part of the
+    # user-facing surface (tuning internals, persistence paths set by the server).
+    # The user-facing graphrag controls (enabled / store_type / use_code_metadata)
+    # render; doc-graph extraction is now configured via extraction.mode.
+    # The rest are hidden here with a reason so a genuinely NEW graphrag field
     # still auto-surfaces.
     "graphrag.index_path": "server-managed persistence path; not user-tunable",
     "graphrag.extraction_model": "internal extraction model; set via providers/env",
     "graphrag.max_triplets_per_chunk": "advanced extraction-tuning internal",
-    "graphrag.use_llm_extraction": "legacy doc-extraction path; use doc_extractor",
     "graphrag.traversal_depth": "advanced query-tuning internal",
     "graphrag.rrf_k": "advanced multi-retrieval fusion constant (internal)",
-    "graphrag.langextract_provider": "internal langextract wiring; follows doc_extractor",  # noqa: E501
-    "graphrag.langextract_model": "internal langextract wiring; follows doc_extractor",  # noqa: E501
 }
 
-# Fields shown but NOT editable — machine identity set by init. Visible for
-# transparency (the completeness rule: nothing persistable is silently absent),
-# but editing them would break instance discovery, so the form renders them
-# disabled. Parity gate requires a reason (test_readonly_fields_valid_and_not_hidden).
-DASHBOARD_READONLY_FIELDS: dict[str, str] = {
-    "project.state_dir": "internal path, set by init; editing breaks discovery",
-    "project.project_root": "internal path, set by init; editing breaks discovery",
+# Grid-hidden fields (from the CLI single source, cf.GRID_HIDDEN_FIELDS) are merged
+# in below. GRID_HIDDEN_FIELDS is currently empty; the merge is retained for future use.
+DASHBOARD_HIDDEN_FIELDS: dict[str, str] = {
+    **_DASHBOARD_ONLY_HIDDEN,
+    **cf.GRID_HIDDEN_FIELDS,
 }
+
+# Fields shown but NOT editable. (Currently none — the legacy project identity
+# paths were removed; project_root lives in runtime.json + the Instances view.)
+DASHBOARD_READONLY_FIELDS: dict[str, str] = {}
 
 # Sub-fields of session_indexing.archive (modeled by server SessionArchiveConfig:
 # enabled / dir / retain_days / reconcile_seconds). Rendered as a nested group.
@@ -388,13 +180,14 @@ def _derive(section: str, key: str) -> dict[str, Any]:
     Then layer the small fallbacks the model can't express (ENUM_FALLBACKS,
     DEFAULT_FALLBACKS).
     """
-    dotpath = f"{section}.{key}"
+    prefix = SECTION_DOTPATH_PREFIX.get(section, section)
+    dotpath = f"{prefix}.{key}"
     derived: dict[str, Any]
-    if section in mi.SECTION_MODELS:
-        derived = mi.derive_field(section, key)
-    elif section == "session_indexing.archive":
+    if prefix in mi.SECTION_MODELS:
+        derived = mi.derive_field(prefix, key)
+    elif prefix == "session_indexing.archive":
         derived = mi.nested_field("session_indexing.archive", key)
-    elif section == "storage.postgres":
+    elif prefix == "storage.postgres":
         t = dict(cs.POSTGRES_TYPE_FIELDS).get(key, (str, ""))[0]
         widget = "int" if t is int else "toggle" if t is bool else "text"
         derived = {"widget": widget, "default": _NO_DEFAULT}
@@ -417,13 +210,20 @@ def _derive(section: str, key: str) -> dict[str, Any]:
 
 
 def _field(section: str, key: str) -> dict[str, Any]:
-    dotpath = f"{section}.{key}"
+    prefix = SECTION_DOTPATH_PREFIX.get(section, section)
+    dotpath = f"{prefix}.{key}"
     ov = OVERRIDES.get(dotpath, {})
+    spec = cf.FIELD_SPECS.get(dotpath)
     derived = _derive(section, key)
+    # Label sourced from the registry (spec.prompt) — equals the prior OVERRIDES
+    # label where present, else the auto-capitalized key. Non-model fields
+    # (storage.postgres.*, modelless api/server/project) have no spec and keep
+    # the OVERRIDES/auto label.
+    label = spec.prompt if spec else ov.get("label", key.replace("_", " ").capitalize())
     field: dict[str, Any] = {
         "key": key,
         "dotpath": dotpath,
-        "label": ov.get("label", key.replace("_", " ").capitalize()),
+        "label": label,
         "widget": derived["widget"],
         "secret": bool(ov.get("secret", False)),
     }
@@ -433,34 +233,45 @@ def _field(section: str, key: str) -> dict[str, Any]:
         field["options"] = derived["options"]
     if derived.get("default", _NO_DEFAULT) is not _NO_DEFAULT:
         field["default"] = derived["default"]
-    for opt_key in (
-        "presets",
-        "placeholder",
-        "min",
-        "max",
-        "step",
-        "help",
-        "visible_when",
-    ):
+    # Help sourced from the registry: its FIELD_OVERRIDES carries the verbatim
+    # presentation help. Emitted only for fields that HAVE a presentation help
+    # override — a field's bare model-description default is not rendered here
+    # (matches pre-registry behavior). Non-model fields keep any OVERRIDES help.
+    if spec and "help" in cf.FIELD_OVERRIDES.get(dotpath, {}) and spec.help:
+        field["help"] = spec.help
+    elif spec is None and "help" in ov:
+        field["help"] = ov["help"]
+    for opt_key in ("presets", "placeholder", "min", "max", "step", "visible_when"):
         if opt_key in ov:
             field[opt_key] = ov[opt_key]
+    vw = _visible_when(dotpath)
+    if vw is not None:
+        field["visible_when"] = vw
     return field
 
 
 def _ordered_fields(section: str, known: set[str]) -> list[str]:
-    """Section field order: explicit leaders first, then the rest alphabetical."""
-    preferred = [f for f in SECTION_FIELD_ORDER.get(section, []) if f in known]
-    rest = sorted(f for f in known if f not in preferred)
-    return preferred + rest
+    """Section field order — SINGLE-SOURCED from the CLI registry's baked
+    ``FieldSpec.order`` (preferred-first then alpha; see cf.SECTION_FIELD_ORDER),
+    so the dashboard and the init grid order fields identically. Modelless fields
+    with no spec fall back to alphabetical."""
+    prefix = SECTION_DOTPATH_PREFIX.get(section, section)
+
+    def rank(f: str) -> tuple[int, str]:
+        spec = cf.FIELD_SPECS.get(f"{prefix}.{f}")
+        return (spec.order if spec else 999, f)
+
+    return sorted(known, key=rank)
 
 
 def build_ui_schema() -> dict[str, Any]:
     sections: list[dict[str, Any]] = []
     for key, label in SECTION_ORDER:
+        prefix = SECTION_DOTPATH_PREFIX.get(key, key)
         known = _ordered_fields(key, _section_known(key))
         fields: list[dict[str, Any]] = []
         for fld in known:
-            dotpath = f"{key}.{fld}"
+            dotpath = f"{prefix}.{fld}"
             if dotpath in DASHBOARD_HIDDEN_FIELDS:
                 continue
             # Nested objects are expanded as groups below, not flat controls.
@@ -474,26 +285,10 @@ def build_ui_schema() -> dict[str, Any]:
                     "dotpath": "storage.postgres",
                     "label": "PostgreSQL",
                     "widget": "group",
-                    "visible_when": {"field": "storage.backend", "equals": "postgres"},
+                    "visible_when": _visible_when("storage.postgres"),
                     "fields": [
                         _field("storage.postgres", k)
                         for k in sorted(cs.POSTGRES_KNOWN_FIELDS)
-                    ],
-                }
-            )
-        if key == "session_indexing":
-            # Archiving (the raw COPY) is its OWN top-level section, emitted just
-            # BEFORE Session Vector Indexing — not a sub-group of it. The config
-            # keys stay under `session_indexing.archive.*`; only the dashboard
-            # presentation splits copy / embed / summarize into three sections.
-            sections.append(
-                {
-                    "key": "session_archiving",
-                    "label": "Session Archiving",
-                    "description": SECTION_DESCRIPTIONS["session_archiving"],
-                    "fields": [
-                        _field("session_indexing.archive", k)
-                        for k in SESSION_ARCHIVE_FIELDS
                     ],
                 }
             )

@@ -53,7 +53,7 @@ async def test_initialize_with_existing_jsonl(tmp_path: Path) -> None:
             f.write(json.dumps(record) + "\n")
 
     # Initialize and verify
-    manager = FolderManager(state_dir=tmp_path / "state")
+    manager = FolderManager(state_dir=tmp_path)
     await manager.initialize()
 
     folders = await manager.list_folders()
@@ -305,7 +305,7 @@ async def test_load_jsonl_handles_corrupt_lines(tmp_path: Path) -> None:
         )
 
     # Initialize and verify only valid records loaded
-    manager = FolderManager(state_dir=tmp_path / "state")
+    manager = FolderManager(state_dir=tmp_path)
     await manager.initialize()
 
     folders = await manager.list_folders()

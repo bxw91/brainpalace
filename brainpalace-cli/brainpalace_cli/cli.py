@@ -17,9 +17,8 @@ from .commands import (
     context_command,
     dashboard_command,
     doctor_command,
-    drain_queue_command,
-    drain_tick_command,
     dump_interface_command,
+    extraction_group,
     folders_group,
     hook_group,
     index_command,
@@ -149,9 +148,8 @@ cli.add_command(update_command, name="update")
 cli.add_command(install_agent_command, name="install-agent")
 cli.add_command(install_session_hooks_command, name="install-session-hooks")
 cli.add_command(backfill_command, name="backfill-sessions")
-cli.add_command(drain_queue_command, name="drain-queue")
-cli.add_command(drain_tick_command, name="drain-tick")
 cli.add_command(records_group, name="records")
+cli.add_command(extraction_group, name="extraction")
 
 # Register doc-sync maintenance commands (hidden; deterministic, never call an LLM)
 cli.add_command(sync_docs_command, name="sync-docs")

@@ -12,6 +12,7 @@ from brainpalace_cli.cli import cli
 # ---------------------------------------------------------------------------
 
 
+# Config with old langextract keys that should be stripped on migration.
 OLD_SCHEMA_CONFIG: dict = {
     "embedding": {"provider": "openai", "model": "text-embedding-3-large"},
     "summarization": {"provider": "anthropic", "model": "claude-haiku-4-5-20251001"},
@@ -20,6 +21,7 @@ OLD_SCHEMA_CONFIG: dict = {
         "store_type": "simple",
         "use_code_metadata": True,
         "use_llm_extraction": True,
+        "doc_extractor": "langextract",
     },
     "api": {"host": "127.0.0.1", "port": 8000},
 }
@@ -33,6 +35,7 @@ OLD_SCHEMA_FALSE_CONFIG: dict = {
     },
 }
 
+# Current schema: no langextract keys.
 CURRENT_SCHEMA_CONFIG: dict = {
     "embedding": {"provider": "openai", "model": "text-embedding-3-large"},
     "summarization": {"provider": "anthropic", "model": "claude-haiku-4-5-20251001"},
@@ -40,7 +43,6 @@ CURRENT_SCHEMA_CONFIG: dict = {
         "enabled": True,
         "store_type": "simple",
         "use_code_metadata": True,
-        "doc_extractor": "langextract",
     },
     "api": {"host": "127.0.0.1", "port": 8000},
 }
@@ -56,20 +58,22 @@ EMPTY_CONFIG: dict = {}
 class TestMigrateConfigDict:
     """Tests for migrate_config() with dict inputs."""
 
-    def test_migrate_use_llm_extraction_true(self) -> None:
-        """Migrate use_llm_extraction=True to doc_extractor."""
+    def test_migrate_old_schema_strips_langextract_keys(self) -> None:
+        """Strip all langextract/doc_extractor dead keys from graphrag section."""
         from brainpalace_cli.config_migrate import migrate_config
 
         result = migrate_config(OLD_SCHEMA_CONFIG)
 
         assert result.already_current is False
         graphrag = result.migrated.get("graphrag", {})
-        assert graphrag.get("doc_extractor") == "langextract"
         assert "use_llm_extraction" not in graphrag
+        assert "doc_extractor" not in graphrag
+        # M2.1: must NOT map to extraction.mode (no surprise billing)
+        assert "extraction" not in result.migrated
         assert len(result.changes) >= 1
 
-    def test_migrate_use_llm_extraction_false(self) -> None:
-        """migrate_config removes use_llm_extraction=False (no doc_extractor added)."""
+    def test_migrate_use_llm_extraction_false_stripped(self) -> None:
+        """use_llm_extraction=False is stripped (no doc_extractor added)."""
         from brainpalace_cli.config_migrate import migrate_config
 
         result = migrate_config(OLD_SCHEMA_FALSE_CONFIG)
@@ -130,16 +134,16 @@ class TestMigrateConfigDict:
 class TestDiffConfigDict:
     """Tests for diff_config() with dict inputs."""
 
-    def test_diff_shows_use_llm_extraction(self) -> None:
-        """diff_config shows removed use_llm_extraction and added doc_extractor."""
+    def test_diff_shows_removed_langextract_keys(self) -> None:
+        """diff_config shows removed langextract/doc_extractor dead keys."""
         from brainpalace_cli.config_migrate import diff_config
 
         result = diff_config(OLD_SCHEMA_CONFIG)
 
         assert isinstance(result, str)
         assert len(result) > 0
-        # The diff should show the removed key in some form
-        assert "use_llm_extraction" in result
+        # The diff should show the removed keys
+        assert "use_llm_extraction" in result or "doc_extractor" in result
 
     def test_diff_no_changes_returns_empty(self) -> None:
         """diff_config returns empty string for already-current config."""
@@ -159,7 +163,7 @@ class TestMigrateConfigFile:
     """Tests for migrate_config_file() and diff_config_file()."""
 
     def test_migrate_config_file_writes_migrated_yaml(self, tmp_path: Path) -> None:
-        """migrate_config_file writes migrated YAML to disk."""
+        """migrate_config_file writes migrated YAML; strips langextract keys."""
         from brainpalace_cli.config_migrate import migrate_config_file
 
         config_file = tmp_path / "config.yaml"
@@ -174,8 +178,8 @@ class TestMigrateConfigFile:
         # Re-read the file to verify it was actually written
         updated = yaml.safe_load(config_file.read_text(encoding="utf-8"))
         graphrag = updated.get("graphrag", {})
-        assert graphrag.get("doc_extractor") == "langextract"
         assert "use_llm_extraction" not in graphrag
+        assert "doc_extractor" not in graphrag
 
     def test_diff_config_file_shows_diff(self, tmp_path: Path) -> None:
         """diff_config_file returns non-empty diff for old-schema config."""
@@ -202,7 +206,7 @@ class TestMigrateCliCommand:
     """Tests for 'brainpalace config migrate' CLI command."""
 
     def test_migrate_updates_file(self, tmp_path: Path) -> None:
-        """migrate command upgrades old-schema YAML in-place."""
+        """migrate command strips dead langextract keys from old-schema YAML."""
         config_file = tmp_path / "config.yaml"
         config_file.write_text(
             yaml.safe_dump(OLD_SCHEMA_CONFIG, default_flow_style=False),
@@ -214,8 +218,8 @@ class TestMigrateCliCommand:
 
         assert result.exit_code == 0
         updated_text = config_file.read_text(encoding="utf-8")
-        assert "doc_extractor" in updated_text
         assert "use_llm_extraction" not in updated_text
+        assert "doc_extractor" not in updated_text
 
     def test_migrate_already_current(self, tmp_path: Path) -> None:
         """migrate command reports 'already up to date' for current-schema config."""
@@ -264,7 +268,7 @@ class TestDiffCliCommand:
     """Tests for 'brainpalace config diff' CLI command."""
 
     def test_diff_shows_changes(self, tmp_path: Path) -> None:
-        """diff command shows changes for old-schema config."""
+        """diff command shows changes for old-schema config (dead langextract keys)."""
         config_file = tmp_path / "config.yaml"
         config_file.write_text(
             yaml.safe_dump(OLD_SCHEMA_CONFIG, default_flow_style=False),
@@ -275,8 +279,8 @@ class TestDiffCliCommand:
         result = runner.invoke(cli, ["config", "diff", "--file", str(config_file)])
 
         assert result.exit_code == 0
-        # The diff output should reference the deprecated key
-        assert "use_llm_extraction" in result.output
+        # The diff output should reference the removed dead keys
+        assert "use_llm_extraction" in result.output or "doc_extractor" in result.output
 
     def test_diff_no_changes(self, tmp_path: Path) -> None:
         """diff command reports no changes for current-schema config."""
@@ -306,70 +310,52 @@ class TestDiffCliCommand:
         assert "No config file found" in result.output
 
 
-class TestWizardValidationIntegration:
-    """Tests for validation integration in the config wizard."""
+# ---------------------------------------------------------------------------
+# R3 guard tests: strip-on-load migration (M2.1)
+# ---------------------------------------------------------------------------
 
-    def test_wizard_validates_output_and_warns(self, tmp_path: Path) -> None:
-        """Wizard warns when validate_config_file returns errors after writing."""
-        from unittest.mock import patch
 
-        from brainpalace_cli.config_schema import ConfigValidationError
+class TestStripLangextractKeys:
+    """R3 guard: _strip_langextract_keys drops dead keys, no extraction.mode mapping."""
 
-        # Patch validate_config_file to return a fake error
-        fake_error = ConfigValidationError(
-            field="embedding.provider",
-            message="Invalid embedding provider: 'badprovider'",
-            line_number=3,
-            suggestion="Use one of: cohere, gemini, ollama, openai",
-        )
+    def test_config_with_doc_extractor_langextract_loads_clean(self) -> None:
+        """doc_extractor: langextract loads clean — key stripped, no extraction.mode."""
+        from brainpalace_cli.config_migrate import migrate_config
 
-        runner = CliRunner()
-        # Supply all wizard prompts, in order. The session block
-        # (embed/archive/git/rerank/lemma) sits between graphrag and deployment;
-        # every prompt is answered explicitly so the test is deterministic and
-        # not reliant on EOF-default behavior (which differs across Click versions).
-        wizard_inputs = "\n".join(
-            [
-                "openai",  # embedding provider
-                "text-embedding-3-large",  # embedding model
-                "anthropic",  # summarization provider
-                "claude-haiku-4-5-20251001",  # summarization model
-                "1",  # graphrag mode: disabled
-                "n",  # enable compute query mode?
-                "n",  # extract numeric records at ingest?
-                "0.7",  # min record confidence summed by default compute
-                "n",  # embed chat sessions?
-                "n",  # back up transcripts?
-                "n",  # index git history?
-                "n",  # enable reranking?
-                "n",  # use lemmatization?
-                "1",  # deployment mode: localhost
-                "8000",  # api port
-                "n",  # do NOT continue with invalid config
-            ]
-        )
+        cfg = {"graphrag": {"enabled": True, "doc_extractor": "langextract"}}
+        result = migrate_config(cfg)
+        assert result.already_current is False
+        assert "doc_extractor" not in result.migrated.get("graphrag", {})
+        # M2.1: must NOT map to extraction.mode
+        assert "extraction" not in result.migrated
+        assert len(result.changes) >= 1
 
-        with (
-            patch(
-                "brainpalace_cli.commands.config._resolve_wizard_config_path",
-                return_value=tmp_path / ".brainpalace" / "config.yaml",
-            ),
-            patch(
-                "brainpalace_cli.commands.config.validate_config_file",
-                return_value=[fake_error],
-            ),
-            # Determinism: avoid the real network port scan and pin plugin state
-            # so the wizard's wording/flow does not depend on the host env.
-            patch(
-                "brainpalace_cli.commands.config._find_available_api_port",
-                return_value=8000,
-            ),
-            patch(
-                "brainpalace_cli.commands.config.claude_plugin_installed",
-                return_value=False,
-            ),
-        ):
-            result = runner.invoke(cli, ["config", "wizard"], input=wizard_inputs)
+    def test_all_langextract_keys_stripped(self) -> None:
+        """All 4 dead keys are stripped: doc_extractor, use_llm_extraction,
+        langextract_provider, langextract_model."""
+        from brainpalace_cli.config_migrate import migrate_config
 
-        # Warning should appear in output
-        assert "Warning" in result.output or "warning" in result.output.lower()
+        cfg = {
+            "graphrag": {
+                "enabled": True,
+                "use_llm_extraction": True,
+                "doc_extractor": "langextract",
+                "langextract_provider": "anthropic",
+                "langextract_model": "claude-3-haiku",
+            }
+        }
+        result = migrate_config(cfg)
+        g = result.migrated.get("graphrag", {})
+        assert "doc_extractor" not in g
+        assert "use_llm_extraction" not in g
+        assert "langextract_provider" not in g
+        assert "langextract_model" not in g
+        assert "extraction" not in result.migrated  # no surprise billing
+
+    def test_no_langextract_keys_is_already_current(self) -> None:
+        """Clean config has no migrations to run."""
+        from brainpalace_cli.config_migrate import migrate_config
+
+        cfg = {"graphrag": {"enabled": True}}
+        result = migrate_config(cfg)
+        assert result.already_current is True

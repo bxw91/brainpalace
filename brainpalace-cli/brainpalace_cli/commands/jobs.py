@@ -194,9 +194,6 @@ def _create_job_detail_panel(job: dict[str, Any]) -> Panel:
     if job.get("include_code"):
         lines.append("[bold]Include Code:[/] Yes")
 
-    if job.get("generate_summaries"):
-        lines.append("[bold]Generate Summaries:[/] Yes")
-
     content = "\n".join(lines)
     title = f"Job Details: {job_id[:12]}"
     return Panel(content, title=title, border_style=status_style)

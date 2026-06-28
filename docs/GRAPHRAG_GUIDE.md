@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-18
+last_validated: 2026-06-27
 ---
 
 # GraphRAG Integration Guide
@@ -146,14 +146,15 @@ graphrag:
   store_type: "sqlite"                             # "sqlite" (default — persistent + temporal) or "simple" (in-memory, JSON)
   index_path: ".brainpalace/data/graph_index"      # Storage location (relative to project root)
   use_code_metadata: true                          # Extract entities from AST metadata (fast, free)
-  use_llm_extraction: false                        # LLM-based extraction (thorough, costs tokens)
-  extraction_model: "claude-haiku-4-5"             # Model for LLM extraction
+  extraction_model: "claude-haiku-4-5"             # Model used by the async extraction reconciler
   max_triplets_per_chunk: 10                       # Limit triplets extracted per chunk
   traversal_depth: 2                               # Graph traversal depth for queries
   rrf_k: 60                                        # Reciprocal Rank Fusion constant
-  doc_extractor: null                              # Document extractor (null or "langextract")
-  langextract_provider: null                       # LangExtract LLM provider
-  langextract_model: null                          # LangExtract LLM model
+
+# Doc-graph + session extraction engine (governs both consumers)
+extraction:
+  mode: "off"       # off (default, cost-safe) | subagent (free) | auto | provider (BILLABLE)
+  grace_hours: 24   # auto mode: hours before paid provider drains a pending chunk
 ```
 
 The full environment variable ↔ config.yaml mapping:
@@ -164,14 +165,11 @@ The full environment variable ↔ config.yaml mapping:
 | `GRAPH_STORE_TYPE` | `graphrag.store_type` | `sqlite` |
 | `GRAPH_INDEX_PATH` | `graphrag.index_path` | `.brainpalace/data/graph_index` |
 | `GRAPH_USE_CODE_METADATA` | `graphrag.use_code_metadata` | `true` |
-| `GRAPH_USE_LLM_EXTRACTION` | `graphrag.use_llm_extraction` | `false` |
 | `GRAPH_EXTRACTION_MODEL` | `graphrag.extraction_model` | `claude-haiku-4-5` |
 | `GRAPH_MAX_TRIPLETS_PER_CHUNK` | `graphrag.max_triplets_per_chunk` | `10` |
 | `GRAPH_TRAVERSAL_DEPTH` | `graphrag.traversal_depth` | `2` |
 | `GRAPH_RRF_K` | `graphrag.rrf_k` | `60` |
-
-`doc_extractor`, `langextract_provider`, and `langextract_model` are config.yaml-only
-(no env var equivalents); they control optional LangExtract doc-graph extraction.
+| `EXTRACTION_MODE` | `extraction.mode` | `off` |
 
 **Note:** The `graph` query mode requires GraphRAG enabled with the ChromaDB backend and is not available with the PostgreSQL storage backend. The `multi` query mode gracefully adapts when GraphRAG or ChromaDB is unavailable — it automatically uses BM25 + vector search only, skipping the graph component without error.
 
@@ -491,13 +489,14 @@ automatically with a warning.
 
 ## Troubleshooting
 
-### "GraphRAG not enabled" Error
+### Graph queries return empty
 
-```
-ValueError: GraphRAG not enabled. Set ENABLE_GRAPH_INDEX=true in environment.
-```
-
-**Solution**: Ensure `ENABLE_GRAPH_INDEX=true` is set before starting the server.
+A `graph`-mode query no longer errors when GraphRAG is disabled — it returns
+empty, like `bm25`/`vector` on an empty index. `ENABLE_GRAPH_INDEX` gates
+**building** the graph (its cost), not the query. To get results, ensure
+`ENABLE_GRAPH_INDEX=true` (or `graphrag.enabled: true`) so the graph is built;
+**building** operations (the `rebuild_graph` index endpoint) still refuse when
+it is off.
 
 ### Empty Graph Results
 

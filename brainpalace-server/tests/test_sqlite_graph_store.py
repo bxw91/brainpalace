@@ -160,3 +160,24 @@ class TestCounts:
         store.invalidate("a", "rel", "b")
         assert store.edge_count() == 0
         assert store.edge_count(include_invalid=True) == 1
+
+
+class TestBrowserSeeds:
+    def test_top_nodes_ranks_by_active_degree(self, store) -> None:
+        # hub touches 3 edges; leaf touches 1.
+        _add(store, "hub", "rel", "a")
+        _add(store, "hub", "rel", "b")
+        _add(store, "hub", "rel", "c")
+        _add(store, "leaf", "rel", "z")
+        top = store.top_nodes(limit=10)
+        assert top[0]["name"] == "hub"
+        assert top[0]["degree"] == 3
+        assert "leaf" in [n["name"] for n in top]
+
+    def test_top_nodes_omits_isolated_and_invalidated(self, store) -> None:
+        # An isolated node (no edges) and a node whose only edge is invalidated
+        # must not appear — they make a useless starting point.
+        store.upsert_nodes([_node("lonely")])
+        _add(store, "x", "rel", "y")
+        store.invalidate("x", "rel", "y")
+        assert store.top_nodes(limit=10) == []

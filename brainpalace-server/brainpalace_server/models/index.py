@@ -61,10 +61,6 @@ class IndexRequest(BaseModel):
         default=CodeChunkStrategy.AST_AWARE,
         description="Strategy for chunking code files",
     )
-    generate_summaries: bool = Field(
-        default=False,
-        description="Generate LLM summaries for code chunks to improve semantic search",
-    )
     force: bool = Field(
         default=False,
         description="Force re-indexing even if embedding provider has changed",

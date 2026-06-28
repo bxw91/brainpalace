@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import httpx
 from openai import AsyncOpenAI
 
-from brainpalace_server.providers.base import BaseEmbeddingProvider
+from brainpalace_server.providers.base import BaseEmbeddingProvider, Usage
 from brainpalace_server.providers.exceptions import (
     OllamaConnectionError,
     ProviderError,
@@ -211,6 +211,76 @@ class OllamaEmbeddingProvider(BaseEmbeddingProvider):
                     delay = min(2**attempt, 30)
                     logger.warning(
                         "Retryable error in _embed_batch "
+                        f"(attempt {attempt + 1}/{self._max_retries}): {e}. "
+                        f"Retrying in {delay}s..."
+                    )
+                    await asyncio.sleep(delay)
+
+        raise ProviderError(
+            "Failed to generate batch embeddings after "
+            f"{self._max_retries} retries: {last_exc}",
+            self.provider_name,
+            cause=last_exc,
+        ) from last_exc
+
+    async def _embed_batch_with_usage(
+        self, texts: list[str]
+    ) -> tuple[list[list[float]], Usage]:
+        """Batch embed returning Ollama token usage by value (§6-F3).
+
+        Ollama's embedding provider uses the OpenAI-compatible API (AsyncOpenAI),
+        so the response has OpenAI-shaped usage fields (prompt_tokens), not the
+        native Ollama REST field (prompt_eval_count). This is a known divergence
+        from the plan's mapping table — real code takes precedence.
+        Uses getattr(..., 0) or 0 everywhere so absent fields → 0 (truthful).
+        """
+        last_exc: Exception | None = None
+        for attempt in range(self._max_retries + 1):
+            try:
+                response = await self._client.embeddings.create(
+                    model=self._model,
+                    input=texts,
+                )
+                result = [item.embedding for item in response.data]
+                u = getattr(response, "usage", None)
+                usage = (
+                    Usage(
+                        tokens_in=int(getattr(u, "prompt_tokens", 0) or 0),
+                        tokens_out=0,
+                        cache_read=0,
+                        cache_write=0,
+                    )
+                    if u is not None
+                    else Usage()
+                )
+                if self._request_delay_ms > 0:
+                    await asyncio.sleep(self._request_delay_ms / 1000)
+                return result, usage
+            except Exception as e:
+                if isinstance(e, ConnectionRefusedError):
+                    raise OllamaConnectionError(self._base_url, cause=e) from e
+                if isinstance(e, httpx.ConnectError) and "refused" in str(e).lower():
+                    raise OllamaConnectionError(self._base_url, cause=e) from e
+                if "connection" in str(e).lower() or "refused" in str(e).lower():
+                    raise OllamaConnectionError(self._base_url, cause=e) from e
+                if "model not found" in str(e).lower():
+                    raise ProviderError(
+                        f"Failed to generate batch embeddings: {e}",
+                        self.provider_name,
+                        cause=e,
+                    ) from e
+                if not self._is_retryable_error(e):
+                    raise ProviderError(
+                        f"Failed to generate batch embeddings: {e}",
+                        self.provider_name,
+                        cause=e,
+                    ) from e
+
+                last_exc = e
+                if attempt < self._max_retries:
+                    delay = min(2**attempt, 30)
+                    logger.warning(
+                        "Retryable error in _embed_batch_with_usage "
                         f"(attempt {attempt + 1}/{self._max_retries}): {e}. "
                         f"Retrying in {delay}s..."
                     )

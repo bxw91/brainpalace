@@ -24,17 +24,18 @@ VALID_TOP_LEVEL_KEYS = {
     "storage",
     "graphrag",
     "compute",
-    "api",
+    "bind",
     "server",
-    "project",
     "query_log",
     "bm25",
     "git_indexing",
     "session_indexing",
     "session_extraction",
+    "extraction",
     "indexing",
     "dashboard",
     "cli",
+    "usage_metrics",
 }
 
 VALID_EMBEDDING_PROVIDERS = {"openai", "ollama", "cohere"}
@@ -42,7 +43,6 @@ VALID_SUMMARIZATION_PROVIDERS = {"anthropic", "openai", "ollama", "gemini", "gro
 VALID_RERANKER_PROVIDERS = {"sentence-transformers", "ollama"}
 VALID_STORAGE_BACKENDS = {"chroma", "postgres"}
 VALID_GRAPHRAG_STORE_TYPES = {"simple", "sqlite"}
-VALID_DOC_EXTRACTORS = {"langextract", "none"}
 VALID_BM25_ENGINES = {"stem", "lemma"}
 VALID_EXTRACT_MODES = {"auto", "subagent", "provider", "off"}
 
@@ -101,13 +101,11 @@ GRAPHRAG_KNOWN_FIELDS = {
     "enabled",
     "store_type",
     "use_code_metadata",
-    "doc_extractor",
 }
 # `compute:` section — mirrors brainpalace_server.config.provider_config.ComputeConfig.
-COMPUTE_KNOWN_FIELDS = {"enabled", "record_extraction", "min_confidence"}
-API_KNOWN_FIELDS = {"host", "port"}
-SERVER_KNOWN_FIELDS = {"url", "host", "port", "auto_port", "read_only"}
-PROJECT_KNOWN_FIELDS = {"state_dir", "project_root"}
+COMPUTE_KNOWN_FIELDS = {"min_confidence"}
+BIND_KNOWN_FIELDS = {"bind_host", "port_range_start", "port_range_end", "auto_port"}
+SERVER_KNOWN_FIELDS = {"read_only"}
 QUERY_LOG_KNOWN_FIELDS = {"enabled", "retention_days"}
 CLI_KNOWN_FIELDS = {
     "show_ai_hint",
@@ -168,13 +166,33 @@ SESSION_INDEXING_KNOWN_FIELDS = {
     "sessions_dir",
     "archive",
 }
-SESSION_EXTRACTION_KNOWN_FIELDS = {"mode", "quiescence_seconds"}
+SESSION_EXTRACTION_KNOWN_FIELDS = {"quiescence_seconds"}
+# `extraction:` section — shared engine for doc-graph triplets + session
+# distillation (Plan 4). Mirrors ExtractionConfig in extraction_config.py.
+EXTRACTION_KNOWN_FIELDS = {
+    "mode",
+    "grace_hours",
+    "drain_batch_size",
+    "drain_cooldown_seconds",
+    "drain_doc_max_per_turn",
+    "drain_session_max_per_turn",
+    "max_provider_items_per_hour",
+    "provider_session_max_chunks",
+    "provider_context_tokens",
+    "distill_chunk_chars",
+    "max_pending",
+}
 INDEXING_KNOWN_FIELDS = {
     "reembed_cooldown_seconds",
     "big_file_chunks",
     "max_file_bytes_throttle",
     "skip_minified",
+    "max_embed_tokens_per_job",
+    "exclude_patterns",
 }
+# `usage_metrics:` section — mirrors UsageMetricsConfig in usage_metrics_config.py.
+# retain_days <= 0 means keep forever (no ge= lower bound), so no _RANGE_RULES entry.
+USAGE_METRICS_KNOWN_FIELDS = {"enabled", "retain_days"}
 
 # ---------------------------------------------------------------------------
 # Deprecated key mapping: dot-path -> migration suggestion
@@ -192,8 +210,14 @@ _PORT_RANGE = (1, 65535)
 
 _RANGE_RULES: dict[str, tuple[float | None, float | None, str]] = {
     # Ports
-    "api.port": (*_PORT_RANGE, "api.port must be between 1 and 65535"),
-    "server.port": (*_PORT_RANGE, "server.port must be between 1 and 65535"),
+    "bind.port_range_start": (
+        *_PORT_RANGE,
+        "bind.port_range_start must be between 1 and 65535",
+    ),
+    "bind.port_range_end": (
+        *_PORT_RANGE,
+        "bind.port_range_end must be between 1 and 65535",
+    ),
     "storage.postgres.port": (
         *_PORT_RANGE,
         "storage.postgres.port must be between 1 and 65535",
@@ -230,6 +254,49 @@ _RANGE_RULES: dict[str, tuple[float | None, float | None, str]] = {
         None,
         "session_extraction.quiescence_seconds must be >= 0",
     ),
+    # extraction.* — shared engine config (Plan 4)
+    "extraction.grace_hours": (0, None, "extraction.grace_hours must be >= 0"),
+    "extraction.drain_batch_size": (
+        1,
+        None,
+        "extraction.drain_batch_size must be >= 1",
+    ),
+    "extraction.drain_cooldown_seconds": (
+        0,
+        None,
+        "extraction.drain_cooldown_seconds must be >= 0",
+    ),
+    "extraction.drain_doc_max_per_turn": (
+        0,
+        None,
+        "extraction.drain_doc_max_per_turn must be >= 0",
+    ),
+    "extraction.drain_session_max_per_turn": (
+        0,
+        None,
+        "extraction.drain_session_max_per_turn must be >= 0",
+    ),
+    "extraction.max_provider_items_per_hour": (
+        0,
+        None,
+        "extraction.max_provider_items_per_hour must be >= 0",
+    ),
+    "extraction.provider_session_max_chunks": (
+        0,
+        None,
+        "extraction.provider_session_max_chunks must be >= 0",
+    ),
+    "extraction.provider_context_tokens": (
+        0,
+        None,
+        "extraction.provider_context_tokens must be >= 0",
+    ),
+    "extraction.distill_chunk_chars": (
+        0,
+        None,
+        "extraction.distill_chunk_chars must be >= 0",
+    ),
+    "extraction.max_pending": (0, None, "extraction.max_pending must be >= 0"),
     "indexing.reembed_cooldown_seconds": (
         0,
         None,
@@ -254,12 +321,7 @@ def _get_dotpath(config: dict[str, Any], dotpath: str) -> Any:
     return node
 
 
-DEPRECATED_KEYS: dict[str, str] = {
-    "graphrag.use_llm_extraction": (
-        "Renamed to 'graphrag.doc_extractor'. "
-        "Use doc_extractor: langextract instead."
-    ),
-}
+DEPRECATED_KEYS: dict[str, str] = {}
 
 # ---------------------------------------------------------------------------
 # Schema: section name -> (known_fields, enum_fields)
@@ -320,11 +382,6 @@ _SECTION_SCHEMA: dict[str, dict[str, Any]] = {
                 "Invalid graphrag store_type",
                 f"Use one of: {', '.join(sorted(VALID_GRAPHRAG_STORE_TYPES))}",
             ),
-            "doc_extractor": (
-                VALID_DOC_EXTRACTORS,
-                "Invalid graphrag doc_extractor",
-                f"Use one of: {', '.join(sorted(VALID_DOC_EXTRACTORS))}",
-            ),
         },
         "type_fields": {
             "enabled": (bool, "graphrag.enabled must be a boolean (true/false)"),
@@ -340,34 +397,23 @@ _SECTION_SCHEMA: dict[str, dict[str, Any]] = {
         # `min_confidence` (float) is intentionally not a type_field — it is range-
         # checked via _RANGE_RULES instead, mirroring bm25.detect_min_confidence,
         # so an integer YAML value like `1` is not falsely rejected by isinstance.
-        "type_fields": {
-            "enabled": (bool, "compute.enabled must be a boolean (true/false)"),
-            "record_extraction": (
-                bool,
-                "compute.record_extraction must be a boolean (true/false)",
-            ),
-        },
+        "type_fields": {},
     },
-    "api": {
-        "known_fields": API_KNOWN_FIELDS,
+    "bind": {
+        "known_fields": BIND_KNOWN_FIELDS,
         "enum_fields": {},
         "type_fields": {
-            "port": (int, "api.port must be an integer"),
+            "port_range_start": (int, "bind.port_range_start must be an integer"),
+            "port_range_end": (int, "bind.port_range_end must be an integer"),
+            "auto_port": (bool, "bind.auto_port must be a boolean (true/false)"),
         },
     },
     "server": {
         "known_fields": SERVER_KNOWN_FIELDS,
         "enum_fields": {},
         "type_fields": {
-            "port": (int, "server.port must be an integer"),
-            "auto_port": (bool, "server.auto_port must be a boolean (true/false)"),
             "read_only": (bool, "server.read_only must be a boolean (true/false)"),
         },
-    },
-    "project": {
-        "known_fields": PROJECT_KNOWN_FIELDS,
-        "enum_fields": {},
-        "type_fields": {},
     },
     "query_log": {
         "known_fields": QUERY_LOG_KNOWN_FIELDS,
@@ -445,18 +491,57 @@ _SECTION_SCHEMA: dict[str, dict[str, Any]] = {
     },
     "session_extraction": {
         "known_fields": SESSION_EXTRACTION_KNOWN_FIELDS,
-        "enum_fields": {
-            "mode": (
-                VALID_EXTRACT_MODES,
-                "Invalid session_extraction mode",
-                f"Use one of: {', '.join(sorted(VALID_EXTRACT_MODES))}",
-            ),
-        },
+        "enum_fields": {},
         "type_fields": {
             "quiescence_seconds": (
                 int,
                 "session_extraction.quiescence_seconds must be an integer",
             ),
+        },
+    },
+    # Plan 4: shared extraction engine — governs doc-graph triplets AND session
+    # distillation. mode enum validated; int fields range-checked via _RANGE_RULES.
+    "extraction": {
+        "known_fields": EXTRACTION_KNOWN_FIELDS,
+        "enum_fields": {
+            "mode": (
+                VALID_EXTRACT_MODES,
+                "Invalid extraction mode",
+                f"Use one of: {', '.join(sorted(VALID_EXTRACT_MODES))}",
+            ),
+        },
+        "type_fields": {
+            "grace_hours": (int, "extraction.grace_hours must be an integer"),
+            "drain_batch_size": (int, "extraction.drain_batch_size must be an integer"),
+            "drain_cooldown_seconds": (
+                int,
+                "extraction.drain_cooldown_seconds must be an integer",
+            ),
+            "drain_doc_max_per_turn": (
+                int,
+                "extraction.drain_doc_max_per_turn must be an integer",
+            ),
+            "drain_session_max_per_turn": (
+                int,
+                "extraction.drain_session_max_per_turn must be an integer",
+            ),
+            "max_provider_items_per_hour": (
+                int,
+                "extraction.max_provider_items_per_hour must be an integer",
+            ),
+            "provider_session_max_chunks": (
+                int,
+                "extraction.provider_session_max_chunks must be an integer",
+            ),
+            "provider_context_tokens": (
+                int,
+                "extraction.provider_context_tokens must be an integer",
+            ),
+            "distill_chunk_chars": (
+                int,
+                "extraction.distill_chunk_chars must be an integer",
+            ),
+            "max_pending": (int, "extraction.max_pending must be an integer"),
         },
     },
     "indexing": {
@@ -476,6 +561,19 @@ _SECTION_SCHEMA: dict[str, dict[str, Any]] = {
                 bool,
                 "indexing.skip_minified must be a boolean (true/false)",
             ),
+        },
+    },
+    # Plan 5: usage/spend telemetry — two fields, no enums, retain_days has no
+    # lower-bound range rule (<=0 = keep forever, §6-F1).
+    "usage_metrics": {
+        "known_fields": USAGE_METRICS_KNOWN_FIELDS,
+        "enum_fields": {},
+        "type_fields": {
+            "enabled": (
+                bool,
+                "usage_metrics.enabled must be a boolean (true/false)",
+            ),
+            "retain_days": (int, "usage_metrics.retain_days must be an integer"),
         },
     },
 }

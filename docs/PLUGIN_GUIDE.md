@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-20
+last_validated: 2026-06-24
 ---
 
 # BrainPalace Plugin Guide
@@ -197,7 +197,6 @@ Index documents and/or code.
 /brainpalace-index ./docs --no-code
 /brainpalace-index .
 /brainpalace-index ./src --languages python,typescript
-/brainpalace-index . --generate-summaries
 ```
 
 **Options:**
@@ -206,7 +205,6 @@ Index documents and/or code.
 |--------|---------|-------------|
 | `--no-code` | code on | Skip source code files (code is indexed by default) |
 | `--languages` | all | Languages to index |
-| `--generate-summaries` | false | Generate LLM summaries |
 | `--chunk-size` | 512 | Chunk size in tokens |
 
 ### `/brainpalace-reset`

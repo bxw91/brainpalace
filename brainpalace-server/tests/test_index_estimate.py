@@ -121,7 +121,12 @@ async def test_estimate_heuristic_split_and_overlap() -> None:
     assert est["est_embedding_tokens"] == int(round(200 * (1 + 50 / 512)))
     assert est["tokenizer"].startswith("heuristic")
     assert est["approximate"] is True
-    assert est["summaries_enabled"] is False
+
+
+def test_index_request_has_no_generate_summaries():
+    from brainpalace_server.models.index import IndexRequest
+
+    assert "generate_summaries" not in IndexRequest.model_fields
 
 
 @pytest.mark.asyncio

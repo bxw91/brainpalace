@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 from openai import AsyncOpenAI
 
-from brainpalace_server.providers.base import BaseSummarizationProvider
+from brainpalace_server.providers.base import BaseSummarizationProvider, Usage
 from brainpalace_server.providers.exceptions import (
     OllamaConnectionError,
     ProviderError,
@@ -96,6 +96,45 @@ class OllamaSummarizationProvider(BaseSummarizationProvider):
             # Extract text from response
             content = response.choices[0].message.content
             return content if content else ""
+        except Exception as e:
+            if "connection" in str(e).lower() or "refused" in str(e).lower():
+                raise OllamaConnectionError(self._base_url, cause=e) from e
+            raise ProviderError(
+                f"Failed to generate text: {e}",
+                self.provider_name,
+                cause=e,
+            ) from e
+
+    async def generate_with_usage(self, prompt: str) -> tuple[str, Usage]:
+        """Generate text and return Ollama token usage by value (§6-F3).
+
+        Ollama's summarization provider uses the OpenAI-compatible API
+        (AsyncOpenAI), so the response has OpenAI-shaped usage fields
+        (prompt_tokens / completion_tokens), not the native Ollama REST fields
+        (prompt_eval_count / eval_count). This is a known divergence from the
+        plan's mapping table — real code takes precedence.
+        Uses getattr(..., 0) or 0 everywhere so absent fields → 0 (truthful).
+        """
+        try:
+            response = await self._client.chat.completions.create(
+                model=self._model,
+                max_tokens=self._max_tokens,
+                temperature=self._temperature,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            u = getattr(response, "usage", None)
+            usage = (
+                Usage(
+                    tokens_in=int(getattr(u, "prompt_tokens", 0) or 0),
+                    tokens_out=int(getattr(u, "completion_tokens", 0) or 0),
+                    cache_read=0,
+                    cache_write=0,
+                )
+                if u is not None
+                else Usage()
+            )
+            content = response.choices[0].message.content
+            return (content if content else ""), usage
         except Exception as e:
             if "connection" in str(e).lower() or "refused" in str(e).lower():
                 raise OllamaConnectionError(self._base_url, cause=e) from e

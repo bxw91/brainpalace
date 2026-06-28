@@ -35,8 +35,10 @@ def test_decline_archive_writes_disabled(tmp_path, monkeypatch):
             "--no-git-history",
             "--no-graphrag-extract",
         ],
-        # archive=n, reranker-change=n, lemma=n, compute=y, proceed=y
-        input_str="n\nn\nn\ny\ny\n",
+        # Drill the Chat Session : Archiving division (10 — Indexing=8,
+        # GitIndexing=9, Archiving=10): set archive Enabled=N (gate off skips its
+        # sub-fields), [C]ontinue, Proceed.
+        input_str="10\nn\nc\ny\n",
     )
     assert result.exit_code == 0, result.output
     cfg = _read(tmp_path / ".brainpalace")
@@ -56,8 +58,13 @@ def test_accept_archive_writes_enabled(tmp_path, monkeypatch):
             "--no-git-history",
             "--no-graphrag-extract",
         ],
-        # archive=y, reranker-change=n, lemma=n, compute=y, proceed=y
-        input_str="y\nn\nn\ny\ny\n",
+        # Drill the Chat Session : Vector Indexing division (11, after Archiving=10):
+        # decline session embed consent (N), accept archive Enabled default (Y), Enter
+        # past the archive sub-fields (dir/retain/reconcile), [C]ontinue, Proceed.
+        # Gate-first order: session_indexing.enabled (consent) → archive.enabled.
+        # With enabled=False (default), enabled-gated fields are skipped.
+        # archive.enabled stays at default True, so archive sub-fields are shown.
+        input_str="11\nn\n\n\n\n\nc\ny\n",
     )
     assert result.exit_code == 0, result.output
     cfg = _read(tmp_path / ".brainpalace")
@@ -80,12 +87,9 @@ def test_reinit_no_start_persists_archive_decline(tmp_path, monkeypatch):
         "--no-git-history",
         "--no-graphrag-extract",
     ]
-    # Create the project with archive ON via flag.
-    # Reranker gate still fires (no --reranking/--no-reranking flag).
-    # reranker-change=N, lemma=N, compute=Y, proceed=Y (archive via --archive flag).
-    r1 = _invoke(
-        tmp_path, monkeypatch, common + ["--archive"], input_str="n\nn\ny\ny\n"
-    )
+    # Create the project with archive ON via flag. Accept the grid ([C]ontinue),
+    # then Proceed.
+    r1 = _invoke(tmp_path, monkeypatch, common + ["--archive"], input_str="c\ny\n")
     assert r1.exit_code == 0, r1.output
     assert (
         _read(tmp_path / ".brainpalace")
@@ -94,9 +98,10 @@ def test_reinit_no_start_persists_archive_decline(tmp_path, monkeypatch):
         .get("enabled")
         is True
     )
-    # Re-init, decline the archive prompt → must persist False on --no-start.
-    # keep existing, archive=N, reranker-change=N, lemma=N, compute=Y, proceed=Y.
-    r2 = _invoke(tmp_path, monkeypatch, common, input_str="keep\nn\nn\nn\ny\ny\n")
+    # Re-init, decline archive via the grid → must persist False on --no-start.
+    # keep; grid1 drill 10 (Chat Session : Archiving) → archive Enabled=N, [C]ontinue;
+    # Proceed=Y; grid2 [C]ontinue.
+    r2 = _invoke(tmp_path, monkeypatch, common, input_str="keep\n10\nn\nc\ny\nc\n")
     assert r2.exit_code == 0, r2.output
     assert (
         _read(tmp_path / ".brainpalace")

@@ -1,8 +1,8 @@
 import { lazy, Suspense, useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Boxes, Share2, HardDrive, GitCommit, RotateCcw, Power } from "lucide-react";
-import { getInstanceStatus, gitReindex, searchGraphNodes, getGraphNeighbors } from "../api/client";
-import type { GraphSubgraph } from "../api/types";
+import { Boxes, Share2, HardDrive, GitCommit, RotateCcw, Power, Compass } from "lucide-react";
+import { getInstanceStatus, gitReindex, searchGraphNodes, getGraphNeighbors, getGraphTopNodes } from "../api/client";
+import type { GraphSubgraph, GraphNodeHit } from "../api/types";
 import { StatCard } from "../components/StatCard";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { useToast } from "../components/Toast";
@@ -55,6 +55,8 @@ export function Graph({ instanceId }: { instanceId?: string }) {
 
   const [searchText, setSearchText] = useState("");
   const [searchQ, setSearchQ] = useState<string | null>(null);
+  const [topNodes, setTopNodes] = useState<GraphNodeHit[] | null>(null);
+  const [starting, setStarting] = useState(false);
   const [subgraph, setSubgraph] = useState<GraphSubgraph | null>(null);
   const subgraphRef = useRef(subgraph);
   useEffect(() => {
@@ -69,6 +71,26 @@ export function Graph({ instanceId }: { instanceId?: string }) {
     enabled: !!id && !!searchQ,
     retry: false,
   });
+
+  // Open the browser with no search: pull the most-connected hubs and auto-expand
+  // the top one, so the canvas lands populated. The hub list doubles as seeds.
+  const startBrowser = async () => {
+    setStarting(true);
+    try {
+      const res = await getGraphTopNodes(id!, 15);
+      setTopNodes(res.nodes);
+      setSearchQ(null); // hub list takes over the seed slot
+      if (res.nodes.length > 0) {
+        await expand(res.nodes[0].id);
+      } else {
+        toast("Graph has no connected entities yet — index more first.", "error");
+      }
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Could not start the graph browser.", "error");
+    } finally {
+      setStarting(false);
+    }
+  };
 
   const expand = async (nodeId: string) => {
     try {
@@ -194,7 +216,23 @@ export function Graph({ instanceId }: { instanceId?: string }) {
       />
 
       <div className="panel flex flex-col gap-3 p-5">
-        <p className="eyebrow">Browse the graph</p>
+        <div className="flex items-center justify-between gap-3">
+          <p className="eyebrow">Browse the graph</p>
+          <button
+            type="button"
+            data-testid="btn-graph-start"
+            disabled={!enabled || starting}
+            onClick={startBrowser}
+            className="btn-primary btn-sm"
+            title="Open the graph at its most-connected entity — no search needed"
+          >
+            <Compass className="h-4 w-4" aria-hidden="true" />
+            {starting ? "Starting…" : "Start graph browser"}
+          </button>
+        </div>
+        <p className="text-xs text-fg-faint">
+          Jump in at the most-connected entity, or search for a specific seed below.
+        </p>
         <div className="flex flex-wrap items-end gap-3">
           <div className="min-w-0 flex-1">
             <label
@@ -242,12 +280,17 @@ export function Graph({ instanceId }: { instanceId?: string }) {
           <p className="text-sm text-fg-faint">Searching…</p>
         )}
 
-        {seedsQ.data && (
+        {(seedsQ.data?.nodes ?? topNodes) && (
           <ul className="flex flex-col gap-1.5">
-            {seedsQ.data.nodes.length === 0 && (
+            {!seedsQ.data && topNodes && (
+              <p className="text-xs text-fg-faint">
+                Most-connected entities — pick one to explore.
+              </p>
+            )}
+            {(seedsQ.data?.nodes ?? topNodes ?? []).length === 0 && (
               <p className="text-sm text-fg-faint">No matching entities.</p>
             )}
-            {seedsQ.data.nodes.map((n) => (
+            {(seedsQ.data?.nodes ?? topNodes ?? []).map((n) => (
               <li
                 key={n.id}
                 className="flex items-center gap-3 rounded-lg border border-line/60 bg-ink-700/30 px-3 py-2 text-sm"

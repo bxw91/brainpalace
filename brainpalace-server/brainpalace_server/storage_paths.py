@@ -1,10 +1,7 @@
 """State directory and storage path resolution."""
 
-import logging
 import os
 from pathlib import Path
-
-logger = logging.getLogger(__name__)
 
 STATE_DIR_NAME = ".brainpalace"
 LEGACY_STATE_DIR_NAME = ".claude/brainpalace"
@@ -18,7 +15,29 @@ SUBDIRECTORIES = [
     "logs",
     "manifests",
     "embedding_cache",  # Phase 16: persistent embedding cache
+    "db",  # durable SQLite stores (query_log/usage_metrics/records/extraction_pending)
+    "state",  # small durable cursors/markers + append-only audit-event jsonl
 ]
+
+# Subfolder names for the grouped layout. The state-dir root keeps only the
+# user-facing/discovery files (config.yaml, runtime.json, pid/lock, server.log);
+# everything else lives under a named group.
+DB_SUBDIR = "db"
+STATE_SUBDIR = "state"
+
+
+def db_path(state_dir: Path, name: str) -> Path:
+    """Resolve ``<state_dir>/db/<name>``, creating the ``db/`` dir."""
+    d = Path(state_dir) / DB_SUBDIR
+    d.mkdir(parents=True, exist_ok=True)
+    return d / name
+
+
+def state_file_path(state_dir: Path, name: str) -> Path:
+    """Resolve ``<state_dir>/state/<name>``, creating the ``state/`` dir."""
+    d = Path(state_dir) / STATE_SUBDIR
+    d.mkdir(parents=True, exist_ok=True)
+    return d / name
 
 
 def resolve_state_dir(project_root: Path) -> Path:
@@ -67,6 +86,8 @@ def resolve_storage_paths(state_dir: Path) -> dict[str, Path]:
         "logs": state_dir / "logs",
         "manifests": state_dir / "manifests",
         "embedding_cache": state_dir / "embedding_cache",  # Phase 16
+        "db": state_dir / DB_SUBDIR,
+        "state": state_dir / STATE_SUBDIR,
     }
 
     # Create directories

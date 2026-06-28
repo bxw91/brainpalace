@@ -180,9 +180,11 @@ for row in d.get('compute', []):
 "
 ```
 
-Kill-switches: `ENABLE_COMPUTE=false` disables compute globally;
-`RECORD_EXTRACTION_ENABLED=false` stops record persistence (compute returns
-empty). Config knobs also available under `compute:` in `.brainpalace/config.yaml`.
+Compute query mode has no switches — it is always selectable and returns empty
+when no records exist. Records are extracted automatically whenever session
+extraction runs (gated by `extraction.mode`); there is no separate
+record toggle. The only compute knob is `compute.min_confidence` in
+`.brainpalace/config.yaml`.
 
 ---
 

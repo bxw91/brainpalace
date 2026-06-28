@@ -138,8 +138,8 @@ async def distill_sessions(req: DistillRequest, request: Request) -> dict[str, A
     if distiller is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Provider distiller not active (session_extraction.mode is not "
-            "'provider', or SESSION_DISTILL_ENABLED=false).",
+            detail="Provider distiller not active (extraction.mode is not "
+            "'provider'/'auto', or EXTRACTION_PROVIDER_ENABLED=false).",
         )
     enqueued = 0
     for path in req.paths:

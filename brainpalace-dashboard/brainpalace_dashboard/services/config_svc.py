@@ -2,8 +2,8 @@
 
 The dashboard edits the high-value provider/storage/graphrag/reranker settings
 that live in ``<state_dir>/config.yaml`` (validated by ``validate_config_dict``).
-Runtime bind host/port live in ``config.json`` and are managed by the lifecycle
-service, not here.
+Runtime bind host/port live in the ``config.yaml`` ``bind:`` section (model-backed,
+auto-rendered via the registry).
 """
 
 from __future__ import annotations
@@ -362,6 +362,34 @@ class ConfigService:
             if val == inherited:
                 _unset_dotpath(merged, dp)
 
+    @staticmethod
+    def _prefill_context_tokens(merged: dict[str, Any]) -> None:
+        """Task 4e: when summarization.model is being set and the model is in the
+        map, prefill extraction.provider_context_tokens (editable, sparse —
+        written only when a known model is selected, never overwriting a
+        user-set value)."""
+        try:
+            from brainpalace_server.config.model_windows import window_for
+
+            summ = merged.get("summarization")
+            if not isinstance(summ, dict):
+                return
+            provider = str(summ.get("provider") or "")
+            model = str(summ.get("model") or "")
+            if not provider or not model:
+                return
+            tokens = window_for(provider, model)
+            if tokens is None:
+                return
+            ext = merged.setdefault("extraction", {})
+            if not isinstance(ext, dict):
+                return
+            # Only prefill if the user hasn't explicitly set a value already.
+            if "provider_context_tokens" not in ext:
+                ext["provider_context_tokens"] = tokens
+        except Exception:  # noqa: BLE001 — never block a dashboard save
+            pass
+
     def _write_to(
         self,
         path: Path,
@@ -371,6 +399,9 @@ class ConfigService:
     ) -> None:
         existing = yaml.safe_load(path.read_text()) if path.exists() else {}
         merged = _merge_secrets(values, existing or {})
+        # Task 4e: prefill extraction.provider_context_tokens when model is known.
+        if "summarization" in merged:
+            self._prefill_context_tokens(merged)
         # Staged inherit: the form sends the keys it wants REMOVED so they fall
         # back to global / code default. Apply them in the SAME atomic write as
         # the value sets, so "revert to inherited" only persists on Save (and a

@@ -26,15 +26,15 @@ console = Console()
 )
 @click.option(
     "--chunk-size",
-    default=512,
+    default=None,
     type=int,
-    help="Target chunk size in tokens (default: 512)",
+    help="Target chunk size in tokens (advanced; default 512).",
 )
 @click.option(
     "--chunk-overlap",
-    default=50,
+    default=None,
     type=int,
-    help="Overlap between chunks in tokens (default: 50)",
+    help="Token overlap between chunks (advanced; default 50).",
 )
 @click.option(
     "--no-recursive",
@@ -78,11 +78,6 @@ console = Console()
     help="Comma-separated additional exclude patterns (wildcards supported)",
 )
 @click.option(
-    "--generate-summaries",
-    is_flag=True,
-    help="Generate LLM summaries for code chunks to improve semantic search",
-)
-@click.option(
     "--force",
     is_flag=True,
     help="Force re-indexing even if embedding provider has changed",
@@ -114,11 +109,18 @@ console = Console()
     help="Estimate approximate embedding-token usage and exit — do not index.",
 )
 @click.option("--json", "json_output", is_flag=True, help="Output as JSON")
+@click.option(
+    "--yes",
+    "-y",
+    "yes",
+    is_flag=True,
+    help="Skip interactive confirmation prompts (e.g. extraction-backlog warning).",
+)
 def index_command(
     folder_path: str,
     url: str | None,
-    chunk_size: int,
-    chunk_overlap: int,
+    chunk_size: int | None,
+    chunk_overlap: int | None,
     no_recursive: bool,
     include_code: bool,
     languages: str | None,
@@ -126,13 +128,13 @@ def index_command(
     include_patterns: str | None,
     include_type: str | None,
     exclude_patterns: str | None,
-    generate_summaries: bool,
     force: bool,
     allow_external: bool,
     watch_mode: str | None,
     watch_debounce_seconds: int | None,
     estimate_only: bool,
     json_output: bool,
+    yes: bool,
 ) -> None:
     """Index documents from a folder.
 
@@ -143,6 +145,18 @@ def index_command(
 
     # Resolve to absolute path
     folder = Path(folder_path).resolve()
+
+    # exclude_patterns default comes from the indexing: config block; chunk
+    # size/overlap are advanced per-run flags (not config keys) defaulting to the
+    # server's built-in values.
+    from brainpalace_server.config.indexing_config import load_indexing_config
+    from brainpalace_server.config.settings import settings as _settings
+
+    _idx = load_indexing_config()
+    if chunk_size is None:
+        chunk_size = _settings.DEFAULT_CHUNK_SIZE
+    if chunk_overlap is None:
+        chunk_overlap = _settings.DEFAULT_CHUNK_OVERLAP
 
     # Parse comma-separated lists
     languages_list = (
@@ -159,7 +173,7 @@ def index_command(
     exclude_patterns_list = (
         [pat.strip() for pat in exclude_patterns.split(",")]
         if exclude_patterns
-        else None
+        else _idx.exclude_patterns
     )
 
     try:
@@ -172,7 +186,6 @@ def index_command(
                     include_patterns=include_patterns_list,
                     include_types=include_types_list,
                     exclude_patterns=exclude_patterns_list,
-                    generate_summaries=generate_summaries,
                     chunk_size=chunk_size,
                     chunk_overlap=chunk_overlap,
                 )
@@ -186,6 +199,37 @@ def index_command(
                     print_token_estimate(console, est)
                 return
 
+            # Task 4d: interactive backpressure warn before scheduling a new
+            # indexing job.  Skip the prompt under --yes / non-interactive.
+            if not yes:
+                try:
+                    from brainpalace_server.config.extraction_config import (
+                        load_extraction_config,
+                    )
+
+                    _ext_cfg = load_extraction_config()
+                    _max_pending = _ext_cfg.max_pending
+                    if _max_pending > 0:
+                        _status = client.status()
+                        _features = _status.features or {}
+                        _dge = _features.get("doc_graph_extraction") or {}
+                        _pending = int(_dge.get("pending", 0))
+                        if _pending >= _max_pending:
+                            click.echo(
+                                f"Warning: extraction backlog is {_pending} items "
+                                f"(>= max_pending={_max_pending}). "
+                                "Indexing will add more pending chunks.",
+                                err=True,
+                            )
+                            if not click.confirm(
+                                "Extraction backlog is large; index anyway?"
+                            ):
+                                raise SystemExit(0)
+                except (SystemExit, KeyboardInterrupt):
+                    raise
+                except Exception:  # noqa: BLE001 — never block indexing
+                    pass
+
             response = client.index(
                 folder_path=str(folder),
                 chunk_size=chunk_size,
@@ -197,7 +241,6 @@ def index_command(
                 include_patterns=include_patterns_list,
                 include_types=include_types_list,
                 exclude_patterns=exclude_patterns_list,
-                generate_summaries=generate_summaries,
                 force=force,
                 allow_external=allow_external,
                 watch_mode=watch_mode,

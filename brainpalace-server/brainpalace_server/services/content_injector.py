@@ -36,8 +36,6 @@ _KNOWN_CHUNK_KEYS: frozenset[str] = frozenset(
         "symbol_kind",
         "start_line",
         "end_line",
-        "section_summary",
-        "prev_section_summary",
         "docstring",
         "parameters",
         "return_type",

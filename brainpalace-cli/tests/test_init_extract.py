@@ -58,15 +58,27 @@ def test_format_mentions_summarize_when_extract() -> None:
     assert "→ Claude Code Haiku (subscription)" in line
 
 
-def test_write_session_config_sets_extract_mode(tmp_path) -> None:
-    write_session_config(tmp_path, extract_mode="subagent")
-    data = yaml.safe_load((tmp_path / "config.yaml").read_text())
-    assert data["session_extraction"]["mode"] == "subagent"
+def test_write_session_config_no_extract_mode_param(tmp_path) -> None:
+    # write_session_config no longer accepts extract_mode — it only writes
+    # session_indexing (index/archive). Engine selector is write_extraction_config.
+    import inspect
 
+    sig = inspect.signature(write_session_config)
+    assert "extract_mode" not in sig.parameters
 
-def test_write_session_config_extract_mode_preserves_indexing(tmp_path) -> None:
     write_session_config(tmp_path, index=True, archive=True)
-    write_session_config(tmp_path, extract_mode="provider")
     data = yaml.safe_load((tmp_path / "config.yaml").read_text())
-    assert data["session_extraction"]["mode"] == "provider"
+    assert data["session_indexing"]["enabled"] is True
+    assert "session_extraction" not in data  # no mode block written
+
+
+def test_write_extraction_config_separate_from_session(tmp_path) -> None:
+    # Engine selector is independent: write_extraction_config writes extraction.mode
+    # and write_session_config writes session_indexing — they deep-merge correctly.
+    from brainpalace_cli.commands.init import write_extraction_config
+
+    write_session_config(tmp_path, index=True, archive=True)
+    write_extraction_config(tmp_path, "provider")
+    data = yaml.safe_load((tmp_path / "config.yaml").read_text())
+    assert data["extraction"]["mode"] == "provider"
     assert data["session_indexing"]["enabled"] is True

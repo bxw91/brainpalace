@@ -28,6 +28,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -39,6 +40,10 @@ from brainpalace_server.indexing.session_loader import SessionMeta, Turn, load_s
 from brainpalace_server.models.session_extract import (
     SessionExtraction,
     SessionExtractResult,
+)
+from brainpalace_server.services.auto_grace import (
+    provider_auto_eligible,
+    read_last_drain,
 )
 from brainpalace_server.services.session_extract_service import SessionExtractService
 
@@ -54,6 +59,12 @@ DEFAULT_CHUNK_CHARS = 48000
 
 #: Per-session success marker dir under the project state dir.
 _MARKER_SUBDIR = "extracted"
+
+#: Progress-sidecar schema version (2b-4). Bump when the on-disk shape changes;
+#: read_progress tolerates legacy (no "v") sidecars and declines unknown future
+#: versions (re-distill) so a model/format change is a migration, not a silent
+#: fleet-wide full re-distill.
+_SIDECAR_VERSION = 1
 
 
 class Summarizer(Protocol):
@@ -100,6 +111,42 @@ def _session_id(meta: SessionMeta, path: str | Path) -> str:
 
 
 # --------------------------------------------------------------------------- #
+# Atomic state writes (finding 2b-1) — a crash/disk-full mid-write must never
+# leave a truncated marker/sidecar (which read_progress would treat as absent →
+# full re-distill). Write a sibling temp then os.replace (atomic on POSIX).
+# --------------------------------------------------------------------------- #
+def _atomic_write_text(path: Path, data: str, *, encoding: str = "utf-8") -> None:
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    try:
+        tmp.write_text(data, encoding=encoding)
+        os.replace(tmp, path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)  # never leave residue on failure
+        raise
+
+
+# --------------------------------------------------------------------------- #
+# Per-session distill lock (finding 2b-3) — the reconciler tick and the catch_up
+# fallback can distill the same session concurrently. distil is a read-modify-
+# write (read_progress → extract → merge → write_progress); without a mutex both
+# read the same prior, both pay the LLM, and the later write loses the other's
+# advance (re-distilling those turns next time). Serialize per session so the
+# second caller re-reads the advanced offset and no-ops. Keyed by
+# (project_root, session_id); the server runs a single event loop.
+# --------------------------------------------------------------------------- #
+_distill_locks: dict[str, asyncio.Lock] = {}
+
+
+def _distill_lock(project_root: str | Path, session_id: str) -> asyncio.Lock:
+    key = f"{project_root}\x00{session_id}"
+    lock = _distill_locks.get(key)
+    if lock is None:
+        lock = asyncio.Lock()
+        _distill_locks[key] = lock
+    return lock
+
+
+# --------------------------------------------------------------------------- #
 # Success marker (Task 0-E)
 # --------------------------------------------------------------------------- #
 def marker_path(project_root: str | Path, session_id: str) -> Path:
@@ -113,7 +160,83 @@ def is_marked(project_root: str | Path, session_id: str) -> bool:
 def write_marker(project_root: str | Path, session_id: str) -> None:
     mp = marker_path(project_root, session_id)
     mp.parent.mkdir(parents=True, exist_ok=True)
-    mp.write_text(time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), encoding="utf-8")
+    _atomic_write_text(mp, time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
+
+
+# --------------------------------------------------------------------------- #
+# Progress sidecar (Task Plan-2b: incremental resume)
+# --------------------------------------------------------------------------- #
+def progress_path(project_root: str | Path, session_id: str) -> Path:
+    return (
+        Path(project_root)
+        / ".brainpalace"
+        / _MARKER_SUBDIR
+        / f"{session_id}.progress.json"
+    )
+
+
+def read_progress(
+    project_root: str | Path, session_id: str
+) -> tuple[int, SessionExtraction] | None:
+    """Return (last_offset, prior_extraction) or None if absent/unreadable."""
+    p = progress_path(project_root, session_id)
+    if not p.is_file():
+        return None
+    try:
+        obj = json.loads(p.read_text(encoding="utf-8"))
+        v = obj.get("v")  # 2b-4: legacy sidecars have no "v"; treat as current
+        if v is not None and v > _SIDECAR_VERSION:
+            return None  # unknown future format — re-distill rather than misread
+        offset = int(obj["offset"])
+        extraction = SessionExtraction.model_validate(obj["extraction"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    return offset, extraction
+
+
+def prune_orphan_sidecars(project_root: str | Path, known_session_ids: set[str]) -> int:
+    """Delete ``*.progress.json`` resume sidecars whose session is gone (2b-6).
+
+    A sidecar is orphaned when its session_id is not in ``known_session_ids``
+    (no live/archived transcript). ``.done`` markers are deliberately left alone:
+    deleting a marker would force a costly full re-distill, so the disk saved is
+    not worth the risk. Best-effort — unreadable entries are skipped. Returns the
+    count removed."""
+    d = Path(project_root) / ".brainpalace" / _MARKER_SUBDIR
+    if not d.is_dir():
+        return 0
+    suffix = ".progress.json"
+    removed = 0
+    for f in d.glob(f"*{suffix}"):
+        sid = f.name[: -len(suffix)]
+        if sid in known_session_ids:
+            continue
+        try:
+            f.unlink()
+            removed += 1
+        except OSError:
+            pass
+    return removed
+
+
+def write_progress(
+    project_root: str | Path,
+    session_id: str,
+    offset: int,
+    extraction: SessionExtraction,
+) -> None:
+    p = progress_path(project_root, session_id)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    _atomic_write_text(
+        p,
+        json.dumps(
+            {
+                "v": _SIDECAR_VERSION,
+                "offset": offset,
+                "extraction": extraction.model_dump(mode="json"),
+            }
+        ),
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -267,14 +390,128 @@ def parse_extraction(
         return None
 
 
+def _dedup_preserve(items: list[Any], key: Callable[[Any], Any]) -> list[Any]:
+    """First-wins dedup that preserves order (prior entries before new ones)."""
+    seen: set[Any] = set()
+    out: list[Any] = []
+    for it in items:
+        k = key(it)
+        if k in seen:
+            continue
+        seen.add(k)
+        out.append(it)
+    return out
+
+
+def merge_extractions(
+    prior: SessionExtraction,
+    new: SessionExtraction,
+    session_id: str,
+) -> SessionExtraction:
+    """Structurally merge a prior extraction with a new-turns extraction — **no LLM**
+    (finding 2b-2).
+
+    Resume previously re-ran an LLM merge of ``prior ⊕ new`` on every drain; since
+    ``prior`` is itself already merged, a long session's summary/decisions/triplets
+    passed through N successive lossy re-summarizations that could paraphrase away
+    or drop earlier content. Instead, set-union the structured fields with stable
+    dedup keys (lossless, free) and join the prose summaries without a model call.
+    Resume-only — never called on a fresh session, so non-resume output is
+    unchanged. Always returns a value (no provider failure path)."""
+    # Summary: `new` summarizes only the new turns; `prior` covers everything
+    # before. Concatenate the (non-duplicate) parts so nothing is re-summarized
+    # away — bounded growth (one delta per resume), never a lossy re-derivation.
+    merged_summary = ""
+    for s in (prior.summary, new.summary):
+        s = (s or "").strip()
+        if s and s not in merged_summary:
+            merged_summary = s if not merged_summary else f"{merged_summary}\n\n{s}"
+
+    decisions = _dedup_preserve(
+        [*prior.decisions, *new.decisions], key=lambda d: d.text.strip().lower()
+    )
+    triplets = _dedup_preserve(
+        [*prior.triplets, *new.triplets],
+        key=lambda t: (
+            t.subject.strip().lower(),
+            t.relation,
+            t.object.strip().lower(),
+        ),
+    )
+    open_threads = _dedup_preserve(
+        [*prior.open_threads, *new.open_threads], key=lambda s: s.strip().lower()
+    )
+    tools_used = _dedup_preserve(
+        [*prior.tools_used, *new.tools_used], key=lambda s: s.strip().lower()
+    )
+    records = _dedup_preserve(
+        [*prior.records, *new.records],
+        key=lambda r: (r.subject, r.metric, r.unit, r.ts, r.value),
+    )
+    # files_touched: newest action for a path wins (new overrides prior).
+    files_by_path: dict[str, Any] = {}
+    for f in [*prior.files_touched, *new.files_touched]:
+        files_by_path[f.path] = f
+
+    return SessionExtraction(
+        session_id=session_id,
+        project_path=prior.project_path or new.project_path,
+        branch=prior.branch or new.branch,
+        started_at=prior.started_at or new.started_at,
+        ended_at=new.ended_at or prior.ended_at,
+        summary=merged_summary or new.summary or prior.summary,
+        open_threads=open_threads,
+        decisions=decisions,
+        files_touched=list(files_by_path.values()),
+        tools_used=tools_used,
+        triplets=triplets,
+        records=records,
+    )
+
+
 async def _generate(summarizer: Summarizer, prompt: str) -> str | None:
     """Call ``generate`` with one transient-error retry. None ⇒ both failed."""
     for attempt in (1, 2):
         try:
-            return await summarizer.generate(prompt)
+            text, usage = await _generate_with_usage(summarizer, prompt)
+            return text
         except Exception as exc:  # noqa: BLE001 — transient provider error
             logger.warning("summarizer.generate failed (attempt %d): %s", attempt, exc)
     return None
+
+
+async def _generate_with_usage(summarizer: Summarizer, prompt: str) -> tuple[str, Any]:
+    """Call ``generate_with_usage`` if available, else fall back to generate().
+
+    Records provider usage (channel="provider", source="session"). Best-effort —
+    never breaks the caller.
+    """
+    from brainpalace_server.services.usage_metrics import record_usage  # noqa: PLC0415
+
+    gw = getattr(summarizer, "generate_with_usage", None)
+    if gw is not None:
+        text, usage = await gw(prompt)
+    else:
+        from brainpalace_server.providers.base import Usage  # noqa: PLC0415
+
+        text = await summarizer.generate(prompt)
+        usage = Usage()
+
+    try:
+        record_usage(
+            "provider",
+            getattr(summarizer, "provider_name", ""),
+            getattr(summarizer, "model_name", ""),
+            "session",
+            calls=1,
+            tokens_in=getattr(usage, "tokens_in", 0),
+            tokens_out=getattr(usage, "tokens_out", 0),
+            cache_read=getattr(usage, "cache_read", 0),
+            cache_write=getattr(usage, "cache_write", 0),
+        )
+    except Exception:  # noqa: BLE001 — telemetry must never break the caller
+        pass
+    return text, usage
 
 
 def _split(text: str, chunk_chars: int) -> list[str]:
@@ -299,8 +536,14 @@ async def _run_extraction(
     meta: SessionMeta,
     session_id: str,
     chunk_chars: int,
+    max_chunks: int = 0,
 ) -> SessionExtraction | None:
-    """Single-pass for small transcripts; chunk + hierarchical merge for big."""
+    """Single-pass for small transcripts; chunk + hierarchical merge for big.
+
+    ``max_chunks`` (> 0, billable only — Task 4b) caps the number of per-part LLM
+    calls: a giant transcript is truncated to the first ``max_chunks`` parts
+    (logged) so one session cannot run an unbounded number of paid calls.
+    """
     if len(text) <= chunk_chars:
         raw = await _generate(summarizer, build_prompt(text))
         if raw is None:
@@ -313,6 +556,16 @@ async def _run_extraction(
         return parse_extraction(raw, meta, session_id) if raw is not None else None
 
     parts = _split(text, chunk_chars)
+    if max_chunks > 0 and len(parts) > max_chunks:
+        logger.warning(
+            "session %s: %d chunks exceeds provider_session_max_chunks=%d — "
+            "truncating to the first %d (later turns dropped this pass)",
+            session_id,
+            len(parts),
+            max_chunks,
+            max_chunks,
+        )
+        parts = parts[:max_chunks]
     partials: list[str] = []
     for i, part in enumerate(parts, 1):
         raw = await _generate(summarizer, build_prompt(part, part=f"{i}/{len(parts)}"))
@@ -343,6 +596,7 @@ async def distill_transcript(
     digest_path: str | Path | None = None,
     chunk_chars: int = DEFAULT_CHUNK_CHARS,
     record_store: Any | None = None,
+    max_chunks: int = 0,
 ) -> SessionExtractResult | None:
     """Distil one transcript → store → mark. Returns the store result or None.
 
@@ -352,33 +606,62 @@ async def distill_transcript(
     """
     meta, turns = load_session(path)
     sid = _session_id(meta, path)
-    text = render_turns(turns)
-    if not text.strip():
-        # Degenerate/empty transcript — nothing to summarize. Mark so it is not
-        # reprocessed forever (this is not a "skip": there is no content).
+
+    # Serialize the read-modify-write per session (2b-3): an overlapping run waits
+    # here, then re-reads the now-advanced offset below and no-ops on the delta.
+    async with _distill_lock(project_root, sid):
+        prior = read_progress(project_root, sid)
+        if prior is not None:
+            prior_offset, prior_extraction = prior
+            # Append-only assumption (2b-5): Turn.index is positional in file order,
+            # so this delta is correct only while transcripts are append-only (the
+            # case for Claude Code). Documented at load_session's index counter.
+            new_turns = [t for t in turns if t.index > prior_offset]
+            if not new_turns:
+                return None  # already current — nothing new to distil
+            text = render_turns(new_turns)
+            if not text.strip():
+                return None
+            new_payload = await _run_extraction(
+                summarizer, text, meta, sid, chunk_chars, max_chunks
+            )
+            if new_payload is None:
+                return None  # provider failed → leave for retry
+            # Structural, no-LLM merge (2b-2) — lossless union, no re-summarization.
+            payload = merge_extractions(prior_extraction, new_payload, sid)
+        else:
+            text = render_turns(turns)
+            if not text.strip():
+                # Degenerate/empty transcript — nothing to summarize. Mark so it is
+                # not reprocessed forever (this is not a "skip": there is no content).
+                write_marker(project_root, sid)
+                return None
+            fresh = await _run_extraction(
+                summarizer, text, meta, sid, chunk_chars, max_chunks
+            )
+            if fresh is None:
+                return None  # unmarked → retried by catch-up
+            payload = fresh
+
+        try:
+            result = await SessionExtractService().store(
+                payload,
+                embedder=embedder,
+                storage_backend=storage_backend,
+                graph_store=graph_store,
+                digest_path=digest_path,
+                memory_service=memory_service,
+                project_root=project_root,
+                record_store=record_store,
+            )
+        except Exception as exc:  # noqa: BLE001 — never propagate into the watcher
+            logger.warning("distill failed for %s: %s", path, exc)
+            return None
+
         write_marker(project_root, sid)
-        return None
-
-    try:
-        payload = await _run_extraction(summarizer, text, meta, sid, chunk_chars)
-        if payload is None:
-            return None  # unmarked → retried by catch-up
-        result = await SessionExtractService().store(
-            payload,
-            embedder=embedder,
-            storage_backend=storage_backend,
-            graph_store=graph_store,
-            digest_path=digest_path,
-            memory_service=memory_service,
-            project_root=project_root,
-            record_store=record_store,
-        )
-    except Exception as exc:  # noqa: BLE001 — never propagate into the watcher
-        logger.warning("distill failed for %s: %s", path, exc)
-        return None
-
-    write_marker(project_root, sid)
-    return result
+        last_offset = turns[-1].index if turns else -1
+        write_progress(project_root, sid, last_offset, payload)
+        return result
 
 
 class SessionDistiller:
@@ -409,6 +692,9 @@ class SessionDistiller:
         plugin_present: Callable[[], bool] | None = None,
         grace_hours: float = 24.0,
         record_store: Any | None = None,
+        max_chunks: int = 0,
+        server_start_ts: float = 0.0,
+        first_request_seen: Callable[[], bool] | None = None,
     ) -> None:
         self.summarizer = summarizer
         self.embedder = embedder
@@ -424,6 +710,13 @@ class SessionDistiller:
         self._plugin_present = plugin_present or (lambda: False)
         self.grace_seconds = grace_hours * 3600
         self.record_store = record_store
+        # Task 4b: per-session paid-call cap (billable only; 0 = unlimited).
+        self.max_chunks = max_chunks
+        # Task 4f: auto-grace anchored on subagent activity + cold-start gate
+        # (replaces the mtime-age check in the auto path). first_request_seen is
+        # read live (callable over app.state) so the gate opens on the first req.
+        self._server_start_ts = server_start_ts
+        self._first_request_seen = first_request_seen or (lambda: False)
 
     async def maybe_distill(
         self,
@@ -440,17 +733,22 @@ class SessionDistiller:
         meta, _turns = load_session(path)
         sid = _session_id(meta, path)
         if self.mode == "auto" and self._plugin_present():
-            # Plugin owns extraction (subagent). Defer — UNLESS the session is
-            # un-marked AND older than the grace window (disabled/never-reopened
-            # plugin safety net). Idempotent + unified marker => no double-run.
+            # Plugin owns extraction (subagent). Defer — UNLESS the provider is
+            # auto-eligible: the subagent has been absent for a whole grace window
+            # (anchored on last-drain + server_start, gated on first request),
+            # i.e. a disabled/never-reopened plugin safety net (Task 4f — replaces
+            # the per-session mtime-age check). Idempotent + unified marker =>
+            # no double-run.
             if is_marked(self.project_root, sid):
                 return None
-            try:
-                age = time.time() - Path(path).stat().st_mtime
-            except OSError:
-                return None
-            if age < self.grace_seconds:
-                return None  # fresh — let the subagent handle it
+            if not provider_auto_eligible(
+                now=time.time(),
+                last_drain_ts=read_last_drain(self.project_root),
+                server_start_ts=self._server_start_ts,
+                first_request_seen=self._first_request_seen(),
+                grace_seconds=self.grace_seconds,
+            ):
+                return None  # fresh / cold-start — let the subagent handle it
             # else: fall through and distil (safety net)
         if not force:
             if is_marked(self.project_root, sid):
@@ -474,6 +772,7 @@ class SessionDistiller:
                 digest_path=self.digest_path,
                 chunk_chars=self.chunk_chars,
                 record_store=self.record_store,
+                max_chunks=self.max_chunks,
             )
 
     async def _safe(self, path: str | Path, newer_exists: bool, force: bool) -> None:

@@ -345,6 +345,31 @@ class SQLitePropertyGraphStore:
             for r in rows
         ]
 
+    def top_nodes(self, limit: int = 20) -> list[dict[str, Any]]:
+        """Highest active-edge-degree nodes — the graph's hubs. Backs the
+        "start browser with no search" seed picker; only nodes with at least one
+        active edge are returned (isolated nodes make a useless starting point)."""
+        rows = self._conn.execute(
+            "SELECT id, name, label, degree FROM ("
+            "  SELECT n.id AS id, n.name AS name, n.label AS label, "
+            "    (SELECT count(*) FROM edges e "
+            "     WHERE (e.source_id = n.id OR e.target_id = n.id) "
+            "     AND e.valid_until IS NULL) AS degree "
+            "  FROM nodes n) "
+            "WHERE degree > 0 "
+            "ORDER BY degree DESC, name LIMIT ?",
+            (limit,),
+        ).fetchall()
+        return [
+            {
+                "id": r["id"],
+                "name": r["name"],
+                "label": r["label"],
+                "degree": int(r["degree"]),
+            }
+            for r in rows
+        ]
+
     def neighbors(
         self, node_ids: list[str], limit: int = 200
     ) -> dict[str, list[dict[str, Any]]]:

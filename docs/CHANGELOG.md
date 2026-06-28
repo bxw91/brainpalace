@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-24
+last_validated: 2026-06-28
 ---
 
 # Changelog
@@ -20,6 +20,35 @@ Entries are kept short (≤ 3 sentences and ≤ 320 characters); see
 _Entries accumulate here between releases. The release step renames this to
 `## [YY.M.N] - DATE` and adds a fresh empty `## [Unreleased]` above it — never
 hand-number an unreleased section._
+
+## [26.6.53] - 2026-06-28
+
+### Added
+- **Graph browser: start with no search.** The dashboard Graph tab gained a "Start graph browser" button that opens the graph at its most-connected entity (the hub) and lists the top hubs as alternative seeds — no need to know a search term first. Backed by `GET /graph/top` (highest active-edge-degree nodes; 503 when graph indexing is off).
+- **Usage telemetry.** New dashboard **Usage** tab — LLM in/out/cache + embedding tokens, call/chunk/triplet totals, per-source queue depth, and hourly trends — backed by `GET /metrics/usage` and the `usage_metrics` config (`enabled`/`retain_days`). Providers gained `*_with_usage` siblings exposing token counts.
+- **Unified extraction engine (`extraction.mode`).** One `extraction:` section (`mode` off/subagent/auto/provider + grace/drain knobs) drives both doc-graph triplets and session distillation; triplets drain off a deferred per-chunk queue in throttled batches (no LLM burst at index time). Default `off` is the cost lock; the paid provider also needs `EXTRACTION_PROVIDER_ENABLED`.
+- **Automatic free doc-graph drain.** The `UserPromptSubmit` hook drains `/extraction/pending?source=all` each prompt — doc-chunk ids → the free Haiku `graph-triplet-extractor`, session ids → `chat-session-extractor` (per-source caps, 5-min cooldown). Agents submit via `extraction_fetch`/`extraction_submit`; the doc agent has no Bash and fetches text by id, so untrusted indexed text never reaches a shell.
+- **Global config: per-field scope + provenance.** Each registry field carries a `scope` (`both`/`project`/`global`); `init --global` and the dashboard Global tab omit project-scoped fields. The project editor shows an "inherited from global" note from true project/global/default resolution, and `lint:config-parity` checks every spec's scope.
+- **Incremental session resume.** A resumed session re-distils only its new turns and merges them into the existing summary (decisions/triplets deduped) instead of re-summarizing the whole transcript. Non-resumed sessions are unchanged.
+- **Unified config field registry (single source).** `config_fields.py` derives one spec per pydantic config field (group/order/help/label/options/role); the dashboard Config tab, `init` review screen, and `config wizard` all read it, so `bp init` and the dashboard render identical sections and can't drift. A `lint:config-parity` test guards it.
+
+### Changed
+- **Grouped `.brainpalace/` state layout.** Durable SQLite stores now live under `db/` (`query_log`, `usage_metrics`, `records`, `extraction_pending`) and small cursors/markers + audit-event jsonl under `state/`, keeping the state-dir root to user-facing files. **Breaking on upgrade:** there is no migration, so an existing install's flat-root folder manifest / git-index cursor / query log are not relocated — re-index to restore folder & watch tracking (vector/BM25 data under `data/` is unaffected).
+- **Config overview readability.** `brainpalace init`'s overview truncates long values (e.g. `exclude_patterns`) past ~70 chars (full value still shown when editing); sections were renamed (`Chat Session : …`, `Compute Query`, `Server`/`Server Mode`) and reordered (providers → retrieval → storage → session → server → logs). Display-only; the dashboard mirrors it via the shared registry.
+- **Unified config editor.** `brainpalace config wizard` is now a back-compat alias of `brainpalace init`'s editor (the bespoke 12-step wizard is removed). `init --global` edits the XDG global config (validated, atomic, no-op on identical content); reranker/lemma extras auto-reconcile after review edits; the fresh-init token estimate runs after the review screen.
+- **`init` asks before starting + registers for the dashboard.** A bare interactive `brainpalace init` now asks "Start the server now?" (decline = config-only), and every init registers the project in the known-projects store so it's listable/startable from the dashboard even when not started.
+- **Graph query separated from the build switch.** A `graph`-mode query now returns empty (like `bm25`/`vector` on an empty index) when no graph is built, instead of raising "GraphRAG not enabled". `ENABLE_GRAPH_INDEX` still gates building the graph and the `rebuild_graph` endpoint.
+
+### Fixed
+- **Usage tab: anchor the time window to the newest data, not wall-clock.** A `1h` (or any) window previously showed nothing during a quiet hour; `GET /metrics/usage` now anchors `since` to the most recent recorded minute bucket (`UsageMetricsStore.latest_bucket()`), so it always shows the last window's worth of actual log data. Falls back to wall-clock when the store is empty.
+- **Usage queue-backlog widget: split git out + flag off features.** The dashboard "Documents" backlog merged doc-file and git-commit chunks; git now reports as its own "Git history" row (`doc_pending` gained a `kind` column, auto-migrated). Each row is flagged "not draining" when its draining feature is off, so a permanent backlog isn't shown as work-in-progress.
+- **Extraction & session-resume hardening.** Drain agents run tool-less (no Bash) so hostile indexed-chunk text can't reach a shell. Resume merge is structural (no LLM) — set-union of decisions/triplets/summaries — so earlier knowledge can't be paraphrased away; plus a per-session distill lock, atomic marker/sidecar writes, and bounded queue endpoints.
+
+### Removed
+- **Removed all compute query-mode switches.** Compute now behaves like `bm25`/`vector` (always selectable, empty when no records), and records extract automatically when session extraction runs. **Breaking:** `compute.enabled`/`ENABLE_COMPUTE`, `compute.record_extraction`/`RECORD_EXTRACTION_ENABLED`, and the `--compute` init flag + prompt are gone; only `compute.min_confidence` remains.
+- **Removed `brainpalace drain-queue` + the legacy session-only auto-drain.** Superseded by the unified per-prompt drain over `source=all`. The manual `/brainpalace-drain-graph` and the SessionStart backlog nudge are likewise removed — doc drain is now automatic.
+- **Removed code summarization (`--generate-summaries`).** It was never embedded or queried, so removal has no retrieval effect. **Breaking:** the flag, `generate_summaries` field, `summaries_enabled` estimate, and `section_summary` injector keys are gone.
+- **Removed the broken langextract doc extractor + inert config.** `LangExtractExtractor` called `langextract.extract_relations`, absent in 1.1.1 — doc-chunk graph extraction was a silent no-op for `--extras graphrag`. Removed the class, the `langextract` dep, the `graphrag` extra, and the dead `GRAPH_DOC_EXTRACTOR`/`GRAPH_LANGEXTRACT_*`/`doc_extractor` keys (Code-AST extraction unaffected).
 
 ## [26.6.52] - 2026-06-24
 

@@ -103,6 +103,13 @@ def _isolate_state_dir(tmp_path_factory, monkeypatch):
     state = tmp_path_factory.mktemp("bp_state")
     (state / "config.yaml").write_text("{}\n")
     monkeypatch.setenv("BRAINPALACE_STATE_DIR", str(state))
+    # The app lifespan reads the *cached* settings singleton, not os.environ,
+    # so the env var alone leaves it on the session-shared default — and every
+    # app-boot test would share one embedding-cache db, cross-contaminating
+    # cache-emptiness assertions. Pin the live field to the per-test dir too.
+    from brainpalace_server.config import settings as _settings
+
+    monkeypatch.setattr(_settings, "BRAINPALACE_STATE_DIR", str(state))
     yield
 
 

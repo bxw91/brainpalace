@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-20
+last_validated: 2026-06-27
 ---
 
 # MCP setup — connecting AI clients to BrainPalace
@@ -65,17 +65,29 @@ handshake never hangs.
 
 Because the MCP shim never auto-runs `brainpalace init`, run it yourself once per
 project. `brainpalace init` (sparse PROJECT config) asks the **same question set**
-as `brainpalace install` / `brainpalace config wizard` (GLOBAL config): embedding,
-summarizer, reranker, embed-sessions, session-archive, git-history, and GraphRAG
-doc-extraction. The GLOBAL path additionally asks the web-dashboard control-plane
-settings (`dashboard.autostart`, default ON; `dashboard.port`, default 8787),
-written to the `dashboard:` block — these are global-only and not asked by per-project
-`init`. `init` also re-asks the per-project-overridable **reranker**
-(`reranker.enabled`) behind an *"inherited from global — change for
-this project? [y/N]"* gate, writing a sparse override only when changed;
-embedding/summarizer are not re-asked via that gate (they resolve via
-env-detection / global inheritance). Without a
-TTY (MCP/CI installs) every question is skipped and the **default** applies.
+as `brainpalace install` / `brainpalace init --global` (GLOBAL config; `config wizard
+--global` is a back-compat alias): embedding, summarizer, reranker, embed-sessions,
+session-archive, git-history, and GraphRAG doc-extraction. The GLOBAL path
+additionally asks the web-dashboard control-plane settings (`dashboard.autostart`,
+default ON; `dashboard.port`, default 8787), written to the `dashboard:` block —
+these are global-only and not asked by per-project `init`. `dashboard.*` is a
+**separate fleet-wide surface** (dashboard Settings tab + `init --global` step); it
+is NOT part of the per-project config registry. `reranker.enabled` is an ordinary
+grid field (edit it from its division; the write stays sparse — a project override
+only when it diverges from the inherited value); embedding/summarizer resolve via
+env-detection / global inheritance. All three front-ends (init review grid,
+`config wizard` alias, dashboard Config tab) derive their fields from one CLI
+**field registry** (`config_fields.py`), so they can't drift; provider/model picks
+render as **numbered lists**. An interactive `init` opens **directly on the review
+grid** — the resolved config by division (values from `global < code` plus the
+detected provider), edited via drill-down, `[A]ll`, `[C]ontinue`, or `[E]xit`;
+billable/secret consent fields prompt with their warning only when you edit them,
+and opt-in billable fields stay OFF on a plain accept. (The previous linear
+question wall is removed.) `init --global`'s CLI review grid omits project-scoped
+fields (e.g. `session_indexing.archive.dir`); project-layer fields inherited from
+the global config are shown with an **"inherited from global"** note. Without a TTY
+(MCP/CI installs) the grid never shows, every question is skipped, and the
+**default** applies.
 
 Defaults worth knowing for MCP/CLI-only installs:
 
@@ -95,18 +107,16 @@ Defaults worth knowing for MCP/CLI-only installs:
   copies raw transcripts to `.brainpalace/` (free local backup — ⚠️ holds full
   transcripts incl. secrets); `session_indexing.enabled` embeds them (billable),
   opt-in and off by default.
-- **GraphRAG doc-extraction (`graphrag.doc_extractor`).** `langextract` (richer
-  prose-doc entity extraction) or `none`.
+- **Doc-graph + session extraction engine (`extraction.mode`).** `off` (default,
+  cost-safe), `subagent` (free via Claude Code Haiku), `auto`, or `provider`
+  (BILLABLE — also needs `EXTRACTION_PROVIDER_ENABLED=true`).
 
 **Opt-in optional-dep rule.** Enabling a feature whose "yes" needs an optional
 server extra triggers a download — **auto-installed on yes** (auto-detecting
 pipx → uv → pip), or the **exact install command is printed** if no manager is
-detected. Declining writes the disabling value (e.g. `graphrag.doc_extractor: none`)
-so the server's "not installed" warning never fires; optional deps are never
-auto-installed just because a feature is default-ON in code. Extras: GraphRAG
-doc-extraction → `langextract`; BM25 `lemma` engine → `simplemma`; postgres
-backend → `asyncpg` + `sqlalchemy`. `brainpalace doctor` reports optional-extra
-status for enabled features.
+detected. `extraction.mode: subagent` is free (no extra dep). Optional extras:
+BM25 `lemma` engine → `simplemma`; postgres backend → `asyncpg` + `sqlalchemy`.
+`brainpalace doctor` reports optional-extra status for enabled features.
 
 ---
 

@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-20
+last_validated: 2026-06-24
 ---
 
 # Injector Protocol
@@ -55,8 +55,6 @@ includes the following keys:
 | `symbol_kind` | `str \| None` | Kind of symbol |
 | `start_line` | `int \| None` | Start line in source file |
 | `end_line` | `int \| None` | End line in source file |
-| `section_summary` | `str \| None` | LLM summary of section |
-| `prev_section_summary` | `str \| None` | Summary of previous section |
 | `docstring` | `str \| None` | Extracted docstring |
 | `parameters` | `str \| None` | Function parameters |
 | `return_type` | `str \| None` | Function return type |

@@ -107,3 +107,37 @@ def test_post_config_unset_route(monkeypatch, tmp_path):
     import yaml as _yaml
 
     assert (_yaml.safe_load((tmp_path / "config.yaml").read_text()) or {}) == {}
+
+
+# --------------------------------------------------------------------------- #
+# Task 4e — dashboard prefills extraction.provider_context_tokens             #
+# --------------------------------------------------------------------------- #
+
+
+def test_patch_config_prefills_context_tokens_on_model_selection(monkeypatch, tmp_path):
+    """Setting summarization.model for a known provider in the dashboard should
+    prefill extraction.provider_context_tokens into the written config."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
+    monkeypatch.setattr(rc, "_state_dir_for", lambda id_: tmp_path)
+    (tmp_path / "config.yaml").write_text("")  # empty project config
+    client = TestClient(create_app())
+    resp = client.patch(
+        "/dashboard/api/instances/abc/config",
+        json={
+            "values": {
+                "summarization": {
+                    "provider": "anthropic",
+                    "model": "claude-3-5-sonnet",
+                }
+            },
+            "unset": [],
+            "restart": False,
+            "force_reindex": False,
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    import yaml as _yaml
+
+    written = _yaml.safe_load((tmp_path / "config.yaml").read_text()) or {}
+    ext = written.get("extraction", {})
+    assert ext.get("provider_context_tokens") == 200000  # anthropic 200k

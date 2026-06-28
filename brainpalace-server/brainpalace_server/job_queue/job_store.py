@@ -132,6 +132,17 @@ class JobQueueStore:
 
     MAX_RETRIES = 3
     COMPACT_THRESHOLD = 100  # Compact after N updates
+    # Cap on retained terminal (done/failed/cancelled/skipped) jobs. Active
+    # jobs are always kept; older terminal jobs beyond this many are dropped at
+    # compaction so the snapshot can't grow without bound (history-only rows).
+    MAX_TERMINAL_JOBS = 200
+
+    _TERMINAL_STATUSES = (
+        JobStatus.DONE,
+        JobStatus.FAILED,
+        JobStatus.CANCELLED,
+        JobStatus.SKIPPED,
+    )
 
     def __init__(self, state_dir: Path):
         """Initialize the job queue store.
@@ -265,9 +276,36 @@ class JobQueueStore:
         if self._update_count >= self.COMPACT_THRESHOLD:
             await self._compact()
 
+    def _prune_terminal_jobs(self) -> None:
+        """Bound in-memory/snapshot growth before writing a snapshot.
+
+        Active jobs (pending/running) are always kept. Terminal jobs are
+        history only: keep the most recent ``MAX_TERMINAL_JOBS`` and drop the
+        rest, and shed each retained terminal job's ``eviction_summary`` — the
+        heavy file-list payload is consumed during the run and is pure dead
+        weight once the job is finished (it was the snapshot's 300x bloat).
+        """
+        active = {
+            jid: job
+            for jid, job in self._jobs.items()
+            if job.status not in self._TERMINAL_STATUSES
+        }
+        terminal = [
+            job for job in self._jobs.values() if job.status in self._TERMINAL_STATUSES
+        ]
+        terminal.sort(key=lambda j: j.enqueued_at, reverse=True)
+        kept = terminal[: self.MAX_TERMINAL_JOBS]
+        for job in kept:
+            job.eviction_summary = None
+        self._jobs = active
+        for job in kept:
+            self._jobs[job.id] = job
+
     async def _compact(self) -> None:
         """Compact queue by writing snapshot and truncating JSONL."""
         logger.info("Compacting job queue...")
+
+        self._prune_terminal_jobs()
 
         with self._with_file_lock():
             # Write snapshot to temp file

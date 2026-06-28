@@ -159,19 +159,19 @@ def _flags(cfg_text: str, tmp_path: Path) -> tuple[bool, bool]:
 
 
 def test_recall_flags_both_on(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # extraction.mode is now the sole engine selector for summarization recall.
     monkeypatch.delenv("SESSION_INDEXING_ENABLED", raising=False)
     vector, summarization = _flags(
-        "session_indexing:\n  enabled: true\n"
-        "session_extraction:\n  mode: subagent\n",
+        "session_indexing:\n  enabled: true\n" "extraction:\n  mode: subagent\n",
         tmp_path,
     )
     assert (vector, summarization) == (True, True)
 
 
 def test_recall_flags_vector_off(tmp_path: Path) -> None:
+    # extraction.mode governs summarization; session_extraction.mode is ignored.
     vector, summarization = _flags(
-        "session_indexing:\n  enabled: false\n"
-        "session_extraction:\n  mode: subagent\n",
+        "session_indexing:\n  enabled: false\n" "extraction:\n  mode: subagent\n",
         tmp_path,
     )
     assert (vector, summarization) == (False, True)
@@ -182,17 +182,17 @@ def test_recall_flags_summarization_off(
 ) -> None:
     monkeypatch.delenv("SESSION_INDEXING_ENABLED", raising=False)
     vector, summarization = _flags(
-        "session_indexing:\n  enabled: true\n" "session_extraction:\n  mode: off\n",
+        "session_indexing:\n  enabled: true\n" "extraction:\n  mode: off\n",
         tmp_path,
     )
     assert (vector, summarization) == (True, False)
 
 
 def test_recall_flags_fail_open_on_bad_path() -> None:
-    # Nonexistent path resolves to absent blocks; vector defaults OFF (absent
-    # block) but summarization defaults ON (subagent) — never both-blanked.
+    # Nonexistent path: absent extraction block → mode defaults to off (cost-safe).
+    # Fail-open only applies to exceptions; a clean absent block returns (False, False).
     vector, summarization = session_recall_flags(Path("/nonexistent/xyz.yaml"))
-    assert summarization is True
+    assert summarization is False
 
 
 def test_env_switches_force_off(

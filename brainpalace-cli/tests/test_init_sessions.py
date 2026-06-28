@@ -120,27 +120,22 @@ def test_init_yes_keeps_archive_but_embedding_is_opt_in(tmp_path, monkeypatch):
     assert cfg["session_indexing"]["archive"]["enabled"] is True
 
 
-def test_embed_prompt_no_wins_over_xdg_enabled_block(tmp_path, monkeypatch):
-    # XDG global enables session indexing, but the interactive embed prompt
-    # answer (No) is an explicit choice and must win over the inherited default.
-    xdg = tmp_path / "xdg"
-    xdg.mkdir()
-    (xdg / "config.yaml").write_text(
-        "embedding:\n  provider: openai\n  model: text-embedding-3-large\n"
-        "session_indexing:\n  enabled: true\n"
-    )
-    monkeypatch.setattr("brainpalace_cli.commands.init.get_xdg_config_dir", lambda: xdg)
+def test_embed_no_in_grid_wins_over_sessions_flag(tmp_path, monkeypatch):
+    # An enabling default (here the --sessions flag) must be overridable by an
+    # explicit "No" when the user drills the Session Vector Indexing division in
+    # the grid: the grid decision wins and embedding stays OFF (never silently on).
     monkeypatch.setenv("OPENAI_API_KEY", "x")
     monkeypatch.setattr(
         "brainpalace_cli.commands.init.claude_plugin_installed", lambda **k: False
     )
     monkeypatch.setattr("brainpalace_cli.commands.init._stdin_is_tty", lambda: True)
-    # summarize=n, embed=n, archive=y, git-history=n, graphrag-extract=n,
-    # reranker-change=n, lemma=n, compute=y, proceed=y  (--no-start ⇒ no server).
+    # Drill 11: Enabled=N (embed), user-turns=N, Enter past the 5 session fields,
+    # [C]ontinue, Proceed=Y.
+    # Grid: 6=Runtime Bind (new), 9=Indexing (new) → old 9 shifted to 11.
     r = CliRunner().invoke(
         init_command,
-        ["--path", str(tmp_path), "--no-start"],
-        input="n\nn\ny\nn\nn\nn\nn\ny\ny\n",
+        ["--path", str(tmp_path), "--no-start", "--sessions"],
+        input="11\nn\nn\n\n\n\n\n\nc\ny\n",
     )
     assert r.exit_code == 0, r.output
     assert _cfg(tmp_path)["session_indexing"]["enabled"] is False
@@ -158,30 +153,32 @@ def test_init_yes_with_sessions_flag_enables_embedding(tmp_path, monkeypatch):
 
 
 def test_init_interactive_accepting_global_default_inherits(tmp_path, monkeypatch):
-    # Global enables git history. Interactive run pre-fills the git prompt with
-    # the global default (yes); accepting it must NOT write git_indexing to the
-    # project (it inherits from global). Sparse-write: only divergences persist.
-    xdg = tmp_path / "xdg"
-    xdg.mkdir()
-    (xdg / "config.yaml").write_text(
+    # Global enables git history. Accepting the grid WITHOUT drilling the Git
+    # Indexing division leaves git at its inherited (global) value; the sparse
+    # write must NOT duplicate it into the project config.
+    import os
+    from pathlib import Path
+
+    # Write the global to the XDG path the server's merged-config reader uses
+    # (conftest set XDG_CONFIG_HOME to an empty temp dir).
+    bp_dir = Path(os.environ["XDG_CONFIG_HOME"]) / "brainpalace"
+    bp_dir.mkdir(parents=True, exist_ok=True)
+    (bp_dir / "config.yaml").write_text(
         "embedding:\n  provider: openai\n  model: text-embedding-3-large\n"
         "git_indexing:\n  enabled: true\n"
     )
-    monkeypatch.setattr("brainpalace_cli.commands.init.get_xdg_config_dir", lambda: xdg)
     monkeypatch.setenv("OPENAI_API_KEY", "x")
     monkeypatch.setattr("brainpalace_cli.commands.init._stdin_is_tty", lambda: True)
     monkeypatch.setattr(
         "brainpalace_cli.commands.init.claude_plugin_installed", lambda **k: False
     )
-    # summarize=enter, embed=enter, archive=enter, git=enter(accept global yes),
-    # depth=enter, graphrag-extract=enter, reranker-change=enter(=N, keep
-    # inherited), lemma=enter, compute=enter, proceed=y
+    # Accept the grid ([C]ontinue) without touching the Git Indexing division,
+    # then Proceed.
     r = CliRunner().invoke(
         init_command,
         ["--path", str(tmp_path), "--no-start"],
-        input="\n\n\n\n\n\n\n\n\ny\n",
+        input="c\ny\n",
     )
     assert r.exit_code == 0, r.output
-    assert "(default taken from your global config)" in r.output
     cfg = _cfg(tmp_path)
-    assert "git_indexing" not in cfg  # accepted global default → inherited
+    assert "git_indexing" not in cfg  # accepted global default → inherited (sparse)

@@ -1,7 +1,9 @@
 """The dashboard footer (Settings tab) distinguishes a local source build from a
 same-numbered PyPI release via PEP 610 install provenance — mirrors the CLI's
-`--version (from source)`. The `/settings` endpoint feeds the footer, so it must
-report the display string, not the bare number.
+`--version`, appending the source checkout's git ref ``(from <branch>
+<short-commit>)`` (or ``(from source)`` when git info is unavailable). The
+`/settings` endpoint feeds the footer, so it must report the display string, not
+the bare number.
 """
 
 from __future__ import annotations
@@ -26,10 +28,24 @@ def test_direct_url_missing_is_not_source():
     assert not brainpalace_dashboard._direct_url_is_file(None)
 
 
-def test_version_display_marks_source(monkeypatch):
+def test_version_display_marks_source_with_git_ref(monkeypatch):
     monkeypatch.setattr(
         brainpalace_dashboard, "_installed_from_source", lambda *a, **k: True
     )
+    monkeypatch.setattr(
+        brainpalace_dashboard, "_source_git_ref", lambda *a, **k: "stable a8499295"
+    )
+    assert (
+        brainpalace_dashboard.version_display()
+        == f"{brainpalace_dashboard.__version__} (from stable a8499295)"
+    )
+
+
+def test_version_display_falls_back_to_source_without_git(monkeypatch):
+    monkeypatch.setattr(
+        brainpalace_dashboard, "_installed_from_source", lambda *a, **k: True
+    )
+    monkeypatch.setattr(brainpalace_dashboard, "_source_git_ref", lambda *a, **k: None)
     assert (
         brainpalace_dashboard.version_display()
         == f"{brainpalace_dashboard.__version__} (from source)"
@@ -49,5 +65,10 @@ def test_settings_endpoint_reports_version_display(tmp_path, monkeypatch):
     monkeypatch.setattr(
         brainpalace_dashboard, "_installed_from_source", lambda *a, **k: True
     )
+    monkeypatch.setattr(
+        brainpalace_dashboard, "_source_git_ref", lambda *a, **k: "stable a8499295"
+    )
     body = TestClient(create_app()).get("/dashboard/api/settings").json()
-    assert body["version"] == f"{brainpalace_dashboard.__version__} (from source)"
+    assert (
+        body["version"] == f"{brainpalace_dashboard.__version__} (from stable a8499295)"
+    )

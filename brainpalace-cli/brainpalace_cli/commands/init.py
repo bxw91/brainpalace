@@ -10,6 +10,7 @@ import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any, Callable
 
 import click
 import yaml
@@ -55,28 +56,6 @@ def _quiet_server_logs() -> Iterator[None]:
     finally:
         srv.setLevel(prev)
 
-
-# Default configuration values for config.json (project settings only)
-# Provider settings (embedding/summarization) go in config.yaml
-DEFAULT_CONFIG = {
-    "bind_host": "127.0.0.1",
-    "port_range_start": 8000,
-    "port_range_end": 8100,
-    "auto_port": True,
-    "chunk_size": 512,
-    "chunk_overlap": 50,
-    # Directories to exclude from indexing (glob patterns)
-    "exclude_patterns": [
-        "**/node_modules/**",
-        "**/__pycache__/**",
-        "**/.venv/**",
-        "**/venv/**",
-        "**/.git/**",
-        "**/dist/**",
-        "**/build/**",
-        "**/target/**",
-    ],
-}
 
 STATE_DIR_NAME = ".brainpalace"
 
@@ -138,12 +117,19 @@ def build_default_provider_config(
     incrementally-writable, temporal-validity) rather than the in-memory
     ``simple`` store. Users can run `brainpalace config wizard` to override
     (e.g. switch to LangExtract on docs).
+
+    Task 4e: ``extraction.provider_context_tokens`` is prefilled from the
+    model→window map when the picked summarization model is known; left absent
+    (0 = runtime floor) for unknown models. Editable after init.
     """
-    return {
+    from brainpalace_server.config.model_windows import window_for
+
+    summ = _pick_provider(_SUMMARIZATION_PREFERENCE, _SUMMARIZATION_FALLBACK)
+    tokens = window_for(str(summ.get("provider", "")), str(summ.get("model", "")))
+
+    cfg: dict[str, object] = {
         "embedding": _pick_provider(_EMBEDDING_PREFERENCE, _EMBEDDING_FALLBACK),
-        "summarization": _pick_provider(
-            _SUMMARIZATION_PREFERENCE, _SUMMARIZATION_FALLBACK
-        ),
+        "summarization": summ,
         "reranker": {
             # Two-stage reranking is OFF by default. The local cross-encoder
             # needs the heavy `reranker-local` extra (~2.8 GB PyTorch); enable
@@ -164,6 +150,9 @@ def build_default_provider_config(
             "engine": bm25_engine,
         },
     }
+    if tokens is not None:
+        cfg["extraction"] = {"provider_context_tokens": tokens}
+    return cfg
 
 
 def _preview_embedding(project_root: Path) -> tuple[str, str]:
@@ -186,6 +175,20 @@ def _preview_embedding(project_root: Path) -> tuple[str, str]:
             return str(emb["provider"]), str(emb["model"])
     emb_default = build_default_provider_config()["embedding"]
     return str(emb_default["provider"]), str(emb_default["model"])  # type: ignore[index]
+
+
+def _preview_merged_config(project_root: Path) -> dict[str, Any]:
+    """Merged config (global < code) the review grid reads on a FRESH init,
+    overlaid with the provider/model detected from the environment so the grid
+    shows what the project will actually use. Read-only — writes nothing."""
+    from brainpalace_server.config.provider_config import load_merged_config_dict
+
+    merged = dict(load_merged_config_dict(None))
+    prov, model = _preview_embedding(project_root)
+    emb = dict(merged.get("embedding", {}))
+    emb["provider"], emb["model"] = prov, model
+    merged["embedding"] = emb
+    return merged
 
 
 def _write_reranker_config(state_dir: Path, enabled: bool) -> None:
@@ -445,9 +448,8 @@ def write_session_config(
     state_dir: Path,
     index: bool | None = None,
     archive: bool | None = None,
-    extract_mode: str | None = None,
 ) -> None:
-    """Write the session capabilities + extraction engine into config.yaml.
+    """Write the session capabilities into config.yaml.
 
     Deep-merges into the existing config.yaml so the provider/graphrag/storage
     blocks written by ``write_default_provider_config`` (and any XDG-inherited
@@ -455,12 +457,12 @@ def write_session_config(
     capabilities are set (``None`` leaves the existing value untouched), so a
     re-init that toggles one capability never clobbers the other. ``index``
     embeds transcripts (billable opt-in); ``archive`` copies raw transcripts
-    (durable backup, no embeddings); ``extract_mode`` selects the distillation
-    engine (``subagent`` | ``provider`` | ``off``) under ``session_extraction:``.
-    The server reads these blocks at startup (``load_session_indexing_config`` /
-    ``load_session_extraction_config``).
+    (durable backup, no embeddings). The distillation engine is set separately
+    via ``write_extraction_config`` (``extraction.mode`` governs both doc-graph
+    and session distillation). The server reads session capabilities at startup
+    via ``load_session_indexing_config``.
     """
-    if index is None and archive is None and extract_mode is None:
+    if index is None and archive is None:
         return
     config_path = state_dir / "config.yaml"
     data: dict[str, object] = {}
@@ -481,12 +483,30 @@ def write_session_config(
             archive_block["enabled"] = bool(archive)
             block["archive"] = archive_block
         data["session_indexing"] = block
-    if extract_mode is not None:
-        extract_block = data.get("session_extraction")
-        if not isinstance(extract_block, dict):
-            extract_block = {}
-        extract_block["mode"] = extract_mode
-        data["session_extraction"] = extract_block
+    with open(config_path, "w", encoding="utf-8") as f:
+        yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
+
+
+def write_extraction_config(state_dir: Path, mode: str) -> None:
+    """Write the shared extraction engine mode into config.yaml (sparse, Plan 4).
+
+    Mirrors :func:`write_session_config` but targets the new ``extraction:``
+    section (governs both doc-graph and session distillation). Sparse: only
+    ``extraction.mode`` is written — all other fields inherit server defaults
+    so the project config stays minimal. Deep-merges into the existing
+    config.yaml so provider/graphrag/session blocks are preserved.
+    """
+    config_path = state_dir / "config.yaml"
+    data: dict[str, object] = {}
+    if config_path.exists():
+        loaded = yaml.safe_load(config_path.read_text()) or {}
+        if isinstance(loaded, dict):
+            data = loaded
+    extract_block = data.get("extraction")
+    if not isinstance(extract_block, dict):
+        extract_block = {}
+    extract_block["mode"] = mode
+    data["extraction"] = extract_block
     with open(config_path, "w", encoding="utf-8") as f:
         yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
 
@@ -522,39 +542,282 @@ def write_git_config(
         yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
 
 
-def write_compute_config(
-    state_dir: Path,
-    *,
-    enabled: bool | None = None,
-    record_extraction: bool | None = None,
-) -> None:
-    """Deep-merge the ``compute:`` block into config.yaml.
+def _apply_review_edits(state_dir: Path, edits: dict[str, Any]) -> None:
+    """Apply the review screen's sparse ``{dotpath: value}`` edits into config.yaml.
 
-    Both args ``None`` is a no-op, so a re-init or bare run that doesn't ask the
-    question never clobbers a prior choice. Compute is ON by code default, so
-    ``init`` only writes here when the user opts OUT (keeps the project config
-    sparse — an absent key inherits global, then the code default). Preserves all
-    other blocks. The server's lifespan copies these onto the flat ENABLE_COMPUTE
-    / RECORD_EXTRACTION_ENABLED settings (env still wins).
+    Deep-sets only the user-changed dotpaths, preserving every other key. The
+    sparse invariant (write only what diverges) holds because ``edits`` already
+    contains only the fields the user actively changed from their resolved value.
     """
-    if enabled is None and record_extraction is None:
-        return
     config_path = state_dir / "config.yaml"
-    data: dict[str, object] = {}
+    data: dict[str, Any] = {}
     if config_path.exists():
-        loaded = yaml.safe_load(config_path.read_text()) or {}
-        if isinstance(loaded, dict):
-            data = loaded
-    block = data.get("compute")
-    if not isinstance(block, dict):
-        block = {}
-    if enabled is not None:
-        block["enabled"] = bool(enabled)
-    if record_extraction is not None:
-        block["record_extraction"] = bool(record_extraction)
-    data["compute"] = block
-    with open(config_path, "w", encoding="utf-8") as f:
-        yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
+        try:
+            loaded = yaml.safe_load(config_path.read_text()) or {}
+            if isinstance(loaded, dict):
+                data = loaded
+        except (OSError, ValueError):
+            data = {}
+    for dotpath, value in edits.items():
+        parts = dotpath.split(".")
+        node: dict[str, Any] = data
+        for seg in parts[:-1]:
+            nxt = node.get(seg)
+            if not isinstance(nxt, dict):
+                nxt = {}
+                node[seg] = nxt
+            node = nxt
+        node[parts[-1]] = value
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    import tempfile
+
+    fd, tmp = tempfile.mkstemp(dir=str(config_path.parent), suffix=".yaml.tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
+        os.replace(tmp, config_path)  # atomic on POSIX (finding #13)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def _validate_and_warn(config_path: Path) -> None:
+    """Validate the config at ``config_path`` and print any errors (finding #3)."""
+    from brainpalace_cli.config_schema import (
+        format_validation_errors,
+        validate_config_file,
+    )
+
+    errors = validate_config_file(config_path)
+    if errors:
+        console.print("\n[bold yellow]Warning:[/] Edited config has validation issues:")
+        console.print(format_validation_errors(errors))
+
+
+def _interactive_on_consent(
+    consent_edits: dict[str, Any],
+    merged: dict[str, Any],
+    *,
+    layer: str = "project",
+) -> "Callable[[Any], None]":
+    """Review-screen consent callback for the global/edit paths: each consent
+    field is shown with its warning and prompted explicitly; the choice default is
+    None-safe. The default reflects a prior grid edit (``consent_edits`` is the
+    shared ``edits`` map), so re-drilling a division shows the value you just set."""
+    from brainpalace_cli import config_fields as cf
+    from brainpalace_cli.prompt_render import numbered_choice
+
+    def _consent(spec: "cf.FieldSpec") -> None:
+        dp = spec.dotpath
+        if dp in consent_edits:
+            current: Any = consent_edits[dp]
+        else:
+            current, _src = cf.resolve_value(dp, merged, layer=layer)
+        reason = cf.KNOWN_CONSENT_FIELDS.get(dp, "")
+        if reason:
+            console.print(f"[yellow]⚠ {reason}[/]")
+        if spec.widget == "bool":
+            new: Any = click.confirm(spec.prompt or dp, default=bool(current))
+        else:
+            opts = cf.options_for(spec.options_ref) if spec.options_ref else []
+            # None-safe default: don't pass "None" as a choice (finding #4).
+            default = (
+                str(current) if current not in (None, "") else (opts[0] if opts else "")
+            )
+            new = numbered_choice(spec.prompt or dp, opts, default)
+            if dp == "extraction.mode" and new in (
+                "provider",
+                "auto",
+            ):
+                console.print(
+                    "[yellow]⚠ paid paths also require "
+                    "EXTRACTION_PROVIDER_ENABLED=true to drain.[/]"
+                )
+        if new != current:
+            consent_edits[dp] = new
+
+    return _consent
+
+
+def _fresh_on_consent(
+    consent_edits: dict[str, Any],
+    merged: dict[str, Any],
+    *,
+    project_root: Path,
+    plugin_present: bool,
+) -> "Callable[[Any], None]":
+    """Fresh-init grid consent callback. Reproduces the wall's per-field context
+    (provider/model tag on embed, plugin warning on summarize, depth follow-up on
+    git) on top of the generic warned prompt. The default reflects a prior grid
+    edit (``consent_edits`` is the shared ``edits`` map), so re-drilling shows it."""
+    from brainpalace_cli import config_fields as cf
+
+    def _consent(spec: "cf.FieldSpec") -> None:
+        dp = spec.dotpath
+        reason = cf.KNOWN_CONSENT_FIELDS.get(dp, "")
+        if reason:
+            console.print(f"[yellow]⚠ {reason}[/]")
+        if dp == "session_indexing.enabled":
+            prov, model = _preview_embedding(project_root)
+            console.print(f"  [dim]Embeds raw transcripts via {prov} {model}.[/]")
+        if dp == "extraction.mode" and not plugin_present:
+            console.print(
+                "  [yellow]⚠ Claude Code plugin not installed[/] — "
+                "summaries are configured but nothing summarizes until you run "
+                "[bold]brainpalace install-agent[/]."
+            )
+        if dp in consent_edits:
+            current: Any = consent_edits[dp]
+        else:
+            current, _src = cf.resolve_value(dp, merged)
+        if spec.widget == "bool":
+            new: Any = click.confirm(spec.prompt or dp, default=bool(current))
+        else:
+            from brainpalace_cli.prompt_render import numbered_choice
+
+            opts = cf.options_for(spec.options_ref) if spec.options_ref else []
+            default = (
+                str(current) if current not in (None, "") else (opts[0] if opts else "")
+            )
+            new = numbered_choice(spec.prompt or dp, opts, default)
+        if new != current:
+            consent_edits[dp] = new
+        if dp == "git_indexing.enabled" and new:
+            depth = click.prompt(
+                "How many commits back to index? (0 = unlimited)",
+                default=5000,
+                type=int,
+            )
+            consent_edits["git_indexing.depth"] = depth
+
+    return _consent
+
+
+def _plan_inputs_from_grid(
+    merged: dict[str, Any], edits: dict[str, Any]
+) -> dict[str, Any]:
+    """Map the grid's resolved values + sparse edits onto resolve_init_plan inputs.
+
+    OPT-IN safety: ``session_indexing.enabled`` and ``git_indexing.enabled`` are
+    privacy/cost opt-ins — their code-model defaults (True) must NOT activate on a
+    plain grid accept.  Use False unless the user explicitly edited the field in the
+    grid (present in ``edits``) or the global config set it (source == "global").
+    """
+    from brainpalace_cli import config_fields as cf
+
+    def _val(dp: str) -> Any:
+        if dp in edits:
+            return edits[dp]
+        v, _src = cf.resolve_value(dp, merged)
+        return v
+
+    def _optin_val(dp: str) -> bool:
+        """OPT-IN field: only True when explicitly edited or from global config."""
+        if dp in edits:
+            return bool(edits[dp])
+        _v, _src = cf.resolve_value(dp, merged)
+        # "default" means only the code model default — treat as off for fresh init.
+        return bool(_v) if _src != "default" else False
+
+    return {
+        "sessions": _optin_val("session_indexing.enabled"),
+        "archive": bool(_val("session_indexing.archive.enabled")),
+        "extract": str(_val("extraction.mode")) != "off",
+        "git_history": _optin_val("git_indexing.enabled"),
+        "git_depth": edits.get("git_indexing.depth"),
+        "graphrag_extract_mode": edits.get("extraction.mode"),
+    }
+
+
+def _reconcile_optional_deps(edits: dict[str, Any]) -> None:
+    """Install the heavy extras a review edit just opted into (reranker/lemma)."""
+    from brainpalace_cli import optional_deps
+
+    if edits.get("reranker.enabled") is True:
+        optional_deps.ensure_extra("reranker-local", assume_yes=True)
+    if edits.get("bm25.engine") == "lemma":
+        optional_deps.ensure_extra("lemma-hr", assume_yes=True)
+
+
+def _run_global_config_edit(*, json_output: bool, yes: bool) -> None:
+    """`init --global`: edit the global XDG config.yaml via the review screen."""
+    from brainpalace_cli import config_review
+    from brainpalace_cli.config_resolve import global_config_path, read_yaml
+    from brainpalace_cli.xdg_paths import get_xdg_config_dir
+
+    is_tty = _stdin_is_tty() and not json_output
+    if not (is_tty and not yes):
+        if json_output:
+            click.echo(
+                json.dumps(
+                    {
+                        "status": "noop",
+                        "reason": "--global is interactive; nothing to edit",
+                    }
+                )
+            )
+        else:
+            console.print("[dim]--global is interactive; nothing to edit.[/]")
+        return
+
+    xdg_dir = get_xdg_config_dir()
+    xdg_dir.mkdir(parents=True, exist_ok=True)
+    merged = read_yaml(global_config_path())
+    consent_edits: dict[str, Any] = {}
+    on_consent = _interactive_on_consent(consent_edits, merged, layer="global")
+    field_edits = config_review.review_config(
+        xdg_dir, on_consent=on_consent, layer="global", edits=consent_edits
+    )
+    if field_edits is None:
+        console.print("[dim]Cancelled — no changes written.[/]")
+        return
+    all_edits = field_edits
+    if all_edits:
+        _apply_review_edits(xdg_dir, all_edits)
+        _reconcile_optional_deps(all_edits)
+        gcfg = xdg_dir / "config.yaml"
+        _validate_and_warn(gcfg)
+        console.print(f"[green]Global config updated: {gcfg}[/]")
+    else:
+        console.print("[dim]No changes.[/]")
+    _global_dashboard_settings_step(xdg_dir)
+
+
+def _global_dashboard_settings_step(xdg_dir: Path) -> None:
+    """Global-only ``dashboard.*`` (autostart/port).
+
+    Written sparsely via ``_apply_review_edits`` + validated.
+
+    Control-plane (dashboard process) settings — fleet-wide, NOT per-project
+    config; edited here AND on the dashboard Settings tab (the two renderers).
+    Keys MUST be canonical (∈ config_schema.DASHBOARD_KNOWN_FIELDS) so the two
+    surfaces can't drift.  Any future prompt added here must use a canonical key.
+    """
+    from brainpalace_cli import config_schema as cs
+    from brainpalace_cli.config_resolve import read_yaml
+
+    gcfg = xdg_dir / "config.yaml"
+    if not click.confirm(
+        "Configure the web dashboard (autostart/port)?", default=False
+    ):
+        return
+    cur = read_yaml(gcfg).get("dashboard", {}) or {}
+    autostart = click.confirm(
+        "Auto-start the web dashboard when you run 'brainpalace start'?",
+        default=bool(cur.get("autostart", True)),
+    )
+    port = click.prompt(
+        "Dashboard port",
+        type=click.IntRange(min=1, max=65535),
+        default=int(cur.get("port", 8787)),
+    )
+    written = {"dashboard.autostart": autostart, "dashboard.port": port}
+    assert all(dp.split(".", 1)[1] in cs.DASHBOARD_KNOWN_FIELDS for dp in written)
+    _apply_review_edits(xdg_dir, written)
+    _validate_and_warn(gcfg)
 
 
 def write_reranker_enabled(state_dir: Path, *, enabled: bool) -> None:
@@ -576,12 +839,12 @@ def write_reranker_enabled(state_dir: Path, *, enabled: bool) -> None:
     )
 
 
-def write_graphrag_doc_extractor(state_dir: Path, *, doc_extractor: str) -> None:
-    """Persist ``graphrag.doc_extractor`` (``langextract`` | ``none``).
+def write_extraction_mode(state_dir: Path, *, mode: str) -> None:
+    """Persist ``extraction.mode`` (``subagent`` | ``off``).
 
-    Deep-merges into config.yaml so other graphrag keys (enabled/store_type)
-    survive. ``none`` is the explicit disable that suppresses the server's
-    'langextract not installed' warning for a deliberately-declined feature (D2).
+    Deep-merges into config.yaml so other keys survive. ``off`` is the
+    explicit disable (cost-safe default). ``subagent`` enables free doc-graph
+    + session extraction via Claude Code Haiku (no extra dep, no API cost).
     """
     config_path = state_dir / "config.yaml"
     data: dict[str, object] = {}
@@ -589,11 +852,11 @@ def write_graphrag_doc_extractor(state_dir: Path, *, doc_extractor: str) -> None
         loaded = yaml.safe_load(config_path.read_text()) or {}
         if isinstance(loaded, dict):
             data = loaded
-    graph = data.get("graphrag")
-    if not isinstance(graph, dict):
-        graph = {}
-    graph["doc_extractor"] = doc_extractor
-    data["graphrag"] = graph
+    extraction = data.get("extraction")
+    if not isinstance(extraction, dict):
+        extraction = {}
+    extraction["mode"] = mode
+    data["extraction"] = extraction
     config_path.parent.mkdir(parents=True, exist_ok=True)
     config_path.write_text(
         yaml.safe_dump(data, default_flow_style=False, sort_keys=False)
@@ -621,11 +884,12 @@ def read_graphrag_store_type(state_dir: Path) -> str | None:
 
 
 def read_session_state(state_dir: Path) -> tuple[str, bool]:
-    """Return ``(session_extraction.mode, session_indexing.enabled)`` from config.yaml.
+    """Return ``(extraction.mode, session_indexing.enabled)`` from config.yaml.
 
-    Session capabilities live in ``config.yaml`` (not ``config.json``), so the
-    re-init result banner must read them here to report the true state. Defaults
-    to ``("off", False)`` when absent/unreadable.
+    Session capabilities live in ``config.yaml``; the re-init result banner reads
+    them here to report the true state. ``extraction.mode`` is the sole engine
+    selector for both doc-graph and session distillation. Defaults to
+    ``("off", False)`` when absent/unreadable.
     """
     config_path = state_dir / "config.yaml"
     try:
@@ -634,7 +898,7 @@ def read_session_state(state_dir: Path) -> tuple[str, bool]:
         return ("off", False)
     if not isinstance(data, dict):
         return ("off", False)
-    extract = data.get("session_extraction")
+    extract = data.get("extraction")
     mode = extract.get("mode", "off") if isinstance(extract, dict) else "off"
     index = data.get("session_indexing")
     enabled = bool(index.get("enabled", False)) if isinstance(index, dict) else False
@@ -696,26 +960,37 @@ def apply_extract_engine(
     project_root: Path,
     enabled: bool,
     home: Path | None = None,
+    *,
+    graphrag_extract: bool = False,
+    graphrag_mode: str | None = None,
 ) -> str:
-    """Persist the session-summarization mode + reconcile Claude Code hooks.
+    """Persist the extraction mode + reconcile Claude Code hooks.
 
-    ``enabled`` is the resolved ``plan.extract``. When off → write
-    ``session_extraction.mode: off``; when on → write ``subagent``: summarization
-    happens ONLY inside Claude Code (the plugin, free on your subscription). The
-    server never falls back to a paid provider on its own. (The ``provider`` and
-    ``auto`` engines remain available, but only as an explicit config opt-in.)
+    ``enabled`` is the resolved ``plan.extract`` (session summarization).
+    ``graphrag_extract`` is the doc-graph extraction answer. ``graphrag_mode``,
+    when given (the interactive engine picker), selects the doc-graph engine
+    explicitly (``subagent`` | ``auto`` | ``provider``); since ``extraction.mode``
+    is shared, that engine also drives session distillation. ``extraction.mode``
+    is set to ``subagent`` when EITHER signal is on without an explicit engine,
+    and to ``off`` only when both are off.
 
-    Hook reconciliation follows the same plugin-presence rule:
-    - **Plugin present** → the plugin owns all 3 hooks (SessionStart reminder +
-      both extraction hooks). We only prune any old CLI-installed extraction
-      hooks, and do NOT install the reminder (avoids a double SessionStart).
+    Hook reconciliation follows the plugin-presence rule:
+    - **Plugin present** → the plugin owns all 3 hooks. We only prune old
+      CLI-installed extraction hooks and do NOT install the reminder (avoids a
+      double SessionStart).
     - **Plugin absent** (CLI/MCP only) → install the SessionStart reminder via
       :func:`install_session_hooks` (which also prunes old extraction hooks).
 
-    Returns the resolved mode (``subagent`` | ``off``).
+    Returns the resolved mode (``off`` | ``subagent`` | ``auto`` | ``provider``).
     """
-    mode = "subagent" if enabled else "off"
-    write_session_config(state_dir, extract_mode=mode)
+    if graphrag_mode and graphrag_mode != "off":
+        mode = graphrag_mode  # explicit engine picked at init (shared by both)
+    elif enabled or graphrag_extract:
+        mode = "subagent"
+    else:
+        mode = "off"
+    # extraction.mode governs both doc-graph and session distillation.
+    write_extraction_config(state_dir, mode)
     home = home or Path.home()
     if claude_plugin_installed(project=project_root):
         _prune_old_extraction_hooks(home)
@@ -885,6 +1160,17 @@ def _emit_init_result(
     embedding: tuple[str, str] | None = None,
 ) -> None:
     """Print the init result, including any post-init step outcomes."""
+    # Register the project in the durable fleet store so the dashboard can list
+    # and start it even when init did not start the server. `brainpalace start`
+    # registers on the start path; this closes the config-only / --no-start gap.
+    # Best-effort: a registry write must never abort an otherwise-successful init.
+    try:
+        from brainpalace_cli import known_projects
+
+        known_projects.remember(project_root, resolved_state_dir, project_root.name)
+    except Exception:
+        pass
+
     if json_output:
         click.echo(
             json.dumps(
@@ -1149,8 +1435,8 @@ def _start_and_watch(
     "--host",
     default=None,
     help=(
-        "Server bind host. Default: inherit from global config / code "
-        f"({DEFAULT_CONFIG['bind_host']}). Pass to override for this project."
+        "Server bind host. Default: inherit from global config / code (127.0.0.1). "
+        "Pass to override for this project (writes bind.bind_host to config.yaml)."
     ),
 )
 @click.option(
@@ -1164,6 +1450,13 @@ def _start_and_watch(
     "-f",
     is_flag=True,
     help="Overwrite existing configuration",
+)
+@click.option(
+    "--global",
+    "global_",
+    is_flag=True,
+    help="Edit the global ~/.config/brainpalace/config.yaml (XDG) that all "
+    "projects inherit, through the same review screen. No project index/start.",
 )
 @click.option("--json", "json_output", is_flag=True, help="Output as JSON")
 @click.option(
@@ -1232,18 +1525,6 @@ def _start_and_watch(
         "ARCHIVE raw transcripts under .brainpalace/ as a durable backup (no "
         "embeddings, independent of indexing). ON by default. Pass "
         "--no-archive to opt out."
-    ),
-)
-@click.option(
-    "--compute/--no-compute",
-    "enable_compute",
-    default=None,
-    help=(
-        "COMPUTE query mode: answer set-level questions (sum/count/avg, "
-        "by-week/month, 'which … most') over typed numeric records extracted "
-        "from your sessions. ON by default (free — derived counts piggyback "
-        "session summaries; no extra API call). Interactive runs ask. Pass "
-        "--no-compute to disable the mode and its record extraction."
     ),
 )
 @click.option(
@@ -1340,6 +1621,7 @@ def init_command(
     host: str | None,
     port: int | None,
     force: bool,
+    global_: bool,
     json_output: bool,
     state_dir: str | None,
     force_monorepo_root: bool,
@@ -1349,7 +1631,6 @@ def init_command(
     yes: bool,
     enable_sessions: bool | None,
     enable_archive: bool | None,
-    enable_compute: bool | None,
     enable_extract: bool | None,
     enable_git_history: bool | None,
     enable_graphrag_extract: bool | None,
@@ -1362,7 +1643,7 @@ def init_command(
     """Initialize a new BrainPalace project.
 
     Creates the .brainpalace/ directory structure and writes
-    a default config.json file.
+    a default config.yaml file.
 
     \b
     A bare `brainpalace init` writes config, starts the server, indexes the
@@ -1380,7 +1661,6 @@ def init_command(
       brainpalace init --sessions       # Also embed chat sessions (billable)
       brainpalace init --no-start       # Config only (no server, no indexing)
       brainpalace init --no-sessions    # Never embed chat sessions
-      brainpalace init --no-compute     # Disable compute query mode + record extraction
       brainpalace init --no-watch       # Start, but do not index/watch the folder
       brainpalace init --path /my/proj  # Initialize a specific project
       brainpalace init --force          # Overwrite existing config
@@ -1388,6 +1668,13 @@ def init_command(
     try:
         # Trigger one-time migration from legacy ~/.brainpalace to XDG dirs
         migrate_legacy_paths()
+
+        # --global: edit the XDG global config and return. No project root,
+        # no index, no start. Must be INSIDE the try so migrate_legacy_paths()
+        # always runs first (finding #5).
+        if global_:
+            _run_global_config_edit(json_output=json_output, yes=yes)
+            return
 
         # Resolve project root FIRST so the preview can name the real providers
         # and detect the plugin (subagent summarization needs it). CWD when
@@ -1403,10 +1690,6 @@ def init_command(
         # --json forces non-interactive.
         is_tty = _stdin_is_tty() and not json_output
 
-        # Compute query mode is ON by code default; only an explicit opt-out is
-        # persisted (sparse). Flag wins; an interactive run may set this in the
-        # consent block below. None ⇒ nothing written ⇒ inherits the default.
-        compute_choice: bool | None = enable_compute
         plan = resolve_init_plan(
             start=start,
             watch=watch,
@@ -1460,7 +1743,7 @@ def init_command(
         else:
             # Auto-migrate from legacy .claude/brainpalace if needed
             resolved_state_dir = migrate_state_dir(project_root)
-        config_path = resolved_state_dir / "config.json"
+        config_path = resolved_state_dir / "config.yaml"
 
         # Pre-existing-index handling. A real, already-initialized project must
         # not be silently rebuilt: an interactive run is offered delete / keep /
@@ -1516,6 +1799,9 @@ def init_command(
         # left None for non-interactive / --json runs (flag path uses
         # enable_graphrag_extract directly at write time).
         graphrag_extract_ans: bool | None = None
+        # The engine chosen by the interactive picker (off/subagent/auto/provider);
+        # None on non-interactive/flag runs (the bool flag maps to subagent/off).
+        graphrag_extract_mode: str | None = None
 
         # archive_ans is set in the consent block when interactive (no flag),
         # or left None for non-interactive / --json runs (flag path uses
@@ -1535,204 +1821,64 @@ def init_command(
         # invariant); only an active "yes" persists bm25.engine=lemma + installs.
         lemma_ans: bool | None = None
 
+        # grid_edits collects the sparse edit map from the review grid on the
+        # interactive fresh-init path (consent_edits ∪ field_edits). Initialized
+        # to empty so the downstream "if plan.confirm and grid_edits:" writer is
+        # safe on non-interactive / --yes paths where plan.confirm is False.
+        grid_edits: dict[str, Any] = {}
+
         if plan.confirm:
-            embedding = _preview_embedding(project_root)
             plugin_present = claude_plugin_installed(project=project_root)
+            embedding = _preview_embedding(project_root)
+            _merged = _preview_merged_config(project_root)
 
-            # Interactive prompt defaults come from the GLOBAL config when it sets
-            # the answer (config resolves code < global < project): the question is
-            # pre-filled with the global value and flagged "(from global)". If the
-            # user just accepts it, the sparse-write logic below leaves the project
-            # config untouched so the value keeps inheriting from global.
-            from brainpalace_cli.config_resolve import read_yaml as _ry_cfg
-            from brainpalace_cli.config_resolve import resolve as _resolve_cfg
+            from brainpalace_cli import config_review
 
-            _gcfg = _ry_cfg(get_xdg_config_dir() / "config.yaml")
+            consent_edits: dict[str, Any] = {}
+            on_consent = _fresh_on_consent(
+                consent_edits,
+                _merged,
+                project_root=project_root,
+                plugin_present=plugin_present,
+            )
+            field_edits = config_review.review_config(
+                resolved_state_dir,
+                on_consent=on_consent,
+                layer="project",
+                edits=consent_edits,
+            )
+            if field_edits is None:
+                if created_brainpalace:
+                    shutil.rmtree(resolved_state_dir, ignore_errors=True)
+                console.print("[dim]Cancelled — no changes written.[/]")
+                return
+            grid_edits = field_edits
 
-            def _global_default(dotpath: str, fallback: bool) -> tuple[bool, bool]:
-                """(default, came_from_global) for a boolean question."""
-                value, source = _resolve_cfg(dotpath, {}, _gcfg)
-                if source == "global":
-                    return bool(value), True
-                return fallback, False
+            pin = _plan_inputs_from_grid(_merged, grid_edits)
+            git_depth = pin["git_depth"]
+            graphrag_extract_mode = pin["graphrag_extract_mode"]
+            graphrag_extract_ans = (
+                None
+                if graphrag_extract_mode is None
+                else graphrag_extract_mode != "off"
+            )
+            sessions_chosen = "session_indexing.enabled" in grid_edits
+            archive_ans = pin["archive"]
 
-            def _from_global_note() -> None:
-                console.print("  [dim](default taken from your global config)[/]")
+            plan = resolve_init_plan(
+                start=start,
+                watch=watch,
+                no_watch=no_watch,
+                sessions=pin["sessions"],
+                archive=pin["archive"],
+                extract=pin["extract"],
+                git_history=pin["git_history"],
+                yes=yes,
+                is_tty=is_tty,
+            )
 
-            # Granular consent — ask only what an explicit flag didn't already set.
-            # Order: summarize first (free baseline recall), then embed (the paid
-            # detail upgrade that references the summaries).
-            extract_ans: bool = bool(plan.extract)
-            if enable_extract is None:
-                _gmode, _gmode_from = _resolve_cfg("session_extraction.mode", {}, _gcfg)
-                _extract_default = (
-                    str(_gmode) != "off" if _gmode_from == "global" else False
-                )
-                console.print(
-                    "\n[bold]Summarize chat sessions?[/] "
-                    "(distil past chats into summaries + a decisions digest)\n"
-                    "  Free — runs on the Claude Code Haiku subagent (needs the "
-                    "Claude Code plugin).\n"
-                    "  Makes past chats searchable by topic. Reads full transcripts; "
-                    "writes\n  BRAINPALACE_DECISIONS.md. Disable later: --no-extract."
-                )
-                if _gmode_from == "global":
-                    _from_global_note()
-                if not plugin_present:
-                    # Summarization runs ONLY on the Claude Code plugin's Haiku
-                    # subagent. Flag its absence in a distinct colour so the user
-                    # knows a "yes" here won't summarize anything until installed.
-                    console.print(
-                        "  [yellow]⚠ Claude Code plugin not installed[/] — a "
-                        "[bold]yes[/] configures summaries, but nothing is "
-                        "summarized until you install it: "
-                        "[bold]brainpalace install-agent[/]"
-                    )
-                extract_ans = click.confirm(
-                    "Summarize chat sessions?", default=_extract_default
-                )
-
-            sessions_ans: bool = bool(plan.sessions)
-            if enable_sessions is None:
-                from brainpalace_cli.commands.init_plan import (
-                    _provider_label,
-                    _trim_model_id,
-                )
-
-                prov, model = embedding
-                tag = f"{_provider_label(prov)} {_trim_model_id(model)}"
-                _sess_default, _sess_from = _global_default(
-                    "session_indexing.enabled", False
-                )
-                console.print(
-                    "\n[bold]Embed chat sessions too?[/] "
-                    "(search the FULL verbatim text, not just summaries)\n"
-                    "  Summaries above already make past chats searchable. Embedding "
-                    "adds search over\n  the complete raw transcripts — good for exact "
-                    f"code/commands — but sends that\n  content to {tag}. Cheap "
-                    "(usually a few cents), but a large history\n  adds many tokens. "
-                    "Enable later: --sessions."
-                )
-                if _sess_from:
-                    _from_global_note()
-                sessions_ans = click.confirm(
-                    "Embed chat sessions too?", default=_sess_default
-                )
-                sessions_chosen = True  # prompt answer is an explicit choice
-
-            if enable_archive is None:
-                _arch_default, _arch_from = _global_default(
-                    "session_indexing.archive.enabled", True
-                )
-                console.print(
-                    "\n[bold]Back up chat transcripts?[/] "
-                    "(free, local copy — no embeddings, no API cost)\n"
-                    "  [yellow]⚠ Stores FULL raw transcripts incl. your prompts "
-                    "and any secrets[/] under .brainpalace/. Disable later: "
-                    "--no-archive."
-                )
-                if _arch_from:
-                    _from_global_note()
-                archive_ans = click.confirm(
-                    "Back up chat transcripts?", default=_arch_default
-                )
-            else:
-                archive_ans = enable_archive
-
-            git_history_ans: bool = bool(plan.git_history)
-            if enable_git_history is None:
-                _git_default, _git_from = _global_default("git_indexing.enabled", False)
-                console.print(
-                    "\n[bold]Index git commit history?[/] "
-                    "(make past commits searchable: message + changed-file list)\n"
-                    "  [yellow]Note:[/] commit diffs/messages can contain secrets. "
-                    "Nothing is copied;\n  chunks reference the commit sha. "
-                    "Disable later: --no-git-history."
-                )
-                if _git_from:
-                    _from_global_note()
-                git_history_ans = click.confirm(
-                    "Index git commit history?", default=_git_default
-                )
-                if git_history_ans:
-                    console.print(
-                        "  How far back? Each commit is embedded, so a very large "
-                        "history\n  costs more on the first pass. [dim]0 = "
-                        "unlimited (entire history).[/]"
-                    )
-                    git_depth = click.prompt(
-                        "How many commits back to index? (0 = unlimited)",
-                        default=5000,
-                        type=int,
-                    )
-
-            # GraphRAG document extraction (#10/#14). doc_extractor=langextract
-            # mines entities/relationships from DOC text; needs the optional
-            # `langextract` dep. D2: a "no" writes doc_extractor=none (explicit
-            # disable, no runtime warning); "yes" installs the extra after consent.
-            if enable_graphrag_extract is None:
-                from brainpalace_cli import optional_deps
-
-                _gval, _gsrc = _resolve_cfg("graphrag.doc_extractor", {}, _gcfg)
-                _ge_default = (
-                    (str(_gval) == "langextract") if _gsrc == "global" else False
-                )
-                console.print(
-                    "\n[bold]Extract a knowledge graph from document text?[/] "
-                    "(entities + relationships mined from your docs)\n"
-                    f"  [yellow]{optional_deps.REGISTRY['graphrag'].download_note}[/]\n"
-                    "  Disable later: config graphrag.doc_extractor=none."
-                )
-                if _gsrc == "global":
-                    _from_global_note()
-                graphrag_extract_ans = click.confirm(
-                    "Extract a knowledge graph from document text?",
-                    default=_ge_default,
-                )
-            else:
-                graphrag_extract_ans = enable_graphrag_extract
-
-            # Reranker (#9/#16) — project-overridable; re-ask via the D4 gate.
-            # Only a changed answer is persisted (sparse invariant). The gate is
-            # skipped when --reranking/--no-reranking was passed explicitly (the
-            # flag already decided the value; write_reranker_enabled is called
-            # further below on the explicit-flag path).
-            if enable_reranking is None:
-                from brainpalace_cli.commands.init_plan import inherited_change_gate
-
-                _rerank_val, _rerank_changed = inherited_change_gate(
-                    "Reranker", "reranker.enabled", _gcfg
-                )
-
-            # BM25 lemma engine (#14) — opt-in that installs the optional
-            # `simplemma` dep on yes. Only asked when no explicit --bm25-engine
-            # flag decided it. Default to the inherited/global engine when it is
-            # `lemma`, else stem (no). D2-style: a "no" writes nothing new (the
-            # sparse invariant keeps the project inheriting stem); a "yes" writes
-            # bm25.engine=lemma and installs the extra after consent.
-            if bm25_engine is None:
-                from brainpalace_cli import optional_deps
-
-                _leng, _lsrc = _resolve_cfg("bm25.engine", {}, _gcfg)
-                _lemma_default = (str(_leng) == "lemma") if _lsrc == "global" else False
-                from brainpalace_cli.commands.config import _lemma_languages_hint
-
-                _lemma_hint = _lemma_languages_hint()
-                console.print(
-                    "\n[bold]Use lemmatization for BM25 keyword search?[/] "
-                    f"(better recall for inflected languages{_lemma_hint})\n"
-                    f"  [yellow]{optional_deps.REGISTRY['lemma-hr'].download_note}[/]\n"
-                    "  Disable later: config bm25.engine=stem."
-                )
-                if _lsrc == "global":
-                    _from_global_note()
-                lemma_ans = click.confirm(
-                    "Use lemmatization for BM25 keyword search?",
-                    default=_lemma_default,
-                )
-
-            # Graph-store upgrade — asked here (with the other questions) so it
-            # appears in the "init will:" preview below and is gated by Proceed.
+            # Graph-store upgrade is a migration ACTION, not a config field — ask it
+            # after the grid (only for a legacy 'simple'-store re-init).
             if existing_simple_store and enable_graph_migrate is None:
                 console.print(
                     "\n[bold]Upgrade graph store to sqlite?[/] "
@@ -1745,36 +1891,6 @@ def init_command(
                     "Upgrade graph store to sqlite?", default=True
                 )
 
-            if enable_compute is None:
-                _compute_default, _compute_from = _global_default(
-                    "compute.enabled", True
-                )
-                console.print(
-                    "\n[bold]Enable compute query mode?[/] "
-                    "(answer set-level questions over your sessions)\n"
-                    '  Sums/counts typed numeric records — e.g. "how many files '
-                    'touched this week",\n  "which day had the most decisions". '
-                    "Free: counts are derived from the session\n  summaries above, "
-                    "no extra API call. Disable later: --no-compute."
-                )
-                if _compute_from:
-                    _from_global_note()
-                compute_choice = click.confirm(
-                    "Enable compute query mode?", default=_compute_default
-                )
-
-            # Rebuild the plan from the answers (bools ⇒ explicit, so they win).
-            plan = resolve_init_plan(
-                start=start,
-                watch=watch,
-                no_watch=no_watch,
-                sessions=sessions_ans,
-                archive=archive_ans,
-                extract=extract_ans,
-                git_history=git_history_ans,
-                yes=yes,
-                is_tty=is_tty,
-            )
             summarize: tuple[str, ...] | None = (
                 ("subagent",) if plan.extract and plugin_present else None
             )
@@ -1794,7 +1910,12 @@ def init_command(
                         graph_migrate=graph_migrate,
                     )
                 )
-                if not click.confirm("Proceed?", default=True):
+                _gate_prompt = (
+                    "Start the BrainPalace server now?"
+                    if (plan.start and start is None)
+                    else "Proceed?"
+                )
+                if not click.confirm(_gate_prompt, default=True):
                     plan = downgrade_to_config_only(plan)
                     graph_migrate = False  # declining the plan cancels the upgrade
 
@@ -1831,28 +1952,14 @@ def init_command(
             elif plan.git_history:
                 write_git_config(resolved_state_dir, enabled=True, depth=git_depth)
 
-            # Persist a compute opt-out for an EXISTING project too. ON is the
-            # code default (inherited, nothing written); only --no-compute / an
-            # interactive "no" persists, disabling both the mode and record
-            # extraction. A bare re-init leaves any prior choice untouched.
-            if compute_choice is False:
-                write_compute_config(
-                    resolved_state_dir, enabled=False, record_extraction=False
-                )
-
-            # Persist graphrag doc-extractor choice for an EXISTING project.
+            # Resolve graphrag-extract answer for this re-init. Passed into
+            # apply_extract_engine calls below so extraction.mode is set by
+            # one writer that combines session-extract + doc-graph signals.
             _reinit_graphrag_ans = (
                 enable_graphrag_extract
                 if enable_graphrag_extract is not None
                 else graphrag_extract_ans
             )
-            if _reinit_graphrag_ans is not None:
-                _doc_ext = "langextract" if _reinit_graphrag_ans else "none"
-                write_graphrag_doc_extractor(resolved_state_dir, doc_extractor=_doc_ext)
-                if _reinit_graphrag_ans:
-                    from brainpalace_cli import optional_deps
-
-                    optional_deps.ensure_extra("graphrag", assume_yes=True)
 
             # Persist the BM25 lemma opt-in for an EXISTING project too (#14).
             # The fresh-write path below isn't taken on a re-init, so without this
@@ -1900,10 +2007,39 @@ def init_command(
             if _rerank_changed:
                 write_reranker_enabled(resolved_state_dir, enabled=bool(_rerank_val))
 
+            # Task 4: Unified editor for the re-init path — same review screen as
+            # fresh init. The real on_consent is supplied so billable/secret fields
+            # route to a warned prompt (not silently skipped). Cancelling here
+            # returns without touching any config (idempotent abort).
+            if is_tty and not yes:
+                from brainpalace_server.config.provider_config import (
+                    load_merged_config_dict,
+                )
+
+                from brainpalace_cli import config_review
+
+                _merged = load_merged_config_dict(resolved_state_dir / "config.yaml")
+                _consent_edits: dict[str, Any] = {}
+                _on_consent = _interactive_on_consent(_consent_edits, _merged)
+                _field_edits = config_review.review_config(
+                    resolved_state_dir,
+                    on_consent=_on_consent,
+                    layer="project",
+                    edits=_consent_edits,
+                )
+                if _field_edits is None:
+                    console.print("[dim]Cancelled — no changes written.[/]")
+                    return
+                _all_edits = _field_edits
+                if _all_edits:
+                    _apply_review_edits(resolved_state_dir, _all_edits)
+                    _reconcile_optional_deps(_all_edits)
+                    _validate_and_warn(resolved_state_dir / "config.yaml")
+
             if plan.start:
                 try:
-                    existing_config = json.loads(config_path.read_text())
-                except (OSError, json.JSONDecodeError):
+                    existing_config = yaml.safe_load(config_path.read_text()) or {}
+                except (OSError, Exception):
                     existing_config = {}
                 # Honor the user's choices on re-init. Interactive runs reach this
                 # branch only after Proceed (a decline downgrades plan.start to
@@ -1916,16 +2052,25 @@ def init_command(
                         index=plan.sessions,
                         archive=plan.archive,
                     )
-                    apply_extract_engine(resolved_state_dir, project_root, plan.extract)
+                    apply_extract_engine(
+                        resolved_state_dir,
+                        project_root,
+                        plan.extract,
+                        graphrag_extract=bool(_reinit_graphrag_ans),
+                        graphrag_mode=graphrag_extract_mode,
+                    )
                 else:
                     write_session_config(
                         resolved_state_dir,
                         index=enable_sessions,
                         archive=enable_archive,
                     )
-                    if enable_extract is not None:
+                    if enable_extract is not None or _reinit_graphrag_ans is not None:
                         apply_extract_engine(
-                            resolved_state_dir, project_root, plan.extract
+                            resolved_state_dir,
+                            project_root,
+                            plan.extract,
+                            graphrag_extract=bool(_reinit_graphrag_ans),
                         )
                 post_init_steps: list[dict[str, object]] = _start_and_watch(
                     project_root=project_root,
@@ -1958,6 +2103,16 @@ def init_command(
                     embedding=_preview_embedding(project_root),
                 )
                 return
+            # --no-start re-init: apply_extract_engine not called above, so
+            # write extraction.mode here if a graphrag-extract answer was given
+            # or session-extract was explicitly passed.
+            if _reinit_graphrag_ans is not None or enable_extract is not None:
+                apply_extract_engine(
+                    resolved_state_dir,
+                    project_root,
+                    plan.extract,
+                    graphrag_extract=bool(_reinit_graphrag_ans),
+                )
             if json_output:
                 click.echo(
                     json.dumps(
@@ -1983,29 +2138,16 @@ def init_command(
         resolved_state_dir.mkdir(parents=True, exist_ok=True)
         (resolved_state_dir / "logs").mkdir(exist_ok=True)
 
-        # Build configuration. --host is now inherit-by-default: only override
-        # the code default when explicitly passed.
-        config = {
-            **DEFAULT_CONFIG,
-            "project_root": str(project_root),
-        }
-        if host is not None:
-            config["bind_host"] = host
-        if port is not None:
-            config["port"] = port
-            config["auto_port"] = False
-
-        # Write configuration
-        config_path.write_text(json.dumps(config, indent=2))
-
         # Phase L: write a default config.yaml (provider settings) with
         # graphrag.enabled=true so new projects get code-graph indexing
         # without needing `brainpalace config wizard`. Idempotent: skip
         # if config.yaml already exists. NOTE: never pass force here — a
-        # re-init with --force overwrites the server config.json but must
-        # preserve the user's provider/embedding/summarization/storage/
-        # graphrag edits in config.yaml (use `brainpalace config` to change
-        # providers). Clobbering them on --force was a data-loss papercut.
+        # re-init with --force must preserve the user's provider/embedding/
+        # summarization/storage/graphrag edits in config.yaml (use
+        # `brainpalace config` to change providers). Clobbering them on
+        # --force was a data-loss papercut.
+        # Bind settings (--host / --port) are written into the config.yaml
+        # bind: section below after the provider block is in place.
         provider_config_written = write_default_provider_config(
             resolved_state_dir,
             force=False,
@@ -2017,6 +2159,26 @@ def init_command(
         # honor an explicit --reranking/--no-reranking by merging just that flag.
         if not provider_config_written and enable_reranking is not None:
             _write_reranker_config(resolved_state_dir, enable_reranking)
+
+        # Write bind overrides into the config.yaml bind: section when the user
+        # passed --host or --port. Absent these flags, the code defaults apply
+        # (inherit from global config.yaml, then 127.0.0.1/8000-8100/auto_port).
+        # We write sparse keys only — omitted keys inherit from global or code.
+        if host is not None or port is not None:
+            _apply_review_edits(
+                resolved_state_dir,
+                {
+                    **({"bind.bind_host": host} if host is not None else {}),
+                    **(
+                        {
+                            "bind.port_range_start": port,
+                            "bind.auto_port": False,
+                        }
+                        if port is not None
+                        else {}
+                    ),
+                },
+            )
 
         # Explicit reranking opt-in (the --reranking flag, or the interactive D4
         # gate set it true) pulls the heavy local cross-encoder extra (~2.8 GB
@@ -2093,32 +2255,15 @@ def init_command(
                 git_choice = None
         write_session_config(resolved_state_dir, index=sess, archive=arch)
         write_git_config(resolved_state_dir, enabled=git_choice, depth=git_depth)
-        # Compute is ON by default → only an opt-out is persisted (sparse).
-        if compute_choice is False:
-            write_compute_config(
-                resolved_state_dir, enabled=False, record_extraction=False
-            )
 
-        # Persist graphrag doc-extractor choice on the fresh-init path.
-        # graphrag_extract_ans is set by the consent block (interactive) or
-        # via else-branch when enable_graphrag_extract flag was passed. For
-        # non-interactive / --json runs (plan.confirm is False) the variable is
-        # still None unless the flag was passed explicitly; None = no write
-        # (server default applies, no dep installed).
+        # Resolve graphrag-extract answer for the fresh-init path. Passed into
+        # apply_extract_engine below so extraction.mode is set by one writer that
+        # considers BOTH session-extract and doc-graph-extract signals.
         _fresh_graphrag_ans = (
             enable_graphrag_extract
             if enable_graphrag_extract is not None
             else (graphrag_extract_ans if plan.confirm else None)
         )
-        if _fresh_graphrag_ans is not None:
-            _fresh_doc_ext = "langextract" if _fresh_graphrag_ans else "none"
-            write_graphrag_doc_extractor(
-                resolved_state_dir, doc_extractor=_fresh_doc_ext
-            )
-            if _fresh_graphrag_ans:
-                from brainpalace_cli import optional_deps
-
-                optional_deps.ensure_extra("graphrag", assume_yes=True)
 
         # Persist the BM25 lemma opt-in on the fresh-init path (#14). The explicit
         # --bm25-engine flag is already written by write_default_provider_config
@@ -2147,12 +2292,22 @@ def init_command(
         if _rerank_changed:
             write_reranker_enabled(resolved_state_dir, enabled=bool(_rerank_val))
 
-        # Resolve + persist the session-summarization mode (subagent), and
-        # reconcile the Claude Code hooks by plugin presence. Apply on a fresh
-        # config write, or whenever --extract/--no-extract was passed explicitly.
-        if provider_config_written or enable_extract is not None:
+        # Resolve + persist the extraction mode (subagent/off), and reconcile
+        # Claude Code hooks. extraction.mode governs BOTH session summarization
+        # and doc-graph triplet extraction — one writer, one key.
+        # Apply when: fresh config written, session-extract flag explicit, OR
+        # graphrag-extract question was answered.
+        if (
+            provider_config_written
+            or enable_extract is not None
+            or _fresh_graphrag_ans is not None
+        ):
             extract_mode = apply_extract_engine(
-                resolved_state_dir, project_root, plan.extract
+                resolved_state_dir,
+                project_root,
+                plan.extract,
+                graphrag_extract=bool(_fresh_graphrag_ans),
+                graphrag_mode=graphrag_extract_mode,
             )
             if not json_output and extract_mode == "subagent":
                 console.print(
@@ -2164,13 +2319,23 @@ def init_command(
         # B5: ensure .brainpalace/ is git-ignored for the project.
         gitignore_added = ensure_gitignore_entry(project_root)
 
-        # Pre-index token estimate BEFORE writing any index data or starting the
-        # server, so a surprising cost can be cancelled with a clean rollback.
-        # The config is already fully written, so the estimate honours the
-        # resolved provider/git/session choices.
+        # Apply the grid's sparse edit map — runs after the fresh config write so
+        # any provider change is reflected in the cost shown by the estimate.
+        # The grid (review_config) already ran at the top of the confirm block;
+        # grid_edits = consent_edits ∪ field_edits collected there.  On non-
+        # interactive / --yes paths grid_edits is never set, so this block is
+        # skipped (plan.confirm is False on those paths).
+        if plan.confirm and grid_edits:
+            _apply_review_edits(resolved_state_dir, grid_edits)
+            _reconcile_optional_deps(grid_edits)
+            _validate_and_warn(resolved_state_dir / "config.yaml")
+
+        # Pre-index token estimate — runs AFTER the review screen so the cost
+        # reflects any provider edit the user just made (finding #12).
+        # The config is fully written at this point.
         #
-        # Interactive order (#3): ask whether to estimate → estimate
-        # (proceed/change/cancel) → show the "init will:" summary → final Proceed.
+        # Interactive order: review → estimate (proceed/change/cancel) →
+        # show the "init will:" summary → final Proceed.
         # A --yes run keeps a single estimate prompt and no extra confirmation.
         if is_tty and plan.start:
             interactive_gate = plan.confirm  # non --yes run → offer skip + Proceed
@@ -2200,7 +2365,12 @@ def init_command(
                         graph_migrate=graph_migrate,
                     )
                 )
-                if not click.confirm("Proceed?", default=True):
+                _gate_prompt = (
+                    "Start the BrainPalace server now?"
+                    if (plan.start and start is None)
+                    else "Proceed?"
+                )
+                if not click.confirm(_gate_prompt, default=True):
                     plan = downgrade_to_config_only(plan)
 
         # Index DATA dirs are created only now — after the estimate was accepted
@@ -2212,6 +2382,12 @@ def init_command(
         (resolved_state_dir / "data" / "llamaindex").mkdir(exist_ok=True)
 
         post_init_steps = []
+
+        # Build config dict for the result banner/JSON (yaml config, not bind dict).
+        try:
+            config: dict[str, object] = yaml.safe_load(config_path.read_text()) or {}
+        except (OSError, Exception):
+            config = {}
 
         if plan.start:
             post_init_steps = _start_and_watch(

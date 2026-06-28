@@ -27,7 +27,7 @@ def extras_status_lines(config: dict[str, Any]) -> list[str]:
     """One status line per ENABLED dep-bearing feature whose extra is checked.
 
     Enabled but missing -> a 'missing' line with the fix command. Declined
-    features (doc_extractor=none, engine=stem, backend!=postgres) are omitted
+    features (engine=stem, backend!=postgres) are omitted
     (D2: a declined feature must not nag).
     """
     from brainpalace_cli import optional_deps as od
@@ -37,8 +37,6 @@ def extras_status_lines(config: dict[str, Any]) -> list[str]:
         return block if isinstance(block, dict) else {}
 
     enabled: list[str] = []
-    if _section("graphrag").get("doc_extractor") == "langextract":
-        enabled.append("graphrag")
     if _section("bm25").get("engine") == "lemma":
         enabled.append("lemma-hr")
     if _section("storage").get("backend") == "postgres":
@@ -75,7 +73,7 @@ _STATUS_STYLE = {
     is_flag=True,
     help=(
         "Apply safe, idempotent, offline fixes (add .brainpalace/ to .gitignore, "
-        "create state dir + stub config.json). Will not touch API keys, network, "
+        "create state dir + stub config.yaml). Will not touch API keys, network, "
         "or user code. Re-runs the report after fixing."
     ),
 )

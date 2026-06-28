@@ -366,11 +366,12 @@ class DocumentLoader:
                               expensively on every build.
         """
         self.extensions = supported_extensions or self.SUPPORTED_EXTENSIONS
-        self.exclude_patterns = (
-            exclude_patterns
-            if exclude_patterns is not None
-            else self.DEFAULT_EXCLUDE_PATTERNS
-        )
+        if exclude_patterns is not None:
+            self.exclude_patterns = exclude_patterns
+        else:
+            from brainpalace_server.config.indexing_config import load_indexing_config
+
+            self.exclude_patterns = load_indexing_config().exclude_patterns
         self.gitignore_matcher = gitignore_matcher
         self.skip_minified = skip_minified
 

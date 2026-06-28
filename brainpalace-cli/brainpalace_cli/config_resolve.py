@@ -39,7 +39,6 @@ CODE_DEFAULTS: dict[str, Any] = {
     "git_indexing.depth": 0,
     "session_indexing.enabled": False,
     "session_indexing.archive.enabled": True,
-    "session_extraction.mode": "subagent",
 }
 
 

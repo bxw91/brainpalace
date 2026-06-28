@@ -23,17 +23,13 @@ def test_help_present_for_requested_fields():
         ("storage", "storage.backend"): ["chroma", "postgres"],
         ("graphrag", "graphrag.enabled"): ["knowledge graph"],
         ("graphrag", "graphrag.store_type"): ["simple", "sqlite", "temporal"],
-        ("graphrag", "graphrag.doc_extractor"): ["langextract", "none"],
         ("graphrag", "graphrag.use_code_metadata"): ["metadata"],
         ("git_indexing", "git_indexing.enabled"): ["git"],
         ("git_indexing", "git_indexing.depth"): ["0"],
         ("git_indexing", "git_indexing.max_files"): ["files"],
-        ("session_extraction", "session_extraction.mode"): [
-            "subagent",
-            "provider",
-            "auto",
-            "off",
-        ],
+        # session_extraction.mode is HIDDEN (legacy; extraction.mode is canonical).
+        # extraction.mode is checked below.
+        ("extraction", "extraction.mode"): ["subagent", "provider", "auto", "off"],
     }
     for (section, dotpath), needles in expected.items():
         field = _field(schema, section, dotpath)

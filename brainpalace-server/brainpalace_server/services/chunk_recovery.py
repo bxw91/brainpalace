@@ -36,6 +36,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from brainpalace_server.storage_paths import STATE_SUBDIR
+
 logger = logging.getLogger(__name__)
 
 _DOCUMENT_KEY = "chroma:document"
@@ -267,7 +269,8 @@ def _recovery_events_path(persist_dir: str | Path) -> Path | None:
     persist = Path(persist_dir)
     if persist.parent.name != "data":
         return None  # legacy/non-standard layout — skip the marker
-    return persist.parent.parent / "recovery-events.jsonl"
+    # Pure path compute (no mkdir) — writers create the dir before appending.
+    return persist.parent.parent / STATE_SUBDIR / "recovery-events.jsonl"
 
 
 def _wanted_fingerprint(wanted: set[str]) -> str:

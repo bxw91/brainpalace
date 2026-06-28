@@ -2,8 +2,8 @@
 
 In **subagent** mode summarization is **archive-driven**: old sessions are
 archived under ``<project>/.brainpalace/session_archive/`` and the drain
-gap-selector (``brainpalace drain-queue``/``drain-tick``) picks them up
-automatically once quiescent — there is no queue to seed, so this command just
+unified per-prompt drain picks them up automatically once quiescent — there is
+no queue to seed, so this command just
 confirms archiving is on and reports how many transcripts are present. In
 **provider** mode it calls ``POST /sessions/distill`` so the server distils each
 transcript (``--force`` re-distils already-marked ones). Provider mode is largely
@@ -34,24 +34,25 @@ console = Console()
 
 
 def read_extract_mode(project_root: Path) -> str:
-    """Resolve ``session_extraction.mode`` from project config (default subagent).
+    """Resolve ``extraction.mode`` from project config (default off, cost-safe).
 
-    Mirrors the server's default (``SessionExtractionConfig.mode``): an absent,
-    unparseable, or invalid block resolves to ``subagent`` — never ``provider`` —
-    so a missing config can never push backfill onto the billable server engine.
+    Reads the shared ``extraction:`` block — the sole engine selector for both
+    doc-graph and session distillation. Absent, unparseable, or invalid blocks
+    resolve to ``off`` so a missing config can never push backfill onto the
+    billable server engine. ``off`` means nothing to backfill.
     """
     config_path = project_root / ".brainpalace" / "config.yaml"
     if not config_path.exists():
-        return "subagent"
+        return "off"
     try:
         data = yaml.safe_load(config_path.read_text()) or {}
     except yaml.YAMLError:
-        return "subagent"
-    block = data.get("session_extraction") if isinstance(data, dict) else None
+        return "off"
+    block = data.get("extraction") if isinstance(data, dict) else None
     mode = block.get("mode") if isinstance(block, dict) else None
     if mode is False:  # YAML 1.1: unquoted `off` → bool
         return "off"
-    return mode if mode in ("auto", "subagent", "provider", "off") else "subagent"
+    return mode if mode in ("auto", "subagent", "provider", "off") else "off"
 
 
 def default_sessions_dir(project_root: Path) -> Path:
@@ -120,7 +121,7 @@ def backfill_command(
             "subagent" if claude_plugin_installed(project=project_root) else "provider"
         )
     if mode == "off":
-        msg = "session_extraction.mode is 'off' — nothing to backfill."
+        msg = "extraction.mode is 'off' — nothing to backfill."
         click.echo(json.dumps({"status": "off"}) if json_output else msg)
         return
 

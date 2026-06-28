@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-18
+last_validated: 2026-06-25
 ---
 
 # BrainPalace Configuration Guide
@@ -287,13 +287,14 @@ GraphRAG enables graph-based retrieval using entity relationships extracted from
 graphrag:
   enabled: true
   store_type: "sqlite"  # "sqlite" (default, persistent + temporal) or "simple" (in-memory)
-  index_path: "./graph_index"
-  extraction_model: "claude-haiku-4-5"
-  max_triplets_per_chunk: 10
   use_code_metadata: true
-  use_llm_extraction: true
   traversal_depth: 2
   rrf_k: 60
+
+# Doc-graph + session extraction engine (governs both consumers)
+extraction:
+  mode: "subagent"  # off (default) | subagent (free) | auto | provider (BILLABLE)
+  grace_hours: 24   # auto mode: hours before paid provider drains a chunk
 ```
 
 ### GraphRAG via Environment Variables
@@ -312,7 +313,6 @@ export GRAPH_MAX_TRIPLETS_PER_CHUNK=10
 
 # Code relationship extraction (recommended for codebases)
 export GRAPH_USE_CODE_METADATA=true
-export GRAPH_USE_LLM_EXTRACTION=true
 
 # Query settings
 export GRAPH_TRAVERSAL_DEPTH=2
@@ -462,9 +462,11 @@ summarization:
 graphrag:
   enabled: true
   store_type: "sqlite"  # Default — persistent + temporal validity
-  use_code_metadata: true  # Extract imports, classes from AST
-  use_llm_extraction: true  # Extract semantic relationships
+  use_code_metadata: true  # Extract code AST relationships
   traversal_depth: 2
+
+extraction:
+  mode: "subagent"  # Free doc-graph extraction via Claude Code Haiku
 ```
 
 ---

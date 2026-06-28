@@ -220,11 +220,8 @@ def inherited_change_gate(
     if not click.confirm(f"Change {label.lower()} for this project?", default=False):
         return inherited, False
     if isinstance(inherited, bool) or inherited in ("true", "false"):
-        new = click.prompt(
-            f"{label} enabled?",
-            type=click.Choice(["true", "false"]),
-            default=str(inherited).lower(),
-        )
-        return new == "true", True
+        _default = inherited is True or inherited == "true"
+        new = click.confirm(f"Enable {label.lower()}?", default=_default)
+        return new, True
     new = click.prompt(f"{label}", default=str(inherited))
     return new, True

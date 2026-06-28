@@ -7,6 +7,7 @@ from .config import config_group
 from .context import context_command
 from .dashboard import dashboard_command
 from .doctor import doctor_command
+from .extraction import extraction_group
 from .folders import folders_group
 from .hook import hook_group
 from .index import index_command
@@ -23,8 +24,6 @@ from .recall import recall_command
 from .records import records_group
 from .remember import remember_command
 from .reset import reset_command
-from .session_drain import drain_queue_command
-from .session_drain_loop import drain_tick_command
 from .session_hooks import install_session_hooks_command
 from .sessions import session_path_command, submit_session_command
 from .start import start_command
@@ -39,13 +38,12 @@ from .whoami import whoami_command
 
 __all__ = [
     "backfill_command",
+    "extraction_group",
     "cache_group",
     "config_group",
     "context_command",
     "dashboard_command",
     "doctor_command",
-    "drain_queue_command",
-    "drain_tick_command",
     "folders_group",
     "index_command",
     "inject_command",

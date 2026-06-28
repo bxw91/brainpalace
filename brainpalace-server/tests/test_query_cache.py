@@ -285,9 +285,9 @@ async def test_query_service_cache_hit() -> None:
 @pytest.mark.asyncio
 async def test_query_service_graph_bypasses_cache() -> None:
     """graph mode queries are never stored in cache."""
-    # graph mode raises ValueError when ENABLE_GRAPH_INDEX=False (default).
     # The key point is is_cacheable_mode("graph") == False, verified in unit
-    # tests above.  Here we confirm QueryService never stores graph results.
+    # tests above. Here we confirm QueryService never stores graph results
+    # (graph query returns empty when no graph is built — it does not raise).
     from brainpalace_server.models.query import QueryMode, QueryRequest
     from brainpalace_server.services.query_service import QueryService
 
@@ -303,11 +303,12 @@ async def test_query_service_graph_bypasses_cache() -> None:
 
     request = QueryRequest(query="graph query", mode=QueryMode.GRAPH)
 
-    # graph query will raise ValueError (ENABLE_GRAPH_INDEX=False by default)
+    # graph query returns empty (or raises only on an incompatible backend);
+    # either way nothing is cached.
     try:
         await svc.execute_query(request)
     except (ValueError, RuntimeError):
-        pass  # expected — graph requires ENABLE_GRAPH_INDEX=True
+        pass
 
     # No entries should be cached (graph bypasses cache entirely)
     stats = cache.get_stats()

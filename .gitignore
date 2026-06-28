@@ -64,6 +64,7 @@ node_modules/
 # Vector and index databases
 chroma_db/
 bm25_index/
+graph_index/
 *.chroma/
 test_persist/
 

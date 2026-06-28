@@ -1,11 +1,18 @@
 import os
 
+import pytest
+
+from brainpalace_server.models.session_extract import SessionExtraction
 from brainpalace_server.services.session_archive_service import SessionArchiveService
 from brainpalace_server.services.session_distill_service import (
     DEFAULT_IDLE_SECONDS,
+    is_marked,
     marker_path,
     pending_sessions,
+    progress_path,
+    read_progress,
     write_marker,
+    write_progress,
 )
 
 
@@ -102,3 +109,62 @@ def test_distiller_uses_configured_idle_seconds(tmp_path):
     f = tmp_path / "s.jsonl"
     f.write_text("{}\n")
     assert asyncio.run(d.catch_up([f])) == 0
+
+
+# --------------------------------------------------------------------------- #
+# 2b-1: atomic state writes (temp + os.replace) — no corrupt-on-crash
+# --------------------------------------------------------------------------- #
+def test_write_progress_roundtrips_no_temp_residue(tmp_path):
+    write_progress(
+        str(tmp_path), "s1", 12, SessionExtraction(session_id="s1", summary="x")
+    )
+    off, ext = read_progress(str(tmp_path), "s1")
+    assert off == 12 and ext.summary == "x"
+    # no leftover *.tmp next to the sidecar
+    parent = progress_path(tmp_path, "s1").parent
+    assert not list(parent.glob("*.tmp"))
+
+
+def test_write_marker_no_temp_residue(tmp_path):
+    write_marker(tmp_path, "s1")
+    assert is_marked(tmp_path, "s1")
+    assert not list(marker_path(tmp_path, "s1").parent.glob("*.tmp"))
+
+
+def test_write_progress_atomic_preserves_prior_on_replace_failure(
+    tmp_path, monkeypatch
+):
+    # Seed a good progress file.
+    write_progress(
+        str(tmp_path), "s1", 5, SessionExtraction(session_id="s1", summary="good")
+    )
+    import brainpalace_server.services.session_distill_service as sds
+
+    def _boom(*_a, **_k):
+        raise OSError("disk full mid-replace")
+
+    monkeypatch.setattr(sds.os, "replace", _boom)
+    # A write that fails at the atomic-commit step must NOT clobber the prior file.
+    with pytest.raises(OSError):
+        write_progress(
+            str(tmp_path), "s1", 99, SessionExtraction(session_id="s1", summary="bad")
+        )
+    off, ext = read_progress(str(tmp_path), "s1")
+    assert off == 5 and ext.summary == "good"  # prior intact, not truncated
+    assert not list(
+        progress_path(tmp_path, "s1").parent.glob("*.tmp")
+    )  # temp cleaned up
+
+
+def test_write_marker_atomic_preserves_prior_on_replace_failure(tmp_path, monkeypatch):
+    write_marker(tmp_path, "s1")
+    prior = marker_path(tmp_path, "s1").read_text(encoding="utf-8")
+    import brainpalace_server.services.session_distill_service as sds
+
+    monkeypatch.setattr(
+        sds.os, "replace", lambda *_a, **_k: (_ for _ in ()).throw(OSError("boom"))
+    )
+    with pytest.raises(OSError):
+        write_marker(tmp_path, "s1")
+    assert marker_path(tmp_path, "s1").read_text(encoding="utf-8") == prior
+    assert not list(marker_path(tmp_path, "s1").parent.glob("*.tmp"))

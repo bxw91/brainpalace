@@ -65,19 +65,6 @@ class ServerConfig(BaseModel):
     )
 
 
-class ProjectConfig(BaseModel):
-    """Project-related configuration."""
-
-    state_dir: str | None = Field(
-        default=None,
-        description="Custom state directory path (default: .brainpalace)",
-    )
-    project_root: str | None = Field(
-        default=None,
-        description="Project root directory",
-    )
-
-
 class EmbeddingConfig(BaseModel):
     """Embedding provider configuration."""
 
@@ -132,7 +119,6 @@ class BrainPalaceConfig(BaseModel):
     """Complete BrainPalace configuration."""
 
     server: ServerConfig = Field(default_factory=ServerConfig)
-    project: ProjectConfig = Field(default_factory=ProjectConfig)
     embedding: EmbeddingConfig = Field(default_factory=EmbeddingConfig)
     summarization: SummarizationConfig = Field(default_factory=SummarizationConfig)
 
@@ -267,8 +253,6 @@ def load_config(start_path: Path | None = None) -> BrainPalaceConfig:
     # Override with environment variables (highest precedence)
     if os.getenv("BRAINPALACE_URL"):
         config.server.url = os.getenv("BRAINPALACE_URL")  # type: ignore[assignment]
-    if os.getenv("BRAINPALACE_STATE_DIR"):
-        config.project.state_dir = os.getenv("BRAINPALACE_STATE_DIR")
 
     return config
 
@@ -403,9 +387,11 @@ def get_state_dir(
 
     Resolution order:
     1. Detect project root and check for .brainpalace/ (or legacy .claude/brainpalace/)
-    2. config.project.state_dir from config file
-    3. BRAINPALACE_STATE_DIR environment variable (explicit override)
-    4. Default: {project_root}/.brainpalace
+    2. BRAINPALACE_STATE_DIR environment variable (explicit override)
+    3. Default: {project_root}/.brainpalace
+
+    A custom state-dir location is set ONLY via BRAINPALACE_STATE_DIR — it can't
+    be a config key, because the project config lives INSIDE the state dir.
 
     Args:
         config: Optional pre-loaded config.
@@ -420,26 +406,19 @@ def get_state_dir(
 
     # Check new path first, then legacy
     new_state_dir = project_root / STATE_DIR_NAME
-    if new_state_dir.exists() and (new_state_dir / "config.json").exists():
+    if new_state_dir.exists() and is_initialized_state_dir(new_state_dir):
         return new_state_dir
 
     legacy_state_dir = project_root / LEGACY_STATE_DIR_NAME
-    if legacy_state_dir.exists() and (legacy_state_dir / "config.json").exists():
+    if legacy_state_dir.exists() and is_initialized_state_dir(legacy_state_dir):
         return legacy_state_dir
 
-    # 2. Check config file setting
-    if config is None:
-        config = load_config()
-
-    if config.project.state_dir:
-        return Path(config.project.state_dir).expanduser().resolve()
-
-    # 3. Environment variable as explicit override
+    # 2. Environment variable as explicit override (the only custom-location knob)
     env_state_dir = os.getenv("BRAINPALACE_STATE_DIR")
     if env_state_dir:
         return Path(env_state_dir).expanduser().resolve()
 
-    # 4. Default: project_root/.brainpalace
+    # 3. Default: project_root/.brainpalace
     return project_root / STATE_DIR_NAME
 
 

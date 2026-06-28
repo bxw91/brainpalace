@@ -93,6 +93,34 @@ describe("graph browser", () => {
     expect(await screen.findByText(/boom/)).toBeInTheDocument();
   });
 
+  it("Start graph browser seeds top hubs and auto-expands the most-connected one", async () => {
+    vi.mocked(client.getGraphTopNodes).mockResolvedValue({
+      nodes: [
+        { id: "hub", name: "QueryService", label: "Class", degree: 12 },
+        { id: "n2", name: "execute_query", label: "Function", degree: 4 },
+      ],
+    });
+    vi.mocked(client.getGraphNeighbors).mockResolvedValue({
+      nodes: [
+        { id: "hub", name: "QueryService", label: "Class" },
+        { id: "n2", name: "execute_query", label: "Function" },
+        { id: "n3", name: "Cache", label: "Class" },
+      ],
+      edges: [{ id: "e1", source: "hub", target: "n3", label: "uses" }],
+    });
+    wrap(<Graph instanceId="a" />);
+    fireEvent.click(await screen.findByTestId("btn-graph-start"));
+    // Canvas opens auto-expanded on the #1 hub (no search performed).
+    expect(await screen.findByTestId("graph-canvas-stub")).toHaveTextContent(
+      "3 nodes",
+    );
+    expect(client.getGraphTopNodes).toHaveBeenCalledWith("a", 15);
+    expect(client.getGraphNeighbors).toHaveBeenCalledWith("a", "hub", 200);
+    // The other hub is offered as an alternative seed.
+    expect(screen.getByTestId("btn-explore-n2")).toBeInTheDocument();
+    expect(client.searchGraphNodes).not.toHaveBeenCalled();
+  });
+
   it("searches seeds and opens the canvas on Explore", async () => {
     vi.mocked(client.searchGraphNodes).mockResolvedValue({
       nodes: [{ id: "n1", name: "QueryService", label: "Class", degree: 3 }],

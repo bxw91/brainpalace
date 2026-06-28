@@ -23,10 +23,8 @@ def test_gate_keeps_inherited_when_declined():
 
 
 def test_gate_collects_bool_override_when_accepted():
-    with (
-        patch("click.confirm", side_effect=[True]),
-        patch("click.prompt", return_value="false"),
-    ):
+    # Both prompts are now y/n confirms: change? yes, enable? no -> value False.
+    with patch("click.confirm", side_effect=[True, False]):
         value, changed = inherited_change_gate(
             "Reranker", "reranker.enabled", {"reranker": {"enabled": True}}
         )
@@ -88,9 +86,10 @@ def test_init_sparse_when_reranker_inherited(tmp_path, monkeypatch):
         "--no-git-history",
         "--no-graphrag-extract",
     ]
-    # Prompt order (all per-feature prompts suppressed by flags except reranker
-    # gate): reranker-change? n, lemma? n, compute? y, Proceed y
-    r = _invoke(tmp_path, monkeypatch, args, input_str="n\nn\ny\ny\n")
+    # reranker.enabled is now a plain grid field. Accepting the grid without
+    # drilling the Reranker division leaves the inherited value untouched → no
+    # project override is written (sparse). Then Proceed.
+    r = _invoke(tmp_path, monkeypatch, args, input_str="c\ny\n")
     assert r.exit_code == 0, r.output
     cfg = _read(tmp_path / ".brainpalace")
     assert "reranker" not in (cfg or {}), (
@@ -116,8 +115,10 @@ def test_init_writes_reranker_override_when_changed(tmp_path, monkeypatch):
         "--no-git-history",
         "--no-graphrag-extract",
     ]
-    # reranker-change? y, enabled? false, lemma? n, compute? y, Proceed y
-    r = _invoke(tmp_path, monkeypatch, args, input_str="y\nfalse\nn\ny\ny\n")
+    # Drill the Reranker division (3): set Enabled=N (override the inherited
+    # true → false), Enter past the remaining reranker fields, [C]ontinue,
+    # Proceed → the changed value is written sparsely.
+    r = _invoke(tmp_path, monkeypatch, args, input_str="3\nn\n\n\n\nc\ny\n")
     assert r.exit_code == 0, r.output
     cfg = _read(tmp_path / ".brainpalace")
     assert cfg.get("reranker", {}).get("enabled") is False

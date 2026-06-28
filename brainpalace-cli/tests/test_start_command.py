@@ -1,7 +1,5 @@
 """Start-time server reuse: honour the global registry, not just runtime.json."""
 
-import json
-
 from click.testing import CliRunner
 
 from brainpalace_cli.commands import start as start_mod
@@ -9,29 +7,36 @@ from brainpalace_cli.commands.start import start_command
 from brainpalace_cli.xdg_paths import get_xdg_config_dir
 
 
-def test_read_config_inherits_global_bind(monkeypatch, tmp_path):
-    """A bind key the project omits is inherited from the global XDG config.json."""
+def test_read_bind_inherits_global_bind(monkeypatch, tmp_path):
+    """A bind key the project omits is inherited from the global XDG config.yaml."""
+    import yaml
+
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
     gdir = get_xdg_config_dir()
     gdir.mkdir(parents=True, exist_ok=True)
-    (gdir / "config.json").write_text(
-        json.dumps({"bind_host": "0.0.0.0", "port_range_start": 9000})
+    (gdir / "config.yaml").write_text(
+        yaml.dump({"bind": {"bind_host": "0.0.0.0", "port_range_start": 9000}})
     )
     state = tmp_path / "proj" / ".brainpalace"
     state.mkdir(parents=True)
-    (state / "config.json").write_text(json.dumps({"port_range_start": 7000}))
+    (state / "config.yaml").write_text(yaml.dump({"bind": {"port_range_start": 7000}}))
 
-    merged = start_mod.read_config(state)
+    merged = start_mod.read_bind(state)
     assert merged["bind_host"] == "0.0.0.0"  # inherited from the global layer
     assert merged["port_range_start"] == 7000  # project overrides global
 
 
-def test_read_config_without_global_is_project_only(monkeypatch, tmp_path):
+def test_read_bind_without_global_is_project_only(monkeypatch, tmp_path):
+    import yaml
+
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
     state = tmp_path / ".brainpalace"
     state.mkdir(parents=True)
-    (state / "config.json").write_text(json.dumps({"bind_host": "1.2.3.4"}))
-    assert start_mod.read_config(state) == {"bind_host": "1.2.3.4"}
+    (state / "config.yaml").write_text(yaml.dump({"bind": {"bind_host": "1.2.3.4"}}))
+    result = start_mod.read_bind(state)
+    assert result["bind_host"] == "1.2.3.4"
+    # remaining keys get code defaults
+    assert result["port_range_start"] == 8000
 
 
 def test_start_reuses_live_registry_server_for_same_project(monkeypatch, tmp_path):
@@ -83,7 +88,16 @@ def test_start_reuse_path_prints_dashboard_box(monkeypatch, tmp_path):
         "resolve_state_dir_with_fallback",
         lambda _p: project / ".brainpalace",
     )
-    monkeypatch.setattr(start_mod, "read_config", lambda _sd: {})
+    monkeypatch.setattr(
+        start_mod,
+        "read_bind",
+        lambda _sd: {
+            "bind_host": "127.0.0.1",
+            "port_range_start": 8000,
+            "port_range_end": 8100,
+            "auto_port": True,
+        },
+    )
     monkeypatch.setattr(
         start_mod, "find_reusable_server", lambda _p: "http://127.0.0.1:8000"
     )

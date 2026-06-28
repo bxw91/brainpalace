@@ -47,7 +47,7 @@ from brainpalace_cli.commands.start import (
     cleanup_stale,
     find_available_port,
     is_process_alive,
-    read_config,
+    read_bind,
     read_runtime,
     update_registry,
     write_runtime,
@@ -109,7 +109,7 @@ def _start_for(project_root: Path, timeout: int) -> None:
             return
         cleanup_stale(state_dir)
 
-    config = read_config(state_dir)
+    config = read_bind(state_dir)
     bind_host: str = config.get("bind_host", "127.0.0.1")
     port: int
     if config.get("auto_port", True):

@@ -64,9 +64,6 @@ class JobRecord(BaseModel):
     chunk_size: int = Field(default=512, description="Chunk size in tokens")
     chunk_overlap: int = Field(default=50, description="Chunk overlap in tokens")
     recursive: bool = Field(default=True, description="Recursive folder scan")
-    generate_summaries: bool = Field(
-        default=False, description="Generate LLM summaries"
-    )
     supported_languages: list[str] | None = Field(
         default=None, description="Languages to index"
     )

@@ -6,10 +6,8 @@ import pytest
 
 from brainpalace_server.indexing.graph_extractors import (
     CodeMetadataExtractor,
-    LangExtractExtractor,
     LLMEntityExtractor,
     get_code_extractor,
-    get_langextract_extractor,
     get_llm_extractor,
     reset_extractors,
 )
@@ -54,21 +52,9 @@ class TestLLMEntityExtractor:
         assert result == []
 
     @patch("brainpalace_server.indexing.graph_extractors.settings")
-    def test_extract_triplets_llm_disabled(self, mock_settings: MagicMock):
-        """Test extraction returns empty when LLM extraction disabled."""
-        mock_settings.ENABLE_GRAPH_INDEX = True
-        mock_settings.GRAPH_USE_LLM_EXTRACTION = False
-
-        extractor = LLMEntityExtractor()
-        result = extractor.extract_triplets("Some text content")
-
-        assert result == []
-
-    @patch("brainpalace_server.indexing.graph_extractors.settings")
     def test_extract_triplets_no_api_key(self, mock_settings: MagicMock):
         """Test extraction handles missing API key gracefully."""
         mock_settings.ENABLE_GRAPH_INDEX = True
-        mock_settings.GRAPH_USE_LLM_EXTRACTION = True
         mock_settings.ANTHROPIC_API_KEY = ""
 
         extractor = LLMEntityExtractor()
@@ -494,226 +480,6 @@ import (
         assert defined_in[0].subject_type == "Class"  # Not "class"
 
 
-class TestLangExtractExtractor:
-    """Tests for LangExtractExtractor."""
-
-    def test_init_with_defaults(self):
-        """Test initialization resolves provider from settings."""
-        extractor = LangExtractExtractor()
-
-        # provider should be resolved (non-empty string)
-        assert extractor.provider is not None
-        assert isinstance(extractor.provider, str)
-        assert extractor.max_triplets > 0
-
-    def test_init_with_explicit_params(self):
-        """Test initialization with explicit provider and model."""
-        extractor = LangExtractExtractor(
-            provider="openai",
-            model="gpt-4o",
-            max_triplets=5,
-        )
-
-        assert extractor.provider == "openai"
-        assert extractor.model == "gpt-4o"
-        assert extractor.max_triplets == 5
-
-    @patch("brainpalace_server.indexing.graph_extractors.settings")
-    def test_extract_triplets_disabled(self, mock_settings: MagicMock):
-        """Test extraction is no-op when graph indexing disabled."""
-        mock_settings.ENABLE_GRAPH_INDEX = False
-        mock_settings.GRAPH_DOC_EXTRACTOR = "langextract"
-
-        extractor = LangExtractExtractor(provider="ollama")
-        result = extractor.extract_triplets("Some document text")
-
-        assert result == []
-
-    @patch("brainpalace_server.indexing.graph_extractors.settings")
-    def test_extract_triplets_none_extractor(self, mock_settings: MagicMock):
-        """Test extraction is no-op when GRAPH_DOC_EXTRACTOR=none."""
-        mock_settings.ENABLE_GRAPH_INDEX = True
-        mock_settings.GRAPH_DOC_EXTRACTOR = "none"
-
-        extractor = LangExtractExtractor(provider="ollama")
-        result = extractor.extract_triplets("Some document text")
-
-        assert result == []
-
-    @patch("brainpalace_server.indexing.graph_extractors.settings")
-    def test_extract_triplets_empty_text(self, mock_settings: MagicMock):
-        """Test extraction returns empty list for empty text."""
-        mock_settings.ENABLE_GRAPH_INDEX = True
-        mock_settings.GRAPH_DOC_EXTRACTOR = "langextract"
-
-        extractor = LangExtractExtractor(provider="ollama")
-        result = extractor.extract_triplets("")
-
-        assert result == []
-
-    @patch("brainpalace_server.indexing.graph_extractors.settings")
-    def test_extract_triplets_langextract_not_installed(self, mock_settings: MagicMock):
-        """Test graceful degradation when langextract is not installed."""
-        mock_settings.ENABLE_GRAPH_INDEX = True
-        mock_settings.GRAPH_DOC_EXTRACTOR = "langextract"
-
-        extractor = LangExtractExtractor(provider="ollama")
-
-        with patch.dict("sys.modules", {"langextract": None}):
-            result = extractor.extract_triplets("FastAPI uses Pydantic for validation")
-
-        assert result == []
-
-    @patch("brainpalace_server.indexing.graph_extractors.settings")
-    def test_convert_relations_produces_correct_triplets(
-        self, mock_settings: MagicMock
-    ):
-        """Test _convert_relations produces correct GraphTriple list.
-
-        Tests conversion directly rather than mocking langextract's lazy import,
-        which is separately covered by the graceful-degradation tests.
-        """
-        mock_settings.ENABLE_GRAPH_INDEX = True
-        mock_settings.GRAPH_DOC_EXTRACTOR = "langextract"
-
-        extractor = LangExtractExtractor(provider="ollama")
-
-        relations = [
-            {
-                "subject": "FastAPI",
-                "relation": "uses",
-                "object": "Pydantic",
-                "subject_type": "Framework",
-                "object_type": "Library",
-            },
-            {
-                "subject": "BrainPalace",
-                "relation": "depends_on",
-                "object": "ChromaDB",
-            },
-        ]
-
-        triplets = extractor._convert_relations(relations, source_chunk_id="doc_1")
-
-        assert len(triplets) == 2
-        assert triplets[0].subject == "FastAPI"
-        assert triplets[0].predicate == "uses"
-        assert triplets[0].object == "Pydantic"
-        assert triplets[0].source_chunk_id == "doc_1"
-        assert triplets[1].subject == "BrainPalace"
-        assert triplets[1].predicate == "depends_on"
-        assert triplets[1].object == "ChromaDB"
-
-    def test_convert_relations_dict_format(self):
-        """Test _convert_relations handles dict-style relations."""
-        extractor = LangExtractExtractor(provider="ollama")
-
-        relations = [
-            {
-                "subject": "FastAPI",
-                "relation": "uses",
-                "object": "Pydantic",
-                "subject_type": "Framework",
-                "object_type": "Library",
-            }
-        ]
-
-        triplets = extractor._convert_relations(relations, source_chunk_id="c1")
-
-        assert len(triplets) == 1
-        assert triplets[0].subject == "FastAPI"
-        assert triplets[0].predicate == "uses"
-        assert triplets[0].object == "Pydantic"
-        assert triplets[0].source_chunk_id == "c1"
-
-    def test_convert_relations_head_tail_format(self):
-        """Test _convert_relations handles head/tail dict format."""
-        extractor = LangExtractExtractor(provider="ollama")
-
-        relations = [
-            {
-                "head": "BrainPalace",
-                "predicate": "depends_on",
-                "tail": "ChromaDB",
-            }
-        ]
-
-        triplets = extractor._convert_relations(relations, source_chunk_id=None)
-
-        assert len(triplets) == 1
-        assert triplets[0].subject == "BrainPalace"
-        assert triplets[0].predicate == "depends_on"
-        assert triplets[0].object == "ChromaDB"
-
-    def test_convert_relations_object_format(self):
-        """Test _convert_relations handles object-style relations."""
-        extractor = LangExtractExtractor(provider="ollama")
-
-        mock_rel = MagicMock()
-        mock_rel.subject = "Service"
-        mock_rel.relation = "calls"
-        mock_rel.object = "Database"
-        mock_rel.subject_type = "Class"
-        mock_rel.object_type = "Database"
-        # Remove head/tail attributes
-        del mock_rel.head
-        del mock_rel.tail
-
-        triplets = extractor._convert_relations([mock_rel], source_chunk_id=None)
-
-        assert len(triplets) == 1
-        assert triplets[0].subject == "Service"
-        assert triplets[0].predicate == "calls"
-        assert triplets[0].object == "Database"
-
-    def test_convert_relations_skips_incomplete(self):
-        """Test _convert_relations skips relations with missing fields."""
-        extractor = LangExtractExtractor(provider="ollama")
-
-        relations = [
-            {"subject": "", "relation": "uses", "object": "Pydantic"},
-            {"subject": "FastAPI", "relation": "", "object": "Pydantic"},
-            {"subject": "FastAPI", "relation": "uses", "object": ""},
-        ]
-
-        triplets = extractor._convert_relations(relations, source_chunk_id=None)
-
-        assert triplets == []
-
-    def test_convert_relations_empty_input(self):
-        """Test _convert_relations returns empty list for empty input."""
-        extractor = LangExtractExtractor(provider="ollama")
-
-        assert extractor._convert_relations([], source_chunk_id=None) == []
-        assert extractor._convert_relations(None, source_chunk_id=None) == []  # type: ignore[arg-type]
-
-    @patch("brainpalace_server.indexing.graph_extractors.settings")
-    def test_extract_triplets_handles_exception(self, mock_settings: MagicMock):
-        """Test extraction returns empty list on unexpected exceptions."""
-        import sys
-
-        mock_settings.ENABLE_GRAPH_INDEX = True
-        mock_settings.GRAPH_DOC_EXTRACTOR = "langextract"
-        mock_settings.GRAPH_MAX_TRIPLETS_PER_CHUNK = 10
-
-        extractor = LangExtractExtractor(provider="ollama", max_triplets=10)
-
-        mock_langextract = MagicMock()
-        mock_langextract.extract_relations.side_effect = RuntimeError("provider error")
-
-        original = sys.modules.get("langextract")
-        sys.modules["langextract"] = mock_langextract
-        try:
-            result = extractor.extract_triplets("some text")
-        finally:
-            if original is None:
-                sys.modules.pop("langextract", None)
-            else:
-                sys.modules["langextract"] = original
-
-        assert result == []
-
-
 class TestModuleFunctions:
     """Tests for module-level convenience functions."""
 
@@ -731,29 +497,6 @@ class TestModuleFunctions:
 
         assert extractor1 is extractor2
 
-    def test_get_langextract_extractor_singleton(self):
-        """Test get_langextract_extractor returns singleton."""
-        extractor1 = get_langextract_extractor()
-        extractor2 = get_langextract_extractor()
-
-        assert extractor1 is extractor2
-
-    def test_reset_extractors_clears_all(self):
-        """Test reset_extractors clears all three singletons."""
-        llm1 = get_llm_extractor()
-        code1 = get_code_extractor()
-        langextract1 = get_langextract_extractor()
-
-        reset_extractors()
-
-        llm2 = get_llm_extractor()
-        code2 = get_code_extractor()
-        langextract2 = get_langextract_extractor()
-
-        assert llm1 is not llm2
-        assert code1 is not code2
-        assert langextract1 is not langextract2
-
     def test_reset_extractors(self):
         """Test reset_extractors clears singletons."""
         extractor1 = get_llm_extractor()
@@ -761,3 +504,20 @@ class TestModuleFunctions:
         extractor2 = get_llm_extractor()
 
         assert extractor1 is not extractor2
+
+
+def test_doc_chunk_extraction_is_noop_without_pending_store(monkeypatch):
+    """Doc chunk extraction skips silently when no pending store is wired (C4)."""
+    from brainpalace_server.config import settings
+    from brainpalace_server.indexing.graph_index import GraphIndexManager
+
+    monkeypatch.setattr(settings, "ENABLE_GRAPH_INDEX", True, raising=False)
+
+    mgr = GraphIndexManager()  # pending_store=None by default
+    doc = {
+        "text": "BrainPalace uses BM25 and vector retrieval.",
+        "metadata": {"source_type": "document"},
+        "id": "c1",
+    }
+    triplets = mgr._extract_from_document(doc)
+    assert triplets == []  # no pending store wired -> deferred, returns empty

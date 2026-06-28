@@ -1,0 +1,986 @@
+{
+  "providers": {
+    "embedding": {
+      "cohere": {
+        "default_api_key_env": "COHERE_API_KEY",
+        "models": [
+          "embed-english-v3.0",
+          "embed-multilingual-v3.0"
+        ],
+        "needs_base_url": false
+      },
+      "ollama": {
+        "default_api_key_env": null,
+        "models": [
+          "nomic-embed-text",
+          "mxbai-embed-large"
+        ],
+        "needs_base_url": true
+      },
+      "openai": {
+        "default_api_key_env": "OPENAI_API_KEY",
+        "models": [
+          "text-embedding-3-large",
+          "text-embedding-3-small"
+        ],
+        "needs_base_url": false
+      }
+    },
+    "reranker": {
+      "ollama": {
+        "default_api_key_env": null,
+        "models": [
+          "llama3.2:1b"
+        ],
+        "needs_base_url": true
+      },
+      "sentence-transformers": {
+        "default_api_key_env": null,
+        "models": [
+          "cross-encoder/ms-marco-MiniLM-L-6-v2",
+          "cross-encoder/ms-marco-MiniLM-L-12-v2"
+        ],
+        "needs_base_url": false
+      }
+    },
+    "summarization": {
+      "anthropic": {
+        "default_api_key_env": "ANTHROPIC_API_KEY",
+        "models": [
+          "claude-haiku-4-5-20251001",
+          "claude-sonnet-4-5-20250514"
+        ],
+        "needs_base_url": false
+      },
+      "gemini": {
+        "default_api_key_env": "GEMINI_API_KEY",
+        "models": [
+          "gemini-3.1-flash-lite",
+          "gemini-3.5-flash"
+        ],
+        "needs_base_url": false
+      },
+      "grok": {
+        "default_api_key_env": "XAI_API_KEY",
+        "models": [
+          "grok-4",
+          "grok-4-fast"
+        ],
+        "needs_base_url": true
+      },
+      "ollama": {
+        "default_api_key_env": null,
+        "models": [
+          "llama4:scout",
+          "mistral-small3.2",
+          "qwen3-coder"
+        ],
+        "needs_base_url": true
+      },
+      "openai": {
+        "default_api_key_env": "OPENAI_API_KEY",
+        "models": [
+          "gpt-5-mini",
+          "gpt-5"
+        ],
+        "needs_base_url": false
+      }
+    }
+  },
+  "sections": [
+    {
+      "fields": [
+        {
+          "default": "openai",
+          "dotpath": "embedding.provider",
+          "help": "Embedding provider. Drives the model choices, base URL, and expected API-key env var below.",
+          "key": "provider",
+          "label": "Provider",
+          "options": [
+            "cohere",
+            "ollama",
+            "openai"
+          ],
+          "secret": false,
+          "widget": "enum"
+        },
+        {
+          "default": "text-embedding-3-large",
+          "dotpath": "embedding.model",
+          "help": "Embedding model. Presets follow the selected provider; pick Custom\u2026 for any other model.",
+          "key": "model",
+          "label": "Model",
+          "presets": [
+            "text-embedding-3-large",
+            "text-embedding-3-small",
+            "embed-english-v3.0",
+            "embed-multilingual-v3.0",
+            "nomic-embed-text",
+            "mxbai-embed-large"
+          ],
+          "secret": false,
+          "widget": "text"
+        },
+        {
+          "default": null,
+          "dotpath": "embedding.base_url",
+          "help": "Custom API endpoint (e.g. Ollama http://localhost:11434, or an OpenAI-compatible proxy). Empty = provider default.",
+          "key": "base_url",
+          "label": "Base url",
+          "secret": false,
+          "widget": "text"
+        },
+        {
+          "default": null,
+          "dotpath": "embedding.api_key_env",
+          "help": "Name of the environment variable holding the API key (e.g. OPENAI_API_KEY). Empty = the provider's conventional default env var.",
+          "key": "api_key_env",
+          "label": "API key env var",
+          "placeholder": "OPENAI_API_KEY",
+          "secret": false,
+          "widget": "text"
+        },
+        {
+          "default": null,
+          "dotpath": "embedding.api_key",
+          "help": "Optional. A literal API key stored in config.yaml (discouraged \u2014 secrets in a file). Prefer the 'API key env var' which names an environment variable. Empty = use the env var.",
+          "key": "api_key",
+          "label": "API key (inline \u2014 prefer env var)",
+          "secret": true,
+          "widget": "text"
+        },
+        {
+          "default": {},
+          "dotpath": "embedding.params",
+          "help": "Extra provider params (key/value). Passed through to the client.",
+          "key": "params",
+          "label": "Params",
+          "secret": false,
+          "widget": "dict"
+        }
+      ],
+      "key": "embedding",
+      "label": "Embedding"
+    },
+    {
+      "fields": [
+        {
+          "default": "anthropic",
+          "dotpath": "summarization.provider",
+          "help": "Summarization provider used for chat-session distillation and doc-graph triplet extraction (extraction.mode=provider/auto). Drives the model choices, base URL, and expected API-key env var below.",
+          "key": "provider",
+          "label": "Provider",
+          "options": [
+            "anthropic",
+            "gemini",
+            "grok",
+            "ollama",
+            "openai"
+          ],
+          "secret": false,
+          "widget": "enum"
+        },
+        {
+          "default": "claude-haiku-4-5-20251001",
+          "dotpath": "summarization.model",
+          "help": "Summarization model. Presets follow the selected provider; pick Custom\u2026 for any other model.",
+          "key": "model",
+          "label": "Model",
+          "presets": [
+            "claude-haiku-4-5-20251001",
+            "claude-sonnet-4-5-20250514",
+            "gpt-5-mini",
+            "gpt-5",
+            "gemini-3.1-flash-lite",
+            "gemini-3.5-flash",
+            "grok-4",
+            "grok-4-fast",
+            "llama4:scout",
+            "mistral-small3.2",
+            "qwen3-coder"
+          ],
+          "secret": false,
+          "widget": "text"
+        },
+        {
+          "default": null,
+          "dotpath": "summarization.base_url",
+          "help": "Custom API endpoint (e.g. Ollama http://localhost:11434, or an OpenAI-compatible proxy). Empty = provider default.",
+          "key": "base_url",
+          "label": "Base url",
+          "secret": false,
+          "widget": "text"
+        },
+        {
+          "default": null,
+          "dotpath": "summarization.api_key_env",
+          "help": "Name of the environment variable holding the API key (e.g. OPENAI_API_KEY). Empty = the provider's conventional default env var.",
+          "key": "api_key_env",
+          "label": "API key env var",
+          "placeholder": "ANTHROPIC_API_KEY",
+          "secret": false,
+          "widget": "text"
+        },
+        {
+          "default": null,
+          "dotpath": "summarization.api_key",
+          "help": "Optional. A literal API key stored in config.yaml (discouraged \u2014 secrets in a file). Prefer the 'API key env var' which names an environment variable. Empty = use the env var.",
+          "key": "api_key",
+          "label": "API key (inline \u2014 prefer env var)",
+          "secret": true,
+          "widget": "text"
+        },
+        {
+          "default": {},
+          "dotpath": "summarization.params",
+          "help": "Extra provider params (key/value). Passed through to the client.",
+          "key": "params",
+          "label": "Params",
+          "secret": false,
+          "widget": "dict"
+        }
+      ],
+      "key": "summarization",
+      "label": "Summarization"
+    },
+    {
+      "fields": [
+        {
+          "default": false,
+          "dotpath": "reranker.enabled",
+          "help": "Two-stage retrieval: after the first stage (bm25/vector/hybrid) returns candidates, a local cross-encoder rescores each (query, chunk) pair and reorders by relevance. No API cost (local model); adds a little query latency. Default: off.",
+          "key": "enabled",
+          "label": "Enabled",
+          "secret": false,
+          "widget": "toggle"
+        },
+        {
+          "default": "sentence-transformers",
+          "dotpath": "reranker.provider",
+          "help": "sentence-transformers = local cross-encoder, no API cost, no base URL (recommended). ollama = prompt-based scoring served by Ollama; works with any chat model but is slower and needs a base URL.",
+          "key": "provider",
+          "label": "Provider",
+          "options": [
+            "ollama",
+            "sentence-transformers"
+          ],
+          "secret": false,
+          "widget": "enum"
+        },
+        {
+          "default": "cross-encoder/ms-marco-MiniLM-L-6-v2",
+          "dotpath": "reranker.model",
+          "help": "sentence-transformers: a cross-encoder model (empty = built-in default cross-encoder/ms-marco-MiniLM-L-6-v2). ollama: any chat model (e.g. llama3.2:1b) used for prompt-based relevance scoring.",
+          "key": "model",
+          "label": "Model",
+          "presets": [
+            "cross-encoder/ms-marco-MiniLM-L-6-v2",
+            "cross-encoder/ms-marco-MiniLM-L-12-v2",
+            "llama3.2:1b"
+          ],
+          "secret": false,
+          "widget": "text"
+        },
+        {
+          "default": null,
+          "dotpath": "reranker.base_url",
+          "help": "Custom API endpoint (e.g. Ollama http://localhost:11434, or an OpenAI-compatible proxy). Empty = provider default.",
+          "key": "base_url",
+          "label": "Base url",
+          "secret": false,
+          "widget": "text"
+        },
+        {
+          "default": {},
+          "dotpath": "reranker.params",
+          "help": "Extra reranker params (key/value). Passed through to the client.",
+          "key": "params",
+          "label": "Params",
+          "secret": false,
+          "widget": "dict"
+        }
+      ],
+      "key": "reranker",
+      "label": "Reranker"
+    },
+    {
+      "fields": [
+        {
+          "default": false,
+          "dotpath": "bm25.detect",
+          "help": "Detect each document's language individually (py3langid). When off, every document uses the default language below. Default: off.",
+          "key": "detect",
+          "label": "Auto-detect language (per document)",
+          "secret": false,
+          "widget": "toggle"
+        },
+        {
+          "default": 0.6,
+          "dotpath": "bm25.detect_min_confidence",
+          "help": "Below this confidence, a document falls back to the default language. Only used when auto-detect is on. Default: 0.6.",
+          "key": "detect_min_confidence",
+          "label": "Auto-detect min confidence",
+          "secret": false,
+          "visible_when": {
+            "equals": "true",
+            "field": "bm25.detect"
+          },
+          "widget": "text"
+        },
+        {
+          "default": "stem",
+          "dotpath": "bm25.engine",
+          "key": "engine",
+          "label": "Engine",
+          "options": [
+            "lemma",
+            "stem"
+          ],
+          "secret": false,
+          "widget": "enum"
+        },
+        {
+          "default": "en",
+          "dotpath": "bm25.language",
+          "help": "Tokenizer language used as the default, and the fallback when auto-detect is off or below the confidence threshold. Default: en.",
+          "key": "language",
+          "label": "Default / fallback language",
+          "secret": false,
+          "widget": "text"
+        }
+      ],
+      "key": "bm25",
+      "label": "BM25"
+    },
+    {
+      "description": "The knowledge graph (entities + relationships) that powers graph and multi query modes.",
+      "fields": [
+        {
+          "default": true,
+          "dotpath": "graphrag.enabled",
+          "help": "Master switch for the knowledge graph (entities + relationships mined from code and docs). Powers graph/multi query modes.",
+          "key": "enabled",
+          "label": "Enabled",
+          "secret": false,
+          "widget": "toggle"
+        },
+        {
+          "default": true,
+          "dotpath": "graphrag.use_code_metadata",
+          "help": "Enrich graph nodes with code-structure metadata (symbols, signatures) for richer graph queries. Default: on.",
+          "key": "use_code_metadata",
+          "label": "Use code metadata",
+          "secret": false,
+          "widget": "toggle"
+        },
+        {
+          "default": "sqlite",
+          "dotpath": "graphrag.store_type",
+          "help": "simple = in-memory graph, rebuilt on every server start, with NO temporal (versioned-over-time) edges \u2014 lightest, ephemeral. sqlite = persistent on-disk graph that supports the temporal knowledge graph (edges versioned over time). Default and recommended: sqlite.",
+          "key": "store_type",
+          "label": "Store type",
+          "options": [
+            "simple",
+            "sqlite"
+          ],
+          "secret": false,
+          "widget": "enum"
+        }
+      ],
+      "key": "graphrag",
+      "label": "GraphRAG"
+    },
+    {
+      "description": "Aggregation query mode that sums typed numeric records extracted from sessions. Powers the compute query mode.",
+      "fields": [
+        {
+          "default": 0.7,
+          "dotpath": "compute.min_confidence",
+          "key": "min_confidence",
+          "label": "Min confidence",
+          "secret": false,
+          "widget": "text"
+        }
+      ],
+      "key": "compute",
+      "label": "Compute Query"
+    },
+    {
+      "description": "Where indexed vectors live. chroma is the zero-setup local default; postgres is for shared/larger deployments.",
+      "fields": [
+        {
+          "default": "chroma",
+          "dotpath": "storage.backend",
+          "help": "chroma = local on-disk vector DB, single process, zero setup (default). postgres = shared/multi-client store for larger or multi-user deployments; requires a running PostgreSQL and the PostgreSQL fields below.",
+          "key": "backend",
+          "label": "Backend",
+          "options": [
+            "chroma",
+            "postgres"
+          ],
+          "secret": false,
+          "widget": "enum"
+        },
+        {
+          "dotpath": "storage.postgres",
+          "fields": [
+            {
+              "dotpath": "storage.postgres.database",
+              "key": "database",
+              "label": "Database",
+              "secret": false,
+              "widget": "text"
+            },
+            {
+              "dotpath": "storage.postgres.debug",
+              "key": "debug",
+              "label": "Debug",
+              "secret": false,
+              "widget": "toggle"
+            },
+            {
+              "dotpath": "storage.postgres.hnsw_ef_construction",
+              "key": "hnsw_ef_construction",
+              "label": "Hnsw ef construction",
+              "secret": false,
+              "widget": "int"
+            },
+            {
+              "dotpath": "storage.postgres.hnsw_m",
+              "key": "hnsw_m",
+              "label": "Hnsw m",
+              "secret": false,
+              "widget": "int"
+            },
+            {
+              "dotpath": "storage.postgres.host",
+              "key": "host",
+              "label": "Host",
+              "secret": false,
+              "widget": "text"
+            },
+            {
+              "dotpath": "storage.postgres.language",
+              "key": "language",
+              "label": "Language",
+              "secret": false,
+              "widget": "text"
+            },
+            {
+              "dotpath": "storage.postgres.password",
+              "key": "password",
+              "label": "Password",
+              "secret": true,
+              "widget": "text"
+            },
+            {
+              "dotpath": "storage.postgres.pool_max_overflow",
+              "key": "pool_max_overflow",
+              "label": "Pool max overflow",
+              "secret": false,
+              "widget": "int"
+            },
+            {
+              "dotpath": "storage.postgres.pool_size",
+              "key": "pool_size",
+              "label": "Pool size",
+              "secret": false,
+              "widget": "int"
+            },
+            {
+              "dotpath": "storage.postgres.pool_timeout",
+              "key": "pool_timeout",
+              "label": "Pool timeout",
+              "secret": false,
+              "widget": "int"
+            },
+            {
+              "dotpath": "storage.postgres.port",
+              "key": "port",
+              "label": "Port",
+              "secret": false,
+              "widget": "int"
+            },
+            {
+              "dotpath": "storage.postgres.user",
+              "key": "user",
+              "label": "User",
+              "secret": false,
+              "widget": "text"
+            }
+          ],
+          "key": "postgres",
+          "label": "PostgreSQL",
+          "visible_when": {
+            "equals": "postgres",
+            "field": "storage.backend"
+          },
+          "widget": "group"
+        }
+      ],
+      "key": "storage",
+      "label": "Storage"
+    },
+    {
+      "description": "Large-file re-embed guards and which paths are skipped when indexing. exclude_patterns are globs never indexed.",
+      "fields": [
+        {
+          "default": 200,
+          "dotpath": "indexing.big_file_chunks",
+          "key": "big_file_chunks",
+          "label": "Big file chunks",
+          "secret": false,
+          "widget": "int"
+        },
+        {
+          "default": [
+            "**/node_modules/**",
+            "**/__pycache__/**",
+            "**/.venv/**",
+            "**/venv/**",
+            "**/.git/**",
+            "**/dist/**",
+            "**/build/**",
+            "**/target/**",
+            "**/.next/**",
+            "**/.nuxt/**",
+            "**/coverage/**",
+            "**/.pytest_cache/**",
+            "**/.mypy_cache/**",
+            "**/.tox/**",
+            "**/egg-info/**",
+            "**/*.egg-info/**",
+            "**/.claude/**",
+            "**/.claude-plugin/**",
+            "**/.brainpalace/**"
+          ],
+          "dotpath": "indexing.exclude_patterns",
+          "help": "Glob patterns never indexed (one per row).",
+          "key": "exclude_patterns",
+          "label": "Exclude patterns",
+          "secret": false,
+          "widget": "stringlist"
+        },
+        {
+          "default": 300000,
+          "dotpath": "indexing.max_embed_tokens_per_job",
+          "key": "max_embed_tokens_per_job",
+          "label": "Max embed tokens per job",
+          "secret": false,
+          "widget": "int"
+        },
+        {
+          "default": 262144,
+          "dotpath": "indexing.max_file_bytes_throttle",
+          "key": "max_file_bytes_throttle",
+          "label": "Max file bytes throttle",
+          "secret": false,
+          "widget": "int"
+        },
+        {
+          "default": 3600,
+          "dotpath": "indexing.reembed_cooldown_seconds",
+          "key": "reembed_cooldown_seconds",
+          "label": "Reembed cooldown seconds",
+          "secret": false,
+          "widget": "int"
+        },
+        {
+          "default": true,
+          "dotpath": "indexing.skip_minified",
+          "key": "skip_minified",
+          "label": "Skip minified",
+          "secret": false,
+          "widget": "toggle"
+        }
+      ],
+      "key": "indexing",
+      "label": "Indexing"
+    },
+    {
+      "description": "Index git history so past commits and decisions are searchable alongside code.",
+      "fields": [
+        {
+          "default": false,
+          "dotpath": "git_indexing.enabled",
+          "help": "Index git history (commit messages + changed paths) so past decisions are searchable. Default: off.",
+          "key": "enabled",
+          "label": "Enabled",
+          "secret": false,
+          "widget": "toggle"
+        },
+        {
+          "default": null,
+          "dotpath": "git_indexing.repo_path",
+          "key": "repo_path",
+          "label": "Repo path",
+          "secret": false,
+          "widget": "text"
+        },
+        {
+          "default": [],
+          "dotpath": "git_indexing.path_filter",
+          "help": "Path globs to include when indexing git history (one per row).",
+          "key": "path_filter",
+          "label": "Path filter",
+          "secret": false,
+          "widget": "stringlist"
+        },
+        {
+          "default": 0,
+          "dotpath": "git_indexing.depth",
+          "help": "How many commits back to index. 0 = full history. Default: 0.",
+          "key": "depth",
+          "label": "History depth (commits)",
+          "min": 0,
+          "secret": false,
+          "widget": "int"
+        },
+        {
+          "default": 50,
+          "dotpath": "git_indexing.max_files",
+          "help": "Skip commits touching more than this many files (cuts noise from bulk/vendor commits). Default: 50.",
+          "key": "max_files",
+          "label": "Max files per commit",
+          "min": 0,
+          "secret": false,
+          "widget": "int"
+        }
+      ],
+      "key": "git_indexing",
+      "label": "Git Indexing"
+    },
+    {
+      "description": "COPIES raw chat transcripts verbatim to a local folder \u2014 a free, durable backup. Does NOT embed or summarize; just the raw store.",
+      "fields": [
+        {
+          "default": true,
+          "dotpath": "session_indexing.archive.enabled",
+          "key": "enabled",
+          "label": "Archive enabled",
+          "secret": false,
+          "widget": "toggle"
+        },
+        {
+          "default": ".brainpalace/session_archive",
+          "dotpath": "session_indexing.archive.dir",
+          "help": "Where raw transcripts are copied (relative to project or absolute).",
+          "key": "dir",
+          "label": "Archive directory",
+          "secret": false,
+          "widget": "text"
+        },
+        {
+          "default": 0,
+          "dotpath": "session_indexing.archive.retain_days",
+          "help": "0 = keep forever.",
+          "key": "retain_days",
+          "label": "Retain (days)",
+          "min": 0,
+          "secret": false,
+          "widget": "int"
+        },
+        {
+          "default": 600,
+          "dotpath": "session_indexing.archive.reconcile_seconds",
+          "help": "How often the archive copy/index sweep runs.",
+          "key": "reconcile_seconds",
+          "label": "Reconcile interval (s)",
+          "min": 1,
+          "secret": false,
+          "widget": "int"
+        }
+      ],
+      "key": "session_archiving",
+      "label": "Chat Session : Archiving"
+    },
+    {
+      "description": "EMBEDS raw chat transcripts into vectors for semantic recall (billable). Separate from the copy (Chat Session : Archiving) and the summary (Chat Session : Summarization).",
+      "fields": [
+        {
+          "default": true,
+          "dotpath": "session_indexing.enabled",
+          "key": "enabled",
+          "label": "Vector indexing enabled",
+          "secret": false,
+          "widget": "toggle"
+        },
+        {
+          "default": false,
+          "dotpath": "session_indexing.include_user_turns",
+          "key": "include_user_turns",
+          "label": "Include user turns",
+          "secret": false,
+          "widget": "toggle"
+        },
+        {
+          "default": 0,
+          "dotpath": "session_indexing.retain_days",
+          "key": "retain_days",
+          "label": "Retain days",
+          "secret": false,
+          "widget": "int"
+        },
+        {
+          "default": null,
+          "dotpath": "session_indexing.sessions_dir",
+          "help": "Where to read AI chat transcripts from. Empty = auto (~/.claude/projects/...). This is the SOURCE, not the archive directory (see Session archive below).",
+          "key": "sessions_dir",
+          "label": "Transcript source dir (override)",
+          "secret": false,
+          "widget": "text"
+        },
+        {
+          "default": 2,
+          "dotpath": "session_indexing.stride",
+          "key": "stride",
+          "label": "Stride",
+          "secret": false,
+          "widget": "int"
+        },
+        {
+          "default": 30000,
+          "dotpath": "session_indexing.watch_debounce_ms",
+          "key": "watch_debounce_ms",
+          "label": "Watch debounce ms",
+          "secret": false,
+          "widget": "int"
+        },
+        {
+          "default": 4,
+          "dotpath": "session_indexing.window",
+          "key": "window",
+          "label": "Window",
+          "secret": false,
+          "widget": "int"
+        }
+      ],
+      "key": "session_indexing",
+      "label": "Chat Session : Vector Indexing"
+    },
+    {
+      "description": "DISTILLS a finished chat transcript into a structured summary, decisions, and graph triples \u2014 the curated 'memory'. Not a copy (Chat Session : Archiving) and not an embed (Chat Session : Vector Indexing).",
+      "fields": [
+        {
+          "default": 1800,
+          "dotpath": "session_extraction.quiescence_seconds",
+          "key": "quiescence_seconds",
+          "label": "Quiescence seconds",
+          "secret": false,
+          "widget": "int"
+        }
+      ],
+      "key": "session_extraction",
+      "label": "Chat Session : Summarization"
+    },
+    {
+      "description": "Shared LLM extraction engine \u2014 selects how doc-graph triplets AND session distillation are processed. Default off (cost-safe). subagent = free Claude Code Haiku; provider = server-side LLM (BILLABLE, requires EXTRACTION_PROVIDER_ENABLED=true); auto = subagent + paid safety-net.",
+      "fields": [
+        {
+          "default": 0,
+          "dotpath": "extraction.distill_chunk_chars",
+          "key": "distill_chunk_chars",
+          "label": "Distill chunk chars",
+          "secret": false,
+          "widget": "int"
+        },
+        {
+          "default": 8,
+          "dotpath": "extraction.drain_batch_size",
+          "help": "Max items drained per reconcile tick (shared throttle for both doc-graph and session extraction). Default: 8.",
+          "key": "drain_batch_size",
+          "label": "Drain batch size",
+          "min": 1,
+          "secret": false,
+          "widget": "int"
+        },
+        {
+          "default": 300,
+          "dotpath": "extraction.drain_cooldown_seconds",
+          "help": "Minimum seconds between drain ticks (shared cooldown). Default: 300.",
+          "key": "drain_cooldown_seconds",
+          "label": "Drain cooldown (s)",
+          "min": 0,
+          "secret": false,
+          "widget": "int"
+        },
+        {
+          "default": 4,
+          "dotpath": "extraction.drain_doc_max_per_turn",
+          "key": "drain_doc_max_per_turn",
+          "label": "Drain doc max per turn",
+          "secret": false,
+          "widget": "int"
+        },
+        {
+          "default": 2,
+          "dotpath": "extraction.drain_session_max_per_turn",
+          "key": "drain_session_max_per_turn",
+          "label": "Drain session max per turn",
+          "secret": false,
+          "widget": "int"
+        },
+        {
+          "default": 24,
+          "dotpath": "extraction.grace_hours",
+          "help": "auto mode only: hours the free subagent gets before the paid provider drains a doc chunk. 0 = provider drains immediately. Default: 24.",
+          "key": "grace_hours",
+          "label": "Grace period (hours)",
+          "min": 0,
+          "secret": false,
+          "widget": "int"
+        },
+        {
+          "default": 50000,
+          "dotpath": "extraction.max_pending",
+          "key": "max_pending",
+          "label": "Max pending",
+          "secret": false,
+          "widget": "int"
+        },
+        {
+          "default": 60,
+          "dotpath": "extraction.max_provider_items_per_hour",
+          "key": "max_provider_items_per_hour",
+          "label": "Max provider items per hour",
+          "secret": false,
+          "widget": "int"
+        },
+        {
+          "default": "off",
+          "dotpath": "extraction.mode",
+          "help": "LLM engine for BOTH doc-graph triplet extraction and session distillation. off = code-AST graph only, no prose triplets (default, cost-safe). subagent = free Claude Code Haiku plugin. auto = subagent + paid provider safety-net after grace_hours. provider = server-side LLM only (deterministic, headless-safe, BILLABLE). Paid paths (auto/provider) also require EXTRACTION_PROVIDER_ENABLED=true.",
+          "key": "mode",
+          "label": "Mode",
+          "options": [
+            "auto",
+            "off",
+            "provider",
+            "subagent"
+          ],
+          "secret": false,
+          "widget": "enum"
+        },
+        {
+          "default": 0,
+          "dotpath": "extraction.provider_context_tokens",
+          "key": "provider_context_tokens",
+          "label": "Provider context tokens",
+          "secret": false,
+          "widget": "int"
+        },
+        {
+          "default": 6,
+          "dotpath": "extraction.provider_session_max_chunks",
+          "key": "provider_session_max_chunks",
+          "label": "Provider session max chunks",
+          "secret": false,
+          "widget": "int"
+        }
+      ],
+      "key": "extraction",
+      "label": "Extraction Engine"
+    },
+    {
+      "description": "Runtime bind settings \u2014 host/IP and port range the server uses at start. Inherited project\u2192global like every other config.yaml key. Changes take effect on the next server restart.",
+      "fields": [
+        {
+          "default": true,
+          "dotpath": "bind.auto_port",
+          "key": "auto_port",
+          "label": "Auto-pick free port",
+          "secret": false,
+          "widget": "toggle"
+        },
+        {
+          "default": "127.0.0.1",
+          "dotpath": "bind.bind_host",
+          "key": "bind_host",
+          "label": "Bind host",
+          "secret": false,
+          "widget": "text"
+        },
+        {
+          "default": 8100,
+          "dotpath": "bind.port_range_end",
+          "key": "port_range_end",
+          "label": "Port range end",
+          "secret": false,
+          "widget": "int"
+        },
+        {
+          "default": 8000,
+          "dotpath": "bind.port_range_start",
+          "key": "port_range_start",
+          "label": "Port range start",
+          "secret": false,
+          "widget": "int"
+        }
+      ],
+      "key": "bind",
+      "label": "Server"
+    },
+    {
+      "description": "Server-level switches. read_only turns the server query-only: no embedding, summarization, or index writes.",
+      "fields": [
+        {
+          "default": false,
+          "dotpath": "server.read_only",
+          "key": "read_only",
+          "label": "Read Only Mode",
+          "secret": false,
+          "widget": "toggle"
+        }
+      ],
+      "key": "server",
+      "label": "Server Mode"
+    },
+    {
+      "fields": [
+        {
+          "default": true,
+          "dotpath": "query_log.enabled",
+          "key": "enabled",
+          "label": "Enable query history",
+          "secret": false,
+          "widget": "toggle"
+        },
+        {
+          "default": 7,
+          "dotpath": "query_log.retention_days",
+          "help": "0 = keep forever",
+          "key": "retention_days",
+          "label": "Retention (days)",
+          "max": 365,
+          "min": 0,
+          "secret": false,
+          "widget": "int"
+        }
+      ],
+      "key": "query_log",
+      "label": "Query Log"
+    },
+    {
+      "fields": [
+        {
+          "default": true,
+          "dotpath": "usage_metrics.enabled",
+          "key": "enabled",
+          "label": "Enabled",
+          "secret": false,
+          "widget": "toggle"
+        },
+        {
+          "default": 7,
+          "dotpath": "usage_metrics.retain_days",
+          "key": "retain_days",
+          "label": "Retain days",
+          "secret": false,
+          "widget": "int"
+        }
+      ],
+      "key": "usage_metrics",
+      "label": "Usage Metrics"
+    }
+  ]
+}

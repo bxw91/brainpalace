@@ -4,7 +4,7 @@ description: View embedding cache metrics or clear the cache
 parameters:
 skills:
   - using-brainpalace
-last_validated: 2026-06-20
+last_validated: 2026-06-24
 ---
 
 # BrainPalace Cache Management

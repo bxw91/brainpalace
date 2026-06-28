@@ -8,7 +8,6 @@ import {
   patchConfig,
 } from "../api/client";
 import { SchemaForm } from "../components/SchemaForm/SchemaForm";
-import { RuntimeSection } from "./Runtime";
 import { ProviderTest } from "../components/ProviderTest";
 import { ConfigDiff } from "../components/ConfigDiff";
 import { ConfirmDialog } from "../components/ConfirmDialog";
@@ -196,12 +195,6 @@ export function Config({ instanceId }: { instanceId?: string }) {
 
   return (
     <div data-testid="tab-config" className="flex flex-col gap-4">
-      <p data-testid="config-runtime-bind-note" className="text-xs text-fg-faint">
-        The <code>server</code>/<code>api</code> sections of <code>config.yaml</code>{" "}
-        do not affect the running server — the bind lives in <code>config.json</code>,
-        edited in the <span className="font-medium text-fg-muted">Runtime bind</span>{" "}
-        section below.
-      </p>
       <SchemaForm
         schema={schemaQ.data}
         values={configQ.data}
@@ -216,9 +209,6 @@ export function Config({ instanceId }: { instanceId?: string }) {
       {/* Provider connectivity check sits under all provider settings so it
           validates the values shown above. */}
       <ProviderTest instanceId={id} />
-      {/* Runtime bind (config.json) — folded into Config; same inherit-first
-          control + Discard, its own Save (writes config.json, not config.yaml). */}
-      <RuntimeSection instanceId={id} />
       <ConfirmDialog
         open={!!pendingSave}
         tone={pendingSave?.restart ? "danger" : "default"}

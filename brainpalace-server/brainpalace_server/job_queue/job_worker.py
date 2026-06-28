@@ -116,6 +116,22 @@ class JobWorker:
         self._current_job: JobRecord | None = None
         self._stop_event = asyncio.Event()
 
+        # Task 4d: backpressure state — optional pending store + pause flag.
+        # Injected via set_doc_pending_store after startup.
+        self._doc_pending_store: object | None = None
+        self._indexing_paused: bool = False  # hysteresis state
+
+    def set_doc_pending_store(self, store: object | None) -> None:
+        """Inject the DocPendingStore for backpressure (Task 4d).
+
+        When set, ``_process_job`` checks ``count_pending()`` against
+        ``extraction.max_pending`` before proceeding, deferring the job when
+        the queue is at the high-water mark.  Injected by the lifespan after
+        both the store and the worker are initialized; ``None`` disables the
+        check (e.g. when graphrag is off).
+        """
+        self._doc_pending_store = store
+
     def set_file_watcher_service(self, service: FileWatcherService | None) -> None:
         """Set the file watcher service for watch_mode integration.
 
@@ -291,6 +307,57 @@ class JobWorker:
                 await self._process_git_job(job)
                 return
 
+            # -- Task 4d: backpressure check before any doc-index work -------
+            # When the extraction queue is at the high-water mark, defer the
+            # job (leave it PENDING, log once) so the drain can clear it below
+            # the low-water mark before we add more pending chunks.
+            # This check NEVER skips per-chunk mark_pending — it only defers
+            # the whole-file scheduling; coverage is delayed, never dropped.
+            if self._doc_pending_store is not None:
+                try:
+                    from brainpalace_server.config.extraction_config import (
+                        load_extraction_config,
+                    )
+                    from brainpalace_server.services.backpressure import (
+                        should_pause_indexing,
+                    )
+
+                    _ext_cfg = load_extraction_config()
+                    _max_pending = _ext_cfg.max_pending
+                    if _max_pending > 0:
+                        _count = int(
+                            getattr(
+                                self._doc_pending_store, "count_pending", lambda: 0
+                            )()
+                        )
+                        _pause = should_pause_indexing(
+                            _count, _max_pending, resumed=self._indexing_paused
+                        )
+                        if _pause:
+                            if not self._indexing_paused:
+                                logger.warning(
+                                    "Indexing paused: extraction queue at %d items "
+                                    "(>= max_pending=%d). Will resume below %d.",
+                                    _count,
+                                    _max_pending,
+                                    int(_max_pending * 0.8),
+                                )
+                                self._indexing_paused = True
+                            # Defer the job: leave it PENDING, sleep one poll
+                            # cycle and try again next iteration.
+                            await asyncio.sleep(self._poll_interval)
+                            return
+                        elif self._indexing_paused:
+                            logger.info(
+                                "Indexing resumed: extraction queue at %d items "
+                                "(< low-water %d).",
+                                _count,
+                                int(_max_pending * 0.8),
+                            )
+                            self._indexing_paused = False
+                except Exception:  # noqa: BLE001 — never block indexing
+                    pass
+
             # -- documents job (unchanged below) -----------------------------
 
             # Mark job as RUNNING
@@ -325,7 +392,6 @@ class JobWorker:
                 chunk_size=job.chunk_size,
                 chunk_overlap=job.chunk_overlap,
                 recursive=job.recursive,
-                generate_summaries=job.generate_summaries,
                 supported_languages=job.supported_languages,
                 include_patterns=job.include_patterns,
                 include_types=job.include_types,

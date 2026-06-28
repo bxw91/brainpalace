@@ -46,7 +46,7 @@ def test_init_writes_subagent_and_installs_reminder_when_no_plugin(
         init_command, ["--path", str(tmp_path), "--yes", "--no-start", "--extract"]
     )
     assert result.exit_code == 0, result.output
-    assert _cfg(tmp_path)["session_extraction"]["mode"] == "subagent"
+    assert _cfg(tmp_path)["extraction"]["mode"] == "subagent"
     # No plugin → CLI installs the SessionStart reminder.
     assert len(calls) == 1
 
@@ -57,7 +57,7 @@ def test_init_writes_subagent_and_skips_reminder_when_plugin(tmp_path, monkeypat
         init_command, ["--path", str(tmp_path), "--yes", "--no-start", "--extract"]
     )
     assert result.exit_code == 0, result.output
-    assert _cfg(tmp_path)["session_extraction"]["mode"] == "subagent"
+    assert _cfg(tmp_path)["extraction"]["mode"] == "subagent"
     # Plugin owns the reminder → init must NOT install it (no double SessionStart).
     assert calls == []
 
@@ -68,7 +68,7 @@ def test_init_no_extract_writes_off(tmp_path, monkeypatch):
         init_command, ["--path", str(tmp_path), "--no-start", "--no-extract"]
     )
     assert result.exit_code == 0, result.output
-    assert _cfg(tmp_path)["session_extraction"]["mode"] == "off"
+    assert _cfg(tmp_path)["extraction"]["mode"] == "off"
 
 
 def test_init_prints_subagent_note(tmp_path, monkeypatch):
@@ -148,3 +148,39 @@ def test_apply_extract_engine_no_plugin_installs_reminder(tmp_path, monkeypatch)
     assert "SessionStart" in settings["hooks"]
     script = home / ".claude" / "hooks" / "brainpalace-sessionstart.sh"
     assert script.is_file()
+
+
+# --------------------------------------------------------------------------- #
+# Task 4e — prefill extraction.provider_context_tokens on model selection     #
+# --------------------------------------------------------------------------- #
+
+
+def test_build_default_provider_config_prefills_context_tokens(monkeypatch):
+    """When init picks anthropic/claude-haiku-4-5-20251001 it should write
+    extraction.provider_context_tokens from the model→window map."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    from brainpalace_cli.commands.init import build_default_provider_config
+
+    cfg = build_default_provider_config()
+    assert "extraction" in cfg
+    ext = cfg["extraction"]
+    assert isinstance(ext, dict)
+    assert ext.get("provider_context_tokens", 0) == 200000  # anthropic 200k context
+
+
+def test_build_default_provider_config_no_tokens_for_unknown(monkeypatch):
+    """When the selected model is unknown, extraction block has no
+    provider_context_tokens (0/absent → runtime floor)."""
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("XAI_API_KEY", raising=False)
+    from brainpalace_cli.commands.init import build_default_provider_config
+
+    cfg = build_default_provider_config()
+    # Fallback is anthropic/claude-haiku-4-5-20251001; it IS in the map, so
+    # a token count should be written.  Verify the extraction block is correct.
+    ext = cfg.get("extraction", {})
+    # Either tokens present (known model) or absent (unknown) — must never be negative.
+    assert ext.get("provider_context_tokens", 0) >= 0

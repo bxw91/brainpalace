@@ -705,7 +705,7 @@ def test_recovery_events_roundtrip(tmp_path):
     assert out["count"] == 2
     assert out["last"]["error"] == "boom"
     assert "ts" in out["last"]
-    assert (tmp_path / "recovery-events.jsonl").exists()  # at <state_dir> root
+    assert (tmp_path / "state" / "recovery-events.jsonl").exists()  # under state/
 
 
 def test_recovery_events_path_none_for_legacy_layout(tmp_path):

@@ -99,6 +99,64 @@ def _self_heal_row(features: dict[str, Any]) -> tuple[str, str] | None:
     )
 
 
+def render_doc_graph_extraction_row(dge: dict[str, Any]) -> str:
+    """Render the ``doc_graph_extraction`` feature block as a single status string.
+
+    Pure function over the ``features["doc_graph_extraction"]`` dict so it is
+    independently unit-testable. M1 wording: ``off`` + pending chunks are
+    described as "un-graphed" (ledger present, extraction engine is off) — NOT
+    "pending" (which implies a running consumer).
+
+    ``state`` → display:
+    - ``off``         → dim "off" + (if ungraphed) un-graphed count with note
+    - ``subagent``    → green "on (subagent)" + pending count
+    - ``provider``    → green "on (provider: <label>)" + pending count
+    - ``unavailable`` → yellow warning (provider/auto requested, nothing usable)
+    """
+    state = str(dge.get("state", "off"))
+    pending = int(dge.get("pending", 0) or 0)
+    ungraphed = bool(dge.get("ungraphed", False))
+    provider = dge.get("provider")
+
+    if state == "off":
+        base = "[dim]off[/]"
+        if ungraphed:
+            return (
+                f"{base} — {pending:,} un-graphed "
+                f"(extraction off; enable with extraction.mode)"
+            )
+        return base
+    if state == "subagent":
+        suffix = f" — {pending:,} pending" if pending else ""
+        return f"[green]on (subagent)[/]{suffix}"
+    if state == "provider":
+        label = f": {provider}" if provider else ""
+        suffix = f" — {pending:,} pending" if pending else ""
+        return f"[green]on (provider{label})[/]{suffix}"
+    # unavailable
+    return (
+        "[yellow]unavailable — provider mode, no provider/lock[/] "
+        "(set EXTRACTION_PROVIDER_ENABLED=true)"
+    )
+
+
+def render_session_queue_row(arch: dict[str, Any]) -> str:
+    """Render the Session Queue (to-summarize backlog) value.
+
+    Pure function over ``features["session_archive"]``. Mirrors the doc
+    ``un-graphed`` wording: the count is the un-distilled archived-session
+    backlog, surfaced regardless of mode. With summarization off it is a
+    backlog the drain will not touch (the pending endpoint is mode-gated).
+    """
+    pending = int(arch.get("pending_summarization", 0) or 0)
+    if pending > 0:
+        return (
+            f"[yellow]{pending:,} pending[/] (un-summarized; "
+            f"drains when extraction.mode is subagent/auto)"
+        )
+    return "[dim]0 — empty[/]"
+
+
 def _status_all(json_output: bool) -> None:
     """Show detailed status for every running registered server (B2b)."""
     import json
@@ -340,6 +398,9 @@ def status_command(
                         "Session Archive",
                         "[dim]off[/] (SESSION_ARCHIVE_ENABLED=false)",
                     )
+                # To-summarize backlog (advisory; shown whenever archive is on).
+                if arch.get("enabled"):
+                    table.add_row("Session Queue", render_session_queue_row(arch))
 
             # Session memory / INDEX (from the feature view).
             sess = features.get("session_memory")
@@ -449,6 +510,16 @@ def status_command(
                     )
                 else:
                     table.add_row("Graph Index", "[dim]Disabled[/]")
+
+            # Doc-graph extraction (Plan 4, spec §12). Always shown when the
+            # feature block is present — even in `off` so un-graphed chunks are
+            # visible (M1) and can prompt the user to enable the mode.
+            dge = features.get("doc_graph_extraction")
+            if isinstance(dge, dict):
+                table.add_row(
+                    "Doc Graph Extraction",
+                    render_doc_graph_extraction_row(dge),
+                )
 
             # Records / compute feature block (Task 14).
             rec = features.get("records")

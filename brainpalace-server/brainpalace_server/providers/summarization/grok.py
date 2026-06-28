@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 from openai import AsyncOpenAI
 
-from brainpalace_server.providers.base import BaseSummarizationProvider
+from brainpalace_server.providers.base import BaseSummarizationProvider, Usage
 from brainpalace_server.providers.exceptions import AuthenticationError, ProviderError
 
 if TYPE_CHECKING:
@@ -95,6 +95,40 @@ class GrokSummarizationProvider(BaseSummarizationProvider):
             # Extract text from response
             content = response.choices[0].message.content
             return content if content else ""
+        except Exception as e:
+            raise ProviderError(
+                f"Failed to generate text: {e}",
+                self.provider_name,
+                cause=e,
+            ) from e
+
+    async def generate_with_usage(self, prompt: str) -> tuple[str, Usage]:
+        """Generate text and return Grok token usage by value (§6-F3).
+
+        Grok uses OpenAI-compatible API; reads prompt_tokens and
+        completion_tokens. No cache fields reported (xAI API doesn't expose them).
+        Uses getattr(..., 0) or 0 everywhere so absent fields → 0 (truthful).
+        """
+        try:
+            response = await self._client.chat.completions.create(
+                model=self._model,
+                max_tokens=self._max_tokens,
+                temperature=self._temperature,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            u = getattr(response, "usage", None)
+            usage = (
+                Usage(
+                    tokens_in=int(getattr(u, "prompt_tokens", 0) or 0),
+                    tokens_out=int(getattr(u, "completion_tokens", 0) or 0),
+                    cache_read=0,
+                    cache_write=0,
+                )
+                if u is not None
+                else Usage()
+            )
+            content = response.choices[0].message.content
+            return (content if content else ""), usage
         except Exception as e:
             raise ProviderError(
                 f"Failed to generate text: {e}",

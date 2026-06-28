@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-20
+last_validated: 2026-06-28
 ---
 
 # Provider Configuration Guide
@@ -322,7 +322,7 @@ XAI_API_KEY=...
 
 ### SentenceTransformers Reranker Configuration (v8.0+)
 
-BrainPalace supports two-stage retrieval with reranking for higher-precision results. **Reranking is OFF by default** — the local cross-encoder needs the heavy `reranker-local` extra (`sentence-transformers` + PyTorch, ~2.8 GB), so it is opt-in. It is gated by `reranker.enabled` in `config.yaml` (default `false`); `brainpalace init`/`config wizard` default the question to no and install the extra only when you say yes. Enable with `brainpalace init --reranking` (installs the extra) or set `reranker.provider=ollama` for a torch-free reranker; the `ENABLE_RERANKING` env var overrides the config. With reranking on but the extra absent, queries fall back to stage-1 results with a warning.
+BrainPalace supports two-stage retrieval with reranking for higher-precision results. **Reranking is OFF by default** — the local cross-encoder needs the heavy `reranker-local` extra (`sentence-transformers` + PyTorch, ~2.8 GB), so it is opt-in. It is gated by `reranker.enabled` in `config.yaml` (default `false`); `brainpalace init` (and `config wizard`, a back-compat alias) default the question to no and install the extra only when you say yes. Enable with `brainpalace init --reranking` (installs the extra) or set `reranker.provider=ollama` for a torch-free reranker; the `ENABLE_RERANKING` env var overrides the config. With reranking on but the extra absent, queries fall back to stage-1 results with a warning.
 
 ```bash
 ENABLE_RERANKING=true   # env override (config reranker.enabled is the per-project switch, default false)

@@ -45,12 +45,6 @@ beforeEach(() => {
     embedding: { provider: "openai" },
   } as never);
   vi.mocked(client.getGlobalConfigEffective).mockResolvedValue({} as never);
-  vi.mocked(client.getGlobalRuntimeConfigEffective).mockResolvedValue({
-    bind_host: { value: "127.0.0.1", source: "default", inherited: null },
-    port_range_start: { value: 8000, source: "default", inherited: null },
-    port_range_end: { value: 8100, source: "default", inherited: null },
-    auto_port: { value: true, source: "default", inherited: null },
-  } as never);
 });
 
 describe("GlobalConfig tab (Server page)", () => {
