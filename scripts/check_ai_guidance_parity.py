@@ -14,7 +14,12 @@ Checks:
      header comment" bug, which silently empties the slice).
   3. The two in-repo SessionStart hook copies are the identical thin shim and
      carry no legacy fat-hook logic (so the CLI owns all behavior).
-  4. English-only: AI-facing guidance contains no non-ASCII *letters* (Unicode
+  4. The plugin-only PreToolUse/UserPromptSubmit shims stay thin (marker
+     present, no legacy logic, no direct `additionalContext` injection).
+  5. `plugin.json` wires PreToolUse/SessionStart/UserPromptSubmit to their
+     shims, with a survivable SessionStart timeout.
+  6. MCP `Server(instructions=...)` ships the CORE tier verbatim.
+  7. English-only: AI-facing guidance contains no non-ASCII *letters* (Unicode
      punctuation like — … ⊂ is fine; accented/Cyrillic letters are not).
 
 See CLAUDE.md → "AI-guidance parity".
@@ -41,6 +46,21 @@ LEGACY_MARKERS = ("brainpalace whoami", "<<'PY'")
 # sanctioned CLI-missing branch (an absent CLI cannot announce itself, so the
 # plugin shim must). A shim carrying this marker may use `additionalContext`.
 SANCTION_MARKER = "SANCTIONED-CLI-MISSING-NUDGE"
+
+#: Plugin-only thin shims (no CLI data copy exists for these): each must exist,
+#: carry its dispatch marker, and stay logic-free.
+PLUGIN_SHIMS: dict[Path, str] = {
+    REPO / "brainpalace-plugin/hooks/pretooluse-subagent-guard-hook.sh": (
+        "brainpalace hook pretooluse"
+    ),
+    REPO / "brainpalace-plugin/hooks/userpromptsubmit-drain-hook.sh": (
+        "brainpalace hook userpromptsubmit"
+    ),
+}
+PLUGIN_MANIFEST = REPO / "brainpalace-plugin/.claude-plugin/plugin.json"
+#: SessionStart does discovery + /health/ + an HTTP context fetch; 3s killed it
+#: silently on a slow server.
+MIN_SESSIONSTART_TIMEOUT = 10
 
 
 def _fail(errors: list[str], msg: str) -> None:
@@ -90,7 +110,60 @@ def main() -> int:
     if len(shim_texts) == len(HOOK_COPIES) and len(set(shim_texts)) > 1:
         _fail(errors, "the two SessionStart hook copies differ — they must be identical.")
 
-    # 4. MCP server ships CORE verbatim as its connect-time instructions.
+    # 4. Plugin-only shims are thin: marker present, no legacy logic, no
+    #    injected text (only the sessionstart shim has the sanctioned branch).
+    import json as _json
+
+    for shim, marker in PLUGIN_SHIMS.items():
+        if not shim.is_file():
+            _fail(errors, f"missing plugin hook shim: {shim}")
+            continue
+        text = shim.read_text(encoding="utf-8")
+        if marker not in text:
+            _fail(errors, f"{shim} is not the thin shim (missing '{marker}').")
+        for legacy in LEGACY_MARKERS:
+            if legacy in text:
+                _fail(errors, f"{shim} carries legacy fat-hook logic ('{legacy}').")
+        if "additionalContext" in text:
+            _fail(errors, f"{shim} injects text directly — only the CLI may.")
+
+    # 5. plugin.json wires all three events to the shims, with a survivable
+    #    SessionStart timeout.
+    try:
+        manifest = _json.loads(PLUGIN_MANIFEST.read_text(encoding="utf-8"))
+        hooks = manifest.get("hooks", {})
+        expected = {
+            "PreToolUse": "pretooluse-subagent-guard-hook.sh",
+            "SessionStart": "sessionstart-hook.sh",
+            "UserPromptSubmit": "userpromptsubmit-drain-hook.sh",
+        }
+        for event, script in expected.items():
+            entries = hooks.get(event) or []
+            cmds = [
+                h.get("command", "")
+                for e in entries
+                for h in e.get("hooks", [])
+            ]
+            if not any(script in c for c in cmds):
+                _fail(errors, f"plugin.json {event} does not invoke {script}.")
+            if event == "SessionStart":
+                timeouts = [
+                    h.get("timeout", 0)
+                    for e in entries
+                    for h in e.get("hooks", [])
+                    if script in h.get("command", "")
+                ]
+                if timeouts and min(timeouts) < MIN_SESSIONSTART_TIMEOUT:
+                    _fail(
+                        errors,
+                        "plugin.json SessionStart timeout "
+                        f"{min(timeouts)}s < {MIN_SESSIONSTART_TIMEOUT}s "
+                        "(kills the context fetch on a slow server).",
+                    )
+    except Exception as exc:  # pragma: no cover — malformed manifest
+        _fail(errors, f"cannot validate plugin.json hooks: {exc}")
+
+    # 6. MCP server ships CORE verbatim as its connect-time instructions.
     try:
         from brainpalace_cli.mcp_server import server as _mcp
 
@@ -99,7 +172,7 @@ def main() -> int:
     except Exception as exc:  # noqa: BLE001
         _fail(errors, f"could not verify MCP instructions: {exc}")
 
-    # 5. English-only: no non-ASCII letters in AI-facing guidance.
+    # 7. English-only: no non-ASCII letters in AI-facing guidance.
     for label, text in (("nudge", nudge()), ("full", full())):
         bad = sorted({c for c in text if ord(c) > 127 and c.isalpha()})
         if bad:
@@ -114,7 +187,10 @@ def main() -> int:
         for e in errors:
             print(f"  ✗ {e}")
         return 1
-    print("ai-guidance parity OK (SKILL.md, tiers, hook shims, English-only).")
+    print(
+        "ai-guidance parity OK (SKILL.md, tiers, hook shims incl. plugin-only + "
+        "manifest, English-only)."
+    )
     return 0
 
 

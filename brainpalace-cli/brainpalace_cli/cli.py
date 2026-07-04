@@ -28,6 +28,7 @@ from .commands import (
     install_session_hooks_command,
     jobs_command,
     list_command,
+    lsp_group,
     mcp_command,
     memories_group,
     plugin_group,
@@ -48,6 +49,7 @@ from .commands import (
     verify_docs_command,
     whoami_command,
 )
+from .commands.graph import graph_group
 
 
 @click.group()
@@ -123,6 +125,7 @@ cli.add_command(whoami_command, name="whoami")
 
 # Register server interaction commands
 cli.add_command(doctor_command, name="doctor")
+cli.add_command(lsp_group, name="lsp")
 cli.add_command(status_command, name="status")
 cli.add_command(query_command, name="query")
 cli.add_command(ai_guide_command, name="ai-guide")
@@ -150,6 +153,7 @@ cli.add_command(install_session_hooks_command, name="install-session-hooks")
 cli.add_command(backfill_command, name="backfill-sessions")
 cli.add_command(records_group, name="records")
 cli.add_command(extraction_group, name="extraction")
+cli.add_command(graph_group, name="graph")
 
 # Register doc-sync maintenance commands (hidden; deterministic, never call an LLM)
 cli.add_command(sync_docs_command, name="sync-docs")

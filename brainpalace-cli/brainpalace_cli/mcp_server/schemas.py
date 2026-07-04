@@ -64,6 +64,15 @@ class JobsListInput(BaseModel):
     path: str | None = Field(default=None, description=_PATH_DESC)
 
 
+class JobsApproveInput(BaseModel):
+    """Input for the jobs_approve tool."""
+
+    job_id: str = Field(..., description="Blocked job id to approve")
+    path: str | None = Field(
+        default=None, description="Project path (default: spawn-time CWD)"
+    )
+
+
 class MemorizeInput(BaseModel):
     text: str = Field(..., description="The durable fact to remember")
     section: str = Field(default="Notes", description="Markdown section")

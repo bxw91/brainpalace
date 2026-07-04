@@ -182,6 +182,8 @@ def first_user_prompt_line(
 
 def _short(value: Any, limit: int) -> str:
     text = " ".join(str(value).split())
+    if limit <= 0:
+        return text
     return text if len(text) <= limit else text[:limit] + " …"
 
 
@@ -209,7 +211,9 @@ def _tool_result_text(block: dict[str, Any]) -> str:
     return _short(content or "", TOOL_RESULT_TRUNC)
 
 
-def load_session(path: str | Path) -> tuple[SessionMeta, list[Turn]]:
+def load_session(
+    path: str | Path, *, text_trunc: int = TEXT_TRUNC
+) -> tuple[SessionMeta, list[Turn]]:
     """Parse a session JSONL into (metadata, ordered turns).
 
     Missing/unreadable files yield an empty turn list with best-effort meta.
@@ -274,7 +278,7 @@ def load_session(path: str | Path) -> tuple[SessionMeta, list[Turn]]:
             btype = block.get("type")
             if btype == "text" and block.get("text", "").strip():
                 turns.append(
-                    Turn(index, role, "text", _short(block["text"], TEXT_TRUNC), ts=ts)
+                    Turn(index, role, "text", _short(block["text"], text_trunc), ts=ts)
                 )
                 index += 1
             elif btype == "thinking" and block.get("thinking", "").strip():

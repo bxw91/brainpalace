@@ -1,7 +1,8 @@
-"""Live LSP smoke test against a real pyright (Phase 150).
+"""Live LSP smoke against a real pyright (Plan 5 acceptance).
 
-Skips automatically when ``pyright-langserver`` is not installed, so CI stays
-green without any language server. Run locally after ``npm i -g pyright``.
+Skips when ``pyright-langserver`` is not installed. Exercises the PRODUCTION
+path: LspCrossRefExtractor with root_uri + didOpen + fqname resolver — the
+spec's bar is a real cross-file `calls` edge, verified by test, not eyeball.
 """
 
 from __future__ import annotations
@@ -11,8 +12,11 @@ import textwrap
 
 import pytest
 
-from brainpalace_server.lsp.client import LspClient
-from brainpalace_server.lsp.cross_refs import extract_cross_refs
+from brainpalace_server.indexing.code_symbol_extractor import (
+    extract_python_symbols,
+)
+from brainpalace_server.lsp import servers
+from brainpalace_server.lsp.extractor import LspCrossRefExtractor
 
 pytestmark = pytest.mark.skipif(
     shutil.which("pyright-langserver") is None,
@@ -20,43 +24,32 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def test_pyright_defined_at(tmp_path) -> None:
-    src = tmp_path / "mod.py"
-    src.write_text(
+def test_pyright_cross_file_calls(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(servers, "is_language_enabled", lambda lang: lang == "python")
+    util = tmp_path / "util.py"
+    util.write_text("def helper():\n    return 1\n")
+    main = tmp_path / "main.py"
+    main.write_text(
         textwrap.dedent(
             """
-            def helper():
-                return 1
+            from util import helper
+
 
             def caller():
                 return helper()
             """
         )
     )
-    client = LspClient.spawn(["pyright-langserver", "--stdio"])
+    ext = LspCrossRefExtractor(root_uri=f"file://{tmp_path}")
     try:
-        client.initialize(root_uri=f"file://{tmp_path}")
-        client.notify(
-            "textDocument/didOpen",
-            {
-                "textDocument": {
-                    "uri": f"file://{src}",
-                    "languageId": "python",
-                    "version": 1,
-                    "text": src.read_text(),
-                }
-            },
-        )
-        triples = extract_cross_refs(
-            client,
-            file_path=str(src),
-            symbol_name="helper",
-            line=1,  # 0-based line of `def helper`
-            character=4,
-            source_chunk_id="live",
-        )
+        fs = extract_python_symbols(str(main), main.read_text())
+        triples = ext.extract_from_symbols(fs.symbols)
     finally:
-        client.shutdown()
+        ext.close()
 
-    # We at least expect a defined-at edge for the symbol.
-    assert any(t.predicate == "defined-at" for t in triples)
+    calls = {
+        (t.effective_subject_id, t.effective_object_id)
+        for t in triples
+        if t.predicate == "calls"
+    }
+    assert (f"{main}:caller", f"{util}:helper") in calls

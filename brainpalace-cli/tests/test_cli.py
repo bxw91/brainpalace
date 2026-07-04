@@ -147,6 +147,8 @@ class TestQueryCommand:
         mock_response.query_time_ms = 50.0
         mock_response.total_results = 1
         mock_response.compute = None
+        mock_response.scan = None
+        mock_response.index_blocked = None
 
         mock_client.query.return_value = mock_response
         mock_client_class.return_value = mock_client
@@ -169,6 +171,8 @@ class TestQueryCommand:
         mock_response.query_time_ms = 10.0
         mock_response.total_results = 0
         mock_response.compute = None
+        mock_response.scan = None
+        mock_response.index_blocked = None
 
         mock_client.query.return_value = mock_response
         mock_client_class.return_value = mock_client
@@ -196,6 +200,8 @@ class TestQueryCommand:
         mock_response.query_time_ms = 25.0
         mock_response.total_results = 1
         mock_response.compute = None
+        mock_response.scan = None
+        mock_response.index_blocked = None
 
         mock_client.query.return_value = mock_response
         mock_client_class.return_value = mock_client

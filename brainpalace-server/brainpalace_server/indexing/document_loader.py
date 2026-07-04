@@ -318,6 +318,12 @@ class DocumentLoader:
         "**/target/**",
         "**/.next/**",
         "**/.nuxt/**",
+        # Built SPA bundles: Vite/webpack emit hashed assets here. Indexing
+        # them adds minified `index-<hash>.js` blobs as false graph hubs.
+        "**/static/assets/**",
+        "**/*.min.js",
+        "**/*.min.css",
+        "**/*.bundle.js",
         "**/coverage/**",
         "**/.pytest_cache/**",
         "**/.mypy_cache/**",
@@ -701,20 +707,29 @@ class DocumentLoader:
         """
         excl = getattr(self, "exclude_patterns", None) or []
         matcher = getattr(self, "gitignore_matcher", None)
+
+        def _matches_exclude(p: Path) -> bool:
+            # `**` is collapsed to `*` because fnmatch has no recursive-glob
+            # operator; `*` already spans `/`, so `**/docs/CHANGELOG.md` matches
+            # a file at any depth. Applied to BOTH directories (prune descent)
+            # and individual files (drop a single path) so file patterns work.
+            s = str(p)
+            return any(fnmatch.fnmatch(s, pat.replace("**", "*")) for pat in excl)
+
         for dirpath, dirnames, filenames in os.walk(root):
             dp = Path(dirpath)
             dirnames[:] = [
                 d
                 for d in dirnames
                 if d not in self.ALWAYS_EXCLUDED_DIR_NAMES
-                and not any(
-                    fnmatch.fnmatch(str(dp / d), pat.replace("**", "*")) for pat in excl
-                )
+                and not _matches_exclude(dp / d)
                 and not (matcher is not None and matcher.is_ignored(dp / d))
                 and not (dp / d / ".brainpalace").is_dir()
             ]
             for f in filenames:
                 fp = dp / f
+                if _matches_exclude(fp):
+                    continue
                 if matcher is not None and matcher.is_ignored(fp):
                     continue
                 yield fp

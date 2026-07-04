@@ -11,7 +11,10 @@ from brainpalace_server.config.runtime_mode import is_read_only
 from brainpalace_server.job_queue.job_store import JobQueueStore
 from brainpalace_server.models import IndexingState, IndexingStatusEnum, IndexRequest
 from brainpalace_server.models.job import JobProgress, JobRecord, JobStatus
-from brainpalace_server.services.indexing_service import IndexingService
+from brainpalace_server.services.indexing_service import (
+    BudgetExceededError,
+    IndexingService,
+)
 
 if TYPE_CHECKING:
     from brainpalace_server.config.git_config import GitIndexingConfig
@@ -399,6 +402,7 @@ class JobWorker:
                 injector_script=job.injector_script,
                 folder_metadata_file=job.folder_metadata_file,
                 force=job.force,
+                force_budget=job.force_budget,
                 trigger=job.source,
             )
 
@@ -613,6 +617,38 @@ class JobWorker:
                     error=job.error,
                 )
             logger.info(f"Job {job.id} cancelled")
+
+        except BudgetExceededError as e:
+            job.status = JobStatus.BLOCKED
+            job.budget_info = {
+                "estimated_tokens": e.estimated_tokens,
+                "limit": e.limit,
+            }
+            job.error = (
+                f"Indexing paused — this index needs ~{e.estimated_tokens:,} "
+                f"embedding tokens, over the {e.limit:,} cap. Nothing was spent. "
+                f"Approve with: brainpalace jobs {job.id} --approve "
+                f"(or raise indexing.max_embed_tokens_per_job)."
+            )
+            job.finished_at = None
+            await self._job_store.update_job(job)
+
+            async with self._indexing_service._lock:
+                self._indexing_service._state = IndexingState(
+                    current_job_id=job.id,
+                    status=IndexingStatusEnum.BLOCKED,
+                    is_indexing=False,
+                    folder_path=job.folder_path,
+                    started_at=job.started_at,
+                    completed_at=None,
+                    error=job.error,
+                )
+            logger.warning(
+                "Job %s blocked over embedding budget: ~%d tokens, cap %d",
+                job.id,
+                e.estimated_tokens,
+                e.limit,
+            )
 
         except Exception as e:
             logger.error(f"Job {job.id} failed with error: {e}", exc_info=True)

@@ -234,7 +234,7 @@ def test_status_lsp_languages_reflect_env(monkeypatch):
         )
         lsp = client.get("/status").json()["features"]["lsp"]
         assert lsp["enabled"] is True
-        assert lsp["languages"] == ["python", "go"]
+        assert lsp["languages"] == ["go", "python"]  # sorted() alphabetical
     finally:
         get_settings.cache_clear()
 

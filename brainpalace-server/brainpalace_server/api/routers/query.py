@@ -6,6 +6,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request, status
 
 from brainpalace_server.models import QueryRequest, QueryResponse
+from brainpalace_server.models.query import BlockedJobInfo
 from brainpalace_server.services.query_log import QueryLogService
 
 logger = logging.getLogger(__name__)
@@ -124,6 +125,17 @@ async def query_documents(
             "languages": request_body.languages,
         },
     )
+
+    # Attach a budget-blocked-index advisory if one exists (fail-soft — a jobs
+    # error must never break search).
+    job_service = getattr(request.app.state, "job_service", None)
+    if job_service is not None:
+        try:
+            blocked = await job_service.get_blocked_summary()
+        except Exception:  # noqa: BLE001 — advisory only, never break search
+            blocked = None
+        if blocked:
+            response.index_blocked = BlockedJobInfo(**blocked)
 
     return response
 

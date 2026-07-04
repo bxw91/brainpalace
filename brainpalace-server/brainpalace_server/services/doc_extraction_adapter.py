@@ -20,6 +20,7 @@ from brainpalace_server.services.auto_grace import (
     provider_auto_eligible,
     read_last_drain,
 )
+from brainpalace_server.services.entity_resolver import link_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -109,15 +110,31 @@ class DocExtractionAdapter:
             return False  # provider error (Task 1 contract) → leave pending, retry
         # A completed call (even with no relations) marks done so a barren chunk
         # is not re-charged on the next drain.
+        # §3 doc self-maintenance: purge before write (same cycle as the
+        # subagent submit path).
+        self._graph.invalidate_by_source_file(chunk_id, domain="doc")
         n_stored = 0
         for t in triplets:
+            # Plan B: same link semantics as the subagent submit path.
+            kwargs: dict[str, Any] = {
+                "subject_type": t.subject_type,
+                "object_type": t.object_type,
+                "source_chunk_id": t.source_chunk_id,
+                "source_file": chunk_id,
+                "domain": "doc",
+            }
+            kwargs.update(
+                link_kwargs(
+                    t.subject,
+                    t.object,
+                    t.subject_type,
+                    t.object_type,
+                    self._project_root,
+                    self._graph,
+                )
+            )
             if self._graph.add_triplet(
-                subject=t.subject,
-                predicate=t.predicate,
-                obj=t.object,
-                subject_type=t.subject_type,
-                object_type=t.object_type,
-                source_chunk_id=t.source_chunk_id,
+                subject=t.subject, predicate=t.predicate, obj=t.object, **kwargs
             ):
                 n_stored += 1
         # Record provider usage — best-effort; never breaks the caller (§6-F5).
@@ -149,6 +166,7 @@ class DocExtractionAdapter:
         silently lost (2-6)."""
         if not self._pending_done:
             return
+        self._graph.sweep_orphan_nodes(domain="doc")
         self._graph.persist()
         for chunk_id in self._pending_done:
             self._store.mark_done(chunk_id)

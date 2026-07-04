@@ -24,6 +24,9 @@ import {
   type UnsetResult,
   type GraphNodeHit,
   type GraphSubgraph,
+  type GraphNodeSource,
+  type GraphImpactNode,
+  type GraphCochangeFile,
   type ProviderTestResult,
 } from "./types";
 
@@ -439,8 +442,12 @@ export const removeFolder = (id: string, path: string) =>
   actData(`/instances/${id}/folders`, "DELETE", { folder_path: path });
 export const cancelJob = (id: string, jobId: string) =>
   actData(`/instances/${id}/jobs/${jobId}`, "DELETE");
+export const approveJob = (id: string, jobId: string) =>
+  actData(`/instances/${id}/jobs/${jobId}/approve`, "POST");
 export const gitReindex = (id: string) =>
   actData(`/instances/${id}/git/reindex`, "POST");
+export const graphRebuild = (id: string) =>
+  actData(`/instances/${id}/graph/rebuild`, "POST");
 export const sessionsReindex = (id: string) =>
   actData(`/instances/${id}/sessions/reindex`, "POST");
 export const memoryObsolete = (id: string, mid: string) =>
@@ -459,20 +466,55 @@ export const memoryCreate = (
 // Endpoints: GET /graph/nodes?q=&limit=  · GET /graph/neighbors?node=&limit=
 // ---------------------------------------------------------------------------
 
-export const searchGraphNodes = (id: string, q: string, limit = 20) =>
+const withDomains = (params: Record<string, string>, domains?: string[]) => {
+  const p = new URLSearchParams(params);
+  if (domains && domains.length > 0) p.set("domains", domains.join(","));
+  return p;
+};
+
+export const searchGraphNodes = (id: string, q: string, limit = 20, domains?: string[]) =>
   getData<{ nodes: GraphNodeHit[] }>(
-    `/instances/${id}/graph/nodes?${new URLSearchParams({ q, limit: String(limit) })}`,
+    `/instances/${id}/graph/nodes?${withDomains({ q, limit: String(limit) }, domains)}`,
   );
 
-export const getGraphNeighbors = (id: string, node: string, limit = 200) =>
+export const getGraphNeighbors = (id: string, node: string, limit = 200, domains?: string[]) =>
   getData<GraphSubgraph>(
-    `/instances/${id}/graph/neighbors?${new URLSearchParams({ node, limit: String(limit) })}`,
+    `/instances/${id}/graph/neighbors?${withDomains({ node, limit: String(limit) }, domains)}`,
   );
 
 // Highest-degree hubs — seeds the browser with no search (GET /graph/top).
-export const getGraphTopNodes = (id: string, limit = 20) =>
+export const getGraphTopNodes = (id: string, limit = 20, domains?: string[]) =>
   getData<{ nodes: GraphNodeHit[] }>(
-    `/instances/${id}/graph/top?${new URLSearchParams({ limit: String(limit) })}`,
+    `/instances/${id}/graph/top?${withDomains({ limit: String(limit) }, domains)}`,
+  );
+
+// Lazy source snippet for the node detail panel (GET /graph/node/source).
+export const getGraphNodeSource = (id: string, node: string, context = 20) =>
+  getData<GraphNodeSource>(
+    `/instances/${id}/graph/node/source?${new URLSearchParams({
+      node,
+      context: String(context),
+    })}`,
+  );
+
+// Impact analysis for the node detail panel (GET /graph/impact).
+export const getGraphImpact = (id: string, node: string, maxDepth = 2, limit = 30) =>
+  getData<{ node: string; nodes: GraphImpactNode[] }>(
+    `/instances/${id}/graph/impact?${new URLSearchParams({
+      node,
+      max_depth: String(maxDepth),
+      limit: String(limit),
+    })}`,
+  );
+
+// Git co-change list for the node detail panel (GET /graph/cochange).
+export const getGraphCochange = (id: string, node: string, minShared = 2, limit = 10) =>
+  getData<{ node: string; files: GraphCochangeFile[] }>(
+    `/instances/${id}/graph/cochange?${new URLSearchParams({
+      node,
+      min_shared: String(minShared),
+      limit: String(limit),
+    })}`,
   );
 
 export const testProviders = (id: string) =>

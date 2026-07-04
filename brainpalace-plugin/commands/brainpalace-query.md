@@ -143,7 +143,7 @@ just the presence of `results`.
 | --url | text | "" | BrainPalace server URL (default: from config or http://127.0.0.1:8000) |
 | --top-k | integer | 5 | Number of results to return (default: 5) |
 | --threshold | float | 0.3 | Minimum similarity threshold 0-1 (default: 0.3) |
-| --mode | choice | hybrid | Retrieval mode: 'vector' (semantic similarity), 'bm25' (keyword matching), 'hybrid' (vector+bm25), 'graph' (knowledge graph relationships; empty unless the graph is built — ENABLE_GRAPH_INDEX gates building it), 'multi' (fusion of vector+bm25+graph), 'compute' (set-level aggregation over typed numeric records; empty unless record extraction has populated them). Default: hybrid. |
+| --mode | choice | hybrid | Retrieval mode: 'vector' (semantic similarity), 'bm25' (keyword matching), 'hybrid' (vector+bm25), 'graph' (knowledge graph relationships; empty unless the graph is built — ENABLE_GRAPH_INDEX gates building it), 'multi' (fusion of vector+bm25+graph), 'compute' (set-level aggregation over typed numeric records; empty unless record extraction has populated them), 'scan' (deterministic term counts over the archived session transcripts; 'which week did I mention X most'; empty when the session archive is off). Default: hybrid. |
 | --alpha | float | 0.5 | Weight for hybrid search (1.0 = pure vector, 0.0 = pure bm25, default: 0.5) |
 | --json | bool | false | Output as JSON |
 | --full | bool | false | Show full text content |
@@ -165,4 +165,5 @@ just the presence of `results`.
 | `graph` |  |
 | `multi` |  |
 | `compute` |  |
+| `scan` |  |
 <!--/GENERATED-->

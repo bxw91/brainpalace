@@ -31,6 +31,7 @@ from brainpalace_cli.commands.session_hooks import (
     prune_cli_session_hooks,
     prune_extraction_hooks,
 )
+from brainpalace_cli.lsp_install import EnsureResult, ensure_server
 from brainpalace_cli.migration import migrate_state_dir
 from brainpalace_cli.xdg_paths import get_xdg_config_dir, migrate_legacy_paths
 
@@ -362,6 +363,41 @@ def _preflight_lemma(engine: str | None, json_output: bool) -> None:
             "[dim]Re-run after installing, or switch to --bm25-engine stem.[/]"
         )
     raise SystemExit(1)
+
+
+def _lsp_missing_languages(state_dir: Path) -> list[str]:
+    """Languages toggled on in graph_indexing.lsp whose server binary is absent.
+
+    Fail-soft: the CLI consumes the server as a versioned wheel, which may
+    predate the ``configured_languages``/``detect_servers`` API — an older (or
+    unimportable) server yields an empty list rather than crashing init."""
+    try:
+        from brainpalace_server.lsp import servers
+
+        return sorted(servers.configured_languages() - servers.detect_servers())
+    except Exception:  # noqa: BLE001 — server missing or too old: skip the nudge
+        return []
+
+
+def _preflight_lsp(state_dir: Path, *, interactive: bool, json_output: bool) -> None:
+    """When LSP is enabled but the server is missing: interactive → offer to
+    install (never auto: assume_yes stays False so `init --yes` can't silently
+    mutate the global machine, H4); non-interactive → nudge only (silent in
+    --json)."""
+    missing = _lsp_missing_languages(state_dir)
+    if not missing:
+        return
+    if not interactive:
+        if not json_output:
+            click.echo(
+                f"LSP is enabled for {', '.join(missing)} but the language server "
+                f"isn't installed. Run: brainpalace lsp install"
+            )
+        return
+    for lang in missing:
+        result = ensure_server(lang, assume_yes=False, interactive=True)
+        if result is EnsureResult.FAILED:
+            click.echo(f"LSP: {lang} server install failed (continuing).")
 
 
 def _preflight_providers(state_dir: Path, json_output: bool) -> None:
@@ -1353,6 +1389,7 @@ def _start_and_watch(
     json_output: bool,
     bm25_engine: str | None = "stem",
     include_code: bool = True,
+    force_budget: bool = False,
 ) -> list[dict[str, object]]:
     """Run the --start pipeline: provider preflight, server start, optional watch.
 
@@ -1371,6 +1408,13 @@ def _start_and_watch(
     # launching the server / queueing any index, so a misconfigured provider
     # (e.g. summarization=anthropic with no key) can't crash the server.
     _preflight_providers(resolved_state_dir, json_output)
+
+    # LSP pre-flight: if graph indexing / LSP is enabled but the language server
+    # is missing, offer to install it (interactive) or nudge (non-interactive).
+    # init NEVER auto-installs — assume_yes is not threaded here (H4).
+    _preflight_lsp(
+        resolved_state_dir, interactive=_stdin_is_tty(), json_output=json_output
+    )
 
     # The start subcommand polls the server's /health until it answers, so this
     # step blocks for the server's cold-boot (can be ~a minute on first launch).
@@ -1404,16 +1448,19 @@ def _start_and_watch(
         chosen_include_code = include_code
         if not json_output:
             console.print("[dim]Registering folder + enqueuing initial indexing…[/]")
+        watch_argv = [
+            *_brainpalace_argv(),
+            "folders",
+            "add",
+            str(project_root),
+            "--watch",
+            watch,
+            "--include-code" if chosen_include_code else "--no-code",
+        ]
+        if force_budget:
+            watch_argv.append("--force-budget")
         watch_result = _run_subcommand(
-            [
-                *_brainpalace_argv(),
-                "folders",
-                "add",
-                str(project_root),
-                "--watch",
-                watch,
-                "--include-code" if chosen_include_code else "--no-code",
-            ],
+            watch_argv,
             step="watch",
             json_output=json_output,
         )
@@ -2372,6 +2419,7 @@ def init_command(
         # Interactive order: review → estimate (proceed/change/cancel) →
         # show the "init will:" summary → final Proceed.
         # A --yes run keeps a single estimate prompt and no extra confirmation.
+        estimate_accepted = False
         if is_tty and plan.start:
             interactive_gate = plan.confirm  # non --yes run → offer skip + Proceed
             do_estimate = True
@@ -2389,6 +2437,7 @@ def init_command(
                         console.print("[dim]Cancelled — kept existing .brainpalace.[/]")
                     return
                 include_code = chosen
+                estimate_accepted = True  # estimate shown AND user proceeded
             if interactive_gate:
                 # Final gate: the resolved plan, then confirm before starting.
                 console.print(
@@ -2455,6 +2504,7 @@ def init_command(
                 json_output=json_output,
                 bm25_engine=bm25_engine,
                 include_code=include_code,
+                force_budget=estimate_accepted,
             )
 
         _emit_init_result(

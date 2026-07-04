@@ -1,4 +1,4 @@
-"""Route set-level questions to compute; everything else to hybrid."""
+"""Route set-level questions to compute/scan; everything else to hybrid."""
 
 from __future__ import annotations
 
@@ -36,3 +36,35 @@ def classify_compute_intent(query: str) -> bool:
     """
     q = (query or "").lower()
     return any(t in q for t in _TELLS)
+
+
+_SCAN_TELLS = (
+    "did i mention",
+    "did we mention",
+    "did i say",
+    "did we say",
+    "did i talk about",
+    "did we talk about",
+    "did i discuss",
+    "did we discuss",
+    "how often did",
+    "times did i",
+    "times did we",
+    "which week did",
+    "which month did",
+    "which day did",
+    "mention the word",
+    "say the word",
+)
+
+
+def classify_scan_intent(query: str) -> bool:
+    """True when the query asks about the user's own past utterances.
+
+    Multiword tells keep precision high; false positives are safe — scan
+    returns [] when no term compiles or nothing matches, and the auto-router
+    falls back to hybrid. The compute<->scan tie-break lives in the caller's
+    ORDER (compute tried first): a typed record metric wins, else scan.
+    """
+    q = (query or "").lower()
+    return any(t in q for t in _SCAN_TELLS)

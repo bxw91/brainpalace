@@ -26,6 +26,25 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _lsp_feature() -> dict[str, object]:
+    """LSP status datum for the features view (Plan 2)."""
+    from brainpalace_server.lsp import servers
+
+    state = servers.lsp_state()
+    active: list[str] = state["active"]  # type: ignore[assignment]
+    detected: list[str] = state["detected"]  # type: ignore[assignment]
+    configured: list[str] = state.get("configured", [])  # type: ignore[assignment]
+    return {
+        "enabled": bool(active),
+        "mode": state.get("mode", "off"),
+        "active": active,
+        "languages": active,  # back-compat alias
+        "detected": detected,
+        "configured": configured,
+        "via_env": bool(state.get("via_env", False)),
+    }
+
+
 @router.get(
     "/",
     response_model=HealthStatus,
@@ -346,8 +365,6 @@ async def indexing_status(request: Request) -> dict[str, Any]:
     from brainpalace_server.config.git_config import load_git_indexing_config
     from brainpalace_server.config.settings import get_settings
 
-    _lsp_raw = (get_settings().BRAINPALACE_LSP_LANGUAGES or "").strip()
-    _lsp_langs = [x.strip() for x in _lsp_raw.split(",") if x.strip()]
     try:
         _git_cfg_enabled = load_git_indexing_config().enabled
     except Exception:  # noqa: BLE001
@@ -394,14 +411,26 @@ async def indexing_status(request: Request) -> dict[str, Any]:
             "pending_summarization": int(session_pending),
         },
         "graph_index": graph_index_info or {"enabled": False},
-        "lsp": {
-            "enabled": bool(_lsp_langs),
-            "languages": _lsp_langs,
-        },
+        "lsp": _lsp_feature(),
         "git_index": {
             "enabled": bool(_git_cfg_enabled),
             "commit_count": int(data.get("git_commits", 0) or 0),
         },
+    }
+
+    # Budget-blocked indexing jobs (pause+approve). Advisory — never fail hard.
+    job_service = getattr(request.app.state, "job_service", None)
+    blocked_latest: dict[str, Any] | None = None
+    blocked_count = 0
+    if job_service is not None:
+        try:
+            blocked_latest = await job_service.get_blocked_summary()
+            blocked_count = (await job_service.get_queue_stats()).blocked
+        except Exception:  # noqa: BLE001 — status must never fail hard
+            blocked_latest, blocked_count = None, 0
+    data["features"]["blocked_jobs"] = {
+        "count": blocked_count,
+        "latest": blocked_latest,
     }
 
     # Records / compute feature block (Task 14).

@@ -3,6 +3,9 @@ name: research-assistant
 description: Intelligent research agent that uses BrainPalace for knowledge retrieval with adaptive search modes
 tools: Bash, Read
 disallowedTools: Glob, Grep
+# `triggers:`/`skills:` feed `brainpalace install-agent` runtime converters
+# (OpenCode/Gemini/skill-runtime). Claude Code ignores them — delegation there
+# is driven by `description` alone, so keep descriptions trigger-rich.
 triggers:
   - pattern: "research|find information about|what do we know about"
     type: message_pattern
@@ -14,7 +17,7 @@ triggers:
     type: message_pattern
 skills:
   - using-brainpalace
-last_validated: 2026-06-24
+last_validated: 2026-07-04
 ---
 
 # Research Assistant Agent

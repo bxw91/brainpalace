@@ -66,7 +66,16 @@ const bucketLabel = (bucket: number, bucketSize: number) => {
   });
 };
 
-/** Tooltip that always shows the bar value + unit above the time label. */
+const sameDay = (a: Date, b: Date) =>
+  a.getFullYear() === b.getFullYear() &&
+  a.getMonth() === b.getMonth() &&
+  a.getDate() === b.getDate();
+
+/**
+ * Tooltip that shows the bar value + unit, then (only when the bar is not from
+ * today) the bar's date, then the time label. The date disambiguates bars in
+ * short windows where the label is clock time only (HH:MM).
+ */
 function ChartTooltip({
   active,
   payload,
@@ -74,18 +83,34 @@ function ChartTooltip({
   unit,
 }: {
   active?: boolean;
-  payload?: { value?: number | string | (number | string)[] }[];
+  payload?: {
+    value?: number | string | (number | string)[];
+    payload?: { bucket?: number };
+  }[];
   label?: string | number;
   unit: string;
 }) {
   if (!active || !payload || payload.length === 0) return null;
   const raw = payload[0]?.value;
   const value = typeof raw === "number" ? raw : Number(raw) || 0;
+  const bucket = payload[0]?.payload?.bucket;
+  let dateLabel: string | null = null;
+  if (typeof bucket === "number") {
+    const d = new Date(bucket * 60_000);
+    if (!sameDay(d, new Date())) {
+      dateLabel = d.toLocaleDateString(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      });
+    }
+  }
   return (
     <div style={TOOLTIP_STYLE} className="px-2.5 py-1.5">
       <div className="font-semibold tabular-nums text-fg">
         {fmt(value)} {unit}
       </div>
+      {dateLabel && <div className="text-fg-muted">{dateLabel}</div>}
       <div className="text-fg-faint">{label}</div>
     </div>
   );
@@ -267,7 +292,12 @@ function MetricChart({
 
 // ---- per-source charts ------------------------------------------------------
 
-type SourcePoint = { label: string; value: number; partial: boolean };
+type SourcePoint = {
+  label: string;
+  value: number;
+  partial: boolean;
+  bucket: number;
+};
 
 /** Like MetricChart but for a prebuilt single-series dataset (per source). */
 function SourceChart({
@@ -350,6 +380,7 @@ function bySourceCharts(
       label: bucketLabel(r.bucket, bucketSize),
       value: v,
       partial: r.bucket >= currentSlot,
+      bucket: r.bucket,
     });
     bySource.set(r.source, pts);
     totals.set(r.source, (totals.get(r.source) ?? 0) + v);

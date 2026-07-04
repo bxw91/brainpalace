@@ -23,6 +23,7 @@ from brainpalace_server.models.session_extract import (
     SessionExtraction,
     SessionExtractResult,
 )
+from brainpalace_server.services.entity_resolver import link_kwargs
 from brainpalace_server.services.session_linker import (
     apply_supersessions,
     canonicalize_entity,
@@ -190,6 +191,14 @@ class SessionExtractService:
 
         triplets_stored = 0
         if graph_store is not None:
+            source_key = f"session:{sid}"
+            # §3 session self-maintenance: purge this session's prior triplet
+            # set so a shrinking triplet list leaves no stragglers. Best-effort
+            # (fakes/simple backends may lack the method).
+            try:
+                graph_store.invalidate_by_source_file(source_key, domain="session")
+            except (AttributeError, TypeError) as exc:
+                logger.debug("session graph purge skipped: %s", exc)
             for t in payload.triplets:
                 try:
                     subj_type, obj_type = types_for(t.relation)
@@ -197,17 +206,34 @@ class SessionExtractService:
                     # keeps one node per real file.
                     subj = canonicalize_entity(t.subject, project_root)
                     obj = canonicalize_entity(t.object, project_root)
-                    if graph_store.add_triplet(
-                        subj,
-                        t.relation,
-                        obj,
-                        subject_type=subj_type,
-                        object_type=obj_type,
-                        source_chunk_id=summary_id,
-                    ):
+                    # Plan B: endpoints naming an existing canonical code node
+                    # link onto it — id/name/type/domain overrides plus
+                    # resolved=True; empty dict (no-op) otherwise.
+                    kwargs: dict[str, Any] = {
+                        "subject_type": subj_type,
+                        "object_type": obj_type,
+                        "source_chunk_id": summary_id,
+                        "source_file": source_key,
+                        "domain": "session",
+                    }
+                    kwargs.update(
+                        link_kwargs(
+                            t.subject,
+                            t.object,
+                            subj_type,
+                            obj_type,
+                            project_root,
+                            graph_store,
+                        )
+                    )
+                    if graph_store.add_triplet(subj, t.relation, obj, **kwargs):
                         triplets_stored += 1
                 except Exception as exc:  # noqa: BLE001 — graph is best-effort
                     logger.debug("add_triplet failed: %s", exc)
+            try:
+                graph_store.sweep_orphan_nodes(domain="session")
+            except (AttributeError, TypeError) as exc:
+                logger.debug("session orphan sweep skipped: %s", exc)
 
             # Phase 140: close superseded decisions' stale facts (temporal
             # backend only; preserves supersedes history). Best-effort.

@@ -37,7 +37,11 @@ def _run(payload: dict, cfg: dict | None = None, monkeypatch=None, server_up=Tru
 _ENFORCE = {"enabled": True, "mode": "enforce", "allow_agents": []}
 _ADVISORY = {"enabled": True, "mode": "advisory", "allow_agents": []}
 _GOOD_PROMPT = "Search the code: brainpalace query 'auth' --mode hybrid --top-k 8"
+# Search-shaped (trips the intent gate) but missing a BrainPalace directive.
 _BAD_PROMPT = "Go find where auth middleware lives and summarize it."
+# Not a codebase-search task — the intent gate lets it through untouched, so the
+# guard never bites even in enforce mode (other plugins' non-search agents).
+_NONSEARCH_PROMPT = "Write a conventional commit message for the staged diff."
 
 
 def test_non_agent_tool_is_silent(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -66,11 +70,12 @@ def test_server_down_is_silent(monkeypatch: pytest.MonkeyPatch) -> None:
     assert res.output.strip() == ""
 
 
-def test_default_config_is_on_and_advisory() -> None:
-    # Default is ON but advisory (nudge, never deny) so the guard doesn't silently
-    # block other plugins' agents; enforce is opt-in. See _GUARD_DEFAULTS comment.
+def test_default_config_is_on_and_enforce() -> None:
+    # Default is ON and enforce (deny). Enforce is safe-by-default because the
+    # guard only bites *search-shaped* spawns missing a directive — non-search
+    # agents from other plugins pass the intent gate untouched. See _GUARD_DEFAULTS.
     assert hook._GUARD_DEFAULTS["enabled"] is True
-    assert hook._GUARD_DEFAULTS["mode"] == "advisory"
+    assert hook._GUARD_DEFAULTS["mode"] == "enforce"
     assert hook._GUARD_DEFAULTS["allow_agents"] == ["research-assistant"]
 
 
@@ -98,22 +103,35 @@ def test_research_assistant_agent_allowed_by_default(
     assert res.output.strip() == ""
 
 
-def test_default_nudges_not_denies(monkeypatch: pytest.MonkeyPatch) -> None:
-    # With the shipped default (advisory), a non-allowlisted agent + bad prompt is
-    # NUDGED, never DENIED — so other plugins' spawns are not silently blocked.
+def _run_default(prompt: str, monkeypatch: pytest.MonkeyPatch):
+    """Invoke the guard with the SHIPPED default config (no cfg stub)."""
     monkeypatch.setattr(hook, "discover_server_url", lambda _=None: "http://x")
     monkeypatch.setattr(hook, "_guard_config_sources", lambda: [])
     monkeypatch.delenv("BRAINPALACE_SUBAGENT_GUARD", raising=False)
     runner = CliRunner()
-    res = runner.invoke(
+    return runner.invoke(
         cli,
         ["hook", "pretooluse"],
-        input=json.dumps({"tool_name": "Agent", "tool_input": {"prompt": _BAD_PROMPT}}),
+        input=json.dumps({"tool_name": "Agent", "tool_input": {"prompt": prompt}}),
     )
-    out = json.loads(res.output)
-    hso = out["hookSpecificOutput"]
-    assert "permissionDecision" not in hso  # not a denial
-    assert "brainpalace query" in hso["additionalContext"]
+
+
+def test_default_denies_search_prompt_without_directive(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Shipped default is enforce: a search-shaped spawn missing a directive is
+    # DENIED, forcing BrainPalace search instead of grep/find.
+    res = _run_default(_BAD_PROMPT, monkeypatch)
+    hso = json.loads(res.output)["hookSpecificOutput"]
+    assert hso["permissionDecision"] == "deny"
+    assert "brainpalace query" in hso["permissionDecisionReason"]
+
+
+def test_default_allows_non_search_spawn(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The intent gate: a spawn that is not a codebase-search task passes untouched
+    # even under default enforce — other plugins' non-search agents are not blocked.
+    res = _run_default(_NONSEARCH_PROMPT, monkeypatch)
+    assert res.output.strip() == ""
 
 
 def test_enforce_denies_missing_directive(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -138,6 +156,39 @@ def test_good_prompt_allowed(monkeypatch: pytest.MonkeyPatch) -> None:
     assert res.output.strip() == ""
 
 
+def test_non_search_prompt_allowed_in_enforce(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Even in enforce, a prompt with no codebase-search intent is allowed without
+    # a directive — the guard only polices search-shaped spawns.
+    res = _run(
+        {"tool_name": "Agent", "tool_input": {"prompt": _NONSEARCH_PROMPT}},
+        _ENFORCE,
+        monkeypatch,
+    )
+    assert res.output.strip() == ""
+
+
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "Find where the retry logic is implemented.",
+        "What calls parse_config across the repo?",
+        "Locate all usages of the Settings model.",
+        "Trace the callers of discover_server_url.",
+        "Which files import the storage module?",
+        "How does the indexing pipeline work?",
+    ],
+)
+def test_search_shaped_prompts_denied_without_directive(
+    prompt: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    res = _run(
+        {"tool_name": "Agent", "tool_input": {"prompt": prompt}}, _ENFORCE, monkeypatch
+    )
+    assert json.loads(res.output)["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+
 @pytest.mark.parametrize(
     "prompt",
     [
@@ -160,9 +211,13 @@ def test_mcp_mode_directive_allowed(
 def test_mode_without_brainpalace_still_denied(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # A bare `mode: hybrid` with no brainpalace mention is not a search directive.
+    # A bare `mode: hybrid` with no brainpalace mention is not a search directive,
+    # so a search-shaped prompt carrying only that is still denied.
     res = _run(
-        {"tool_name": "Agent", "tool_input": {"prompt": "Render with mode: hybrid."}},
+        {
+            "tool_name": "Agent",
+            "tool_input": {"prompt": "Find the callers; render with mode: hybrid."},
+        },
         _ENFORCE,
         monkeypatch,
     )
@@ -183,6 +238,22 @@ def test_allowlisted_agent_skipped(monkeypatch: pytest.MonkeyPatch) -> None:
     assert res.output.strip() == ""
 
 
+def test_allow_agents_supports_glob_patterns(monkeypatch: pytest.MonkeyPatch) -> None:
+    cfg = {"enabled": True, "mode": "enforce", "allow_agents": ["gsd-*"]}
+    res = _run(
+        {
+            "tool_name": "Agent",
+            "tool_input": {
+                "subagent_type": "gsd-planner",
+                "prompt": "find all callers of resolve_cooldown and list all imports",
+            },
+        },
+        cfg,
+        monkeypatch,
+    )
+    assert res.output.strip() == ""  # pattern-allowlisted → spawn untouched
+
+
 def test_exempt_marker_allows(monkeypatch: pytest.MonkeyPatch) -> None:
     prompt = (
         "# BRAINPALACE_EXEMPT: pure refactor, no codebase search needed\n"
@@ -195,7 +266,7 @@ def test_exempt_marker_allows(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_short_exempt_reason_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
-    prompt = "# BRAINPALACE_EXEMPT: too short\nDo a thing."
+    prompt = "# BRAINPALACE_EXEMPT: too short\nFind all callers of foo."
     res = _run(
         {"tool_name": "Agent", "tool_input": {"prompt": prompt}}, _ENFORCE, monkeypatch
     )

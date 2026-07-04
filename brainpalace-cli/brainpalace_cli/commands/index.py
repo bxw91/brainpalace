@@ -83,6 +83,13 @@ console = Console()
     help="Force re-indexing even if embedding provider has changed",
 )
 @click.option(
+    "--force-budget",
+    "force_budget",
+    is_flag=True,
+    default=False,
+    help="Bypass the per-job embedding-token budget cap for this job.",
+)
+@click.option(
     "--allow-external",
     is_flag=True,
     help="Allow indexing paths outside the project directory",
@@ -108,6 +115,13 @@ console = Console()
     is_flag=True,
     help="Estimate approximate embedding-token usage and exit — do not index.",
 )
+@click.option(
+    "--rebuild-graph",
+    "rebuild_graph",
+    is_flag=True,
+    help="Rebuild the graph index from already-indexed chunks (no embedding, no "
+    "token cost); runs AST + LSP over the corpus and returns when complete.",
+)
 @click.option("--json", "json_output", is_flag=True, help="Output as JSON")
 @click.option(
     "--yes",
@@ -129,10 +143,12 @@ def index_command(
     include_type: str | None,
     exclude_patterns: str | None,
     force: bool,
+    force_budget: bool,
     allow_external: bool,
     watch_mode: str | None,
     watch_debounce_seconds: int | None,
     estimate_only: bool,
+    rebuild_graph: bool,
     json_output: bool,
     yes: bool,
 ) -> None:
@@ -200,8 +216,9 @@ def index_command(
                 return
 
             # Task 4d: interactive backpressure warn before scheduling a new
-            # indexing job.  Skip the prompt under --yes / non-interactive.
-            if not yes:
+            # indexing job.  Skip the prompt under --yes / non-interactive, and
+            # for --rebuild-graph (no embedding, adds no pending chunks).
+            if not yes and not rebuild_graph:
                 try:
                     from brainpalace_server.config.extraction_config import (
                         load_extraction_config,
@@ -242,9 +259,11 @@ def index_command(
                 include_types=include_types_list,
                 exclude_patterns=exclude_patterns_list,
                 force=force,
+                force_budget=force_budget,
                 allow_external=allow_external,
                 watch_mode=watch_mode,
                 watch_debounce_seconds=watch_debounce_seconds,
+                rebuild_graph=rebuild_graph,
             )
 
             if json_output:
@@ -257,6 +276,13 @@ def index_command(
                     "folder": str(folder),
                 }
                 click.echo(json.dumps(output, indent=2))
+                return
+
+            # --rebuild-graph completes synchronously (no queued job).
+            if rebuild_graph:
+                console.print(
+                    f"\n[green]Graph index rebuilt.[/] {response.message or ''}"
+                )
                 return
 
             console.print("\n[green]Job queued![/]\n")

@@ -14,6 +14,7 @@ import {
   removeFolder,
   cancelJob,
   gitReindex,
+  graphRebuild,
   sessionsReindex,
   memoryObsolete,
   memoryDelete,
@@ -119,6 +120,7 @@ describe("data api client", () => {
     await removeFolder("a", "/p");
     await cancelJob("a", "job_1");
     await gitReindex("a");
+    await graphRebuild("a");
     await sessionsReindex("a");
     await memoryObsolete("a", "m1");
     await memoryDelete("a", "m1");
@@ -133,6 +135,7 @@ describe("data api client", () => {
     expect(seen).toContainEqual(["DELETE", "/dashboard/api/instances/a/folders"]);
     expect(seen).toContainEqual(["DELETE", "/dashboard/api/instances/a/jobs/job_1"]);
     expect(seen).toContainEqual(["POST", "/dashboard/api/instances/a/git/reindex"]);
+    expect(seen).toContainEqual(["POST", "/dashboard/api/instances/a/graph/rebuild"]);
     expect(seen).toContainEqual(["POST", "/dashboard/api/instances/a/sessions/reindex"]);
     expect(seen).toContainEqual(["POST", "/dashboard/api/instances/a/memories/m1/obsolete"]);
     expect(seen).toContainEqual(["DELETE", "/dashboard/api/instances/a/memories/m1"]);

@@ -65,6 +65,22 @@ class BM25IndexManager:
         """Get the number of documents in the BM25 index."""
         return len(self._corpus) if self._corpus else 0
 
+    def all_nodes(self) -> list[BaseNode]:
+        """All indexed chunks as nodes (text + metadata).
+
+        Reconstructs ``TextNode``s from the persisted corpus so callers (e.g.
+        graph rebuild) can re-run extraction over every chunk without
+        re-embedding. Skips entries with an unreadable payload.
+        """
+        nodes: list[BaseNode] = []
+        for entry in self._corpus or []:
+            try:
+                node_id, text, metadata = self._entry_to_fields(entry)
+            except (ValueError, KeyError, TypeError):
+                continue
+            nodes.append(TextNode(text=text, metadata=metadata, id_=node_id or None))
+        return nodes
+
     def _analyzer_for(self, lang: str) -> "TextAnalyzer":
         return get_analyzer("code" if lang == "code" else lang, self.engine)
 

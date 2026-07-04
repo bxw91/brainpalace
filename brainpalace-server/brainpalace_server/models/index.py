@@ -20,6 +20,7 @@ class IndexingStatusEnum(str, Enum):
     INDEXING = "indexing"
     COMPLETED = "completed"
     FAILED = "failed"
+    BLOCKED = "blocked"
 
 
 class IndexRequest(BaseModel):

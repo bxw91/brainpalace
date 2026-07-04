@@ -37,6 +37,7 @@ from .schemas import (
     ExtractionFetchInput,
     ExtractionSubmitInput,
     FoldersListInput,
+    JobsApproveInput,
     JobsListInput,
     MemorizeInput,
     QueryInput,
@@ -161,6 +162,17 @@ def _jobs_list_sync(inp: JobsListInput) -> dict[str, Any]:
         return _client_error_to_dict(exc)
 
 
+def _jobs_approve_sync(inp: JobsApproveInput) -> dict[str, Any]:
+    url = discover_server_url(_start_path(inp.path))
+    if url is None:
+        return _err(_NO_SERVER_MSG)
+    try:
+        with DocServeClient(base_url=url) as client:
+            return client.approve_job(inp.job_id)
+    except Exception as exc:  # noqa: BLE001
+        return _client_error_to_dict(exc)
+
+
 def _memorize_sync(inp: MemorizeInput) -> dict[str, Any]:
     url = discover_server_url(_start_path(inp.path))
     if url is None:
@@ -218,6 +230,10 @@ async def folders_list_tool(inp: FoldersListInput) -> dict[str, Any]:
 
 async def jobs_list_tool(inp: JobsListInput) -> dict[str, Any]:
     return await asyncio.to_thread(_jobs_list_sync, inp)
+
+
+async def jobs_approve_tool(inp: JobsApproveInput) -> dict[str, Any]:
+    return await asyncio.to_thread(_jobs_approve_sync, inp)
 
 
 async def memorize_tool(inp: MemorizeInput) -> dict[str, Any]:

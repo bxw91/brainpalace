@@ -27,7 +27,7 @@ def test_nodes_search():
         r = c.get("/graph/nodes?q=query&limit=10")
     assert r.status_code == 200
     assert r.json()["nodes"][0]["name"] == "QueryService"
-    mgr.search_nodes.assert_called_once_with("query", limit=10)
+    mgr.search_nodes.assert_called_once_with("query", limit=10, domains=None)
 
 
 def test_neighbors():
@@ -44,7 +44,7 @@ def test_neighbors():
         r = c.get("/graph/neighbors?node=n1&limit=100")
     assert r.status_code == 200
     assert r.json()["nodes"][0]["id"] == "n1"
-    mgr.neighbors.assert_called_once_with(["n1"], limit=100)
+    mgr.neighbors.assert_called_once_with(["n1"], limit=100, domains=None)
 
 
 def test_top_nodes():
@@ -60,7 +60,30 @@ def test_top_nodes():
         r = c.get("/graph/top?limit=15")
     assert r.status_code == 200
     assert r.json()["nodes"][0]["degree"] == 9
-    mgr.top_nodes.assert_called_once_with(limit=15)
+    mgr.top_nodes.assert_called_once_with(limit=15, domains=None)
+
+
+def test_endpoints_initialize_store_before_reading():
+    """Regression: browse endpoints must initialize the (lazily-loaded) store.
+
+    Counts come from the ``graph_metadata.json`` sidecar without loading the
+    store, so on a freshly started server ``_graph_store`` stays ``None`` and
+    every browse query returns empty even though entities exist on disk. The
+    endpoints must call ``mgr.initialize()`` (idempotent) first.
+    """
+    mgr = MagicMock()
+    mgr.top_nodes.return_value = []
+    mgr.search_nodes.return_value = []
+    mgr.neighbors.return_value = {"nodes": [], "edges": []}
+    with (
+        patch.object(graph_mod.settings, "ENABLE_GRAPH_INDEX", True),
+        patch.object(graph_mod, "get_graph_store_manager", return_value=mgr),
+    ):
+        c = TestClient(_app())
+        c.get("/graph/top?limit=5")
+        c.get("/graph/nodes?q=x&limit=5")
+        c.get("/graph/neighbors?node=n1&limit=5")
+    assert mgr.initialize.call_count == 3
 
 
 def test_503_when_graph_disabled():

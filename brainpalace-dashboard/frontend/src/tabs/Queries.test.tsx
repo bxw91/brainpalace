@@ -226,4 +226,32 @@ describe("retrieval explorer", () => {
     const [, body] = vi.mocked(client.replayQuery).mock.calls[0];
     expect(body.rerank).toBe(false);
   });
+
+  it("offers compute and scan run modes", async () => {
+    wrap(<Queries instanceId="a" />);
+    fireEvent.click(await screen.findByTestId("btn-new-query"));
+    const options = within(screen.getByTestId("select-run-mode"))
+      .getAllByRole("option")
+      .map((o) => (o as HTMLOptionElement).value);
+    expect(options).toEqual(expect.arrayContaining(["compute", "scan"]));
+  });
+
+  it("renders scan rows as label: value lines", async () => {
+    vi.mocked(client.replayQuery).mockResolvedValue({
+      results: [],
+      query_time_ms: 2,
+      total_results: 1,
+      scan: [{ label: "2026-W03", value: 3 }],
+    });
+    wrap(<Queries instanceId="a" />);
+    fireEvent.click(await screen.findByTestId("btn-new-query"));
+    fireEvent.change(screen.getByTestId("select-run-mode"), {
+      target: { value: "scan" },
+    });
+    fireEvent.change(screen.getByTestId("input-run-query"), {
+      target: { value: "which week did I mention foobar most" },
+    });
+    fireEvent.click(screen.getByTestId("btn-run-query"));
+    expect(await screen.findByText("2026-W03: 3")).toBeInTheDocument();
+  });
 });

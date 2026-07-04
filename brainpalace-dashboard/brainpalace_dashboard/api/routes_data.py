@@ -135,20 +135,53 @@ async def graph(id_: str) -> Any:
 
 
 @router.get("/graph/nodes")
-async def graph_nodes(id_: str, q: str, limit: int = 20) -> Any:
-    return await _call(id_, "GET", "/graph/nodes", params={"q": q, "limit": limit})
+async def graph_nodes(
+    id_: str, q: str, limit: int = 20, domains: str | None = None
+) -> Any:
+    params: dict[str, Any] = {"q": q, "limit": limit}
+    if domains:
+        params["domains"] = domains
+    return await _call(id_, "GET", "/graph/nodes", params=params)
 
 
 @router.get("/graph/neighbors")
-async def graph_neighbors(id_: str, node: str, limit: int = 200) -> Any:
-    return await _call(
-        id_, "GET", "/graph/neighbors", params={"node": node, "limit": limit}
-    )
+async def graph_neighbors(
+    id_: str, node: str, limit: int = 200, domains: str | None = None
+) -> Any:
+    params: dict[str, Any] = {"node": node, "limit": limit}
+    if domains:
+        params["domains"] = domains
+    return await _call(id_, "GET", "/graph/neighbors", params=params)
 
 
 @router.get("/graph/top")
-async def graph_top(id_: str, limit: int = 20) -> Any:
-    return await _call(id_, "GET", "/graph/top", params={"limit": limit})
+async def graph_top(id_: str, limit: int = 20, domains: str | None = None) -> Any:
+    params: dict[str, Any] = {"limit": limit}
+    if domains:
+        params["domains"] = domains
+    return await _call(id_, "GET", "/graph/top", params=params)
+
+
+@router.get("/graph/impact")
+async def graph_impact(id_: str, node: str, max_depth: int = 2, limit: int = 30) -> Any:
+    return await _call(
+        id_,
+        "GET",
+        "/graph/impact",
+        params={"node": node, "max_depth": max_depth, "limit": limit},
+    )
+
+
+@router.get("/graph/cochange")
+async def graph_cochange(
+    id_: str, node: str, min_shared: int = 2, limit: int = 10
+) -> Any:
+    return await _call(
+        id_,
+        "GET",
+        "/graph/cochange",
+        params={"node": node, "min_shared": min_shared, "limit": limit},
+    )
 
 
 @router.get("/memories")
@@ -229,9 +262,21 @@ async def cancel_job(id_: str, job_id: str) -> Any:
     return await _call(id_, "DELETE", f"/index/jobs/{job_id}")
 
 
+@router.post("/jobs/{job_id}/approve")
+async def approve_job(id_: str, job_id: str) -> Any:
+    return await _call(id_, "POST", f"/index/jobs/{job_id}/approve")
+
+
 @router.post("/providers/test")
 async def providers_test(id_: str) -> Any:
     return await _call(id_, "POST", "/health/providers/test")
+
+
+@router.post("/graph/rebuild")
+async def graph_rebuild(id_: str) -> Any:
+    # Rebuild the code graph from already-indexed chunks (no embedding); the
+    # server derives the workspace root from its first indexed folder.
+    return await _call(id_, "POST", "/index/", json={}, params={"rebuild_graph": True})
 
 
 @router.post("/git/reindex")

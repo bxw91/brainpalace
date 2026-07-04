@@ -1,6 +1,9 @@
 ---
 name: graph-triplet-extractor
 description: Extract entity/relationship triplets from a single indexed document chunk and submit them to BrainPalace's graph (free, Haiku — the subagent executor of the shared extraction queue)
+# `triggers:`/`skills:` feed `brainpalace install-agent` runtime converters
+# (OpenCode/Gemini/skill-runtime). Claude Code ignores them — delegation there
+# is driven by `description` alone, so keep descriptions trigger-rich.
 triggers:
   - pattern: "drain( the)? (doc )?graph( queue)?|extract triplets|graph extraction backlog"
     type: message_pattern
@@ -8,7 +11,7 @@ skills:
   - using-brainpalace
 model: haiku
 tools: extraction_fetch, extraction_submit
-last_validated: 2026-06-26
+last_validated: 2026-07-04
 ---
 
 # Graph Triplet Extractor Agent

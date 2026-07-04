@@ -56,6 +56,12 @@ def test_neighbors_returns_touching_subgraph():
     assert node_ids == {"n1", "n2", "n3"}
     edge_pairs = {(e["source"], e["target"]) for e in sub["edges"]}
     assert edge_pairs == {("n1", "n2"), ("n2", "n3")}
+    # Each node carries its true active-edge degree so the browser ranks
+    # fan-out by real hubs (deep expansion) instead of leaves.
+    by_id = {n["id"]: n for n in sub["nodes"]}
+    assert by_id["n2"]["degree"] == 2
+    assert by_id["n1"]["degree"] == 1
+    assert by_id["n3"]["degree"] == 1
 
 
 def test_neighbors_excludes_invalidated_edges():

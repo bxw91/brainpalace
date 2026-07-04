@@ -16,6 +16,7 @@ class JobStatus(str, Enum):
     RUNNING = "running"
     DONE = "done"
     FAILED = "failed"
+    BLOCKED = "blocked"
     CANCELLED = "cancelled"
     SKIPPED = "skipped"
 
@@ -84,6 +85,17 @@ class JobRecord(BaseModel):
     )
     force: bool = Field(
         default=False, description="Bypass manifest comparison for full reindex"
+    )
+    force_budget: bool = Field(
+        default=False,
+        description="Bypass the per-job embedding-token budget guard.",
+    )
+    budget_info: dict[str, int] | None = Field(
+        default=None,
+        description=(
+            "Set when the job was BLOCKED by the embedding-token budget: "
+            "{'estimated_tokens': ..., 'limit': ...}."
+        ),
     )
     eviction_summary: dict[str, Any] | None = Field(
         default=None,
@@ -257,6 +269,7 @@ class JobListResponse(BaseModel):
     running: int = Field(default=0, ge=0, description="Number of running jobs")
     completed: int = Field(default=0, ge=0, description="Number of completed jobs")
     failed: int = Field(default=0, ge=0, description="Number of failed jobs")
+    blocked: int = Field(default=0, ge=0, description="Number of budget-blocked jobs")
 
 
 class JobSummary(BaseModel):
@@ -275,6 +288,9 @@ class JobSummary(BaseModel):
     chunks_added: int = Field(default=0, description="Chunks inserted by this job")
     chunks_removed: int = Field(default=0, description="Chunks evicted by this job")
     error: str | None = Field(default=None, description="Error message if failed")
+    budget_info: dict[str, int] | None = Field(
+        default=None, description="Budget numbers when status is blocked"
+    )
 
     @classmethod
     def from_record(cls, record: JobRecord) -> "JobSummary":
@@ -295,6 +311,7 @@ class JobSummary(BaseModel):
             chunks_added=record.chunks_added,
             chunks_removed=record.chunks_removed,
             error=record.error,
+            budget_info=record.budget_info,
         )
 
 
@@ -342,6 +359,9 @@ class JobDetailResponse(BaseModel):
         default=None,
         description="Eviction summary if manifest tracking was used",
     )
+    budget_info: dict[str, int] | None = Field(
+        default=None, description="Budget numbers when status is blocked"
+    )
 
     @classmethod
     def from_record(cls, record: JobRecord) -> "JobDetailResponse":
@@ -369,6 +389,7 @@ class JobDetailResponse(BaseModel):
             retry_count=record.retry_count,
             cancel_requested=record.cancel_requested,
             eviction_summary=record.eviction_summary,
+            budget_info=record.budget_info,
         )
 
 
@@ -379,6 +400,7 @@ class QueueStats(BaseModel):
     running: int = Field(default=0, ge=0, description="Running jobs count")
     completed: int = Field(default=0, ge=0, description="Completed jobs count")
     failed: int = Field(default=0, ge=0, description="Failed jobs count")
+    blocked: int = Field(default=0, ge=0, description="Budget-blocked jobs count")
     cancelled: int = Field(default=0, ge=0, description="Cancelled jobs count")
     total: int = Field(default=0, ge=0, description="Total jobs count")
     current_job_id: str | None = Field(

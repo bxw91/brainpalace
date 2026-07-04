@@ -41,7 +41,13 @@ _ENFORCE = {"enabled": True, "mode": "enforce"}
 _ADVISORY = {"enabled": True, "mode": "advisory"}
 
 
-def test_grep_advisory_nudges_not_denies(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_grep_advisory_nudges_not_denies(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Fresh tmp_path project so the advisory cooldown stamp can't already be hot
+    # from another test/run sharing the real project's .brainpalace dir.
+    (tmp_path / ".brainpalace").mkdir()
+    monkeypatch.setattr(hook, "discover_project_dir", lambda _=None: tmp_path)
     res = _run(
         {"tool_name": "Grep", "tool_input": {"pattern": "Next steps"}},
         _ADVISORY,
@@ -113,9 +119,15 @@ def test_default_search_guard_is_on_and_advisory() -> None:
     assert hook._SEARCH_GUARD_DEFAULTS["mode"] == "advisory"
 
 
-def test_search_default_nudges_not_denies(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_search_default_nudges_not_denies(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     # With the shipped default (no cfg stub), a Grep is NUDGED, never DENIED.
+    # Fresh tmp_path project so the advisory cooldown stamp can't already be hot
+    # from another test/run sharing the real project's .brainpalace dir.
+    (tmp_path / ".brainpalace").mkdir()
     monkeypatch.setattr(hook, "discover_server_url", lambda _=None: "http://x")
+    monkeypatch.setattr(hook, "discover_project_dir", lambda _=None: tmp_path)
     monkeypatch.setattr(hook, "_guard_config_sources", lambda: [])
     monkeypatch.delenv("BRAINPALACE_SEARCH_GUARD", raising=False)
     runner = CliRunner()
@@ -192,3 +204,32 @@ def test_search_config_sources_reads_yaml(
     cfg = hook._load_search_guard_config()
     assert cfg["enabled"] is True
     assert cfg["mode"] == "advisory"
+
+
+# --- advisory nudge cooldown -----------------------------------------------
+
+
+def test_advisory_nudge_respects_cooldown(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    (tmp_path / ".brainpalace").mkdir()
+    monkeypatch.setattr(hook, "discover_project_dir", lambda _=None: tmp_path)
+    payload = {"tool_name": "Grep", "tool_input": {"pattern": "foo"}}
+    first = _run(payload, _ADVISORY, monkeypatch)
+    assert "additionalContext" in first.output
+    # second call inside the same run reuses the monkeypatched server/config —
+    # only the stamp file on disk should change, so invoke without re-stubbing.
+    runner = CliRunner()
+    second = runner.invoke(cli, ["hook", "pretooluse"], input=json.dumps(payload))
+    assert second.output.strip() == ""  # inside the cooldown window → silent
+
+
+def test_enforce_mode_ignores_cooldown(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    (tmp_path / ".brainpalace").mkdir()
+    monkeypatch.setattr(hook, "discover_project_dir", lambda _=None: tmp_path)
+    payload = {"tool_name": "Grep", "tool_input": {"pattern": "foo"}}
+    for _ in range(2):
+        res = _run(payload, _ENFORCE, monkeypatch)
+        assert '"permissionDecision": "deny"' in res.output

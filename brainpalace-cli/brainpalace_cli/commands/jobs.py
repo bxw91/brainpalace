@@ -68,6 +68,7 @@ def _get_status_style(status: str) -> str:
         "done": "green",
         "failed": "red",
         "error": "red",
+        "blocked": "yellow",
         "cancelled": "dim",
         "canceled": "dim",
     }
@@ -168,6 +169,16 @@ def _create_job_detail_panel(job: dict[str, Any]) -> Panel:
     if error := job.get("error", job.get("error_message")):
         lines.append(f"[bold]Error:[/] [red]{error}[/red]")
 
+    budget_info = job.get("budget_info")
+    if budget_info and isinstance(budget_info, dict):
+        _tok = budget_info.get("estimated_tokens")
+        _cap = budget_info.get("limit")
+        if isinstance(_tok, int) and isinstance(_cap, int):
+            lines.append(
+                f"[yellow]needs ~{_tok:,} tokens (cap {_cap:,}) — approve: "
+                f"brainpalace jobs {job_id} --approve[/yellow]"
+            )
+
     # Show eviction summary if present (Phase 14 - incremental indexing)
     eviction = job.get("eviction_summary")
     if eviction and isinstance(eviction, dict):
@@ -250,6 +261,20 @@ def _cancel_job(client: DocServeClient, job_id: str, json_output: bool) -> None:
         console.print(f"[yellow]{message}[/]")
 
 
+def _approve_job(client: DocServeClient, job_id: str, json_output: bool) -> None:
+    """Approve a budget-blocked job (spends embedding tokens)."""
+    result = client.approve_job(job_id)
+    if json_output:
+        import json
+
+        click.echo(json.dumps(result, indent=2))
+        return
+    console.print(
+        f"[green]Approved.[/] Job [bold]{job_id}[/] re-queued — "
+        f"indexing will continue and spend the estimated tokens."
+    )
+
+
 def _watch_jobs(client: DocServeClient, limit: int) -> None:
     """Watch jobs with periodic refresh."""
     try:
@@ -278,6 +303,12 @@ def _watch_jobs(client: DocServeClient, limit: int) -> None:
 @click.argument("job_id", required=False)
 @click.option("--watch", "-w", is_flag=True, help="Poll every 3 seconds")
 @click.option("--cancel", "-c", is_flag=True, help="Cancel the specified job")
+@click.option(
+    "--approve",
+    "-a",
+    is_flag=True,
+    help="Approve a budget-blocked job (spends embedding tokens)",
+)
 @click.option("--limit", "-l", default=20, help="Max jobs to show (default: 20)")
 @click.option(
     "--url",
@@ -290,6 +321,7 @@ def jobs_command(
     job_id: str | None,
     watch: bool,
     cancel: bool,
+    approve: bool,
     limit: int,
     url: str | None,
     json_output: bool,
@@ -305,12 +337,19 @@ def jobs_command(
       brainpalace jobs --watch      # Watch queue (refresh every 3s)
       brainpalace jobs JOB_ID       # Show job details
       brainpalace jobs JOB_ID --cancel  # Cancel a job
+      brainpalace jobs JOB_ID --approve  # Approve a budget-blocked job
     """
     resolved_url = url or get_server_url()
 
     # Validate options
+    if cancel and approve:
+        raise click.UsageError("Use either --cancel or --approve, not both.")
+
     if cancel and not job_id:
         raise click.UsageError("--cancel requires a JOB_ID argument")
+
+    if approve and not job_id:
+        raise click.UsageError("--approve requires a JOB_ID argument")
 
     if watch and job_id:
         raise click.UsageError("--watch cannot be used with a specific JOB_ID")
@@ -322,6 +361,8 @@ def jobs_command(
         with DocServeClient(base_url=resolved_url) as client:
             if cancel and job_id:
                 _cancel_job(client, job_id, json_output)
+            elif approve and job_id:
+                _approve_job(client, job_id, json_output)
             elif watch:
                 _watch_jobs(client, limit)
             elif job_id:

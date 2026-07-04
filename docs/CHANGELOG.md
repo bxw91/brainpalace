@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-28
+last_validated: 2026-07-04
 ---
 
 # Changelog
@@ -20,6 +20,82 @@ Entries are kept short (≤ 3 sentences and ≤ 320 characters); see
 _Entries accumulate here between releases. The release step renames this to
 `## [YY.M.N] - DATE` and adds a fresh empty `## [Unreleased]` above it — never
 hand-number an unreleased section._
+
+## [26.7.1] - 2026-07-04
+
+### Added
+- **Budget-blocked jobs — pause + approve.** An index job over
+  `indexing.max_embed_tokens_per_job` now parks as `blocked` (nothing spent)
+  instead of failing; approve via `brainpalace jobs <id> --approve`, the dashboard
+  Jobs tab, or MCP `jobs_approve`. Surfaced in-band (`index_blocked`, `status`,
+  `/health/status`, session-start); `--force-budget` bypasses on first index.
+- **Adaptive budget cap.** The per-job cap scales with project size —
+  `max(max_embed_tokens_per_job, max_embed_ratio_per_job × estimated index size)`
+  (ratio default `0.2`, env `INDEX_MAX_EMBED_RATIO`, `0` = fixed cap). The 100k
+  value becomes the floor, so big repos stop tripping on legitimate churn.
+- **`scan` query mode (memory Phase 2):** deterministic term counts over the
+  archived session transcripts, bucketed by week/month/day/source, answering
+  "which week did I mention X most" with no LLM cost; auto-routes from hybrid
+  on utterance-history tells (compute wins ties); empty when the session
+  archive is off.
+- **Graph query surface.** New `GET /graph/path|impact|cochange|top` endpoints and
+  `brainpalace graph path|impact|cochange` verbs (SQLite store, no chroma); `--mode
+  graph` matches via store search and orders by edge `weight` (absent = 1.0), with
+  impact/co-change sections in the dashboard node detail.
+- **Richer code graph.** Now models files/folders, precise node kinds (class,
+  function, method, enum, interface, decorator, API endpoint), real imports, package
+  deps, route→handler links, and an **exact call graph** — cross-file calls resolve
+  precisely with a language server (`graph_indexing.lsp`). Doc/session mentions link
+  onto canonical code nodes (Plan B); git-history adds `Commit modifies File`/
+  `authored_by Author` edges + co-change (Plan C).
+- **Graph browser + no-reembed rebuild.** The Graph tab opens at the top hub with a
+  node detail panel (source, callers/callees, lazy snippet via
+  `GET /graph/node/source`), curved labelled edges, a kind→color legend, and
+  kind/edge/domain filters. `brainpalace index --rebuild-graph` and a **Rebuild code
+  graph** button rebuild the AST+LSP graph from indexed chunks — no embedding, no
+  token cost.
+- **Language-server install on enable.** Turning on graph/LSP offers to install pyright
+  via pipx / npm / in-venv pip; new `brainpalace lsp install [--yes]`, `doctor`/`init`
+  prompts (never auto-installs non-interactively), and `status` flags a
+  configured-but-missing language. Python only.
+
+### Changed
+- **Graph browser rebuilt.** Search results open in a slide-in panel; the canvas is
+  a live force-directed layout (Obsidian-style) that settles and clusters related
+  entities — click to recenter, drag to reposition, labels hidden until zoomed or for
+  hubs so large graphs stay readable.
+- **Subagent guard defaults to `enforce`, scoped to search-shaped spawns.** The
+  PreToolUse `cli.subagent_guard` acts only on `Agent`/`Task` prompts that are an
+  actual codebase-search task (intent gate), so it denies a directive-less search
+  spawn by default without blocking non-search agents. Soften with
+  `cli.subagent_guard.mode: advisory` / `BRAINPALACE_SUBAGENT_GUARD=advisory`.
+
+### Fixed
+- **Plugin safety & reliability hardening.** The setup wizard asks before
+  changing permissions and grants far less, assistants get only the tools they
+  need, session context can't smuggle in hidden instructions, and setup, install,
+  and database defaults are safer and more robust.
+- **`indexing.exclude_patterns` can exclude individual files, not just directories.**
+  A pattern naming a file was silently ignored — only directory subtrees were pruned
+  — so a big churny file kept re-embedding on every change. Project-set patterns now
+  **extend** the built-in defaults instead of replacing them, so excluding one file no
+  longer drops the `node_modules`/`.venv` defaults.
+- **Code graph correctness (Plan 4).** Removed self-loops, duplicated parent/child
+  edges, and a bogus funnel hub so real callers/callees and entry-point paths are
+  reachable, with class-qualified method names and merged same-named variants.
+  Built front-end bundles are no longer indexed as fake hubs; requires a graph re-index.
+- **Code graph build hardening (Plan 4).** Fixed graph-build crashes on real chunks
+  (`ChunkMetadata.get`, self-loops, parallel edges), stalled hub expansion, the
+  white-on-white tooltip, and `add_triplet` failing on the `simple` backend. Exact
+  edges now carry `source_chunk_id` (`--mode graph`) with per-endpoint domains so
+  cross-domain edges never flip a node's domain; the canonical-identity rebuild runs
+  automatically on the next index.
+- **Code graph — LSP live-fidelity (Plan 5).** The LSP layer runs against a real
+  language server: the indexed root is the workspace (`rootUri`), files are opened
+  (`didOpen`) before querying, and requests time out instead of hanging. Cross-file
+  targets resolve to qualified `file:Class.method` ids that merge with AST nodes;
+  churny `defined-at`→`Location` edges are gone; servers shut down
+  after each build and `BRAINPALACE_LSP_LANGUAGES` changes apply without a restart.
 
 ## [26.6.54] - 2026-06-28
 

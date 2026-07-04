@@ -42,9 +42,17 @@ _MODELLESS_SECTION_FIELDS: dict[str, set[str]] = {}
 # `session_archiving` renders as its own section but its keys are the nested
 # `session_indexing.archive.*` leaves (single-sourced with the CLI registry, where
 # the archive specs are reassigned to the `session_archiving` group).
+# `graph_indexing` similarly renders the nested `graph_indexing.lsp.*` leaves as
+# flat controls (Plan 2 — LSP cross-reference settings).
 SECTION_DOTPATH_PREFIX: dict[str, str] = {
     "session_archiving": "session_indexing.archive",
+    "graph_indexing": "graph_indexing.lsp",
 }
+
+# Leaf fields of the GraphLspConfig nested model (graph_indexing.lsp.*).
+# Single source for the dashboard's _section_known. A field added to the model
+# auto-surfaces here (mirrors SESSION_ARCHIVE_FIELDS).
+GRAPH_INDEXING_LSP_FIELDS: list[str] = mi.nested_field_names("graph_indexing.lsp")
 
 
 def _section_known(section: str) -> set[str]:
@@ -56,6 +64,8 @@ def _section_known(section: str) -> set[str]:
     """
     if section == "session_archiving":
         return set(SESSION_ARCHIVE_FIELDS)
+    if section == "graph_indexing":
+        return set(GRAPH_INDEXING_LSP_FIELDS)
     if section in mi.SECTION_MODELS:
         return mi.model_field_names(section)
     return _MODELLESS_SECTION_FIELDS.get(section, set())
@@ -142,6 +152,10 @@ _DASHBOARD_ONLY_HIDDEN: dict[str, str] = {
     "graphrag.max_triplets_per_chunk": "advanced extraction-tuning internal",
     "graphrag.traversal_depth": "advanced query-tuning internal",
     "graphrag.rrf_k": "advanced multi-retrieval fusion constant (internal)",
+    # graph_indexing.lsp is the container FieldSpec for the nested GraphLspConfig;
+    # the leaf specs (graph_indexing.lsp.mode/python/typescript) render as flat
+    # controls in the graph_indexing section — hide the container object itself.
+    "graph_indexing.lsp": "nested model container; leaf fields render as flat controls",
 }
 
 # Grid-hidden fields (from the CLI single source, cf.GRID_HIDDEN_FIELDS) are merged
@@ -187,6 +201,8 @@ def _derive(section: str, key: str) -> dict[str, Any]:
         derived = mi.derive_field(prefix, key)
     elif prefix == "session_indexing.archive":
         derived = mi.nested_field("session_indexing.archive", key)
+    elif prefix == "graph_indexing.lsp":
+        derived = mi.nested_field("graph_indexing.lsp", key)
     elif prefix == "storage.postgres":
         t = dict(cs.POSTGRES_TYPE_FIELDS).get(key, (str, ""))[0]
         widget = "int" if t is int else "toggle" if t is bool else "text"

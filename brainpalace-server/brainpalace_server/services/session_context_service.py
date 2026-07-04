@@ -19,7 +19,7 @@ take effect next session — prefix-cache friendly).
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from brainpalace_server.config.settings import settings
 from brainpalace_server.models.context import SessionContext
@@ -56,6 +56,7 @@ class SessionContextService:
         project_root: str | None = None,
         branch: str | None = None,
         doc_count: int | None = None,
+        blocked_job: dict[str, Any] | None = None,
     ) -> SessionContext:
         sections: list[str] = []
         lines: list[str] = ["# BrainPalace — session context", ""]
@@ -68,6 +69,17 @@ class SessionContextService:
             facts.append(f"- branch: {branch}")
         if doc_count is not None:
             facts.append(f"- indexed chunks: {doc_count}")
+        if blocked_job:
+            tokens = blocked_job.get("estimated_tokens")
+            limit = blocked_job.get("limit")
+            facts.append(
+                f"- WARNING: indexing paused — job {blocked_job.get('job_id')} needs "
+                f"~{tokens:,} embedding tokens (cap {limit:,}). Approve: "
+                f"brainpalace jobs {blocked_job.get('job_id')} --approve"
+                if isinstance(tokens, int) and isinstance(limit, int)
+                else f"- WARNING: indexing paused — job {blocked_job.get('job_id')}. "
+                f"Approve: brainpalace jobs {blocked_job.get('job_id')} --approve"
+            )
         if len(facts) > 1:
             lines.extend(facts)
             lines.append("")
@@ -139,4 +151,5 @@ class SessionContextService:
             sections=sections,
             truncated=truncated,
             memory_count=memory_count,
+            blocked_job=blocked_job,
         )

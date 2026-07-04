@@ -321,8 +321,10 @@ export function Status({ instanceId }: { instanceId?: string }) {
             label="LSP"
             value={
               lsp.enabled
-                ? `enabled (${asArray(lsp.languages).join(", ") || "—"})`
-                : "disabled"
+                ? `active (${asArray(lsp.active ?? lsp.languages).join(", ") || "—"})`
+                : asArray(lsp.detected).length
+                  ? `idle — detected ${asArray(lsp.detected).join(", ")}`
+                  : "not found — install pyright for exact call edges"
             }
           />
           <Row

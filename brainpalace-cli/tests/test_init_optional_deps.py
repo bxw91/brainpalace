@@ -32,10 +32,10 @@ def test_int_field_edit_writes_int(monkeypatch, tmp_path):
         "brainpalace_cli.xdg_paths.get_xdg_config_dir", lambda: tmp_path
     )
     monkeypatch.setattr("brainpalace_cli.commands.init._stdin_is_tty", lambda: True)
-    # Drill Query Log (division 16), keep enabled (Y), set retention_days=30 (not the
+    # Drill Query Log (division 17), keep enabled (Y), set retention_days=30 (not the
     # default 7 so the edit is recorded), then c to continue, then n to skip dashboard.
-    # Grid: ... 14=Server, 15=Server Mode → Query Log is division 16.
-    result = CliRunner().invoke(init_command, ["--global"], input="16\nY\n30\nc\nn\n")
+    # Grid: ... 15=Server, 16=Server Mode → Query Log is division 17.
+    result = CliRunner().invoke(init_command, ["--global"], input="17\nY\n30\nc\nn\n")
     assert result.exit_code == 0, result.output
     written = None
     cfg = tmp_path / "config.yaml"

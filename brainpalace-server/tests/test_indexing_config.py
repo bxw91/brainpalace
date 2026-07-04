@@ -67,3 +67,36 @@ def test_cooldown_zero_disables(tmp_path: Path) -> None:
         _write(tmp_path / "config.yaml", "indexing:\n  reembed_cooldown_seconds: 0\n")
     )
     assert cfg.reembed_cooldown_seconds == 0
+
+
+def test_exclude_patterns_extend_defaults(tmp_path: Path) -> None:
+    """Project exclude_patterns are ADDED to the built-in defaults, not replaced.
+
+    Adding one file pattern must not drop node_modules/.venv/.brainpalace, else
+    a user excluding CHANGELOG would silently start indexing node_modules.
+    """
+    defaults = IndexingConfig().exclude_patterns
+    cfg = load_indexing_config(
+        _write(
+            tmp_path / "config.yaml",
+            'indexing:\n  exclude_patterns:\n    - "**/docs/CHANGELOG.md"\n',
+        )
+    )
+    # The new pattern is present …
+    assert "**/docs/CHANGELOG.md" in cfg.exclude_patterns
+    # … and every built-in default survives.
+    for pat in defaults:
+        assert pat in cfg.exclude_patterns
+    # No duplicates introduced.
+    assert len(cfg.exclude_patterns) == len(set(cfg.exclude_patterns))
+
+
+def test_exclude_patterns_dedup_when_repeating_a_default(tmp_path: Path) -> None:
+    """Re-listing a default pattern does not duplicate it."""
+    cfg = load_indexing_config(
+        _write(
+            tmp_path / "config.yaml",
+            'indexing:\n  exclude_patterns:\n    - "**/node_modules/**"\n',
+        )
+    )
+    assert cfg.exclude_patterns.count("**/node_modules/**") == 1

@@ -90,6 +90,17 @@ class ComputeRow:
 
 
 @dataclass
+class ScanRow:
+    """One scan-mode row (term count per bucket)."""
+
+    label: str
+    value: float
+    term: str
+    group: str | None = None
+    score: float = 0.0
+
+
+@dataclass
 class QueryResponse:
     """Query response with results."""
 
@@ -97,6 +108,8 @@ class QueryResponse:
     query_time_ms: float
     total_results: int
     compute: list[ComputeRow] | None = None
+    scan: list[ScanRow] | None = None
+    index_blocked: dict[str, Any] | None = None
 
 
 @dataclass
@@ -333,11 +346,27 @@ class DocServeClient:
                 for c in raw_compute
             ]
 
+        raw_scan = data.get("scan")
+        scan_rows: list[ScanRow] | None = None
+        if raw_scan is not None:
+            scan_rows = [
+                ScanRow(
+                    label=str(r.get("label", "")),
+                    value=float(r.get("value", 0.0)),
+                    term=str(r.get("term", "")),
+                    group=r.get("group"),
+                    score=float(r.get("score", 0.0)),
+                )
+                for r in raw_scan
+            ]
+
         return QueryResponse(
             results=results,
             query_time_ms=data.get("query_time_ms", 0.0),
             total_results=data.get("total_results", len(results)),
             compute=compute_rows,
+            scan=scan_rows,
+            index_blocked=data.get("index_blocked"),
         )
 
     def index(
@@ -353,12 +382,14 @@ class DocServeClient:
         exclude_patterns: list[str] | None = None,
         include_types: list[str] | None = None,
         force: bool = False,
+        force_budget: bool = False,
         allow_external: bool = False,
         injector_script: str | None = None,
         folder_metadata_file: str | None = None,
         dry_run: bool = False,
         watch_mode: str | None = None,
         watch_debounce_seconds: int | None = None,
+        rebuild_graph: bool = False,
     ) -> IndexResponse:
         """
         Enqueue an indexing job for documents and optionally code from a folder.
@@ -375,12 +406,15 @@ class DocServeClient:
             exclude_patterns: Additional exclude patterns.
             include_types: File type preset names (e.g., ["python", "docs"]).
             force: Bypass deduplication and force a new job.
+            force_budget: Bypass the per-job embedding-token budget guard.
             allow_external: Allow paths outside the project directory.
             injector_script: Path to Python script exporting process_chunk().
             folder_metadata_file: Path to JSON file with static metadata.
             dry_run: Validate injector against sample chunks without indexing.
             watch_mode: Watch mode for auto-reindex: 'auto' or 'off'.
             watch_debounce_seconds: Per-folder debounce in seconds.
+            rebuild_graph: Rebuild the graph index from existing chunks only
+                (no embedding); returns a completed response, not a queued job.
 
         Returns:
             IndexResponse with job ID and queue status.
@@ -396,6 +430,7 @@ class DocServeClient:
             "include_patterns": include_patterns,
             "exclude_patterns": exclude_patterns,
             "force": force,
+            "force_budget": force_budget,
         }
         if include_types is not None:
             body["include_types"] = include_types
@@ -414,7 +449,11 @@ class DocServeClient:
             "POST",
             "/index/",
             json=body,
-            params={"force": force, "allow_external": allow_external},
+            params={
+                "force": force,
+                "allow_external": allow_external,
+                "rebuild_graph": rebuild_graph,
+            },
         )
 
         return IndexResponse(
@@ -543,6 +582,18 @@ class DocServeClient:
         """
         return self._request("DELETE", f"/index/jobs/{job_id}")
 
+    def approve_job(self, job_id: str) -> dict[str, Any]:
+        """
+        Approve a budget-blocked job (re-queues it with force_budget).
+
+        Args:
+            job_id: The blocked job ID to approve.
+
+        Returns:
+            Approval result dictionary ({"job_id", "status", "message"}).
+        """
+        return self._request("POST", f"/index/jobs/{job_id}/approve")
+
     def cache_status(self) -> dict[str, Any]:
         """
         Get embedding cache status.
@@ -568,6 +619,52 @@ class DocServeClient:
             ServerError: If server returns an error.
         """
         return self._request("DELETE", "/index/cache/")
+
+    def graph_path(
+        self,
+        src: str,
+        dst: str,
+        max_depth: int = 6,
+        limit: int = 5,
+        domains: str | None = None,
+    ) -> dict[str, Any]:
+        """Shortest paths between two graph nodes (GET /graph/path)."""
+        params: dict[str, Any] = {
+            "src": src,
+            "dst": dst,
+            "max_depth": max_depth,
+            "limit": limit,
+        }
+        if domains:
+            params["domains"] = domains
+        return self._request("GET", "/graph/path", params=params)
+
+    def graph_impact(
+        self,
+        node: str,
+        max_depth: int = 3,
+        predicates: str | None = None,
+        limit: int = 200,
+    ) -> dict[str, Any]:
+        """Reverse dependency closure for a node (GET /graph/impact)."""
+        params: dict[str, Any] = {
+            "node": node,
+            "max_depth": max_depth,
+            "limit": limit,
+        }
+        if predicates:
+            params["predicates"] = predicates
+        return self._request("GET", "/graph/impact", params=params)
+
+    def graph_cochange(
+        self, node: str, min_shared: int = 2, limit: int = 20
+    ) -> dict[str, Any]:
+        """Git co-change files for a file node (GET /graph/cochange)."""
+        return self._request(
+            "GET",
+            "/graph/cochange",
+            params={"node": node, "min_shared": min_shared, "limit": limit},
+        )
 
     # ----- Curated memory namespace (Phase 030) -------------------------
 

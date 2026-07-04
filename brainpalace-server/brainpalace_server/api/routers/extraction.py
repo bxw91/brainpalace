@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import ValidationError
@@ -30,6 +31,7 @@ from brainpalace_server.models.extraction_api import (
     SubmitResult,
 )
 from brainpalace_server.models.session_extract import SessionExtraction
+from brainpalace_server.services.entity_resolver import link_kwargs
 from brainpalace_server.services.session_distill_service import (
     pending_sessions,
     write_marker,
@@ -156,17 +158,36 @@ async def submit(payload: ExtractionSubmit, request: Request) -> SubmitResult:
                 marked_done=True,
             )
         graph = get_graph_store_manager()
+        project_root = str(getattr(request.app.state, "project_root", "") or "")
+        # §3 doc self-maintenance: purge this chunk's prior triplet set before
+        # writing the new one (idempotent re-extraction, no stale buildup).
+        graph.invalidate_by_source_file(payload.chunk_id, domain="doc")
         stored = 0
         for t in payload.triplets or []:
+            # Plan B: endpoints naming an existing canonical code node link
+            # onto it (per-endpoint domains keep the code node in 'code').
+            kwargs: dict[str, Any] = {
+                "subject_type": t.subject_type,
+                "object_type": t.object_type,
+                "source_chunk_id": payload.chunk_id,
+                "source_file": payload.chunk_id,
+                "domain": "doc",
+            }
+            kwargs.update(
+                link_kwargs(
+                    t.subject,
+                    t.object,
+                    t.subject_type,
+                    t.object_type,
+                    project_root,
+                    graph,
+                )
+            )
             if graph.add_triplet(
-                subject=t.subject,
-                predicate=t.predicate,
-                obj=t.object,
-                subject_type=t.subject_type,
-                object_type=t.object_type,
-                source_chunk_id=payload.chunk_id,
+                subject=t.subject, predicate=t.predicate, obj=t.object, **kwargs
             ):
                 stored += 1
+        graph.sweep_orphan_nodes(domain="doc")
         graph.persist()
         # Mark the chunk done when the graph is READY to accept triplets — even
         # if some triplets did not store. A per-triplet failure (malformed entity,

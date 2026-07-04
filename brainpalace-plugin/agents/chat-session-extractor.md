@@ -1,6 +1,9 @@
 ---
 name: chat-session-extractor
 description: Extract durable knowledge (summary, decisions, relationship triplets) from a finished AI-coding session and submit it to BrainPalace
+# `triggers:`/`skills:` feed `brainpalace install-agent` runtime converters
+# (OpenCode/Gemini/skill-runtime). Claude Code ignores them — delegation there
+# is driven by `description` alone, so keep descriptions trigger-rich.
 triggers:
   - pattern: "extract( this| the)? session|pending extraction|drain the extract queue"
     type: message_pattern
@@ -8,7 +11,7 @@ skills:
   - using-brainpalace
 model: haiku
 tools: Read, Glob, Bash, extraction_submit
-last_validated: 2026-06-26
+last_validated: 2026-07-04
 ---
 
 # Chat Session Extractor Agent

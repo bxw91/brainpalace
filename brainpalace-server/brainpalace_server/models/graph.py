@@ -14,12 +14,15 @@ from pydantic import BaseModel, ConfigDict, Field
 # Code entity types
 CodeEntityType = Literal[
     "Package",  # Top-level package
-    "Module",  # Python module, JS file
+    "Module",  # EXTERNAL importable namespace (os, pytest); repo files are File
     "Class",  # Class definition
     "Method",  # Class method
     "Function",  # Standalone function
     "Interface",  # Interface/Protocol
     "Enum",  # Enumeration type
+    "File",  # Repo source file (Plan 3, §1)
+    "Folder",  # Repo directory (Plan 3, §1)
+    "Decorator",  # Decorator applied to a symbol (Plan 3, §5b)
 ]
 
 # Documentation entity types
@@ -52,6 +55,13 @@ SessionEntityType = Literal[
     "Task",  # A task/phase of work
 ]
 
+# Git entity types (Plan C). Nodes produced by the deterministic commit-graph
+# writer (indexing/git_graph.py); domain 'git'.
+GitEntityType = Literal[
+    "Commit",  # One git commit (id git-commit:<sha>)
+    "Author",  # A commit author, keyed by email (id git-author:<email>)
+]
+
 # Combined entity type (code + doc + infra + session)
 EntityType = Literal[
     # Code (7 types)
@@ -62,6 +72,9 @@ EntityType = Literal[
     "Function",
     "Interface",
     "Enum",
+    # Code (Plan 3 additions)
+    "Folder",
+    "Decorator",
     # Documentation (6 types)
     "DesignDoc",
     "UserDoc",
@@ -81,18 +94,25 @@ EntityType = Literal[
     "Tool",
     "File",
     "Task",
+    # Git (2 types, Plan C)
+    "Commit",
+    "Author",
 ]
 
-# Relationship types (8 predicates)
+# Relationship types (12 predicates)
 RelationshipType = Literal[
     "calls",  # Function/method invocation
     "extends",  # Class inheritance
     "implements",  # Interface implementation
-    "references",  # Documentation references code
+    "references",  # Non-call type use / documentation references code
     "depends_on",  # Package/module dependency
     "imports",  # Import statement
     "contains",  # Containment relationship
-    "defined_in",  # Symbol defined in module
+    "defined_in",  # Symbol defined in file
+    "decorated_by",  # Symbol decorated by a decorator (Plan 3, §5b)
+    "handled_by",  # Endpoint handled by a function (Plan 3, §5b)
+    "modifies",  # Commit modifies File (Plan C)
+    "authored_by",  # Commit authored_by Author (Plan C)
 ]
 
 # Runtime constants for validation and iteration
@@ -102,6 +122,7 @@ CODE_ENTITY_TYPES: list[str] = list(get_args(CodeEntityType))
 DOC_ENTITY_TYPES: list[str] = list(get_args(DocEntityType))
 INFRA_ENTITY_TYPES: list[str] = list(get_args(InfraEntityType))
 SESSION_ENTITY_TYPES: list[str] = list(get_args(SessionEntityType))
+GIT_ENTITY_TYPES: list[str] = list(get_args(GitEntityType))
 
 # LSP cross-reference relations (Phase 150). Closed vocabulary for the typed
 # symbol graph produced from language-server queries.
@@ -111,7 +132,6 @@ LSP_RELATIONS: list[str] = [
     "references",  # symbol references another (non-call use)
     "extends",  # class extends a base class
     "implements",  # class implements an interface/protocol
-    "defined-at",  # symbol defined at a file location
     "imports",  # module/symbol imports another
 ]
 
@@ -139,6 +159,9 @@ SYMBOL_TYPE_MAPPING: dict[str, str] = {
     "function": "Function",
     "interface": "Interface",
     "enum": "Enum",
+    "file": "File",
+    "folder": "Folder",
+    "decorator": "Decorator",
 }
 
 # Comprehensive case-insensitive mapping for ALL entity types.
@@ -258,6 +281,19 @@ class GraphTriple(BaseModel):
     source_id: str | None = Field(default=None, description="Provenance: source id")
     ingested_at: str | None = Field(default=None, description="Provenance: ISO ts")
     confidence: float = Field(default=0.0, ge=0.0, le=1.0, description="0..1")
+    subject_id: str | None = None
+    object_id: str | None = None
+    subject_name: str | None = None
+    object_name: str | None = None
+    source_file: str | None = None
+
+    @property
+    def effective_subject_id(self) -> str:
+        return self.subject_id or self.subject
+
+    @property
+    def effective_object_id(self) -> str:
+        return self.object_id or self.object
 
 
 class GraphEntity(BaseModel):

@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from llama_index.core.retrievers import BaseRetriever
@@ -31,7 +32,7 @@ from brainpalace_server.models import (
     QueryResponse,
     QueryResult,
 )
-from brainpalace_server.models.query import ComputeResult
+from brainpalace_server.models.query import ComputeResult, ScanResult
 from brainpalace_server.providers import ProviderRegistry
 from brainpalace_server.storage import (
     StorageBackendProtocol,
@@ -166,6 +167,7 @@ class QueryService:
         query_cache: QueryCacheService | None = None,
         memory_service: MemoryService | None = None,
         record_store: object | None = None,
+        archive_dir: str | Path | None = None,
     ):
         """
         Initialize the query service.
@@ -211,6 +213,8 @@ class QueryService:
         self.query_cache = query_cache
         self.memory_service = memory_service
         self.record_store = record_store  # Task 9: stored for Task 11 executor
+        # Phase 2 (scan): session-archive root; None = archive feature off.
+        self.archive_dir = archive_dir
 
     def is_ready(self) -> bool:
         """
@@ -350,6 +354,25 @@ class QueryService:
                 )
             # empty → fall through to normal hybrid retrieval (finding #4)
 
+        # Auto-router, scan leg (Phase 2). Runs AFTER compute — the roadmap
+        # tie-break: a typed record metric that resolves wins (compute already
+        # returned above); otherwise utterance-history tells route to scan.
+        # Empty scan (no term / no archive / no hits) falls through to hybrid.
+        from brainpalace_server.services.query_router import classify_scan_intent
+
+        if stage1_request.mode == QueryMode.HYBRID and classify_scan_intent(
+            stage1_request.query
+        ):
+            scan_results = await self._execute_scan_query(stage1_request)
+            if scan_results:
+                elapsed = (time.time() - start_time) * 1000
+                return QueryResponse(
+                    results=[],
+                    scan=scan_results,
+                    query_time_ms=elapsed,
+                    total_results=len(scan_results),
+                )
+
         # Read-only: vector/hybrid/multi need to embed the query text (a
         # provider call). On a cache miss, degrade to BM25 (purely lexical, no
         # network) so the server stays queryable offline. GRAPH and BM25 are
@@ -378,6 +401,18 @@ class QueryService:
                 compute=compute_rows,
                 query_time_ms=elapsed,
                 total_results=len(compute_rows),
+            )
+
+        # Scan early-return: archive term-counts are not documents — skip the
+        # retrieval tail entirely, exactly like compute.
+        if stage1_request.mode == QueryMode.SCAN:
+            scan_rows = await self._execute_scan_query(stage1_request)
+            elapsed = (time.time() - start_time) * 1000
+            return QueryResponse(
+                results=[],
+                scan=scan_rows,
+                query_time_ms=elapsed,
+                total_results=len(scan_rows),
             )
 
         # Execute Stage 1 retrieval
@@ -952,6 +987,48 @@ class QueryService:
                     value=float(v),
                     metric=plan.metric,
                     op=plan.op,
+                    group=gk,
+                    score=abs(float(v)) / maxv,
+                )
+            )
+        return out
+
+    async def _execute_scan_query(self, request: QueryRequest) -> list[ScanResult]:
+        """Execute a scan (archive map-reduce) query — Phase 2.
+
+        Returns an empty list when the archive feature is off (no
+        ``archive_dir``), the directory is missing, no term compiles from the
+        query, or nothing matches — callers (auto-router) treat empty as a
+        signal to fall back to normal retrieval. Explicit mode=scan returns
+        the empty list directly (no fallback).
+        """
+        import asyncio
+
+        from brainpalace_server.models.query import ScanResult
+        from brainpalace_server.services.scan_compiler import compile_scan
+        from brainpalace_server.services.scan_executor import scan_archive
+
+        adir = getattr(self, "archive_dir", None)
+        if not adir:
+            return []
+        root = Path(adir)
+        if not root.is_dir():
+            return []
+        plan = compile_scan(request.query)
+        if plan is None:
+            return []
+        rows = await asyncio.to_thread(
+            scan_archive, root, plan, request.language or "en"
+        )
+        maxv = max((abs(v) for _, v in rows), default=1.0) or 1.0
+        out: list[ScanResult] = []
+        for gk, v in rows:
+            label = str(gk) if gk is not None else f"{plan.term} count"
+            out.append(
+                ScanResult(
+                    label=label,
+                    value=float(v),
+                    term=plan.term,
                     group=gk,
                     score=abs(float(v)) / maxv,
                 )

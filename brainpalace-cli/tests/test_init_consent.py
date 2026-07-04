@@ -18,8 +18,8 @@ def _invoke(tmp_path, monkeypatch, *, args, stdin, plugin=True):
 
 def test_prompts_shown_and_decline_is_config_only(tmp_path, monkeypatch):
     # Consent fields are drilled from the grid by NUMBER (never plain-walked).
-    # Archiving (the free COPY) is its own division (10); Chat Session : Vector
-    # Indexing (the billable embed) is division 11. Drill 11 → Vector enabled=Y (fires
+    # Archiving (the free COPY) is its own division (11); Chat Session : Vector
+    # Indexing (the billable embed) is division 12. Drill 12 → Vector enabled=Y (fires
     # the embed consent), include-user-turns=N, Enter past the 5 remaining session
     # fields → [C]ontinue, estimate?=N, proceed=N → config-only.
     # (Chat Session : Summarization's legacy `mode` is grid-hidden — superseded by the
@@ -28,7 +28,7 @@ def test_prompts_shown_and_decline_is_config_only(tmp_path, monkeypatch):
         tmp_path,
         monkeypatch,
         args=[],
-        stdin="11\ny\nn\n\n\n\n\n\nc\nn\nn\n",
+        stdin="12\ny\nn\n\n\n\n\n\nc\nn\nn\n",
     )
     assert r.exit_code == 0, r.output
     # The consent warning appears when the division is drilled.

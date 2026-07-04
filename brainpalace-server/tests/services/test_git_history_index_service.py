@@ -151,3 +151,49 @@ async def test_monorepo_subdir_only_indexes_subdir_commits(tmp_path: Path) -> No
     svc, store, emb = _svc(tmp_path / "state")
     summary = await svc.index_repo(str(sub), GitIndexingConfig(enabled=True))
     assert summary["commits_total"] == 1
+
+
+@pytest.mark.asyncio
+async def test_monorepo_subdir_graph_joins_onto_toplevel_root(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Regression: ``index_repo`` must join ``git log --numstat`` paths (which
+    are always relative to the git toplevel) onto the toplevel, not onto the
+    indexed subdir — else file ids double the subdir segment and the
+    existing-node gate silently drops every ``modifies`` edge."""
+    import brainpalace_server.indexing.git_graph as gg
+    from brainpalace_server.config import settings
+    from brainpalace_server.storage.graph_store import GraphStoreManager
+
+    sub = _init_monorepo(tmp_path)
+    toplevel = tmp_path.resolve()
+
+    monkeypatch.setattr(settings, "ENABLE_GRAPH_INDEX", True)
+    mgr = GraphStoreManager(persist_dir=tmp_path / "graphdb", store_type="sqlite")
+    mgr.initialize()
+    monkeypatch.setattr(gg, "get_graph_store_manager", lambda: mgr)
+
+    # Pre-existing canonical code File node, keyed by the TOPLEVEL-joined
+    # abs path (as the code indexer creates it).
+    file_id = f"{toplevel}/projects/sub/a.py"
+    mgr.add_triplet(
+        "a.py",
+        "contains",
+        "foo",
+        subject_type="File",
+        object_type="Function",
+        subject_id=file_id,
+        object_id=f"{file_id}:foo",
+        source_file=file_id,
+    )
+
+    svc, store, emb = _svc(tmp_path / "state")
+    summary = await svc.index_repo(str(sub), GitIndexingConfig(enabled=True))
+
+    assert summary["graph_triplets"] > 0
+    store_ = mgr._graph_store
+    row = store_._conn.execute(
+        "SELECT count(*) FROM edges WHERE target_id = ? AND valid_until IS NULL",
+        (file_id,),
+    ).fetchone()
+    assert row[0] == 1  # the `modifies` edge landed on the correct File node

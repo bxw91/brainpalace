@@ -278,7 +278,8 @@ class TestCodeMetadataExtractor:
             if t.predicate == "contains" and t.subject == "UserService"
         ]
         assert len(class_contains) >= 1
-        assert class_contains[0].object == "get_user"
+        # Methods are qualified by their class so common names don't collide.
+        assert class_contains[0].object == "UserService.get_user"
         assert class_contains[0].subject_type == "Class"
 
     @patch("brainpalace_server.indexing.graph_extractors.settings")
@@ -301,6 +302,40 @@ class TestCodeMetadataExtractor:
         assert len(defined_in) >= 1
         assert defined_in[0].subject == "process"
         assert defined_in[0].object_type == "Module"
+
+    @patch("brainpalace_server.indexing.graph_extractors.settings")
+    def test_extract_no_self_loop_when_module_equals_symbol(
+        self, mock_settings: MagicMock
+    ):
+        """A file whose main symbol == its module makes no self-edge."""
+        mock_settings.ENABLE_GRAPH_INDEX = True
+        mock_settings.GRAPH_USE_CODE_METADATA = True
+
+        extractor = CodeMetadataExtractor()
+        metadata = {
+            "symbol_name": "ConfirmDialog",
+            "symbol_type": "function",
+            "file_path": "src/components/ConfirmDialog.tsx",
+        }
+        triplets = extractor.extract_from_metadata(metadata)
+        assert all(t.subject != t.object for t in triplets)
+
+    @patch("brainpalace_server.indexing.graph_extractors.settings")
+    def test_extract_qualifies_method_symbol(self, mock_settings: MagicMock):
+        """`__init__` is qualified by its class so constructors don't merge."""
+        mock_settings.ENABLE_GRAPH_INDEX = True
+        mock_settings.GRAPH_USE_CODE_METADATA = True
+
+        extractor = CodeMetadataExtractor()
+        metadata = {
+            "symbol_name": "__init__",
+            "symbol_type": "method",
+            "class_name": "Foo",
+            "file_path": "src/foo.py",
+        }
+        triplets = extractor.extract_from_metadata(metadata)
+        defined_in = [t for t in triplets if t.predicate == "defined_in"]
+        assert defined_in[0].subject == "Foo.__init__"
 
     def test_extract_module_name(self):
         """Test module name extraction from file path."""
@@ -355,6 +390,57 @@ const lodash = require('lodash');
         modules = {t.object for t in triplets}
         assert "react" in modules
         assert "lodash" in modules
+
+    @patch("brainpalace_server.indexing.graph_extractors.settings")
+    def test_extract_from_text_attributes_importer(self, mock_settings: MagicMock):
+        """Import edges use the real importing module, not a shared hub."""
+        mock_settings.ENABLE_GRAPH_INDEX = True
+        extractor = CodeMetadataExtractor()
+
+        triplets = extractor.extract_from_text(
+            "import os\nfrom typing import List",
+            language="python",
+            module_name="Graph",
+        )
+        subjects = {t.subject for t in triplets if t.predicate == "imports"}
+        assert subjects == {"Graph"}
+        assert "current_module" not in subjects
+
+        # Default (no module_name) keeps the legacy placeholder subject.
+        legacy = extractor.extract_from_text("import os", language="python")
+        assert legacy[0].subject == "current_module"
+
+    @patch("brainpalace_server.indexing.graph_extractors.settings")
+    def test_extract_from_text_js_leaf_normalizes_relative(
+        self, mock_settings: MagicMock
+    ):
+        """Relative JS imports collapse to the leaf token (matches AST module)."""
+        mock_settings.ENABLE_GRAPH_INDEX = True
+        extractor = CodeMetadataExtractor()
+
+        code = (
+            "import { buildExpansion } from './graphExpansion';\n"
+            "import GraphCanvas from '../components/GraphCanvas';\n"
+        )
+        triplets = extractor.extract_from_text(
+            code, language="tsx", module_name="Graph"
+        )
+        objects = {t.object for t in triplets}
+        assert objects == {"graphExpansion", "GraphCanvas"}
+        assert all(t.subject == "Graph" for t in triplets)
+
+    @patch("brainpalace_server.indexing.graph_extractors.settings")
+    def test_extract_from_text_skips_self_import(self, mock_settings: MagicMock):
+        """A module importing its own leaf token makes no self-loop edge."""
+        mock_settings.ENABLE_GRAPH_INDEX = True
+        extractor = CodeMetadataExtractor()
+
+        triplets = extractor.extract_from_text(
+            "import x from './graphExpansion';",
+            language="tsx",
+            module_name="graphExpansion",
+        )
+        assert triplets == []
 
     @patch("brainpalace_server.indexing.graph_extractors.settings")
     def test_extract_from_text_java(self, mock_settings: MagicMock):

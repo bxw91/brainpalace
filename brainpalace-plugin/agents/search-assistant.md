@@ -1,6 +1,9 @@
 ---
 name: search-assistant
-description: Proactively assists with document and code search using BrainPalace
+description: Proactively assists with document and code search using BrainPalace — use for "search the docs", "find documentation about", "where is X", "find the implementation of", "query the knowledge base", and cache/hit-rate questions
+# `triggers:`/`skills:` feed `brainpalace install-agent` runtime converters
+# (OpenCode/Gemini/skill-runtime). Claude Code ignores them — delegation there
+# is driven by `description` alone, so keep descriptions trigger-rich.
 triggers:
   - pattern: "search.*docs|find.*documentation|query.*knowledge"
     type: message_pattern
@@ -14,7 +17,8 @@ triggers:
     type: keyword
 skills:
   - using-brainpalace
-last_validated: 2026-06-24
+tools: Bash, Read
+last_validated: 2026-07-04
 ---
 
 # Search Assistant Agent

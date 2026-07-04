@@ -34,6 +34,7 @@ def test_list_tools_returns_expected_tools() -> None:
         "ai_guide",
         "extraction_fetch",
         "extraction_submit",
+        "jobs_approve",
     ]
 
 
@@ -50,16 +51,18 @@ def test_list_tools_schemas_carry_path_arg() -> None:
 
 
 def test_list_tools_descriptions_terse() -> None:
-    """Risk register budget: total descriptions ≤ 730 chars (11 tools).
+    """Risk register budget: total descriptions ≤ 850 chars (12 tools).
 
     Raised from 575 when the two extraction tools (``extraction_fetch`` /
-    ``extraction_submit``) were added for the unified auto-drain; descriptions
-    stay one-line terse — doctrine lives in the server ``instructions=`` (CORE
-    tier), not duplicated into per-tool descriptions.
+    ``extraction_submit``) were added for the unified auto-drain; raised again
+    to 850 when ``jobs_approve`` was added (its description carries the loud
+    consent warning). Descriptions stay one-line terse — doctrine lives in the
+    server ``instructions=`` (CORE tier), not duplicated into per-tool
+    descriptions.
     """
     tools = asyncio.run(server.list_tools())
     total = sum(len(t.description or "") for t in tools)
-    assert total <= 730, f"description budget exceeded: {total} chars"
+    assert total <= 850, f"description budget exceeded: {total} chars"
 
 
 def test_call_tool_unknown_name_returns_error() -> None:

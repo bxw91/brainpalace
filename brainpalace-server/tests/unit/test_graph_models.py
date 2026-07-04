@@ -350,9 +350,10 @@ class TestEntityTypeSchema:
     def test_entity_types_complete(self):
         """Test ENTITY_TYPES has the expected code/doc/infra/session entries.
 
-        17 code/doc/infra types + 6 session types (Phase 100) = 23.
+        19 code/doc/infra types (incl. Plan 3 Folder/Decorator) + 6 session
+        types (Phase 100) + 2 git types (Plan C Commit/Author) = 27.
         """
-        assert len(ENTITY_TYPES) == 23
+        assert len(ENTITY_TYPES) == 27
 
         # Code types (7)
         assert "Package" in ENTITY_TYPES
@@ -362,6 +363,9 @@ class TestEntityTypeSchema:
         assert "Function" in ENTITY_TYPES
         assert "Interface" in ENTITY_TYPES
         assert "Enum" in ENTITY_TYPES
+        # Plan 3 additions
+        assert "Folder" in ENTITY_TYPES
+        assert "Decorator" in ENTITY_TYPES
 
         # Documentation types (6)
         assert "DesignDoc" in ENTITY_TYPES
@@ -381,9 +385,13 @@ class TestEntityTypeSchema:
         for t in ("Decision", "Error", "Session", "Tool", "File", "Task"):
             assert t in ENTITY_TYPES
 
+        # Git types (2, Plan C)
+        assert "Commit" in ENTITY_TYPES
+        assert "Author" in ENTITY_TYPES
+
     def test_code_entity_types(self):
-        """Test CODE_ENTITY_TYPES contains exactly 7 code types."""
-        assert len(CODE_ENTITY_TYPES) == 7
+        """Test CODE_ENTITY_TYPES contains exactly 10 code types (incl. Plan 3)."""
+        assert len(CODE_ENTITY_TYPES) == 10
         assert "Package" in CODE_ENTITY_TYPES
         assert "Module" in CODE_ENTITY_TYPES
         assert "Class" in CODE_ENTITY_TYPES
@@ -391,6 +399,10 @@ class TestEntityTypeSchema:
         assert "Function" in CODE_ENTITY_TYPES
         assert "Interface" in CODE_ENTITY_TYPES
         assert "Enum" in CODE_ENTITY_TYPES
+        # Plan 3 additions
+        assert "File" in CODE_ENTITY_TYPES
+        assert "Folder" in CODE_ENTITY_TYPES
+        assert "Decorator" in CODE_ENTITY_TYPES
 
     def test_doc_entity_types(self):
         """Test DOC_ENTITY_TYPES contains exactly 6 documentation types."""
@@ -411,16 +423,21 @@ class TestEntityTypeSchema:
         assert "ConfigFile" in INFRA_ENTITY_TYPES
 
     def test_relationship_types_complete(self):
-        """Test RELATIONSHIP_TYPES has exactly 8 predicates."""
-        assert len(RELATIONSHIP_TYPES) == 8
+        """Test RELATIONSHIP_TYPES has exactly 12 predicates (incl. Plan 3/C)."""
+        assert len(RELATIONSHIP_TYPES) == 12
         assert "calls" in RELATIONSHIP_TYPES
         assert "extends" in RELATIONSHIP_TYPES
         assert "implements" in RELATIONSHIP_TYPES
         assert "references" in RELATIONSHIP_TYPES
         assert "depends_on" in RELATIONSHIP_TYPES
         assert "imports" in RELATIONSHIP_TYPES
+        assert "modifies" in RELATIONSHIP_TYPES
+        assert "authored_by" in RELATIONSHIP_TYPES
         assert "contains" in RELATIONSHIP_TYPES
         assert "defined_in" in RELATIONSHIP_TYPES
+        # Plan 3 additions
+        assert "decorated_by" in RELATIONSHIP_TYPES
+        assert "handled_by" in RELATIONSHIP_TYPES
 
     def test_normalize_entity_type_known(self):
         """Test normalize_entity_type with known lowercase types."""

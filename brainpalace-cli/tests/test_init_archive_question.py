@@ -35,10 +35,10 @@ def test_decline_archive_writes_disabled(tmp_path, monkeypatch):
             "--no-git-history",
             "--no-graphrag-extract",
         ],
-        # Drill the Chat Session : Archiving division (10 — Indexing=8,
-        # GitIndexing=9, Archiving=10): set archive Enabled=N (gate off skips its
+        # Drill the Chat Session : Archiving division (11 — Indexing=9,
+        # GitIndexing=10, Archiving=11): set archive Enabled=N (gate off skips its
         # sub-fields), [C]ontinue, Proceed.
-        input_str="10\nn\nc\ny\n",
+        input_str="11\nn\nc\ny\n",
     )
     assert result.exit_code == 0, result.output
     cfg = _read(tmp_path / ".brainpalace")
@@ -58,13 +58,13 @@ def test_accept_archive_writes_enabled(tmp_path, monkeypatch):
             "--no-git-history",
             "--no-graphrag-extract",
         ],
-        # Drill the Chat Session : Vector Indexing division (11, after Archiving=10):
+        # Drill the Chat Session : Vector Indexing division (12, after Archiving=11):
         # decline session embed consent (N), accept archive Enabled default (Y), Enter
         # past the archive sub-fields (dir/retain/reconcile), [C]ontinue, Proceed.
         # Gate-first order: session_indexing.enabled (consent) → archive.enabled.
         # With enabled=False (default), enabled-gated fields are skipped.
         # archive.enabled stays at default True, so archive sub-fields are shown.
-        input_str="11\nn\n\n\n\n\nc\ny\n",
+        input_str="12\nn\n\n\n\n\nc\ny\n",
     )
     assert result.exit_code == 0, result.output
     cfg = _read(tmp_path / ".brainpalace")
@@ -99,9 +99,9 @@ def test_reinit_no_start_persists_archive_decline(tmp_path, monkeypatch):
         is True
     )
     # Re-init, decline archive via the grid → must persist False on --no-start.
-    # keep; grid1 drill 10 (Chat Session : Archiving) → archive Enabled=N, [C]ontinue;
+    # keep; grid1 drill 11 (Chat Session : Archiving) → archive Enabled=N, [C]ontinue;
     # Proceed=Y; grid2 [C]ontinue.
-    r2 = _invoke(tmp_path, monkeypatch, common, input_str="keep\n10\nn\nc\ny\nc\n")
+    r2 = _invoke(tmp_path, monkeypatch, common, input_str="keep\n11\nn\nc\ny\nc\n")
     assert r2.exit_code == 0, r2.output
     assert (
         _read(tmp_path / ".brainpalace")

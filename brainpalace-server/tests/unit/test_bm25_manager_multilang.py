@@ -25,6 +25,16 @@ def test_croatian_query_matches_inflected_doc(tmp_path):
     assert res and res[0].node.node_id == "n1"
 
 
+def test_all_nodes_roundtrips_text_and_metadata(tmp_path):
+    m = BM25IndexManager(persist_dir=str(tmp_path), default_lang="en", engine="stem")
+    m.build_index([_node("alpha body", "en", "n1"), _node("beta body", "en", "n2")])
+    nodes = m.all_nodes()
+    assert {n.node_id for n in nodes} == {"n1", "n2"}
+    by_id = {n.node_id: n for n in nodes}
+    assert "alpha" in by_id["n1"].get_content()
+    assert by_id["n1"].metadata["text_language"] == "en"
+
+
 def test_scores_normalized_0_1(tmp_path):
     m = BM25IndexManager(persist_dir=str(tmp_path), default_lang="en", engine="stem")
     m.build_index(

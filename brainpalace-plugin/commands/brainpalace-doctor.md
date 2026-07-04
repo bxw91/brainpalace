@@ -18,6 +18,10 @@ parameters:
     type: bool
     required: false
     default: false
+  - name: "yes"
+    type: bool
+    required: false
+    default: false
 skills:
   - using-brainpalace
 last_validated: 2026-06-24
@@ -78,4 +82,5 @@ brainpalace doctor --fix
 | --json | bool | false | Emit machine-readable JSON. |
 | --fix | bool | false | Apply safe, idempotent, offline fixes (add .brainpalace/ to .gitignore, create state dir + stub config.yaml). Will not touch API keys, network, or user code. Re-runs the report after fixing. |
 | --reap | bool | false | Kill orphan server processes not referenced by a live registry entry (leaked servers that hold ports). Runs before the diagnostics. |
+| --yes | bool | false | Auto-install missing LSP servers without prompting. |
 <!--/GENERATED-->

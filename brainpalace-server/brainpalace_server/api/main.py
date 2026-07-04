@@ -1558,6 +1558,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             query_cache=query_cache,
             memory_service=memory_service,
             record_store=app.state.record_store,
+            archive_dir=getattr(
+                getattr(app.state, "session_archive_service", None),
+                "archive_dir",
+                None,
+            ),
         )
         app.state.query_service = query_service
 

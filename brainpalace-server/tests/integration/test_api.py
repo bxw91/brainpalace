@@ -233,6 +233,7 @@ class TestQueryEndpoints:
                 ],
                 query_time_ms=50.0,
                 total_results=1,
+                index_blocked=None,
             )
         )
 
@@ -279,6 +280,7 @@ class TestQueryEndpoints:
                 results=[],
                 query_time_ms=10.0,
                 total_results=0,
+                index_blocked=None,
             )
         )
 
@@ -308,6 +310,7 @@ class TestQueryEndpoints:
                 results=[],
                 query_time_ms=5.0,
                 total_results=0,
+                index_blocked=None,
             )
         )
 

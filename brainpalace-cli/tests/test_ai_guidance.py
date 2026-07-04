@@ -168,7 +168,7 @@ def test_hook_sessionstart_server_up_resurrects_dashboard(
 
     monkeypatch.setattr(hook, "discover_project_dir", lambda _=None: Path("/proj"))
     monkeypatch.setattr(hook, "discover_server_url", lambda _=None: "http://x:8000")
-    monkeypatch.setattr(hook, "_session_context", lambda _url: "")  # no HTTP
+    monkeypatch.setattr(hook, "_session_context_data", lambda _url: {})  # no HTTP
     monkeypatch.setattr(hook, "_dashboard_autostart_enabled", lambda: True)
     dash: list[Path] = []
     monkeypatch.setattr(hook, "_spawn_dashboard_autostart", lambda p: dash.append(p))
@@ -186,7 +186,7 @@ def test_hook_sessionstart_server_up_dashboard_autostart_off(
 
     monkeypatch.setattr(hook, "discover_project_dir", lambda _=None: Path("/proj"))
     monkeypatch.setattr(hook, "discover_server_url", lambda _=None: "http://x:8000")
-    monkeypatch.setattr(hook, "_session_context", lambda _url: "")
+    monkeypatch.setattr(hook, "_session_context_data", lambda _url: {})
     monkeypatch.setattr(hook, "_dashboard_autostart_enabled", lambda: False)
     dash: list[Path] = []
     monkeypatch.setattr(hook, "_spawn_dashboard_autostart", lambda p: dash.append(p))

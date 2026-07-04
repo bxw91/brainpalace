@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-24
+last_validated: 2026-07-03
 ---
 
 # Git History Indexing
@@ -88,6 +88,17 @@ without re-reading the whole history. A full pass is bounded by `depth`.
 ```bash
 curl -X POST localhost:<port>/git/reindex
 ```
+
+## Commit graph
+
+When `git_indexing.enabled` and GraphRAG are both on, the same incremental
+ingest also writes deterministic graph edges (no LLM, no extra config):
+`Commit modifies File` — onto existing canonical code `File` nodes only (never
+guessed for vanished/unindexed paths) — and `Commit authored_by Author`
+(keyed by lower-cased email). Both land under `domain='git'`; a linked `File`
+node's own `domain` stays `code`, so enabling only the `code` view never shows
+the commit. Co-change (files that share commits) is a computed store view, not
+materialised edges; its query surface lands with future graph-query work.
 
 ## Query examples
 

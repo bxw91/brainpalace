@@ -96,9 +96,11 @@ tasks:
 
   install:from-source:
     desc: >-
-      Reinstall CLI+server+dashboard from THIS local tree over the pipx install,
-      auto-stopping running servers + dashboard and restoring them exactly as
-      before. Flags: -- --dry-run (plan only), -- --no-restart (leave stopped).
+      Reinstall CLI+server+dashboard from the `stable` branch (its current tip,
+      built in an isolated worktree — your checked-out branch is untouched) over
+      the pipx install, auto-stopping running servers + dashboard and restoring
+      them exactly as before. Override the ref with BRAINPALACE_INSTALL_REF=<branch>.
+      Flags: -- --dry-run (plan only), -- --no-restart (leave stopped).
     cmds:
       - bash scripts/dev-install-from-source.sh {{.CLI_ARGS}}
 

@@ -41,6 +41,22 @@ const jobs: JobsPayload = {
       chunks_removed: 30,
       error: null,
     },
+    {
+      id: "job_blk",
+      status: "blocked",
+      folder_path: "/repo/gamma",
+      operation: "index",
+      include_code: false,
+      source: "watch",
+      enqueued_at: "2026-06-06T18:00:00Z",
+      started_at: "2026-06-06T18:00:01Z",
+      finished_at: null,
+      progress_percent: 0,
+      chunks_added: 0,
+      chunks_removed: 0,
+      error: "Indexing paused",
+      budget_info: { estimated_tokens: 412000, limit: 100000 },
+    },
   ],
 };
 
@@ -59,6 +75,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(client.getJobs).mockResolvedValue(jobs);
   vi.mocked(client.cancelJob).mockResolvedValue({ ok: true });
+  vi.mocked(client.approveJob).mockResolvedValue({ ok: true });
 });
 
 describe("Jobs tab", () => {
@@ -108,6 +125,26 @@ describe("Jobs tab", () => {
     await screen.findByText("job_done");
     const row = screen.getByTestId("job-row-job_done");
     expect(within(row).queryByTestId("btn-cancel-job_done")).toBeNull();
+  });
+
+  it("Approve on a blocked job is confirm-gated then calls approveJob", async () => {
+    wrap(<Jobs instanceId="a" />);
+    await screen.findByText("job_blk");
+    fireEvent.click(
+      within(screen.getByTestId("job-row-job_blk")).getByTestId("btn-approve-job_blk"),
+    );
+    const dialog = await screen.findByTestId("confirm-dialog");
+    expect(within(dialog).getByText(/tokens/i)).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByTestId("btn-confirm"));
+    await waitFor(() => expect(client.approveJob).toHaveBeenCalledWith("a", "job_blk"));
+  });
+
+  it("does not offer Approve on non-blocked jobs", async () => {
+    wrap(<Jobs instanceId="a" />);
+    await screen.findByText("job_run");
+    expect(
+      within(screen.getByTestId("job-row-job_run")).queryByTestId("btn-approve-job_run"),
+    ).toBeNull();
   });
 
   it("shows the stopped state when unreachable", async () => {

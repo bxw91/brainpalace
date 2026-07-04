@@ -19,4 +19,7 @@ def test_indexing_overrides_from_yaml(tmp_path):
     )
     cfg = load_indexing_config(p)
     assert cfg.skip_minified is False
-    assert cfg.exclude_patterns == ["**/foo/**"]
+    # User exclude_patterns EXTEND the built-in defaults (never replace them) —
+    # see load_indexing_config / commit "preserve full default exclude set".
+    assert "**/foo/**" in cfg.exclude_patterns
+    assert "**/node_modules/**" in cfg.exclude_patterns

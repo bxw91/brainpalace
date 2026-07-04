@@ -32,8 +32,11 @@ def _mgr(tmp_path: Path) -> GraphStoreManager:
 
 
 def _code_doc(chunk_id: str, symbol: str, imports: list[str], file_path: str) -> dict:
+    # Imports live in the SOURCE (the AST pipeline is the source of truth) — the
+    # graph records them as File→module edges, not from the metadata field.
+    text = "".join(f"import {i}\n" for i in imports) + f"def {symbol}(): ..."
     return {
-        "text": f"def {symbol}(): ...",
+        "text": text,
         "chunk_id": chunk_id,
         "metadata": {
             "source_type": "code",
@@ -43,6 +46,17 @@ def _code_doc(chunk_id: str, symbol: str, imports: list[str], file_path: str) ->
             "language": "python",
             "imports": imports,
         },
+    }
+
+
+def _import_edges(mgr: GraphStoreManager) -> set[tuple[str, str]]:
+    """(source, target) pairs of live `imports` edges in the persisted store."""
+    return {
+        (row[0], row[1])
+        for row in mgr._graph_store._conn.execute(
+            "SELECT source_id, target_id FROM edges "
+            "WHERE label = 'imports' AND valid_until IS NULL"
+        )
     }
 
 
@@ -58,16 +72,21 @@ def test_build_query_persist_sqlite(tmp_path: Path) -> None:
     assert written > 0
     assert mgr.relationship_count > 0
 
-    # GRAPH retrieval finds the import edge
+    # The AST pipeline records each file's imports as File→module edges.
+    assert {("cfg.py", "yaml"), ("cfg.py", "io")} <= _import_edges(mgr)
+
+    # GRAPH retrieval finds the function's containment.
     results = gi.query("parse_config")
     assert any(
-        r["subject"] == "parse_config" and r["object"] == "yaml" for r in results
+        r["subject"] == "parse_config" and r["predicate"] == "defined_in"
+        for r in results
     )
 
     # 090 persistence: a fresh manager on the same dir sees the triplets
     GraphStoreManager.reset_instance()
     mgr2 = _mgr(tmp_path)
     assert mgr2.relationship_count > 0
+    assert {("cfg.py", "yaml"), ("cfg.py", "io")} <= _import_edges(mgr2)
     gi2 = GraphIndexManager(graph_store=mgr2)
     assert gi2.query("parse_config")
 

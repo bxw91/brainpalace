@@ -9,4 +9,4 @@ if uv --version >/dev/null 2>&1; then
 fi
 
 echo "missing"
-echo "Install hint: curl -LsSf https://astral.sh/uv/install.sh | sh"
+echo "Install hint: see https://docs.astral.sh/uv/getting-started/installation/ (or: pipx install uv / pip install uv)"

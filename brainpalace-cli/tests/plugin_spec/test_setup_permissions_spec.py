@@ -1,6 +1,9 @@
 """Regression checks for setup-assistant policy island wiring."""
 
+import json
 from pathlib import Path
+
+import pytest
 
 try:
     import yaml as _yaml
@@ -8,7 +11,9 @@ except ImportError:  # pragma: no cover
     _yaml = None  # type: ignore[assignment]
 
 
-PLUGIN_DIR = Path(__file__).resolve().parent.parent
+PLUGIN_DIR = Path(__file__).resolve().parents[3] / "brainpalace-plugin"
+if not PLUGIN_DIR.is_dir():  # standalone CLI checkout without the plugin tree
+    pytest.skip("brainpalace-plugin not present", allow_module_level=True)
 AGENT_PATH = PLUGIN_DIR / "agents" / "setup-assistant.md"
 COMMAND_PATHS = [
     PLUGIN_DIR / "commands" / "brainpalace-config.md",
@@ -58,23 +63,15 @@ def _frontmatter(relative_path: str) -> dict:
     return fm
 
 
-def test_setup_assistant_has_required_allowed_tools() -> None:
-    content = _read(AGENT_PATH)
-
-    assert "allowed_tools:" in content
-    assert '"Write(~/.brainpalace/**)"' in content
-    assert '"Edit(~/.brainpalace/**)"' in content
-    assert '"Bash(~/.claude/plugins/brainpalace/scripts/*)"' in content
-    assert '"Bash(.claude/plugins/brainpalace/scripts/*)"' in content
-
-
 def test_setup_commands_bind_to_setup_assistant_policy_island() -> None:
     for command_path in COMMAND_PATHS:
         content = _read(command_path)
-        assert "context: brainpalace" in content, f"Missing context: brainpalace in {command_path}"
-        assert "agent: setup-assistant" in content, (
-            f"Missing agent: setup-assistant in {command_path}"
-        )
+        assert (
+            "context: brainpalace" in content
+        ), f"Missing context: brainpalace in {command_path}"
+        assert (
+            "agent: setup-assistant" in content
+        ), f"Missing agent: setup-assistant in {command_path}"
 
 
 def test_config_uses_direct_setup_check_script_call() -> None:
@@ -113,9 +110,15 @@ def test_graph_triplet_extractor_is_tool_confined() -> None:
     """
     fm = _frontmatter("agents/graph-triplet-extractor.md")
     tools = fm["tools"]
-    assert tools, "tools must not be empty — extraction_fetch and extraction_submit are required"
-    assert tools <= {"extraction_fetch", "extraction_submit"}, (
-        f"graph-triplet-extractor must only have extraction_fetch and extraction_submit; got {tools!r}"
+    assert (
+        tools
+    ), "tools must not be empty — extraction_fetch and extraction_submit are required"
+    assert tools <= {
+        "extraction_fetch",
+        "extraction_submit",
+    }, (
+        "graph-triplet-extractor must only have extraction_fetch and "
+        f"extraction_submit; got {tools!r}"
     )
     assert "Bash" not in tools, "Bash must not be in graph-triplet-extractor tools"
     assert "Read" not in tools, "Read must not be in graph-triplet-extractor tools"
@@ -131,17 +134,91 @@ def test_chat_session_extractor_submits_via_extraction_submit() -> None:
     """
     fm = _frontmatter("agents/chat-session-extractor.md")
     tools = fm["tools"]
-    assert "extraction_submit" in tools, (
-        "chat-session-extractor must include extraction_submit in tools"
-    )
+    assert (
+        "extraction_submit" in tools
+    ), "chat-session-extractor must include extraction_submit in tools"
     assert "Read" in tools, "chat-session-extractor must keep Read"
     assert "Glob" in tools, "chat-session-extractor must keep Glob"
     assert "Bash" in tools, "chat-session-extractor must keep Bash for session-path"
     # Body must reference extraction_submit for the submit step
     content = _read(PLUGIN_DIR / "agents" / "chat-session-extractor.md")
-    assert "extraction_submit" in content, (
-        "chat-session-extractor body must reference extraction_submit in its submit step"
-    )
-    assert "submit-session" not in content, (
-        "chat-session-extractor must no longer reference brainpalace submit-session"
-    )
+    assert (
+        "extraction_submit" in content
+    ), "chat-session-extractor body must reference extraction_submit in its submit step"
+    assert (
+        "submit-session" not in content
+    ), "chat-session-extractor must no longer reference brainpalace submit-session"
+
+
+# ---------------------------------------------------------------------------
+# Least-privilege setup permission bootstrap (finding 1)
+# ---------------------------------------------------------------------------
+
+SETTINGS_TEMPLATE_PATH = PLUGIN_DIR / "templates" / "settings.json"
+SETUP_COMMAND_PATH = PLUGIN_DIR / "commands" / "brainpalace-setup.md"
+
+#: Patterns that grant arbitrary execution, egress, or unscoped file ops —
+#: none of these may ever appear in the shipped permission bootstrap.
+BROAD_BASH_PATTERNS = {
+    "Bash(bash:*)",
+    "Bash(sh:*)",
+    "Bash(python:*)",
+    "Bash(python3:*)",
+    "Bash(pip:*)",
+    "Bash(pipx:*)",
+    "Bash(uv:*)",
+    "Bash(curl:*)",
+    "Bash(wget:*)",
+    "Bash(chmod:*)",
+    "Bash(mv:*)",
+    "Bash(mkdir:*)",
+    "Bash(cat:*)",
+    "Bash(jq:*)",
+    "Bash(find:*)",
+    "Bash(grep:*)",
+    "Bash(rg:*)",
+    "Bash(wc:*)",
+    "Bash(docker:*)",
+    "Bash(ollama:*)",
+}
+
+
+def test_settings_template_has_no_arbitrary_execution_allows() -> None:
+    data = json.loads(SETTINGS_TEMPLATE_PATH.read_text(encoding="utf-8"))
+    allow = set(data["permissions"]["allow"])
+    assert not (
+        allow & BROAD_BASH_PATTERNS
+    ), f"broad patterns present: {sorted(allow & BROAD_BASH_PATTERNS)}"
+    assert "Bash(brainpalace:*)" in allow
+
+
+def test_setup_wizard_step0_is_consent_gated_and_minimal() -> None:
+    content = _read(SETUP_COMMAND_PATH)
+    for pat in sorted(BROAD_BASH_PATTERNS):
+        assert f'"{pat}"' not in content, f"wizard still writes {pat}"
+    assert "AskUserQuestion" in content, "Step 0 must ask before writing settings"
+    assert "always available without a permission gate" not in content
+    assert "safe to commit" not in content
+
+
+# ---------------------------------------------------------------------------
+# Agent tool confinement via the honored `tools:` key (finding 2)
+# ---------------------------------------------------------------------------
+
+
+def test_setup_assistant_tools_key_is_honored() -> None:
+    """`allowed_tools:` is not a Claude Code agent key — the agent silently got
+    ALL tools. Confinement must use the honored `tools:` key."""
+    fm = _frontmatter("agents/setup-assistant.md")
+    assert fm["tools"] == {"Read", "Glob", "Bash", "Write", "Edit"}
+    assert "allowed_tools:" not in _read(AGENT_PATH)
+
+
+def test_search_assistant_is_tool_confined() -> None:
+    fm = _frontmatter("agents/search-assistant.md")
+    assert fm["tools"] == {"Bash", "Read"}
+
+
+def test_memory_curator_is_tool_confined() -> None:
+    fm = _frontmatter("agents/memory-curator.md")
+    assert fm["tools"] == {"Bash", "Read", "Glob"}

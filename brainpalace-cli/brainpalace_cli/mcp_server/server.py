@@ -1,10 +1,12 @@
 """MCP server wiring for BrainPalace.
 
-Registers the eleven v1 tools with the official ``mcp`` SDK (``query``,
+Registers the twelve v1 tools with the official ``mcp`` SDK (``query``,
 ``status``, ``whoami``, ``folders_list``, ``jobs_list``, ``recall``,
 ``session_context``, ``ai_guide``, ``extraction_fetch`` are read-only;
 ``memorize`` writes a curated memory; ``extraction_submit`` submits
-extraction payloads), parses each call's arguments through the matching
+extraction payloads; ``jobs_approve`` re-queues a budget-blocked indexing
+job — write-capable, spends embedding tokens), parses each call's arguments
+through the matching
 Pydantic schema, and dispatches to the matching handler in
 :mod:`brainpalace_cli.mcp.tools`. The authoritative tool list is the
 ``TOOL_REGISTRY`` dict below — keep this docstring in sync with it.
@@ -32,11 +34,13 @@ from mcp.server.stdio import stdio_server
 from pydantic import BaseModel
 
 from ..ai_guidance import core as _core_guidance
+from ..discovery import discover_server_url
 from .schemas import (
     AiGuideInput,
     ExtractionFetchInput,
     ExtractionSubmitInput,
     FoldersListInput,
+    JobsApproveInput,
     JobsListInput,
     MemorizeInput,
     QueryInput,
@@ -50,6 +54,7 @@ from .tools import (
     extraction_fetch_tool,
     extraction_submit_tool,
     folders_list_tool,
+    jobs_approve_tool,
     jobs_list_tool,
     memorize_tool,
     query_tool,
@@ -95,6 +100,10 @@ _TOOL_DESCRIPTIONS: dict[str, str] = {
     "extraction_submit": (
         "Submit extracted triplets or session extraction payload to BrainPalace."
     ),
+    "jobs_approve": (
+        "Approve a budget-blocked indexing job (SPENDS embedding tokens — "
+        "require the user's explicit consent first)."
+    ),
 }
 
 # Maps tool name → (schema class, async handler). The schema parses and
@@ -111,6 +120,7 @@ _DISPATCH: dict[str, tuple[type[BaseModel], Any]] = {
     "ai_guide": (AiGuideInput, ai_guide_tool),
     "extraction_fetch": (ExtractionFetchInput, extraction_fetch_tool),
     "extraction_submit": (ExtractionSubmitInput, extraction_submit_tool),
+    "jobs_approve": (JobsApproveInput, jobs_approve_tool),
 }
 
 
@@ -151,6 +161,31 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextCont
     return [types.TextContent(type="text", text=json.dumps(result))]
 
 
+def _blocked_instructions_suffix() -> str:
+    """One-line paused-indexing notice computed at spawn time, or ''.
+
+    Fail-soft: any error (no project, server down, old server) → ''.
+    """
+    try:
+        url = discover_server_url(None)  # same import tools.py uses
+        if url is None:
+            return ""
+        from ..client import DocServeClient
+
+        with DocServeClient(base_url=url) as client:
+            jobs = client.list_jobs(limit=20)
+        blocked = [j for j in jobs if j.get("status") == "blocked"]
+        if not blocked:
+            return ""
+        return (
+            "\n\nNOTE (live at connect): indexing job "
+            f"{blocked[0].get('id')} is paused over the embedding-token budget "
+            "— the index may be stale. See 'Paused (Budget-Blocked) Indexing'."
+        )
+    except Exception:  # noqa: BLE001 — instructions must never block connect
+        return ""
+
+
 def run_stdio(ensure_server: bool = False) -> None:
     """Serve MCP over stdio. Blocks until the client disconnects.
 
@@ -164,6 +199,10 @@ def run_stdio(ensure_server: bool = False) -> None:
         from .lifecycle import ensure_http_server
 
         ensure_http_server()
+
+    suffix = _blocked_instructions_suffix()
+    if suffix:
+        app.instructions = (app.instructions or "") + suffix
 
     async def _main() -> None:
         async with stdio_server() as (read, write):

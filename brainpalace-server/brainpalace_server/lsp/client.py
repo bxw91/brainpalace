@@ -13,10 +13,14 @@ from __future__ import annotations
 
 import json
 import logging
+import select
 import subprocess
+import time
 from typing import IO, Any
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_REQUEST_TIMEOUT = 15.0
 
 
 class LspError(RuntimeError):
@@ -60,10 +64,12 @@ class LspClient:
         reader: IO[bytes],
         writer: IO[bytes],
         process: subprocess.Popen[bytes] | None = None,
+        timeout: float = DEFAULT_REQUEST_TIMEOUT,
     ) -> None:
         self._reader = reader
         self._writer = writer
         self._process = process
+        self._timeout = timeout
         self._id = 0
 
     @classmethod
@@ -96,7 +102,9 @@ class LspClient:
         self._send(
             {"jsonrpc": "2.0", "id": req_id, "method": method, "params": params or {}}
         )
+        deadline = time.monotonic() + self._timeout
         while True:
+            self._wait_readable(method, deadline)
             msg = read_message(self._reader)
             if msg is None:
                 raise LspError(f"no response to {method!r} (stream closed)")
@@ -106,6 +114,24 @@ class LspClient:
             if "error" in msg:
                 raise LspError(f"{method}: {msg['error']}")
             return msg.get("result")
+
+    def _wait_readable(self, method: str, deadline: float) -> None:
+        """Bound the wait for the next message on subprocess pipes.
+
+        In-memory streams (tests) have no fileno/selectability — fall back to
+        the blocking read. select only guards the wait for the FIRST byte of a
+        message; a server that streams a partial frame then stalls is not
+        covered (acceptable: the hang mode observed in practice is total
+        silence from a server that never understood the request).
+        """
+        if self._process is None or not hasattr(self._reader, "fileno"):
+            return
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise LspError(f"{method}: timed out after {self._timeout}s")
+        ready, _, _ = select.select([self._reader], [], [], remaining)
+        if not ready:
+            raise LspError(f"{method}: timed out after {self._timeout}s")
 
     # ------------------------------------------------------------- lifecycle
     def initialize(

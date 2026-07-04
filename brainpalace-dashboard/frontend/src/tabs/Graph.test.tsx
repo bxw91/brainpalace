@@ -1,4 +1,5 @@
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
@@ -9,8 +10,26 @@ import * as client from "../api/client";
 vi.mock("../api/client");
 
 vi.mock("../components/GraphCanvas", () => ({
-  default: ({ data }: { data: { nodes: unknown[] } }) => (
-    <div data-testid="graph-canvas-stub">{data.nodes.length} nodes</div>
+  default: ({
+    data,
+    onNodeClick,
+  }: {
+    data: { nodes: Array<{ id: string; name: string }> };
+    onNodeClick: (id: string) => void;
+  }) => (
+    <div data-testid="graph-canvas-stub">
+      {data.nodes.length} nodes
+      {data.nodes.map((n) => (
+        <button
+          key={n.id}
+          type="button"
+          data-testid={`canvas-node-${n.id}`}
+          onClick={() => onNodeClick(n.id)}
+        >
+          {n.name}
+        </button>
+      ))}
+    </div>
   ),
 }));
 
@@ -93,7 +112,7 @@ describe("graph browser", () => {
     expect(await screen.findByText(/boom/)).toBeInTheDocument();
   });
 
-  it("Start graph browser seeds top hubs and auto-expands the most-connected one", async () => {
+  it("Start opens the hub panel and auto-roots the #1 hub", async () => {
     vi.mocked(client.getGraphTopNodes).mockResolvedValue({
       nodes: [
         { id: "hub", name: "QueryService", label: "Class", degree: 12 },
@@ -103,25 +122,24 @@ describe("graph browser", () => {
     vi.mocked(client.getGraphNeighbors).mockResolvedValue({
       nodes: [
         { id: "hub", name: "QueryService", label: "Class" },
-        { id: "n2", name: "execute_query", label: "Function" },
         { id: "n3", name: "Cache", label: "Class" },
       ],
       edges: [{ id: "e1", source: "hub", target: "n3", label: "uses" }],
     });
     wrap(<Graph instanceId="a" />);
     fireEvent.click(await screen.findByTestId("btn-graph-start"));
-    // Canvas opens auto-expanded on the #1 hub (no search performed).
-    expect(await screen.findByTestId("graph-canvas-stub")).toHaveTextContent(
-      "3 nodes",
-    );
-    expect(client.getGraphTopNodes).toHaveBeenCalledWith("a", 15);
-    expect(client.getGraphNeighbors).toHaveBeenCalledWith("a", "hub", 200);
-    // The other hub is offered as an alternative seed.
+    // Panel opens with the hubs; canvas lands rooted on the #1 hub.
+    expect(await screen.findByTestId("graph-search-panel")).toBeInTheDocument();
+    expect(await screen.findByTestId("graph-canvas-stub")).toHaveTextContent("2 nodes");
+    expect(client.getGraphTopNodes).toHaveBeenCalledWith("a", 15, ["code"]);
+    // BFS expands the root via per-node neighbor requests.
+    expect(client.getGraphNeighbors).toHaveBeenCalledWith("a", "hub", 200, ["code"]);
     expect(screen.getByTestId("btn-explore-n2")).toBeInTheDocument();
-    expect(client.searchGraphNodes).not.toHaveBeenCalled();
+    // Re-rooting also looks up same-name sibling nodes to merge in callers.
+    expect(client.searchGraphNodes).toHaveBeenCalledWith("a", "QueryService", 50, ["code"]);
   });
 
-  it("searches seeds and opens the canvas on Explore", async () => {
+  it("searching opens the results panel; picking a row re-roots and closes it", async () => {
     vi.mocked(client.searchGraphNodes).mockResolvedValue({
       nodes: [{ id: "n1", name: "QueryService", label: "Class", degree: 3 }],
     });
@@ -138,9 +156,116 @@ describe("graph browser", () => {
     });
     fireEvent.click(screen.getByTestId("btn-graph-search"));
     fireEvent.click(await screen.findByTestId("btn-explore-n1"));
-    expect(await screen.findByTestId("graph-canvas-stub")).toHaveTextContent(
-      "2 nodes",
+    // Canvas re-roots on the picked node …
+    expect(await screen.findByTestId("graph-canvas-stub")).toHaveTextContent("2 nodes");
+    expect(client.getGraphNeighbors).toHaveBeenCalledWith("a", "n1", 200, ["code"]);
+    // … and the panel closes after the pick.
+    await waitFor(() =>
+      expect(screen.queryByTestId("graph-search-panel")).not.toBeInTheDocument(),
     );
-    expect(client.getGraphNeighbors).toHaveBeenCalledWith("a", "n1", 200);
+  });
+
+  it("backdrop click closes the panel", async () => {
+    vi.mocked(client.searchGraphNodes).mockResolvedValue({
+      nodes: [{ id: "n1", name: "QueryService", label: "Class", degree: 3 }],
+    });
+    wrap(<Graph instanceId="a" />);
+    fireEvent.change(await screen.findByTestId("input-graph-search"), {
+      target: { value: "query" },
+    });
+    fireEvent.click(screen.getByTestId("btn-graph-search"));
+    await screen.findByTestId("graph-search-panel");
+    fireEvent.click(screen.getByTestId("graph-panel-backdrop"));
+    await waitFor(() =>
+      expect(screen.queryByTestId("graph-search-panel")).not.toBeInTheDocument(),
+    );
+  });
+});
+
+describe("node detail panel", () => {
+  it("opens the panel on node click instead of re-rooting", async () => {
+    vi.mocked(client.getGraphTopNodes).mockResolvedValue({
+      nodes: [{ id: "hub", name: "QueryService", label: "Class", degree: 2 }],
+    });
+    vi.mocked(client.getGraphNeighbors).mockResolvedValue({
+      nodes: [
+        { id: "hub", name: "QueryService", label: "Class" },
+        {
+          id: "b",
+          name: "execute_query",
+          label: "Function",
+          properties: { path: "/repo/b.py", line: 3 },
+        },
+      ],
+      edges: [{ id: "e1", source: "hub", target: "b", label: "calls" }],
+    });
+    wrap(<Graph instanceId="a" />);
+    fireEvent.click(await screen.findByTestId("btn-graph-start"));
+    await screen.findByTestId("canvas-node-b");
+    const callsBeforeClick = vi.mocked(client.getGraphNeighbors).mock.calls.length;
+
+    await userEvent.click(screen.getByTestId("canvas-node-b"));
+
+    expect(await screen.findByTestId("graph-node-panel")).toBeInTheDocument();
+    expect(screen.getByTestId("node-panel-file")).toHaveTextContent("b.py:4");
+    // Opening the panel must NOT trigger a new expansion (no reroot on click).
+    const callsAfterOpen = vi.mocked(client.getGraphNeighbors).mock.calls.length;
+    expect(callsAfterOpen).toBe(callsBeforeClick);
+  });
+
+  it("re-roots from the panel button", async () => {
+    vi.mocked(client.getGraphTopNodes).mockResolvedValue({
+      nodes: [{ id: "hub", name: "QueryService", label: "Class", degree: 2 }],
+    });
+    vi.mocked(client.getGraphNeighbors).mockResolvedValue({
+      nodes: [
+        { id: "hub", name: "QueryService", label: "Class" },
+        { id: "b", name: "execute_query", label: "Function" },
+      ],
+      edges: [{ id: "e1", source: "hub", target: "b", label: "calls" }],
+    });
+    wrap(<Graph instanceId="a" />);
+    fireEvent.click(await screen.findByTestId("btn-graph-start"));
+    await userEvent.click(await screen.findByTestId("canvas-node-b"));
+    await screen.findByTestId("graph-node-panel");
+
+    await userEvent.click(screen.getByTestId("btn-node-reroot"));
+
+    await waitFor(() =>
+      expect(vi.mocked(client.getGraphNeighbors)).toHaveBeenCalledWith(
+        expect.anything(), "b", expect.anything(), expect.anything(),
+      ),
+    );
+  });
+
+  it("lists callers/callees from the current subgraph and fetches the snippet", async () => {
+    vi.mocked(client.getGraphTopNodes).mockResolvedValue({
+      nodes: [{ id: "a", name: "Root", label: "Class", degree: 2 }],
+    });
+    vi.mocked(client.getGraphNeighbors).mockResolvedValue({
+      nodes: [
+        { id: "a", name: "Root", label: "Class" },
+        { id: "b", name: "Middle", label: "Function" },
+        { id: "c", name: "Leaf", label: "Function" },
+      ],
+      edges: [
+        { id: "e1", source: "a", target: "b", label: "calls" },
+        { id: "e2", source: "b", target: "c", label: "imports" },
+      ],
+    });
+    vi.mocked(client.getGraphNodeSource).mockResolvedValue({
+      path: "/repo/b.py",
+      line: 3,
+      start_line: 1,
+      lines: ["x", "y", "z"],
+    });
+    wrap(<Graph instanceId="a" />);
+    fireEvent.click(await screen.findByTestId("btn-graph-start"));
+    await userEvent.click(await screen.findByTestId("canvas-node-b"));
+    await screen.findByTestId("graph-node-panel");
+
+    expect(screen.getByTestId("node-panel-in")).toHaveTextContent("Root");
+    expect(screen.getByTestId("node-panel-out")).toHaveTextContent("Leaf");
+    expect(await screen.findByTestId("node-panel-snippet")).toHaveTextContent("y");
   });
 });

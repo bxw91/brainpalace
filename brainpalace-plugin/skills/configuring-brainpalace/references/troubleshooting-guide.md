@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-24
+last_validated: 2026-07-04
 ---
 
 # BrainPalace Troubleshooting Guide
@@ -134,12 +134,41 @@ brainpalace index /path/to/docs
 **Solutions:**
 
 ```bash
-# Manual cleanup
+# Let the CLI handle it — it auto-detects stale state and starts fresh
+brainpalace start
+
+# Or clean up manually
 rm .brainpalace/runtime.json
 rm .brainpalace/lock.json
 rm .brainpalace/pid
 
 # Start fresh
+brainpalace start
+```
+
+### Multiple Agents Racing to Start
+
+**Symptoms:**
+- "Another BrainPalace instance is already running" error
+- Lock acquisition failures
+
+**Solutions:**
+
+The lock file protocol prevents double-start automatically:
+```bash
+# First agent wins and starts the server
+# Second agent should detect the running instance
+brainpalace status
+
+# If the lock is stale (process died), cleanup happens automatically
+brainpalace start
+```
+
+**If locks persist incorrectly:**
+```bash
+# Manual lock cleanup (only if the process is truly dead)
+ps aux | grep brainpalace  # Verify no process running
+rm .brainpalace/lock.json
 brainpalace start
 ```
 
@@ -169,6 +198,25 @@ source ~/.bashrc
 
 **Get API Key:**
 - Visit: https://platform.openai.com/account/api-keys
+
+### Missing Anthropic API Key
+
+**Symptoms:**
+- Some summarization features fail
+- Warnings about missing Anthropic key
+- Core search still works
+
+**Solutions:**
+
+```bash
+export ANTHROPIC_API_KEY="sk-ant-your-key-here"
+```
+
+**Get API Key:**
+- Visit: https://console.anthropic.com/
+
+**Note:** The Anthropic key is optional for basic search functionality — it's
+only used for summarization.
 
 ### Invalid API Key Errors
 
@@ -319,6 +367,12 @@ curl -H "Authorization: Bearer $OPENAI_API_KEY" \
 
 **Solutions:**
 
+**Reduce Embedding Batch Size:**
+```bash
+# Default is 100 — lower it for constrained environments
+export EMBEDDING_BATCH_SIZE=50
+```
+
 **Restart with Clean State:**
 ```bash
 brainpalace stop
@@ -423,6 +477,9 @@ brainpalace query "test" --mode bm25 --threshold 0.01
 
 # 6. Test vector (needs API)
 brainpalace query "test" --mode vector --threshold 0.3
+
+# 7. Validate JSON output (for scripting)
+brainpalace query "test" --json | jq .
 ```
 
 ### Environment Check

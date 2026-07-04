@@ -155,6 +155,13 @@ def list_folders_cmd(url: str | None, json_output: bool) -> None:
         "No per-folder language isolation yet — this sets the project default."
     ),
 )
+@click.option(
+    "--force-budget",
+    "force_budget",
+    is_flag=True,
+    default=False,
+    help="Bypass the per-job embedding-token budget cap for this job.",
+)
 @click.option("--json", "json_output", is_flag=True, help="Output as JSON")
 def add_folder_cmd(
     folder_path: str,
@@ -163,6 +170,7 @@ def add_folder_cmd(
     watch_mode: str | None,
     debounce_seconds: int | None,
     text_language: str | None,
+    force_budget: bool,
     json_output: bool,
 ) -> None:
     """Index documents from a folder (alias for 'brainpalace index').
@@ -191,6 +199,7 @@ def add_folder_cmd(
                 include_code=include_code,
                 watch_mode=watch_mode,
                 watch_debounce_seconds=debounce_seconds,
+                force_budget=force_budget,
             )
 
             if json_output:

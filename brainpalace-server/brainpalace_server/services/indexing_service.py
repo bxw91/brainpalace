@@ -48,6 +48,11 @@ logger = logging.getLogger(__name__)
 class BudgetExceededError(RuntimeError):
     """Raised when an index job would embed more tokens than the configured budget."""
 
+    def __init__(self, message: str, *, estimated_tokens: int, limit: int) -> None:
+        super().__init__(message)
+        self.estimated_tokens = estimated_tokens
+        self.limit = limit
+
 
 def estimate_chunk_tokens(chunks: list[Any]) -> int:
     """Cheap ceil(len/4) token sum over chunk .text — provider-agnostic, no API."""
@@ -64,9 +69,27 @@ def enforce_token_budget(chunks: list[Any], *, limit: int, force: bool) -> int:
     if limit > 0 and not force and total > limit:
         raise BudgetExceededError(
             f"Index would embed ~{total:,} tokens, over the budget of {limit:,}. "
-            f"Raise indexing.max_embed_tokens_per_job or re-run with force_budget=true."
+            f"Raise indexing.max_embed_tokens_per_job or re-run with "
+            f"force_budget=true.",
+            estimated_tokens=total,
+            limit=limit,
         )
     return total
+
+
+def effective_token_budget(
+    *, floor: int, ratio: float, total_chunks: int, chunk_size: int
+) -> int:
+    """Effective per-job embedding-token cap: max(floor, ratio × index size).
+
+    ``floor <= 0`` keeps the guard fully disabled (returns floor unchanged);
+    ``ratio <= 0`` restores the pure fixed cap. Index size is the loose
+    ``total_chunks * chunk_size`` estimate — erring high, which only ever
+    RAISES the cap (fewer false trips; approve-flow covers the rest).
+    """
+    if floor <= 0 or ratio <= 0:
+        return floor
+    return max(floor, int(ratio * total_chunks * chunk_size))
 
 
 # Type alias for progress callback.
@@ -937,7 +960,17 @@ class IndexingService:
                 load_indexing_config as _load_indexing_config,
             )
 
-            _budget = _load_indexing_config().max_embed_tokens_per_job
+            _icfg = _load_indexing_config()
+            try:
+                _total_chunks = await self.storage_backend.get_count()
+            except Exception:  # noqa: BLE001 — cold store → fall back to floor
+                _total_chunks = 0
+            _budget = effective_token_budget(
+                floor=_icfg.max_embed_tokens_per_job,
+                ratio=_icfg.max_embed_ratio_per_job,
+                total_chunks=_total_chunks,
+                chunk_size=request.chunk_size,
+            )
             _miss_idx = await self.embedding_generator.uncached_indices(
                 [chunk.text for chunk in chunks]
             )
@@ -1160,10 +1193,40 @@ class IndexingService:
                     graph_state["total"] = total
 
                 graph_mgr = self.graph_index_manager
+                gstore = self.graph_index_manager.graph_store
+                _did_identity_clear = False
+                _did_corpus_rebuild = False
+                if gstore.needs_code_identity_rebuild():
+                    if request.force:
+                        gstore.clear()
+                        _did_identity_clear = True
+                    else:
+                        # One-time identity migration (spec §Migration): promote
+                        # this run to a full rebuild from the corpus so no
+                        # manual --force is ever required. Best-effort: on
+                        # failure the incremental build below still runs.
+                        try:
+                            rebuilt = await self.rebuild_graph_from_corpus(
+                                request.folder_path
+                            )
+                            _did_corpus_rebuild = rebuilt > 0
+                            if _did_corpus_rebuild:
+                                logger.info(
+                                    "One-time graph identity rebuild: "
+                                    f"{rebuilt} triplets"
+                                )
+                        except Exception:
+                            logger.warning(
+                                "identity rebuild failed; continuing with "
+                                "incremental graph build",
+                                exc_info=True,
+                            )
 
                 def _build_graph() -> int:
                     return graph_mgr.build_from_documents(
-                        chunks, progress_callback=graph_progress
+                        chunks,
+                        progress_callback=graph_progress,
+                        root=os.path.abspath(request.folder_path),
                     )
 
                 async def _poll_graph_progress() -> None:
@@ -1179,14 +1242,19 @@ class IndexingService:
                             )
                         await asyncio.sleep(0.5)
 
-                poller = asyncio.create_task(_poll_graph_progress())
-                try:
-                    triplet_count = await asyncio.to_thread(_build_graph)
-                finally:
-                    poller.cancel()
-                    with contextlib.suppress(asyncio.CancelledError):
-                        await poller
+                if _did_corpus_rebuild:
+                    triplet_count = 0  # corpus rebuild covered this run
+                else:
+                    poller = asyncio.create_task(_poll_graph_progress())
+                    try:
+                        triplet_count = await asyncio.to_thread(_build_graph)
+                    finally:
+                        poller.cancel()
+                        with contextlib.suppress(asyncio.CancelledError):
+                            await poller
                 logger.info(f"Graph index built with {triplet_count} triplets")
+                if _did_identity_clear:
+                    gstore.mark_code_identity_rebuilt()
 
             # Mark as completed
             self._state.status = IndexingStatusEnum.COMPLETED
@@ -1442,6 +1510,50 @@ class IndexingService:
             return {"code": 0, "doc": 0, "total": self._state.total_documents}
         return _classify_documents(paths)
 
+    async def rebuild_graph_from_corpus(self, folder_path: str | None = None) -> int:
+        """Clear + rebuild the graph from the already-indexed corpus.
+
+        Reads all chunks from the BM25 corpus (text + metadata), clears the
+        graph, and rebuilds with canonical identity. Marks the one-time
+        identity flag on success. Returns the triplet count (0 when the corpus
+        is empty — flag stays pending).
+        """
+        bm25 = self.bm25_manager
+        if not bm25.is_initialized:
+            bm25.initialize()
+        nodes = bm25.all_nodes()
+        if not nodes:
+            return 0
+        # Callers that omit folder_path (e.g. the dashboard button) still need a
+        # workspace root so LSP resolves cross-file targets — fall back to the
+        # first indexed folder.
+        if not folder_path and self.folder_manager is not None:
+            try:
+                folder_records = await self.folder_manager.list_folders()
+                if folder_records:
+                    folder_path = folder_records[0].folder_path
+            except Exception:  # noqa: BLE001 — best-effort root derivation
+                folder_path = None
+        graph_mgr = self.graph_index_manager
+        graph_mgr.clear()
+        graph_mgr.graph_store.initialize()
+        root = os.path.abspath(folder_path) if folder_path else None
+        count: int = await asyncio.to_thread(
+            graph_mgr.build_from_documents, nodes, None, root
+        )
+        graph_mgr.graph_store.mark_code_identity_rebuilt()
+        logger.info("Graph rebuilt from corpus: %d triplets", count)
+        return count
+
+    def _graph_needs_identity_rebuild(self) -> bool:
+        """True while the one-time canonical-identity rebuild is pending."""
+        try:
+            return bool(
+                self.graph_index_manager.graph_store.needs_code_identity_rebuild()
+            )
+        except Exception:  # noqa: BLE001 — status is best-effort
+            return False
+
     async def get_status(self) -> dict[str, Any]:
         """
         Get current indexing status.
@@ -1499,6 +1611,7 @@ class IndexingService:
                 "entity_count": graph_status.entity_count,
                 "relationship_count": graph_status.relationship_count,
                 "store_type": graph_status.store_type,
+                "needs_identity_rebuild": self._graph_needs_identity_rebuild(),
             },
         }
 

@@ -15,6 +15,7 @@ class QueryMode(str, Enum):
     GRAPH = "graph"  # Graph-only retrieval (Feature 113)
     MULTI = "multi"  # Multi-retrieval: vector + BM25 + graph with RRF (Feature 113)
     COMPUTE = "compute"  # Set-level aggregation over typed numeric Records (Phase 1)
+    SCAN = "scan"  # Deterministic map-reduce over the session archive (Phase 2)
 
 
 class QueryRequest(BaseModel):
@@ -40,7 +41,8 @@ class QueryRequest(BaseModel):
     )
     mode: QueryMode = Field(
         default=QueryMode.HYBRID,
-        description="Retrieval mode (vector, bm25, hybrid, graph, multi)",
+        description="Retrieval mode (vector, bm25, hybrid, graph, multi, "
+        "compute, scan)",
     )
     alpha: float = Field(
         default=0.5,
@@ -179,6 +181,17 @@ class ComputeResult(BaseModel):
     score: float = 0.0  # value normalised to 0..1 (display ordering only)
 
 
+class ScanResult(BaseModel):
+    """One scan-mode row: term occurrences per bucket. Not a document."""
+
+    model_config = {"frozen": True}
+    label: str  # human row label, e.g. "2026-W03" or "foobar count"
+    value: float  # occurrence count (float for shape parity with compute)
+    term: str  # the counted term/phrase
+    group: str | None = None  # bucket key (week/month/day/source) or None
+    score: float = 0.0  # value normalised to 0..1 (display ordering only)
+
+
 class QueryResult(BaseModel):
     """Single query result with source and score."""
 
@@ -224,6 +237,22 @@ class QueryResult(BaseModel):
     )
 
 
+class BlockedJobInfo(BaseModel):
+    """Summary of a budget-blocked indexing job, attached to query responses."""
+
+    job_id: str = Field(..., description="Blocked job identifier")
+    folder_path: str = Field(..., description="Folder whose indexing is paused")
+    estimated_tokens: int | None = Field(
+        default=None, description="Estimated embedding tokens the job needs"
+    )
+    limit: int | None = Field(
+        default=None, description="Configured max_embed_tokens_per_job cap"
+    )
+    blocked_since: str | None = Field(
+        default=None, description="ISO timestamp the job was blocked"
+    )
+
+
 class QueryResponse(BaseModel):
     """Response model for document queries."""
 
@@ -245,6 +274,19 @@ class QueryResponse(BaseModel):
         default=None,
         description="Set-level aggregation rows (compute mode); null for "
         "document retrieval. When set, `results` is empty.",
+    )
+    scan: list[ScanResult] | None = Field(
+        default=None,
+        description="Scan rows — term counts over the session archive (scan "
+        "mode); null for document retrieval. When set, `results` is empty.",
+    )
+    index_blocked: BlockedJobInfo | None = Field(
+        default=None,
+        description=(
+            "Present when an indexing job is paused over the embedding-token "
+            "budget — the index may be STALE. Approve via "
+            "POST /index/jobs/{job_id}/approve."
+        ),
     )
 
     model_config = {

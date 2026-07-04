@@ -16,6 +16,7 @@ from .inject import inject_command
 from .install_agent import install_agent_command
 from .jobs import jobs_command
 from .list_cmd import list_command
+from .lsp import lsp_group
 from .mcp import mcp_command
 from .memories import memories_group
 from .plugin_detect import plugin_group
@@ -52,6 +53,7 @@ __all__ = [
     "install_session_hooks_command",
     "jobs_command",
     "list_command",
+    "lsp_group",
     "mcp_command",
     "memories_group",
     "plugin_group",

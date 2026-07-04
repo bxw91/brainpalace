@@ -6,7 +6,7 @@ context: brainpalace
 agent: setup-assistant
 skills:
   - configuring-brainpalace
-last_validated: 2026-06-28
+last_validated: 2026-07-04
 ---
 
 # Install BrainPalace Packages
@@ -159,10 +159,10 @@ Requires Python 3.10+. If lower, tell user to upgrade first.
      UV_CHECK_OUTPUT=$("$UV_CHECK_SCRIPT")
      echo "$UV_CHECK_OUTPUT"
      if ! echo "$UV_CHECK_OUTPUT" | grep -q "available"; then
-       curl -LsSf https://astral.sh/uv/install.sh | sh
+       pipx install uv   # or: pip install uv; see https://docs.astral.sh/uv/getting-started/installation/
      fi
    else
-     uv --version 2>/dev/null || curl -LsSf https://astral.sh/uv/install.sh | sh
+     uv --version 2>/dev/null || pipx install uv || pip install uv
    fi
    ```
 

@@ -56,6 +56,7 @@ ENDPOINT_SURFACES: dict[str, str] = {
     "/index/cache/economics": "Cache (cost estimate)",
     "/index/jobs/": "Jobs (list)",
     "/index/jobs/{job_id}": "Jobs (detail / cancel)",
+    "/index/jobs/{job_id}/approve": "Jobs (approve blocked job)",
     "/index/documents": "Documents (file browser)",
     "/index/documents/chunks": "Documents (chunk drawer)",
     "/index/fingerprint": (
@@ -71,6 +72,13 @@ ENDPOINT_SURFACES: dict[str, str] = {
     "/graph/nodes": "Graph (browser search)",
     "/graph/top": "Graph (browser start — top hubs)",
     "/graph/neighbors": "Graph (browser expand)",
+    "/graph/node/source": "Graph (detail panel — lazy source snippet)",
+    "/graph/path": (
+        "unsurfaced: pairwise node-picker UX deferred; "
+        "served via `brainpalace graph path` (CLI)"
+    ),
+    "/graph/impact": "Graph (detail panel — impact)",
+    "/graph/cochange": "Graph (detail panel — co-change)",
     # --- sessions ---
     "/sessions/reindex": "Sessions (re-index)",
     "/sessions/archive": "Sessions (archive browser)",
@@ -127,6 +135,7 @@ CLI_DASHBOARD_COVERAGE: dict[str, str] = {
     "extraction": "cli_only: AI subagent extraction executor, not a UI surface",
     "dump-interface": "cli_only: hidden doc-sync introspection, not a UI surface",
     "folders": "Folders",
+    "graph": "Graph",
     "hook": "cli_only: internal hook dispatcher, not a user command",
     "index": "Folders",
     "init": ("cli_only: project bootstrap; dashboard manages existing projects only"),
@@ -135,6 +144,7 @@ CLI_DASHBOARD_COVERAGE: dict[str, str] = {
     "install-session-hooks": "cli_only: hook install",
     "jobs": "Jobs",
     "list": "Instances",
+    "lsp": "cli_only: local-machine mutation, not a control-plane action",
     "mcp": "cli_only: stdio MCP transport, not a UI surface",
     "memories": "Sessions",
     "plugin": "cli_only: Claude Code plugin management",

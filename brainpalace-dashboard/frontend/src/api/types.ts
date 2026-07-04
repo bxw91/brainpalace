@@ -224,6 +224,7 @@ export type JobRow = {
   chunks_added: number;
   chunks_removed: number;
   error: string | null;
+  budget_info?: { estimated_tokens?: number; limit?: number } | null;
 };
 export type JobsPayload = { jobs: JobRow[] };
 
@@ -258,6 +259,7 @@ export type JobDetail = {
   error: string | null;
   retry_count: number;
   cancel_requested: boolean;
+  budget_info?: { estimated_tokens?: number; limit?: number } | null;
   // Per-key it is either a count (e.g. `files_added: 3`) or the actual path list
   // (e.g. `files_changed: ["/repo/a.py"]`). The drawer renders counts as stats
   // and arrays as (collapsible) file lists.
@@ -402,10 +404,13 @@ export type ReplayResult = {
   original_rank?: number | null;
   [k: string]: unknown;
 };
+export type AggRow = { label: string; value: number };
 export type ReplayResponse = {
   results: ReplayResult[];
   query_time_ms: number;
   total_results: number;
+  compute?: AggRow[] | null;
+  scan?: AggRow[] | null;
 };
 
 /** Server log tail (server `/health/logs`). */
@@ -417,10 +422,44 @@ export type GraphNodeHit = {
   name: string;
   label: string | null;
   degree: number;
+  domain?: string | null;
 };
 export type GraphSubgraph = {
-  nodes: Array<{ id: string; name: string; label: string | null }>;
+  nodes: Array<{
+    id: string;
+    name: string;
+    label: string | null;
+    degree?: number;
+    domain?: string | null;
+    properties?: Record<string, unknown> | null;
+  }>;
   edges: Array<{ id: string; source: string; target: string; label: string | null }>;
+};
+
+/** Lazy source snippet (server `GET /graph/node/source`). */
+export type GraphNodeSource = {
+  path: string;
+  line: number;
+  start_line: number;
+  lines: string[];
+};
+
+/** Impact analysis (server `GET /graph/impact`). */
+export type GraphImpactNode = {
+  id: string;
+  name: string;
+  label?: string | null;
+  domain?: string | null;
+  depth: number;
+  via_predicate: string;
+  via_node_id: string;
+};
+
+/** Co-change view (server `GET /graph/cochange`). */
+export type GraphCochangeFile = {
+  file_id: string;
+  name: string;
+  shared_commits: number;
 };
 
 /** Live provider connectivity test (server `POST /health/providers/test`). */

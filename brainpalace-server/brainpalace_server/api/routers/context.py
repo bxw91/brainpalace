@@ -2,6 +2,7 @@
 
 import logging
 from pathlib import Path
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request, status
 
@@ -55,4 +56,17 @@ async def session_start(request: Request) -> SessionContext:
         except Exception as exc:  # noqa: BLE001 — context must never fail hard
             logger.warning("session context: doc count failed: %s", exc)
 
-    return svc.build(project_root=project_root, branch=branch, doc_count=doc_count)
+    blocked: dict[str, Any] | None = None
+    job_service = getattr(request.app.state, "job_service", None)
+    if job_service is not None:
+        try:
+            blocked = await job_service.get_blocked_summary()
+        except Exception as exc:  # noqa: BLE001 — context must never fail hard
+            logger.warning("session context: blocked summary failed: %s", exc)
+
+    return svc.build(
+        project_root=project_root,
+        branch=branch,
+        doc_count=doc_count,
+        blocked_job=blocked,
+    )

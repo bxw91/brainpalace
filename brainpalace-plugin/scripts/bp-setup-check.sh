@@ -123,7 +123,8 @@ LARGE_DIR_LIST=""
 for dir in node_modules .venv venv __pycache__ .git dist build target .next .nuxt coverage .pytest_cache .mypy_cache .tox vendor packages Pods .gradle .m2; do
   if [ -d "$dir" ]; then
     SIZE=$(du -sh "$dir" 2>/dev/null | cut -f1 || echo "?")
-    COUNT=$(find "$dir" -type f 2>/dev/null | wc -l | tr -d ' ' || echo "0")
+    # head caps the walk on monster dirs (find dies on SIGPIPE — that's fine).
+    COUNT=$(find "$dir" -type f 2>/dev/null | head -20000 | wc -l | tr -d ' ' || echo "0")
     entry="{\"path\":\"$dir\",\"size\":\"$SIZE\",\"file_count\":$COUNT}"
     if [ -z "$LARGE_DIR_LIST" ]; then
       LARGE_DIR_LIST="$entry"
@@ -137,25 +138,45 @@ if [ -n "$LARGE_DIR_LIST" ]; then
 fi
 
 # --- Output JSON ---
-# Construct manually (no jq dependency required for output)
-cat <<JSON
-{
-  "brainpalace_installed": $BP_INSTALLED,
-  "brainpalace_version": "$BP_VERSION",
-  "config_file_found": $CONFIG_FOUND,
-  "config_file_path": "$CONFIG_FILE",
-  "ollama_running": $OLLAMA_RUNNING,
-  "ollama_models": $OLLAMA_MODELS,
-  "docker_available": $DOCKER_AVAILABLE,
-  "docker_compose_available": $DOCKER_COMPOSE_AVAILABLE,
-  "python_version": "$PYTHON_VERSION",
-  "api_keys": {
-    "openai": $OPENAI_KEY_SET,
-    "anthropic": $ANTHROPIC_KEY_SET,
-    "google": $GOOGLE_KEY_SET
-  },
-  "available_postgres_port": "$AVAILABLE_POSTGRES_PORT",
-  "large_dirs": $LARGE_DIRS,
-  "doctor": $DOCTOR_JSON
-}
-JSON
+# Values are handed to python via env and serialized there, so a quote or
+# backslash in any of them can never break the JSON.
+export BP_INSTALLED BP_VERSION CONFIG_FOUND CONFIG_FILE OLLAMA_RUNNING \
+  OLLAMA_MODELS DOCKER_AVAILABLE DOCKER_COMPOSE_AVAILABLE PYTHON_VERSION \
+  OPENAI_KEY_SET ANTHROPIC_KEY_SET GOOGLE_KEY_SET AVAILABLE_POSTGRES_PORT \
+  LARGE_DIRS DOCTOR_JSON
+python3 - <<'PY'
+import json
+import os
+
+
+def _bool(name: str) -> bool:
+    return os.environ.get(name) == "true"
+
+
+def _json_env(name: str, default: str):
+    try:
+        return json.loads(os.environ.get(name) or default)
+    except Exception:
+        return json.loads(default)
+
+
+print(json.dumps({
+    "brainpalace_installed": _bool("BP_INSTALLED"),
+    "brainpalace_version": os.environ.get("BP_VERSION", ""),
+    "config_file_found": _bool("CONFIG_FOUND"),
+    "config_file_path": os.environ.get("CONFIG_FILE", ""),
+    "ollama_running": _bool("OLLAMA_RUNNING"),
+    "ollama_models": _json_env("OLLAMA_MODELS", "[]"),
+    "docker_available": _bool("DOCKER_AVAILABLE"),
+    "docker_compose_available": _bool("DOCKER_COMPOSE_AVAILABLE"),
+    "python_version": os.environ.get("PYTHON_VERSION", ""),
+    "api_keys": {
+        "openai": _bool("OPENAI_KEY_SET"),
+        "anthropic": _bool("ANTHROPIC_KEY_SET"),
+        "google": _bool("GOOGLE_KEY_SET"),
+    },
+    "available_postgres_port": os.environ.get("AVAILABLE_POSTGRES_PORT", ""),
+    "large_dirs": _json_env("LARGE_DIRS", "[]"),
+    "doctor": _json_env("DOCTOR_JSON", "null"),
+}, indent=2))
+PY

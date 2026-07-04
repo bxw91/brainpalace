@@ -68,6 +68,7 @@ brainpalace mcp --ensure-server
 | `extraction_fetch` |  |
 | `extraction_submit` |  |
 | `folders_list` |  |
+| `jobs_approve` |  |
 | `jobs_list` |  |
 | `memorize` |  |
 | `query` |  |

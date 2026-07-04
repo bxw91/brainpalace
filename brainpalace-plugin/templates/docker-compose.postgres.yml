@@ -6,10 +6,14 @@ services:
     container_name: brainpalace-postgres
     environment:
       POSTGRES_USER: brainpalace
+      # Default is fine for the loopback-only local dev bind above; set a real
+      # POSTGRES_PASSWORD if you change the bind address.
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-brainpalace_dev}
       POSTGRES_DB: brainpalace
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      # Loopback only — never expose the index DB on the network. Override the
+      # bind address deliberately if you really need remote access.
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - brainpalace-postgres-data:/var/lib/postgresql/data
     healthcheck:

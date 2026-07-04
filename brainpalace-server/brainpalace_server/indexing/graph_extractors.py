@@ -325,12 +325,26 @@ class CodeMetadataExtractor:
         # Extract module name from file path
         module_name = self._extract_module_name(file_path) if file_path else None
 
-        # 1. Symbol -> imports -> ImportedModule
-        if isinstance(imports, list):
+        # Qualify a method/function by its class so common names (`__init__`,
+        # `handle`, `run`) don't all collapse onto one node — node identity is
+        # the name, so a bare `__init__` merges every constructor in the repo.
+        qualified = symbol_name
+        if (
+            symbol_name
+            and class_name
+            and class_name != symbol_name
+            and symbol_type in ("method", "function")
+        ):
+            qualified = f"{class_name}.{symbol_name}"
+
+        # 1. Symbol -> imports -> ImportedModule (skip when we can't name the
+        #    importer — no degenerate "unknown" hub).
+        importer = qualified or module_name
+        if importer and isinstance(imports, list):
             for imp in imports:
-                if isinstance(imp, str) and imp:
+                if isinstance(imp, str) and imp and imp != importer:
                     triplet = GraphTriple(
-                        subject=symbol_name or module_name or "unknown",
+                        subject=importer,
                         subject_type=normalize_entity_type(symbol_type) or "Module",
                         predicate=self.PREDICATE_IMPORTS,
                         object=imp,
@@ -340,46 +354,56 @@ class CodeMetadataExtractor:
                     triplets.append(triplet)
 
         # 2. Parent -> contains -> Symbol
-        if symbol_name and parent_symbol:
+        if qualified and parent_symbol and parent_symbol != qualified:
             triplet = GraphTriple(
                 subject=parent_symbol,
                 subject_type="Class" if "." not in parent_symbol else "Module",
                 predicate=self.PREDICATE_CONTAINS,
-                object=symbol_name,
+                object=qualified,
                 object_type=normalize_entity_type(symbol_type) or "Symbol",
                 source_chunk_id=source_chunk_id,
             )
             triplets.append(triplet)
 
         # 3. Class -> contains -> Method (for methods)
-        if symbol_name and class_name and symbol_type in ("method", "function"):
-            if class_name != symbol_name:  # Avoid self-reference
-                triplet = GraphTriple(
-                    subject=class_name,
-                    subject_type="Class",
-                    predicate=self.PREDICATE_CONTAINS,
-                    object=symbol_name,
-                    object_type=normalize_entity_type(symbol_type),
-                    source_chunk_id=source_chunk_id,
-                )
-                triplets.append(triplet)
+        if (
+            qualified
+            and class_name
+            and symbol_type in ("method", "function")
+            and class_name != qualified
+        ):
+            triplet = GraphTriple(
+                subject=class_name,
+                subject_type="Class",
+                predicate=self.PREDICATE_CONTAINS,
+                object=qualified,
+                object_type=normalize_entity_type(symbol_type),
+                source_chunk_id=source_chunk_id,
+            )
+            triplets.append(triplet)
 
         # 4. Module -> contains -> TopLevelSymbol
-        if module_name and symbol_name and not parent_symbol and not class_name:
+        if (
+            module_name
+            and qualified
+            and not parent_symbol
+            and not class_name
+            and module_name != qualified
+        ):
             triplet = GraphTriple(
                 subject=module_name,
                 subject_type="Module",
                 predicate=self.PREDICATE_CONTAINS,
-                object=symbol_name,
+                object=qualified,
                 object_type=normalize_entity_type(symbol_type) or "Symbol",
                 source_chunk_id=source_chunk_id,
             )
             triplets.append(triplet)
 
         # 5. Symbol -> defined_in -> Module
-        if symbol_name and module_name:
+        if qualified and module_name and qualified != module_name:
             triplet = GraphTriple(
-                subject=symbol_name,
+                subject=qualified,
                 subject_type=normalize_entity_type(symbol_type) or "Symbol",
                 predicate=self.PREDICATE_DEFINED_IN,
                 object=module_name,
@@ -429,11 +453,27 @@ class CodeMetadataExtractor:
 
         return path if path else None
 
+    def _module_leaf(self, spec: str) -> str:
+        """Leaf token for a JS/TS import specifier.
+
+        Strips the directory, query/hash and a JS/TS extension so a relative
+        import resolves to the SAME token the AST uses for that file's module
+        node (``./tabs/Graph`` → ``Graph``). Without this, import edges point at
+        path-strings that never match the real module nodes and caller chains
+        can't be followed.
+        """
+        s = spec.split("?", 1)[0].split("#", 1)[0].replace("\\", "/")
+        if "/" in s:
+            s = s.rsplit("/", 1)[-1]
+        s = re.sub(r"\.(tsx|ts|jsx|js|mjs|cjs)$", "", s)
+        return s or spec
+
     def extract_from_text(
         self,
         text: str,
         language: str | None = None,
         source_chunk_id: str | None = None,
+        module_name: str | None = None,
     ) -> list[GraphTriple]:
         """Extract relationships from code text using pattern matching.
 
@@ -443,6 +483,9 @@ class CodeMetadataExtractor:
         Args:
             text: Code text content.
             language: Programming language (python, javascript, etc.).
+            module_name: Real module name of the importing file (from its path).
+                Used as the import edge's subject so callers are attributed to
+                the actual file instead of a single ``current_module`` hub.
             source_chunk_id: Optional source chunk ID.
 
         Returns:
@@ -458,21 +501,25 @@ class CodeMetadataExtractor:
 
         language = language.lower()
 
+        importer = module_name or "current_module"
+
         # Extract Python imports
         if language == "python":
-            triplets.extend(self._extract_python_imports(text, source_chunk_id))
+            triplets.extend(
+                self._extract_python_imports(text, source_chunk_id, importer)
+            )
 
         # Extract JavaScript/TypeScript imports
         elif language in ("javascript", "typescript", "tsx", "jsx"):
-            triplets.extend(self._extract_js_imports(text, source_chunk_id))
+            triplets.extend(self._extract_js_imports(text, source_chunk_id, importer))
 
         # Extract Java imports
         elif language == "java":
-            triplets.extend(self._extract_java_imports(text, source_chunk_id))
+            triplets.extend(self._extract_java_imports(text, source_chunk_id, importer))
 
         # Extract Go imports
         elif language == "go":
-            triplets.extend(self._extract_go_imports(text, source_chunk_id))
+            triplets.extend(self._extract_go_imports(text, source_chunk_id, importer))
 
         return triplets
 
@@ -480,6 +527,7 @@ class CodeMetadataExtractor:
         self,
         text: str,
         source_chunk_id: str | None,
+        importer: str = "current_module",
     ) -> list[GraphTriple]:
         """Extract imports from Python code."""
         triplets: list[GraphTriple] = []
@@ -487,9 +535,11 @@ class CodeMetadataExtractor:
         # Match: import module
         for match in re.finditer(r"^import\s+([\w.]+)", text, re.MULTILINE):
             module = match.group(1)
+            if module == importer:
+                continue
             triplets.append(
                 GraphTriple(
-                    subject="current_module",
+                    subject=importer,
                     subject_type="Module",
                     predicate=self.PREDICATE_IMPORTS,
                     object=module,
@@ -501,9 +551,11 @@ class CodeMetadataExtractor:
         # Match: from module import ...
         for match in re.finditer(r"^from\s+([\w.]+)\s+import", text, re.MULTILINE):
             module = match.group(1)
+            if module == importer:
+                continue
             triplets.append(
                 GraphTriple(
-                    subject="current_module",
+                    subject=importer,
                     subject_type="Module",
                     predicate=self.PREDICATE_IMPORTS,
                     object=module,
@@ -518,37 +570,39 @@ class CodeMetadataExtractor:
         self,
         text: str,
         source_chunk_id: str | None,
+        importer: str = "current_module",
     ) -> list[GraphTriple]:
-        """Extract imports from JavaScript/TypeScript code."""
+        """Extract imports from JavaScript/TypeScript code.
+
+        The import specifier is reduced to its leaf module token (``_module_leaf``)
+        so a relative import resolves to the SAME node the AST uses for that
+        file — making `importer imports module` connect two real module nodes
+        and the caller chain followable across files.
+        """
         triplets: list[GraphTriple] = []
+
+        def add(spec: str) -> None:
+            module = self._module_leaf(spec)
+            if not module or module == importer:
+                return
+            triplets.append(
+                GraphTriple(
+                    subject=importer,
+                    subject_type="Module",
+                    predicate=self.PREDICATE_IMPORTS,
+                    object=module,
+                    object_type="Module",
+                    source_chunk_id=source_chunk_id,
+                )
+            )
 
         # Match: import ... from 'module'
         for match in re.finditer(r"import\s+.*?\s+from\s+['\"]([^'\"]+)['\"]", text):
-            module = match.group(1)
-            triplets.append(
-                GraphTriple(
-                    subject="current_module",
-                    subject_type="Module",
-                    predicate=self.PREDICATE_IMPORTS,
-                    object=module,
-                    object_type="Module",
-                    source_chunk_id=source_chunk_id,
-                )
-            )
+            add(match.group(1))
 
         # Match: require('module')
         for match in re.finditer(r"require\s*\(\s*['\"]([^'\"]+)['\"]\s*\)", text):
-            module = match.group(1)
-            triplets.append(
-                GraphTriple(
-                    subject="current_module",
-                    subject_type="Module",
-                    predicate=self.PREDICATE_IMPORTS,
-                    object=module,
-                    object_type="Module",
-                    source_chunk_id=source_chunk_id,
-                )
-            )
+            add(match.group(1))
 
         return triplets
 
@@ -556,6 +610,7 @@ class CodeMetadataExtractor:
         self,
         text: str,
         source_chunk_id: str | None,
+        importer: str = "current_module",
     ) -> list[GraphTriple]:
         """Extract imports from Java code."""
         triplets: list[GraphTriple] = []
@@ -565,7 +620,7 @@ class CodeMetadataExtractor:
             module = match.group(1)
             triplets.append(
                 GraphTriple(
-                    subject="current_module",
+                    subject=importer,
                     subject_type="Module",
                     predicate=self.PREDICATE_IMPORTS,
                     object=module,
@@ -580,6 +635,7 @@ class CodeMetadataExtractor:
         self,
         text: str,
         source_chunk_id: str | None,
+        importer: str = "current_module",
     ) -> list[GraphTriple]:
         """Extract imports from Go code."""
         triplets: list[GraphTriple] = []
@@ -589,7 +645,7 @@ class CodeMetadataExtractor:
             module = match.group(1)
             triplets.append(
                 GraphTriple(
-                    subject="current_module",
+                    subject=importer,
                     subject_type="Module",
                     predicate=self.PREDICATE_IMPORTS,
                     object=module,
@@ -605,7 +661,7 @@ class CodeMetadataExtractor:
                 module = match.group(1)
                 triplets.append(
                     GraphTriple(
-                        subject="current_module",
+                        subject=importer,
                         subject_type="Module",
                         predicate=self.PREDICATE_IMPORTS,
                         object=module,

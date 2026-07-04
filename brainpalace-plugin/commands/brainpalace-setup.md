@@ -6,7 +6,7 @@ context: brainpalace
 agent: setup-assistant
 skills:
   - configuring-brainpalace
-last_validated: 2026-06-28
+last_validated: 2026-07-04
 ---
 
 # Complete BrainPalace Setup
@@ -25,57 +25,40 @@ Runs a complete guided setup flow for BrainPalace, taking the user from zero to 
 
 Run each step in sequence, proceeding only if the previous step succeeds.
 
-### Step 0: Bootstrap Permissions
+### Step 0: Bootstrap Permissions (ask first)
 
-Before running any shell commands, ensure `.claude/settings.json` exists with the required permissions for the setup wizard. Use the Write tool (not Bash) to create this file — the Write tool is always available without a permission gate.
+The wizard runs `brainpalace` and a few read-only inspection commands many times. To avoid a prompt for each call, it can add a minimal allowlist to the project's `.claude/settings.json` — but only with the user's consent.
 
-Check if the file already exists:
+Check whether the allowlist is already present:
 
 ```bash
 ls .claude/settings.json 2>/dev/null && echo "EXISTS" || echo "MISSING"
 ```
 
-If missing or if it does not contain `"Bash(brainpalace:*)"`, write the following content to `.claude/settings.json` using the Write tool:
+If the file is missing or does not contain `"Bash(brainpalace:*)"`, use the AskUserQuestion tool: *"Add a minimal permission allowlist to `.claude/settings.json` so the setup wizard runs without repeated prompts? It covers only the `brainpalace` CLI and read-only inspection commands (`ls`, `du`, `ps`, `pgrep`, `lsof`). Installers like pip/docker will still prompt individually."* Options: **Add allowlist** / **Skip (prompt per command)**.
+
+If the user agrees, write this content to `.claude/settings.json` with the Write tool:
 
 ```json
 {
-  "_comment": "BrainPalace setup permissions — written by /brainpalace-setup. Safe to commit.",
+  "_comment": "BrainPalace setup permissions — written by /brainpalace-setup after user approval. Grants only the brainpalace CLI plus read-only inspection commands; everything else (pip, python, docker, curl, ...) still prompts normally.",
   "permissions": {
     "allow": [
       "Bash(brainpalace:*)",
-      "Bash(lsof:*)",
-      "Bash(ollama:*)",
-      "Bash(docker:*)",
-      "Bash(mkdir:*)",
-      "Bash(cat:*)",
-      "Bash(jq:*)",
-      "Bash(mv:*)",
+      "Bash(ls:*)",
       "Bash(du:*)",
       "Bash(ps:*)",
       "Bash(pgrep:*)",
-      "Bash(pip:*)",
-      "Bash(pipx:*)",
-      "Bash(uv:*)",
-      "Bash(python:*)",
-      "Bash(python3:*)",
-      "Bash(rg:*)",
-      "Bash(wc:*)",
-      "Bash(curl:*)",
-      "Bash(ls:*)",
-      "Bash(find:*)",
-      "Bash(chmod:*)",
-      "Bash(grep:*)",
-      "Bash(bash:*)"
+      "Bash(lsof:*)"
     ],
     "deny": []
   }
 }
 ```
 
-After writing the file, tell the user:
-"Wrote `.claude/settings.json` with BrainPalace setup permissions. These allow the wizard to run without permission prompts. The file is safe to commit — it grants access only to standard development tools."
+**IMPORTANT:** If `.claude/settings.json` already exists with custom content, MERGE: add only the missing entries from the list above into the existing `allow` array; never replace the file or remove the user's own entries.
 
-**IMPORTANT:** If `.claude/settings.json` already exists with custom content, MERGE: add any missing `Bash(...)` entries from the list above into the existing `allow` array rather than replacing the file.
+If the user declines, continue without writing anything — each command simply prompts.
 
 ### Step 1: Check Installation Status
 

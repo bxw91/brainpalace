@@ -5,7 +5,15 @@ from brainpalace_cli.doc_sync.introspect import dump_interface_json, live_snapsh
 
 def test_snapshot_has_modes():
     snap = live_snapshot()
-    assert set(snap.modes) == {"vector", "bm25", "hybrid", "graph", "multi", "compute"}
+    assert set(snap.modes) == {
+        "vector",
+        "bm25",
+        "hybrid",
+        "graph",
+        "multi",
+        "compute",
+        "scan",
+    }
 
 
 def test_dump_interface_emits_modes():
@@ -16,5 +24,6 @@ def test_dump_interface_emits_modes():
         "graph",
         "hybrid",
         "multi",
+        "scan",
         "vector",
     ]

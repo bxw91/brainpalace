@@ -17,7 +17,7 @@ metadata:
   category: ai-tools
   author: bxw91
   last_validated: 2026-06-13
-last_validated: 2026-06-28
+last_validated: 2026-07-03
 ---
 
 # Configuring BrainPalace
@@ -396,6 +396,19 @@ brainpalace index ./src --include-code
 ```
 
 The `sqlite` backend (default) is built into the stdlib — no optional extras needed.
+
+**Exact cross-file call edges (LSP).** With a language server installed, the code
+graph resolves exact cross-file calls (Python → pyright). BrainPalace offers to
+install it when you enable graph indexing / LSP during `brainpalace init` or
+`brainpalace doctor`, or install it explicitly:
+
+```bash
+brainpalace lsp install            # prompt, then install pyright
+brainpalace lsp install --yes      # non-interactive (CI)
+```
+
+Installing is a local-machine action, so it lives in the CLI (not the MCP server,
+which is headless). See [LSP_INTEGRATION](../../../docs/LSP_INTEGRATION.md).
 
 ### BM25 Language Configuration
 

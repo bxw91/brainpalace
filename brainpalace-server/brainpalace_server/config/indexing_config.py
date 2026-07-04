@@ -13,7 +13,8 @@ holds the knobs for the path-agnostic anti-churn guard:
 - ``skip_minified`` — skip single-line / minified blobs entirely at load time.
 
 Env overrides: ``REEMBED_COOLDOWN_SECONDS``, ``INDEX_BIG_FILE_CHUNKS``,
-``INDEX_MAX_FILE_BYTES``, ``INDEX_SKIP_MINIFIED``.
+``INDEX_MAX_FILE_BYTES``, ``INDEX_SKIP_MINIFIED``, ``INDEX_MAX_EMBED_TOKENS``,
+``INDEX_MAX_EMBED_RATIO``.
 """
 
 from __future__ import annotations
@@ -57,11 +58,22 @@ class IndexingConfig(BaseModel):
         description="Skip single-line / minified blobs (*.min.js, *.min.css) entirely.",
     )
     max_embed_tokens_per_job: int = Field(
-        default=300_000,
+        default=100_000,
         ge=0,
         description=(
             "Hard cap on embedding tokens per index job. 0 disables the guard. "
             "Over the cap the job fails with a budget error unless force_budget."
+        ),
+    )
+    max_embed_ratio_per_job: float = Field(
+        default=0.2,
+        ge=0.0,
+        description=(
+            "Adaptive extension of the token cap: the effective per-job cap is "
+            "max(max_embed_tokens_per_job, this ratio × estimated index size "
+            "in tokens). 0 disables the adaptive part (pure fixed cap). Index "
+            "size is approximated as total chunks × chunk_size. Ignored when "
+            "max_embed_tokens_per_job is 0 (guard fully disabled)."
         ),
     )
     exclude_patterns: list[str] = Field(
@@ -86,7 +98,14 @@ class IndexingConfig(BaseModel):
             "**/.claude-plugin/**",
             "**/.brainpalace/**",
         ],
-        description="Glob patterns excluded from indexing (one per row).",
+        description=(
+            "Glob patterns excluded from indexing (one per row). Matches both "
+            "directories (prunes the subtree) and individual files, so a single "
+            "file can be excluded, e.g. '**/docs/CHANGELOG.md'. Use '**/' to "
+            "match at any depth. Project-configured patterns are ADDED to this "
+            "built-in default list (they extend it, never replace it), so adding "
+            "one pattern never drops the defaults."
+        ),
     )
 
 
@@ -101,6 +120,17 @@ def _env_int(name: str, current: int) -> int:
         return current
 
 
+def _env_float(name: str, current: float) -> float:
+    raw = os.getenv(name)
+    if raw is None:
+        return current
+    try:
+        return float(raw.strip())
+    except ValueError:
+        logger.warning("Ignoring non-float %s=%r", name, raw)
+        return current
+
+
 def _env_bool(name: str, current: bool) -> bool:
     raw = os.getenv(name)
     if raw is None:
@@ -111,13 +141,25 @@ def _env_bool(name: str, current: bool) -> bool:
 def load_indexing_config(config_path: Path | None = None) -> IndexingConfig:
     """Load the ``indexing:`` block, or defaults if absent. Env overrides win."""
     cfg = IndexingConfig()
+    default_excludes = cfg.exclude_patterns
     try:
         raw = load_raw_config(config_path)
         block = raw.get("indexing")
         if isinstance(block, dict):
-            cfg = IndexingConfig(
-                **{k: v for k, v in block.items() if k in IndexingConfig.model_fields}
-            )
+            fields = {
+                k: v for k, v in block.items() if k in IndexingConfig.model_fields
+            }
+            cfg = IndexingConfig(**fields)
+            if "exclude_patterns" in fields:
+                # Additive: project patterns EXTEND the built-in defaults instead
+                # of replacing them, so adding one file pattern never silently
+                # drops node_modules/.venv/.claude/.brainpalace exclusion. Order:
+                # defaults first, then project extras, de-duplicated.
+                seen = set(default_excludes)
+                merged = list(default_excludes) + [
+                    p for p in cfg.exclude_patterns if p not in seen
+                ]
+                cfg = cfg.model_copy(update={"exclude_patterns": merged})
     except (OSError, yaml.YAMLError, ValueError) as exc:
         logger.warning("Could not parse indexing config: %s", exc)
 
@@ -133,6 +175,9 @@ def load_indexing_config(config_path: Path | None = None) -> IndexingConfig:
             "skip_minified": _env_bool("INDEX_SKIP_MINIFIED", cfg.skip_minified),
             "max_embed_tokens_per_job": _env_int(
                 "INDEX_MAX_EMBED_TOKENS", cfg.max_embed_tokens_per_job
+            ),
+            "max_embed_ratio_per_job": _env_float(
+                "INDEX_MAX_EMBED_RATIO", cfg.max_embed_ratio_per_job
             ),
         }
     )

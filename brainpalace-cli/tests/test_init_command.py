@@ -137,14 +137,14 @@ def test_init_git_history_prompt_shown_interactively(tmp_path, monkeypatch):
         "brainpalace_cli.commands.init.claude_plugin_installed", lambda **k: True
     )
     monkeypatch.setattr("brainpalace_cli.commands.init._stdin_is_tty", lambda: True)
-    # Drill the Git Indexing division (9 in the init grid — BM25=4, GraphRAG=5,
-    # Compute Query=6, Storage=7, Indexing=8, Git Indexing=9):
+    # Drill the Git Indexing division (10 in the init grid — BM25=4, GraphRAG=5,
+    # Graph Indexing : LSP=6, Compute Query=7, Storage=8, Indexing=9, Git Indexing=10):
     # consent Enabled=Y, depth=0 (unlimited),
     # then Enter past the remaining git fields, [C]ontinue, Proceed=Y.
     r = CliRunner().invoke(
         init_command,
         ["--path", str(tmp_path), "--no-start"],
-        input="9\ny\n0\n\n\n\n\nc\ny\n",
+        input="10\ny\n0\n\n\n\n\nc\ny\n",
     )
     assert r.exit_code == 0, r.output
     # Drilling git surfaces the consent warning + the commit-depth follow-up.
@@ -163,12 +163,12 @@ def test_init_git_history_depth_cap_persisted(tmp_path, monkeypatch):
         "brainpalace_cli.commands.init.claude_plugin_installed", lambda **k: True
     )
     monkeypatch.setattr("brainpalace_cli.commands.init._stdin_is_tty", lambda: True)
-    # Drill git (9 in the init grid — Indexing=8, Git Indexing=9):
+    # Drill git (10 in the init grid — Indexing=9, Git Indexing=10):
     # Enabled=Y, depth=500, Enter past the rest, Continue, Proceed.
     r = CliRunner().invoke(
         init_command,
         ["--path", str(tmp_path), "--no-start"],
-        input="9\ny\n500\n\n\n\n\nc\ny\n",
+        input="10\ny\n500\n\n\n\n\nc\ny\n",
     )
     assert r.exit_code == 0, r.output
     data = yaml.safe_load((tmp_path / ".brainpalace" / "config.yaml").read_text())
@@ -366,14 +366,14 @@ def test_init_existing_project_git_history_prompt_persists(tmp_path, monkeypatch
     monkeypatch.setattr("brainpalace_cli.commands.init._stdin_is_tty", lambda: True)
     sd = _existing_simple_project(tmp_path)
     # Pre-existing .brainpalace ⇒ keep first. Then:
-    #   grid1: drill 9 (Git Indexing — Indexing=8, Git Indexing=9) → Enabled=Y,
+    #   grid1: drill 10 (Git Indexing — Indexing=9, Git Indexing=10) → Enabled=Y,
     #          depth=0, Enter past the rest, [C]ontinue
     #   upgrade-store=N, Proceed=Y
     #   grid2 (re-init editor): [C]ontinue
     r = CliRunner().invoke(
         init_command,
         ["--path", str(tmp_path), "--no-start"],
-        input="keep\n9\ny\n0\n\n\n\n\nc\nn\ny\nc\n",
+        input="keep\n10\ny\n0\n\n\n\n\nc\nn\ny\nc\n",
     )
     assert r.exit_code == 0, r.output
     data = yaml.safe_load((sd / "config.yaml").read_text())

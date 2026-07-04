@@ -109,3 +109,24 @@ async def cancel_job(job_id: str, request: Request) -> dict[str, Any]:
             status_code=status.HTTP_409_CONFLICT,
             detail=str(e),
         ) from e
+
+
+@router.post(
+    "/{job_id}/approve",
+    summary="Approve Blocked Job",
+    description="Approve a budget-blocked job: re-queue it with force_budget.",
+)
+async def approve_job(job_id: str, request: Request) -> dict[str, Any]:
+    """Approve a budget-BLOCKED job so it re-runs with the budget bypassed.
+
+    Raises:
+        404: Job not found.
+        409: Job is not in blocked status.
+    """
+    job_service: JobQueueService = request.app.state.job_service
+    try:
+        return await job_service.approve_job(job_id)
+    except KeyError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e)) from e

@@ -78,18 +78,23 @@ class GraphIndexManager:
         self._last_triplet_count: int = 0
         self._lsp_extractor: Any | None = None  # lazy (Phase 150, opt-in)
 
-    def _get_lsp_extractor(self) -> Any:
-        """Lazily build the opt-in LSP cross-ref extractor (Phase 150)."""
+    def _get_lsp_extractor(self, root: str | None = None) -> Any:
+        """Lazily build the opt-in LSP cross-ref extractor (Phase 150).
+
+        The first call fixes the workspace root (stable per project) — real
+        language servers need it to index the workspace."""
         if self._lsp_extractor is None:
             from brainpalace_server.lsp.extractor import LspCrossRefExtractor
 
-            self._lsp_extractor = LspCrossRefExtractor()
+            root_uri = f"file://{root}" if root else ""
+            self._lsp_extractor = LspCrossRefExtractor(root_uri=root_uri)
         return self._lsp_extractor
 
     def build_from_documents(
         self,
         documents: list[Any],
         progress_callback: ProgressCallback | None = None,
+        root: str | None = None,
     ) -> int:
         """Build graph index from documents.
 
@@ -99,6 +104,8 @@ class GraphIndexManager:
         Args:
             documents: List of document chunks with text and metadata.
             progress_callback: Optional callback(current, total, message).
+            root: Indexed folder root — enables the Folder chain and bounds
+                import resolution.
 
         Returns:
             Total number of triplets extracted and stored.
@@ -115,6 +122,185 @@ class GraphIndexManager:
             self.graph_store.initialize()
 
         total_triplets = 0
+
+        from collections import defaultdict
+
+        from brainpalace_server.indexing.code_symbol_extractor import (
+            extract_python_symbols,
+        )
+        from brainpalace_server.indexing.import_resolver import resolve_import
+        from brainpalace_server.indexing.manifest_deps import (
+            extract_manifest_deps,
+            is_manifest,
+        )
+        from brainpalace_server.lsp import servers
+
+        py_by_file: dict[str, list[Any]] = defaultdict(list)
+        manifest_by_file: dict[str, list[Any]] = defaultdict(list)
+        rest: list[Any] = []
+        for doc in documents:
+            md = self._get_document_metadata(doc)
+            fp = md.get("file_path") or md.get("source")
+            if fp and is_manifest(fp):
+                manifest_by_file[fp.replace("\\", "/")].append(doc)
+            elif (
+                md.get("source_type") == "code"
+                and md.get("language") == "python"
+                and fp
+            ):
+                py_by_file[fp.replace("\\", "/")].append(doc)
+            else:
+                rest.append(doc)
+
+        def _doc_text(d: Any) -> str:
+            if isinstance(d, dict):  # dict-shaped chunk: text lives under a key
+                return d.get("text", "") or ""
+            return getattr(d, "text", "") or (
+                d.get_content() if hasattr(d, "get_content") else ""
+            )
+
+        def _write(
+            tr: GraphTriple,
+            source_file: str | None,
+            source_chunk_id: str | None = None,
+        ) -> bool:
+            return bool(
+                self.graph_store.add_triplet(
+                    subject=tr.subject,
+                    predicate=tr.predicate,
+                    obj=tr.object,
+                    subject_type=tr.subject_type,
+                    object_type=tr.object_type,
+                    source_chunk_id=source_chunk_id,
+                    subject_id=tr.effective_subject_id,
+                    object_id=tr.effective_object_id,
+                    subject_name=tr.subject_name,
+                    object_name=tr.object_name,
+                    source_file=source_file,
+                    domain="code",
+                )
+            )
+
+        for fp, docs in py_by_file.items():
+            self.graph_store.invalidate_by_source_file(fp, domain="code")
+            rep_chunk = self._get_document_id(docs[0])
+            source = "\n".join(_doc_text(d) for d in docs)
+            try:
+                file_symbols = extract_python_symbols(fp, source, root=root)
+            except Exception:  # noqa: BLE001 — one bad file must not kill the build
+                logger.warning(
+                    "code symbol extraction failed for %s; skipping file",
+                    fp,
+                    exc_info=True,
+                )
+                continue
+            for tr in file_symbols.triples:
+                # Folder→Folder chain edges carry source_file=None on purpose
+                # (shared across files; removed by sweep_empty_folders).
+                if _write(tr, tr.source_file, rep_chunk):
+                    total_triplets += 1
+
+            # Plan D: persist definition positions onto the symbol nodes so the
+            # browser can show file:line and serve source snippets. Merge-write
+            # after the triple writes (nodes must exist); the preserve-on-empty
+            # upsert keeps these across later edge writes from other files.
+            if file_symbols.symbols:
+                self.graph_store.set_node_properties(
+                    {
+                        s.symbol_id: {
+                            "path": s.file_path.replace("\\", "/"),
+                            "line": s.line,
+                            "character": s.character,
+                        }
+                        for s in file_symbols.symbols
+                        if s.symbol_id
+                    }
+                )
+
+            # §2b import resolution: repo hit → File imports File; miss on an
+            # absolute import → external Module; miss on a relative one → nothing.
+            fname = fp.rsplit("/", 1)[-1]
+            for spec in file_symbols.imports:
+                targets = resolve_import(
+                    fp, spec.module, spec.level, spec.names, root=root
+                )
+                if targets:
+                    for target in targets:
+                        tname = target.rsplit("/", 1)[-1]
+                        if _write(
+                            GraphTriple(
+                                subject=fname,
+                                predicate="imports",
+                                object=tname,
+                                subject_id=fp,
+                                object_id=target,
+                                subject_name=fname,
+                                object_name=tname,
+                                subject_type="File",
+                                object_type="File",
+                                source_file=fp,
+                            ),
+                            fp,
+                            rep_chunk,
+                        ):
+                            total_triplets += 1
+                elif spec.level == 0 and spec.module:
+                    if _write(
+                        GraphTriple(
+                            subject=fname,
+                            predicate="imports",
+                            object=spec.module,
+                            subject_id=fp,
+                            object_id=spec.module,
+                            subject_name=fname,
+                            object_name=spec.module,
+                            subject_type="File",
+                            object_type="Module",
+                            source_file=fp,
+                        ),
+                        fp,
+                        rep_chunk,
+                    ):
+                        total_triplets += 1
+
+            # LSP precision (§4/§5b): exact cross-file calls + references, fed
+            # the AST tables. Gated + fail-soft; forced source_file so the §3
+            # purge owns every LSP triplet.
+            if servers.is_language_enabled("python"):
+                if file_symbols.symbols:
+                    for tr in self._get_lsp_extractor(root).extract_from_symbols(
+                        file_symbols.symbols
+                    ):
+                        if _write(tr, fp, rep_chunk):
+                            total_triplets += 1
+                if file_symbols.ref_sites:
+                    for tr in self._get_lsp_extractor(root).extract_references(
+                        file_symbols.ref_sites
+                    ):
+                        if _write(tr, fp, rep_chunk):
+                            total_triplets += 1
+
+            self.graph_store.sweep_orphan_nodes(domain="code")
+
+        # §5b depends_on: manifests are deterministic; same purge→write cycle.
+        for fp, docs in manifest_by_file.items():
+            self.graph_store.invalidate_by_source_file(fp, domain="code")
+            rep_chunk = self._get_document_id(docs[0])
+            source = "\n".join(_doc_text(d) for d in docs)
+            for tr in extract_manifest_deps(fp, source):
+                if _write(tr, fp, rep_chunk):
+                    total_triplets += 1
+            self.graph_store.sweep_orphan_nodes(domain="code")
+
+        if py_by_file or manifest_by_file:
+            self.graph_store.sweep_empty_folders(domain="code")
+
+        if self._lsp_extractor is not None:
+            # Tear down spawned language servers; the extractor stays cached
+            # and respawns clients lazily on the next build.
+            self._lsp_extractor.close()
+
+        documents = rest
         total_docs = len(documents)
 
         logger.info(
@@ -203,10 +389,22 @@ class GraphIndexManager:
             )
             triplets.extend(code_triplets)
 
-            # Also try pattern-based extraction from text
+            # Also try pattern-based extraction from text. Pass the importing
+            # file's real module name so import edges are attributed to it
+            # (not one shared "current_module" hub), which is what makes a
+            # node's callers — and the chain up to the entry point — visible.
             if language:
+                file_path = metadata.get("file_path") or metadata.get("source")
+                module_name = (
+                    self.code_extractor._extract_module_name(file_path)
+                    if file_path
+                    else None
+                )
                 text_triplets = self.code_extractor.extract_from_text(
-                    text, language=language, source_chunk_id=chunk_id
+                    text,
+                    language=language,
+                    source_chunk_id=chunk_id,
+                    module_name=module_name,
                 )
                 triplets.extend(text_triplets)
 
@@ -355,7 +553,10 @@ class GraphIndexManager:
                 # No dedup key available, still include result
                 unique_results.append(result)
 
-        # Limit to top_k
+        # Weight-aware ordering: higher-confidence edges first (deterministic
+        # edges carry no weight ⇒ 1.0). Stable sort keeps discovery order
+        # between equals; this rank order is what multi-mode RRF consumes.
+        unique_results.sort(key=lambda r: r.get("graph_score", 1.0), reverse=True)
         final_results = unique_results[:top_k]
 
         logger.info(
@@ -547,12 +748,19 @@ class GraphIndexManager:
         # Try to get triplets from graph store
         try:
             entity_lower = entity.lower()
-            if hasattr(graph_store, "get_triplets") and hasattr(graph_store, "get"):
-                # Property-graph store: bare get_triplets() returns []. Find
-                # node names that match the query entity (exact OR substring),
-                # then fetch triplets for those names.
+            if hasattr(graph_store, "search_nodes"):
+                # SQLite backend: push the substring match into SQL (indexed,
+                # degree-ranked) instead of scanning every node in Python.
+                matched_names = list(
+                    {m["name"] for m in graph_store.search_nodes(entity, limit=25)}
+                )
+                if not matched_names:
+                    return results
+                triplets = graph_store.get_triplets(entity_names=matched_names)
+            elif hasattr(graph_store, "get_triplets") and hasattr(graph_store, "get"):
+                # Property-graph store without browse reads (simple backend).
                 all_nodes = graph_store.get()
-                matched_names: list[str] = []
+                matched_names = []
                 for node in all_nodes:
                     name = getattr(node, "name", None)
                     if name is None:
@@ -567,8 +775,12 @@ class GraphIndexManager:
             else:
                 return results
 
-            # Filter triplets to those whose subject OR object contains entity
-            matching_triplets: list[Any] = []
+            # Filter triplets to those whose subject OR object contains entity.
+            # Weight is computed here (not deferred to the build loop) so the
+            # per-entity truncation below can sort by it — otherwise a
+            # high-weight edge discovered late is dropped in favor of an
+            # earlier weight-1.0 edge, silently defeating the weight sort.
+            matching_triplets: list[tuple[float, Any]] = []
             seen: set[tuple[str, str, str]] = set()
             for triplet in triplets:
                 subject = self._get_triplet_field(triplet, "subject", "")
@@ -579,10 +791,15 @@ class GraphIndexManager:
                     if key in seen:
                         continue
                     seen.add(key)
-                    matching_triplets.append(triplet)
+                    weight = float(self._get_triplet_field(triplet, "weight", 1.0))
+                    matching_triplets.append((weight, triplet))
+
+            # Weight-aware per-entity cut: highest-weight edges survive the
+            # truncation (stable sort keeps discovery order among ties).
+            matching_triplets.sort(key=lambda pair: pair[0], reverse=True)
 
             # Build result entries from matching triplets
-            for triplet in matching_triplets[:max_results]:
+            for weight, triplet in matching_triplets[:max_results]:
                 result = {
                     "entity": entity,
                     "subject": self._get_triplet_field(triplet, "subject", ""),
@@ -598,7 +815,7 @@ class GraphIndexManager:
                         triplet, "source_chunk_id", None
                     ),
                     "relationship_path": self._format_relationship_path(triplet),
-                    "graph_score": 1.0,  # Direct match
+                    "graph_score": weight,
                 }
                 results.append(result)
 
@@ -633,6 +850,12 @@ class GraphIndexManager:
             if field == "source_chunk_id":
                 props = getattr(rel, "properties", None) or {}
                 return props.get("source_chunk_id", default)
+            if field == "weight":
+                props = getattr(rel, "properties", None) or {}
+                try:
+                    return float(props.get("weight", default))
+                except (TypeError, ValueError):
+                    return default
             return default
         return getattr(triplet, field, default)
 

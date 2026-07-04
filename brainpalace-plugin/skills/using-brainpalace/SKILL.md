@@ -59,6 +59,7 @@ Pick `--mode` for any inline search. Default to `hybrid` when unsure.
 | Relationships ("what calls X", "what imports Y") | `--mode graph` |
 | Maximum recall (ALL usages / references) | `--mode multi` |
 | Aggregation ("how many", "total", "which week had most") | `--mode compute` |
+| Own-utterance history ("which week did I mention X") | `--mode scan` |
 
 Common flags: `--top-k N` (default 5), `--threshold F` (default 0.3),
 `--alpha F` (hybrid balance, 0=BM25…1=Vector, default 0.5), `--language CODE`
@@ -101,7 +102,9 @@ After BrainPalace returns confirmed file paths, use `Read` to open them.
 Per-result keys are `text`, `source`, `score`, `chunk_id` — there is NO
 `file_path`, `content`, or line-number field. On failure, stdout is
 `{"error": ...}` (with `detail`/`hint`) and a non-zero exit, with **no**
-`results` key. Never append `2>/dev/null` — diagnostics go to stderr.
+`results` key. Never append `2>/dev/null` — diagnostics go to stderr. A
+top-level `index_blocked` object means the index is STALE (paused over
+budget) — never auto-approve.
 
 ```bash
 brainpalace query "..." --mode hybrid --top-k 8 --json | python3 -c "
@@ -137,6 +140,24 @@ call the `ai_guide` tool).
 
 ---
 
+## Paused (Budget-Blocked) Indexing
+
+Query output (CLI `--json` and the MCP `query` tool) may carry a top-level
+`index_blocked` object: `{job_id, folder_path, estimated_tokens, limit,
+blocked_since}`. It means an indexing job was PAUSED by the embedding-token
+budget: the server is up but the index for that folder is STALE. Nothing was
+spent.
+
+1. Tell the user: indexing is paused, results may be stale, and approving
+   will spend ~`estimated_tokens` embedding tokens.
+2. NEVER approve on your own — approving spends money. Ask the user first.
+3. On explicit consent: `brainpalace jobs <job_id> --approve` (over MCP: the
+   `jobs_approve` tool). To raise the cap instead, increase
+   `indexing.max_embed_tokens_per_job` via `brainpalace config wizard` (or set
+   the `INDEX_MAX_EMBED_TOKENS` env var), then approve.
+
+---
+
 ## Subagent Dispatch — codebase search
 
 When you delegate codebase search/exploration to a subagent, dispatch the
@@ -145,10 +166,13 @@ and `Grep` disabled and searches via BrainPalace only, so it cannot quietly fall
 back to filesystem grep. Avoid generic search subagents (e.g. `Explore`) for code
 lookup — they retain grep/find and will bypass the index. The PreToolUse subagent
 guard (`cli.subagent_guard`, on by default while the server runs) reinforces this:
-it nudges `Agent`/`Task` spawns whose prompt lacks a `brainpalace query --mode`
-directive (or the equivalent MCP query-tool `mode:` argument), and in opt-in
-`enforce` mode denies them; `research-assistant` is allowlisted. For a genuine
-exemption, open the prompt with `# BRAINPALACE_EXEMPT: <reason of 20+ chars>`.
+it acts only on *search-shaped* `Agent`/`Task` spawns (a prompt that asks to find,
+locate, trace, list callers, etc.) whose prompt lacks a `brainpalace query --mode`
+directive (or the equivalent MCP query-tool `mode:` argument). By default it
+`enforce`-denies such a spawn with a fix hint; non-search spawns pass untouched and
+`research-assistant` is allowlisted. Soften to a nudge with
+`cli.subagent_guard.mode: advisory` (or `BRAINPALACE_SUBAGENT_GUARD=advisory`). For
+a genuine exemption, open the prompt with `# BRAINPALACE_EXEMPT: <reason of 20+ chars>`.
 
 ---
 
@@ -194,6 +218,19 @@ record toggle. The only compute knob is `compute.min_confidence` in
 
 ---
 
+## Scan Mode — Term Counts over Session Transcripts
+
+`--mode scan` counts a term/phrase over the archived session transcripts,
+bucketed by week/month/day/source — "which week did I say X most".
+Deterministic and free (no LLM, no embedding). Empty when the session archive
+is off or no term parses. Tie-break with compute: typed record metric wins.
+
+**`--json` contract for scan:** `results` is always `[]`; rows live under
+`scan`. Each row: `label`, `value` (float count), `term`, `group`
+(bucket or `null`), `score`.
+
+---
+
 ## Session Memory — Optional, Separately Gated
 
 Recall of prior AI-coding sessions (past-session transcript chunks and distilled
@@ -234,6 +271,25 @@ Per-mode deep dives, tuning, and examples (links resolve in the plugin skill):
 Operational commands not covered above are self-documenting via `--help`:
 `brainpalace index|folders|jobs|cache|inject|types <…> --help`. Content-injection
 authoring (the `process_chunk` protocol) is specified in `docs/INJECTOR_PROTOCOL.md`.
+
+---
+
+## Graph verbs (path / impact / co-change)
+
+Beyond `--mode graph` retrieval, three CLI verbs answer structural questions
+directly (SQLite graph store only — no embedding call, works on any backend):
+
+```bash
+brainpalace graph path <src> <dst> --json    # shortest edge paths between two nodes
+brainpalace graph impact <node> --json       # what transitively depends on the node
+brainpalace graph cochange <file> --json     # files that change together (git history)
+```
+
+Reference nodes by canonical id (absolute file path, or `path:fqname` for a
+symbol) or by a unique display name; an ambiguous name fails with the
+candidate ids listed. On failure stdout is `{"error": ...}` with a non-zero
+exit — same contract as `query --json`. `cochange` needs `git_indexing`
+enabled.
 
 ---
 

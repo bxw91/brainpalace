@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-24
+last_validated: 2026-07-04
 ---
 
 # BrainPalace Installation Guide
@@ -222,6 +222,31 @@ pip install --upgrade brainpalace-rag brainpalace-cli
 
 ---
 
+## Installation Extras
+
+### Basic Installation
+
+Installs core RAG functionality with hybrid search (BM25 + semantic):
+
+```bash
+pip install brainpalace-rag brainpalace-cli
+```
+
+### With GraphRAG Support
+
+Includes knowledge graph capabilities (sqlite backend is built-in, no extra deps):
+
+```bash
+pip install "brainpalace-rag[graphrag]" brainpalace-cli
+```
+
+| Extra | Includes | Use Case |
+|-------|----------|----------|
+| (none) | Core RAG, ChromaDB, BM25, LlamaIndex | Basic document search |
+| `graphrag` | graph stores (sqlite built-in; doc extraction via subagent, free) | GraphRAG (all projects) |
+
+---
+
 ## Post-Installation Verification
 
 After installation, verify everything is working:
@@ -232,6 +257,12 @@ brainpalace --help
 
 # Check version
 brainpalace --version
+
+# Check server package
+python -c "import brainpalace_server; print(brainpalace_server.__version__)"
+
+# Run full diagnostics (env, config, providers, index)
+brainpalace doctor
 ```
 
 Expected help output:
@@ -442,12 +473,33 @@ rm -rf .codex/skills/brainpalace      ~/.codex/skills/brainpalace
 
 ---
 
+## Uninstalling the Package
+
+| Method | Command |
+|--------|---------|
+| pipx | `pipx uninstall brainpalace-cli` |
+| uv | `uv tool uninstall brainpalace-cli` |
+| pip | `pip uninstall brainpalace-rag brainpalace-cli -y` |
+| conda | `pip uninstall brainpalace-rag brainpalace-cli -y` (in conda env) |
+
+> Match the row to your install. The official installer uses **pipx**; if
+> `which brainpalace` resolves into `…/pipx/venvs/…`, use the pipx row. On a
+> Debian/Ubuntu **system** Python a bare `pip uninstall` fails with
+> `externally-managed-environment` (PEP 668) — re-run with
+> `--break-system-packages` only if it really is a system-pip install.
+
+The table above removes only the **package**. It leaves running servers,
+per-project state, global dirs, MCP configs, and shell rc untouched — see
+"Complete teardown" below for full removal.
+
+---
+
 ## Complete teardown (remove all state)
 
 **Easiest:** `brainpalace uninstall` (guided — stops servers, removes plugins +
 MCP entries, deletes selected per-project + global state, then prints any
-leftover step). The manual sequence below is for when the binary is already
-gone or you want full control.
+leftover step). Update with `brainpalace update`. The manual sequence below is
+for when the binary is already gone or you want full control.
 
 The per-method `### Uninstall` blocks above remove only the **package**, and the
 block above removes only the **plugin**. Neither touches running servers,

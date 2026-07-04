@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-24
+last_validated: 2026-07-03
 ---
 
 # LSP Cross-References (Phase 150)
@@ -31,11 +31,23 @@ see [GRAPHRAG_GUIDE](GRAPHRAG_GUIDE.md#storage-backends)).
 
 ## Enabling
 
-LSP is **inert** unless you list languages **and** install the matching server.
+LSP is **inert** unless you list languages **and** have the matching server
+installed. For Python, BrainPalace can install the server for you: enabling graph
+indexing / LSP during `brainpalace init` or running `brainpalace doctor` offers to
+install pyright (prompt-then-install), or install it explicitly at any time:
+
+```bash
+brainpalace lsp install            # prompt, then install pyright (Python)
+brainpalace lsp install --yes      # non-interactive (CI): install without prompting
+```
+
+It picks the first available of pipx / npm / in-venv pip, runs with a timeout, and
+confirms success by re-probing your PATH (telling you which directory to add if the
+server installed off-PATH). Other languages are still installed manually:
 
 ```bash
 # 1. Install the language server(s) yourself (examples):
-npm  i -g pyright                       # python
+npm  i -g pyright                       # python (or: brainpalace lsp install)
 npm  i -g typescript-language-server    # typescript/javascript
 go   install golang.org/x/tools/gopls@latest   # go
 
@@ -46,6 +58,11 @@ export BRAINPALACE_LSP_LANGUAGES="python"
 #    languages during graph build. Requires ENABLE_GRAPH_INDEX=true.
 export ENABLE_GRAPH_INDEX=true
 ```
+
+> **Version note:** the `init`/`doctor`/`status` auto-offer reads a
+> `configured`-languages signal added to the server; it activates once the bundled
+> server package includes it. The explicit `brainpalace lsp install` works
+> regardless.
 
 | Language | id | Server command |
 |----------|----|----------------|

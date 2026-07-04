@@ -53,10 +53,10 @@ class GraphStoreManager:
         # full graph load. Reset by initialize()/clear() which set live counts.
         self._counts_hydrated = False
         # Idempotent-submit dedup (H4/E4): in-memory set of
-        # (source_chunk_id, subject, predicate, obj) seen this session.
-        # Prevents a re-submitted or late-arriving subagent payload from writing
-        # duplicate edges. Cleared by clear() to stay consistent with the store.
-        self._seen_triplets: set[tuple[str | None, str, str, str]] = set()
+        # (source_chunk_id, source_file, subject_id, predicate, object_id) seen
+        # this session. source_file scopes the purge-time clear so one file's
+        # rewrite never resets another source's guard.
+        self._seen_triplets: set[tuple[str | None, str | None, str, str, str]] = set()
 
     @classmethod
     def get_instance(
@@ -437,6 +437,16 @@ class GraphStoreManager:
         subject_type: str | None = None,
         object_type: str | None = None,
         source_chunk_id: str | None = None,
+        *,
+        subject_id: str | None = None,
+        object_id: str | None = None,
+        subject_name: str | None = None,
+        object_name: str | None = None,
+        source_file: str | None = None,
+        domain: str = "code",
+        subject_domain: str | None = None,
+        object_domain: str | None = None,
+        edge_properties: dict[str, Any] | None = None,
     ) -> bool:
         """Add a triplet to the graph.
 
@@ -447,6 +457,20 @@ class GraphStoreManager:
             subject_type: Optional type for subject.
             object_type: Optional type for object.
             source_chunk_id: Optional source chunk ID.
+            subject_id: Optional canonical id for subject (id != display name).
+            object_id: Optional canonical id for object.
+            subject_name: Optional short display name for subject.
+            object_name: Optional short display name for object.
+            source_file: Optional source file provenance.
+            domain: Domain tag (default "code").
+            subject_domain: Domain for the subject node (defaults to `domain`).
+            object_domain: Domain for the object node (defaults to `domain`).
+                Use for cross-domain edges (e.g. a doc node referencing a code
+                node) so the write never flips the other domain's node.
+            edge_properties: Extra edge properties merged into the relation's
+                property JSON (e.g. ``{"resolved": True}`` for cross-domain
+                links; Spec E adds weights here). Reserved provenance/temporal
+                keys are stripped — pass them via their own kwargs.
 
         Returns:
             True if added successfully, False otherwise.
@@ -465,18 +489,21 @@ class GraphStoreManager:
             )
             return False
 
+        s_id = subject_id or subject
+        o_id = object_id or obj
+        s_name = subject_name or subject
+        o_name = object_name or obj
+
         # Idempotent-submit dedup (H4/E4): skip identical edges already seen
-        # this session. Keyed on (source_chunk_id, subject, predicate, obj) so
+        # this session. Keyed on (source_chunk_id, s_id, predicate, o_id) so
         # the same triplet from the same chunk is never written twice, even when
         # a subagent resubmits after a provider already drained it.
-        _dedup_key = (source_chunk_id, subject, predicate, obj)
+        _dedup_key = (source_chunk_id, source_file, s_id, predicate, o_id)
         if _dedup_key in self._seen_triplets:
             return False
         self._seen_triplets.add(_dedup_key)
 
         try:
-            from llama_index.core.graph_stores.types import EntityNode, Relation
-
             store = self._graph_store
 
             if not (
@@ -502,23 +529,57 @@ class GraphStoreManager:
                 )
                 return False
 
-            subject_node = EntityNode(
-                name=subject,
-                label=subject_type or "Entity",
-            )
-            object_node = EntityNode(
-                name=obj,
-                label=object_type or "Entity",
-            )
-            rel_properties: dict[str, Any] = {}
+            rel_properties: dict[str, Any] = dict(edge_properties or {})
+            # Reserved keys travel via their own kwargs / temporal machinery —
+            # upsert_relations pops them out of properties, so smuggled values
+            # would corrupt edge lifetime and purge semantics.
+            for k in ("source_chunk_id", "source_file", "valid_from", "valid_until"):
+                rel_properties.pop(k, None)
             if source_chunk_id is not None:
                 rel_properties["source_chunk_id"] = source_chunk_id
-            relation = Relation(
-                label=predicate,
-                source_id=subject_node.id,
-                target_id=object_node.id,
-                properties=rel_properties,
-            )
+            if source_file is not None:
+                rel_properties["source_file"] = source_file
+
+            if hasattr(store, "_conn"):
+                # SQLite store: attr-based holders carry id != name + domain.
+                subject_node: Any = _GNode(
+                    s_id, s_name, subject_type or "Entity", subject_domain or domain
+                )
+                object_node: Any = _GNode(
+                    o_id, o_name, object_type or "Entity", object_domain or domain
+                )
+
+                class _GRel:
+                    def __init__(
+                        self,
+                        label: str,
+                        source_id: str,
+                        target_id: str,
+                        properties: dict[str, Any],
+                    ) -> None:
+                        self.label = label
+                        self.source_id = source_id
+                        self.target_id = target_id
+                        self.properties = properties
+
+                relation: Any = _GRel(predicate, s_id, o_id, rel_properties)
+            else:
+                # llama-index property-graph stores pydantic-serialise nodes on
+                # persist — plain holders break them. They never supported
+                # id != name, so legacy name-keyed EntityNodes are correct here.
+                from llama_index.core.graph_stores.types import (  # noqa: PLC0415
+                    EntityNode,
+                    Relation,
+                )
+
+                subject_node = EntityNode(name=subject, label=subject_type or "Entity")
+                object_node = EntityNode(name=obj, label=object_type or "Entity")
+                relation = Relation(
+                    label=predicate,
+                    source_id=subject_node.id,
+                    target_id=object_node.id,
+                    properties=rel_properties,
+                )
 
             store.upsert_nodes([subject_node, object_node])
             store.upsert_relations([relation])
@@ -552,6 +613,72 @@ class GraphStoreManager:
                 },
             )
             return False
+
+    def invalidate_by_source_file(self, source_file: str, domain: str = "code") -> int:
+        """Invalidate all currently-valid edges for a source file (SQLite only).
+
+        Returns the count invalidated; 0 on unsupported backends or disabled.
+        """
+        if not settings.ENABLE_GRAPH_INDEX or self._graph_store is None:
+            return 0
+        store = self._graph_store
+        if not hasattr(store, "invalidate_by_source_file"):
+            return 0
+        n = int(store.invalidate_by_source_file(source_file, domain))
+        # A purge announces a rewrite OF THIS SOURCE: drop only its dedup keys
+        # so its identical triplets can be re-added; other sources keep their
+        # idempotent-resubmit guard.
+        self._seen_triplets = {k for k in self._seen_triplets if k[1] != source_file}
+        if n:
+            self._last_updated = datetime.now(timezone.utc)
+        return n
+
+    def sweep_orphan_nodes(self, domain: str = "code") -> int:
+        """Remove domain nodes with no valid edges (SQLite only).
+
+        Returns the count removed; 0 on unsupported backends or disabled.
+        """
+        if not settings.ENABLE_GRAPH_INDEX or self._graph_store is None:
+            return 0
+        store = self._graph_store
+        if not hasattr(store, "sweep_orphan_nodes"):
+            return 0
+        n = int(store.sweep_orphan_nodes(domain))
+        if n:
+            self._update_counts()
+            self._last_updated = datetime.now(timezone.utc)
+        return n
+
+    def sweep_empty_folders(self, domain: str = "code") -> int:
+        """Remove emptied Folder subtrees (SQLite only). 0 when unsupported."""
+        if not settings.ENABLE_GRAPH_INDEX or self._graph_store is None:
+            return 0
+        store = self._graph_store
+        if not hasattr(store, "sweep_empty_folders"):
+            return 0
+        n = int(store.sweep_empty_folders(domain))
+        if n:
+            self._update_counts()
+            self._last_updated = datetime.now(timezone.utc)
+        return n
+
+    def needs_code_identity_rebuild(self) -> bool:
+        store = self._graph_store
+        if store is None or not hasattr(store, "_conn"):
+            return False
+        row = store._conn.execute(
+            "SELECT value FROM meta WHERE key = 'code_identity_v3'"
+        ).fetchone()
+        return row is None
+
+    def mark_code_identity_rebuilt(self) -> None:
+        store = self._graph_store
+        if store is None or not hasattr(store, "_conn"):
+            return
+        store._conn.execute(
+            "INSERT OR REPLACE INTO meta (key, value) VALUES ('code_identity_v3', '1')"
+        )
+        store._conn.commit()
 
     def invalidate(
         self,
@@ -630,28 +757,37 @@ class GraphStoreManager:
         result: list[dict[str, Any]] = store.timeline_named(entity_name)
         return result
 
-    def search_nodes(self, text: str, limit: int = 20) -> list[dict[str, Any]]:
+    def search_nodes(
+        self, text: str, limit: int = 20, domains: list[str] | None = None
+    ) -> list[dict[str, Any]]:
         """Browse-search nodes; empty on simple backend or disabled."""
         if not settings.ENABLE_GRAPH_INDEX or self._graph_store is None:
             return []
         store = self._graph_store
         if not hasattr(store, "search_nodes"):
             return []
-        result: list[dict[str, Any]] = store.search_nodes(text, limit=limit)
+        result: list[dict[str, Any]] = store.search_nodes(
+            text, limit=limit, domains=domains
+        )
         return result
 
-    def top_nodes(self, limit: int = 20) -> list[dict[str, Any]]:
+    def top_nodes(
+        self, limit: int = 20, domains: list[str] | None = None
+    ) -> list[dict[str, Any]]:
         """Highest-degree hub nodes; empty on simple backend or disabled."""
         if not settings.ENABLE_GRAPH_INDEX or self._graph_store is None:
             return []
         store = self._graph_store
         if not hasattr(store, "top_nodes"):
             return []
-        result: list[dict[str, Any]] = store.top_nodes(limit=limit)
+        result: list[dict[str, Any]] = store.top_nodes(limit=limit, domains=domains)
         return result
 
     def neighbors(
-        self, node_ids: list[str], limit: int = 200
+        self,
+        node_ids: list[str],
+        limit: int = 200,
+        domains: list[str] | None = None,
     ) -> dict[str, list[dict[str, Any]]]:
         """Subgraph around nodes; empty on simple backend or disabled."""
         if not settings.ENABLE_GRAPH_INDEX or self._graph_store is None:
@@ -659,7 +795,103 @@ class GraphStoreManager:
         store = self._graph_store
         if not hasattr(store, "neighbors"):
             return {"nodes": [], "edges": []}
-        result: dict[str, list[dict[str, Any]]] = store.neighbors(node_ids, limit=limit)
+        result: dict[str, list[dict[str, Any]]] = store.neighbors(
+            node_ids, limit=limit, domains=domains
+        )
+        return result
+
+    def set_node_properties(self, props_by_id: dict[str, dict[str, Any]]) -> int:
+        """Merge node properties; 0 on simple backend or disabled."""
+        if not settings.ENABLE_GRAPH_INDEX or self._graph_store is None:
+            return 0
+        store = self._graph_store
+        if not hasattr(store, "set_node_properties"):
+            return 0
+        return int(store.set_node_properties(props_by_id))
+
+    def get_node(self, node_id: str) -> dict[str, Any] | None:
+        """One node with properties; None on simple backend or disabled."""
+        if not settings.ENABLE_GRAPH_INDEX or self._graph_store is None:
+            return None
+        store = self._graph_store
+        if not hasattr(store, "get_node"):
+            return None
+        result: dict[str, Any] | None = store.get_node(node_id)
+        return result
+
+    def existing_node_ids(self, ids: list[str]) -> set[str]:
+        """Subset of ids present as nodes; empty on simple backend/disabled."""
+        if not settings.ENABLE_GRAPH_INDEX or self._graph_store is None:
+            return set()
+        store = self._graph_store
+        if not hasattr(store, "existing_node_ids"):
+            return set()
+        result: set[str] = store.existing_node_ids(ids)
+        return result
+
+    def nodes_by_exact_name(
+        self, name: str, domains: list[str] | None = None, limit: int = 10
+    ) -> list[dict[str, Any]]:
+        """Exact-name node lookup; empty on simple backend or disabled."""
+        if not settings.ENABLE_GRAPH_INDEX or self._graph_store is None:
+            return []
+        store = self._graph_store
+        if not hasattr(store, "nodes_by_exact_name"):
+            return []
+        result: list[dict[str, Any]] = store.nodes_by_exact_name(
+            name, domains=domains, limit=limit
+        )
+        return result
+
+    def co_changed_files(
+        self, file_id: str, min_shared: int = 2, limit: int = 20
+    ) -> list[dict[str, Any]]:
+        """Computed co-change view; empty on simple backend or disabled."""
+        if not settings.ENABLE_GRAPH_INDEX or self._graph_store is None:
+            return []
+        store = self._graph_store
+        if not hasattr(store, "co_changed_files"):
+            return []
+        result: list[dict[str, Any]] = store.co_changed_files(
+            file_id, min_shared=min_shared, limit=limit
+        )
+        return result
+
+    def find_paths(
+        self,
+        src_id: str,
+        dst_id: str,
+        max_depth: int = 6,
+        limit: int = 5,
+        domains: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Shortest paths between two nodes; empty on simple backend/disabled."""
+        if not settings.ENABLE_GRAPH_INDEX or self._graph_store is None:
+            return {"paths": [], "nodes": []}
+        store = self._graph_store
+        if not hasattr(store, "find_paths"):
+            return {"paths": [], "nodes": []}
+        result: dict[str, Any] = store.find_paths(
+            src_id, dst_id, max_depth=max_depth, limit=limit, domains=domains
+        )
+        return result
+
+    def impact(
+        self,
+        node_id: str,
+        max_depth: int = 3,
+        predicates: list[str] | None = None,
+        limit: int = 200,
+    ) -> list[dict[str, Any]]:
+        """Reverse dependency closure; empty on simple backend or disabled."""
+        if not settings.ENABLE_GRAPH_INDEX or self._graph_store is None:
+            return []
+        store = self._graph_store
+        if not hasattr(store, "impact"):
+            return []
+        result: list[dict[str, Any]] = store.impact(
+            node_id, max_depth=max_depth, predicates=predicates, limit=limit
+        )
         return result
 
     def clear(self) -> None:
@@ -747,6 +979,15 @@ class GraphStoreManager:
     def graph_store(self) -> Any | None:
         """Return the underlying graph store instance."""
         return self._graph_store
+
+
+class _GNode:
+    def __init__(self, id: str, name: str, label: str, domain: str) -> None:
+        self.id = id
+        self.name = name
+        self.label = label
+        self.properties: dict[str, Any] = {}
+        self.domain = domain
 
 
 class _MinimalGraphStore:

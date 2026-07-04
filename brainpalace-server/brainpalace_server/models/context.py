@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -18,3 +20,10 @@ class SessionContext(BaseModel):
         default=False, description="True if some memories were dropped for budget"
     )
     memory_count: int = Field(default=0, description="Curated memories included")
+    blocked_job: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "Summary of a budget-blocked indexing job (job_id, folder_path, "
+            "estimated_tokens, limit, blocked_since), or null."
+        ),
+    )

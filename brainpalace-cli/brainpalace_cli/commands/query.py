@@ -86,7 +86,8 @@ def _maybe_print_ai_hint() -> None:
     "--mode",
     default="hybrid",
     type=click.Choice(
-        ["vector", "bm25", "hybrid", "graph", "multi", "compute"], case_sensitive=False
+        ["vector", "bm25", "hybrid", "graph", "multi", "compute", "scan"],
+        case_sensitive=False,
     ),
     help=(
         "Retrieval mode: 'vector' (semantic similarity), 'bm25' (keyword matching), "
@@ -94,7 +95,10 @@ def _maybe_print_ai_hint() -> None:
         "unless the graph is built — ENABLE_GRAPH_INDEX gates building it), "
         "'multi' (fusion of vector+bm25+graph), "
         "'compute' (set-level aggregation over typed numeric records; empty "
-        "unless record extraction has populated them). Default: hybrid."
+        "unless record extraction has populated them), "
+        "'scan' (deterministic term counts over the archived session "
+        "transcripts; 'which week did I mention X most'; empty when the "
+        "session archive is off). Default: hybrid."
     ),
 )
 @click.option(
@@ -166,6 +170,13 @@ def query_command(
     Per-result keys are "text" and "source" (NOT "content"/"file_path").
 
     \b
+    Optional top-level "index_blocked" key (present only when an indexing job is
+    paused over the embedding-token budget — the index may be STALE):
+      {"job_id": "<id>", "folder_path": "<path>", "estimated_tokens": <int>,
+       "limit": <int>, "blocked_since": "<iso>"}
+    Approve to continue: brainpalace jobs <job_id> --approve.
+
+    \b
     On failure --json instead emits {"error": "...", "detail": ..., "hint":
     "..."} (no "results" key) AND exits non-zero. Consumers must check the
     exit code, not just the presence of "results".
@@ -222,8 +233,30 @@ def query_command(
                     output["compute"] = [
                         dataclasses.asdict(c) for c in response.compute
                     ]
+                if response.scan is not None:
+                    import dataclasses
+
+                    output["scan"] = [dataclasses.asdict(s) for s in response.scan]
+                blocked = getattr(response, "index_blocked", None)
+                if blocked is not None:
+                    output["index_blocked"] = blocked
                 click.echo(json.dumps(output, indent=2))
                 return
+
+            # Paused-indexing advisory (every mode) — the index may be stale.
+            blocked = getattr(response, "index_blocked", None)
+            if blocked:
+                _tok = blocked.get("estimated_tokens")
+                _cap = blocked.get("limit")
+                _nums = (
+                    f" (~{_tok:,} tokens, cap {_cap:,})"
+                    if isinstance(_tok, int) and isinstance(_cap, int)
+                    else ""
+                )
+                console.print(
+                    f"[yellow]⚠ Indexing paused{_nums} — results may be stale. "
+                    f"Approve: brainpalace jobs {blocked.get('job_id')} --approve[/]"
+                )
 
             # Compute mode: print aggregation rows as label: value lines
             if response.compute is not None:
@@ -237,6 +270,23 @@ def query_command(
                     for row in response.compute:
                         unit_suffix = f" {row.unit}" if row.unit else ""
                         console.print(f"[bold]{row.label}:[/] {row.value}{unit_suffix}")
+                _maybe_print_ai_hint()
+                return
+
+            # Scan mode: print term-count rows as label: value lines
+            if response.scan is not None:
+                console.print(
+                    f"\n[bold]Query:[/] {query_text}\n"
+                    f"[dim]Scan results in {response.query_time_ms:.1f}ms[/]\n"
+                )
+                if not response.scan:
+                    console.print(
+                        "[yellow]No scan results (archive off, or the term "
+                        "never appears).[/]"
+                    )
+                else:
+                    for scan_row in response.scan:
+                        console.print(f"{scan_row.label}: {scan_row.value:g}")
                 _maybe_print_ai_hint()
                 return
 

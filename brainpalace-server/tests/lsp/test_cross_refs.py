@@ -39,13 +39,22 @@ def _triples(client):
     )
 
 
-def test_defined_at_from_definition() -> None:
-    client = FakeClient({"textDocument/definition": [_loc("pkg/mod.py", 9)]})
-    triples = _triples(client)
-    t = next(t for t in triples if t.predicate == "defined-at")
-    assert t.subject == "pkg/mod.py:handler"
-    assert t.object == "pkg/mod.py:10"  # 1-based line
-    assert t.source_chunk_id == "c1"
+def test_no_defined_at_triples() -> None:
+    """Plan 5: defined-at → Location nodes were off-schema churn — removed."""
+    client = FakeClient(
+        {
+            "textDocument/definition": [
+                {
+                    "uri": "file://pkg/mod.py",
+                    "range": {"start": {"line": 3, "character": 0}},
+                }
+            ]
+        }
+    )
+    triples = extract_cross_refs(
+        client, file_path="pkg/mod.py", symbol_name="top", line=3, character=4
+    )
+    assert not any(t.predicate == "defined-at" for t in triples)
 
 
 def test_incoming_calls_become_calls_edges() -> None:

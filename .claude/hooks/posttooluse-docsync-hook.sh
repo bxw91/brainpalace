@@ -8,4 +8,6 @@
 #
 # Fail-soft: if the CLI is not on PATH, no-op silently (never block a session).
 command -v brainpalace >/dev/null 2>&1 || exit 0
-exec brainpalace hook posttooluse "$@"
+# Present-but-too-old CLI (no `hook` command) must no-op silently, exactly like
+# the plugin shims — never surface an error into the session.
+brainpalace hook posttooluse "$@" 2>/dev/null || exit 0

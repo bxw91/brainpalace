@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-27
+last_validated: 2026-07-04
 ---
 
 # GraphRAG Integration Guide
@@ -14,6 +14,7 @@ GraphRAG extends BrainPalace with knowledge graph capabilities, enabling relatio
 - [Entity Extraction](#entity-extraction)
 - [Query Modes](#query-modes)
 - [Reciprocal Rank Fusion](#reciprocal-rank-fusion)
+- [Structural Queries](#structural-queries)
 - [Best Practices](#best-practices)
 - [Performance Considerations](#performance-considerations)
 
@@ -334,6 +335,40 @@ export GRAPH_RRF_K=60  # Default value
 ```
 
 Lower k values give more weight to top-ranked results. Higher k values smooth out ranking differences.
+
+---
+
+## Structural Queries
+
+Beyond `--mode graph` retrieval, three CLI verbs answer structural questions
+directly against the SQLite graph store — no embedding call, no chroma
+requirement, works on any backend:
+
+```bash
+brainpalace graph path <src> <dst> --json    # shortest edge paths between two nodes
+brainpalace graph impact <node> --json       # what transitively depends on the node
+brainpalace graph cochange <file> --json     # files that change together (git history)
+```
+
+**Purpose:** answer structural questions the flat search modes cannot — how
+two code entities are connected (`path`), what would be affected by changing
+one (`impact`), and which files historically change together (`cochange`,
+from git history). Nodes are referenced by canonical id (absolute path or
+`path:fqname`) or a unique display name; an ambiguous name fails with the
+candidate ids listed.
+
+**Examples**:
+
+```bash
+brainpalace graph path graph_store.py sqlite_graph_store.py
+brainpalace graph impact brainpalace_server/storage/sqlite_graph_store.py --max-depth 2
+brainpalace graph cochange brainpalace_server/storage/graph_store.py
+```
+
+On failure, stdout is `{"error": ...}` with a non-zero exit — the same
+contract as `query --json`. `cochange` needs `git_indexing` enabled; these
+endpoints are also mirrored in the dashboard's node detail panel (Impact and
+Co-change sections).
 
 ---
 

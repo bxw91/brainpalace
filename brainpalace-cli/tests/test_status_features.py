@@ -97,21 +97,43 @@ def test_status_renders_session_summarization_off():
 
 
 def test_status_renders_lsp_enabled():
-    result = _invoke({"lsp": {"enabled": True, "languages": ["python", "go"]}})
+    result = _invoke({"lsp": {"enabled": True, "active": ["python", "go"]}})
     assert result.exit_code == 0, result.output
     out = result.output
     assert "LSP" in out
-    assert "enabled" in out
+    assert "active" in out
     assert "python" in out and "go" in out
 
 
 def test_status_renders_lsp_disabled():
-    result = _invoke({"lsp": {"enabled": False, "languages": []}})
+    result = _invoke({"lsp": {"enabled": False, "active": [], "detected": []}})
     assert result.exit_code == 0, result.output
     out = result.output
     assert "LSP" in out
-    assert "disabled" in out
-    assert "BRAINPALACE_LSP_LANGUAGES" in out
+    assert "not found" in out
+    assert "pyright" in out
+
+
+def test_status_lsp_configured_but_missing_points_to_install():
+    # Enabled for python (configured) but no server binary detected: name the
+    # language and point at `brainpalace lsp install` (read-only nudge, no install).
+    result = _invoke(
+        {
+            "lsp": {
+                "enabled": False,
+                "mode": "auto",
+                "active": [],
+                "detected": [],
+                "configured": ["python"],
+                "via_env": False,
+            }
+        }
+    )
+    assert result.exit_code == 0, result.output
+    out = result.output
+    assert "LSP" in out
+    assert "python" in out
+    assert "lsp install" in out
 
 
 def test_status_renders_git_index_on():

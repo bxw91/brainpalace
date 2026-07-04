@@ -46,6 +46,10 @@ parameters:
     type: bool
     required: false
     default: false
+  - name: force-budget
+    type: bool
+    required: false
+    default: false
   - name: allow-external
     type: bool
     required: false
@@ -59,6 +63,10 @@ parameters:
     required: false
     default: ""
   - name: estimate
+    type: bool
+    required: false
+    default: false
+  - name: rebuild-graph
     type: bool
     required: false
     default: false
@@ -286,10 +294,12 @@ brainpalace index <path> --force
 | --include-type | text | "" | Comma-separated file type presets to include (e.g., python,docs,typescript). Use 'brainpalace types list' to see all available presets. |
 | --exclude-patterns | text | "" | Comma-separated additional exclude patterns (wildcards supported) |
 | --force | bool | false | Force re-indexing even if embedding provider has changed |
+| --force-budget | bool | false | Bypass the per-job embedding-token budget cap for this job. |
 | --allow-external | bool | false | Allow indexing paths outside the project directory |
 | --watch | choice | "" | Enable ('auto') or disable ('off') live re-index on file changes for this folder. Default: leave the folder's current setting unchanged. |
 | --watch-debounce | integer | "" | Debounce window in seconds before a watched folder re-indexes. |
 | --estimate | bool | false | Estimate approximate embedding-token usage and exit — do not index. |
+| --rebuild-graph | bool | false | Rebuild the graph index from already-indexed chunks (no embedding, no token cost); runs AST + LSP over the corpus and returns when complete. |
 | --json | bool | false | Output as JSON |
 | --yes | bool | false | Skip interactive confirmation prompts (e.g. extraction-backlog warning). |
 <!--/GENERATED-->

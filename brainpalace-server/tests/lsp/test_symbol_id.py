@@ -29,6 +29,5 @@ def test_lsp_relations_closed_vocab() -> None:
         "references",
         "extends",
         "implements",
-        "defined-at",
         "imports",
     }

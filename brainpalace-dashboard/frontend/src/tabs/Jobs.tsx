@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Ban } from "lucide-react";
-import { getJobs, cancelJob } from "../api/client";
+import { Ban, CheckCircle } from "lucide-react";
+import { getJobs, cancelJob, approveJob } from "../api/client";
 import type { JobRow } from "../api/types";
 import { DataTable, type Column } from "../components/DataTable";
 import { JobDrawer } from "../components/JobDrawer";
@@ -24,6 +24,7 @@ const STATUS_TONE: Record<string, string> = {
   pending: "bg-warn/15 text-warn",
   done: "bg-run/15 text-run",
   error: "bg-bad/15 text-bad",
+  blocked: "bg-warn/15 text-warn",
   cancelled: "bg-ink-600 text-fg-muted",
 };
 
@@ -58,6 +59,7 @@ export function Jobs({ instanceId }: { instanceId?: string }) {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [cancelTarget, setCancelTarget] = useState<string | null>(null);
+  const [approveTarget, setApproveTarget] = useState<string | null>(null);
   const [openJobId, setOpenJobId] = useState<string | null>(null);
   const { formatTime } = useDisplayFormat();
 
@@ -79,6 +81,17 @@ export function Jobs({ instanceId }: { instanceId?: string }) {
     },
     onError: (e: unknown) =>
       toast(e instanceof Error ? e.message : "Failed to cancel job.", "error"),
+  });
+
+  const approveM = useMutation({
+    mutationFn: (jobId: string) => approveJob(id!, jobId),
+    onSuccess: () => {
+      setApproveTarget(null);
+      toast("Job approved — indexing will continue.", "success");
+      qc.invalidateQueries({ queryKey: ["jobs", id] });
+    },
+    onError: (e: unknown) =>
+      toast(e instanceof Error ? e.message : "Failed to approve job.", "error"),
   });
 
   if (!id) {
@@ -257,6 +270,18 @@ export function Jobs({ instanceId }: { instanceId?: string }) {
               >
                 <Ban className="h-3.5 w-3.5" aria-hidden="true" /> Cancel
               </button>
+            ) : j.status === "blocked" ? (
+              <button
+                type="button"
+                data-testid={`btn-approve-${j.id}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setApproveTarget(j.id);
+                }}
+                className="btn-primary btn-sm"
+              >
+                <CheckCircle className="h-3.5 w-3.5" aria-hidden="true" /> Approve
+              </button>
             ) : (
               <span className="text-fg-faint">—</span>
             ),
@@ -277,6 +302,31 @@ export function Jobs({ instanceId }: { instanceId?: string }) {
         busy={cancelM.isPending}
         onConfirm={() => cancelTarget && cancelM.mutate(cancelTarget)}
         onCancel={() => setCancelTarget(null)}
+      />
+
+      <ConfirmDialog
+        open={approveTarget !== null}
+        title="Approve this blocked job?"
+        message={(() => {
+          const j = jobs.find((x) => x.id === approveTarget);
+          const est = j?.budget_info?.estimated_tokens;
+          const cap = j?.budget_info?.limit;
+          return (
+            <>
+              Approve job <span className="font-mono text-fg">{approveTarget}</span> —
+              indexing will continue and spend{" "}
+              {typeof est === "number"
+                ? `~${est.toLocaleString()} embedding tokens`
+                : "the estimated embedding tokens"}
+              {typeof cap === "number" ? ` (cap ${cap.toLocaleString()})` : ""}.
+            </>
+          );
+        })()}
+        confirmLabel="Approve & index"
+        tone="default"
+        busy={approveM.isPending}
+        onConfirm={() => approveTarget && approveM.mutate(approveTarget)}
+        onCancel={() => setApproveTarget(null)}
       />
 
       <JobDrawer instanceId={id} jobId={openJobId} onClose={() => setOpenJobId(null)} />

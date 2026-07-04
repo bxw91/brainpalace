@@ -66,12 +66,12 @@ def test_enable_graphrag_extraction_writes_subagent(tmp_path, monkeypatch):
                 "--no-git-history",
                 "--no-archive",
             ],
-            # Drill the Extraction Engine division (15) → mode=subagent. Turning
+            # Drill the Extraction Engine division (14) → mode=subagent. Turning
             # the gate on reveals the 10 advanced extraction fields in the same
             # drill — Enter past each — then [C]ontinue, Proceed.
-            # Grid: Extraction Engine is division 13 (after the three Chat Session
-            # divisions 10-12).
-            input="13\nsubagent\n" + "\n" * 10 + "c\ny\n",
+            # Grid: Extraction Engine is division 14 (after the three Chat Session
+            # divisions 11-13).
+            input="14\nsubagent\n" + "\n" * 10 + "c\ny\n",
         )
     assert result.exit_code == 0, result.output
     cfg = _read(tmp_path / ".brainpalace")
@@ -193,14 +193,14 @@ def test_enable_on_existing_project_reinit_writes_subagent(tmp_path, monkeypatch
 
     runner = CliRunner()
     with patch("brainpalace_cli.optional_deps.ensure_extra") as ensure:
-        # keep, then in the review grid drill the Extraction Engine division (15)
+        # keep, then in the review grid drill the Extraction Engine division (14)
         # → mode=subagent. The gate-on reveals the 10 advanced extraction fields —
         # Enter past each — then [C]ontinue, Start gate=Y, re-init grid [C]ontinue.
-        # Grid: Extraction Engine is division 13 (after Chat Session divisions 10-12).
+        # Grid: Extraction Engine is division 14 (after Chat Session divisions 11-13).
         result = runner.invoke(
             initmod.init_command,
             ["--path", str(tmp_path)],
-            input="keep\n13\nsubagent\n" + "\n" * 10 + "c\ny\nc\n",
+            input="keep\n14\nsubagent\n" + "\n" * 10 + "c\ny\nc\n",
         )
     assert result.exit_code == 0, result.output
     data = yaml.safe_load((sd / "config.yaml").read_text())

@@ -22,6 +22,12 @@ class _Graph:
         self.added.append(kw)
         return True
 
+    def invalidate_by_source_file(self, source_file, domain="code"):
+        return 0
+
+    def sweep_orphan_nodes(self, domain="code"):
+        return 0
+
     def persist(self):
         pass
 

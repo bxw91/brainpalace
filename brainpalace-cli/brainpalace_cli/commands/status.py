@@ -157,6 +157,31 @@ def render_session_queue_row(arch: dict[str, Any]) -> str:
     return "[dim]0 — empty[/]"
 
 
+def render_blocked_jobs_row(feat: dict[str, Any]) -> str | None:
+    """Loud blocked-indexing notice, or None when nothing is blocked.
+
+    Pure function over ``features["blocked_jobs"]``.
+    """
+    count = int(feat.get("count") or 0)
+    if count <= 0:
+        return None
+    latest = feat.get("latest") or {}
+    job_id = latest.get("job_id", "?")
+    tokens = latest.get("estimated_tokens")
+    limit = latest.get("limit")
+    nums = (
+        f" — needs ~{tokens:,} embedding tokens (cap {limit:,})"
+        if isinstance(tokens, int) and isinstance(limit, int)
+        else ""
+    )
+    more = f" (+{count - 1} more blocked)" if count > 1 else ""
+    return (
+        f"Indexing paused{nums}{more}. Nothing was spent.\n"
+        f"Approve: [bold]brainpalace jobs {job_id} --approve[/]  "
+        f"or raise [bold]indexing.max_embed_tokens_per_job[/]."
+    )
+
+
 def _status_all(json_output: bool) -> None:
     """Show detailed status for every running registered server (B2b)."""
     import json
@@ -353,6 +378,14 @@ def status_command(
 
             features = getattr(indexing, "features", None) or {}
 
+            # Paused (budget-blocked) indexing — loud panel FIRST so it is not
+            # missed. Nothing was spent; approving spends the estimated tokens.
+            blocked_txt = render_blocked_jobs_row(features.get("blocked_jobs") or {})
+            if blocked_txt:
+                console.print(
+                    Panel(blocked_txt, title="⚠ Indexing paused", border_style="yellow")
+                )
+
             # File watcher — prefer the consolidated feature view (clearer
             # 0-folder state), fall back to the legacy top-level field.
             fw_feat = features.get("file_watcher")
@@ -503,11 +536,16 @@ def status_command(
                         store_note = "simple — no temporal validity"
                     else:
                         store_note = store
-                    table.add_row(
-                        "Graph Index",
+                    graph_note = (
                         f"[green]Enabled[/] ({store_note}) - "
-                        f"{entities} entities, {rels} rels",
+                        f"{entities} entities, {rels} rels"
                     )
+                    if graph_status.get("needs_identity_rebuild"):
+                        graph_note += (
+                            " — [yellow]one-time rebuild pending"
+                            " (runs on next index)[/]"
+                        )
+                    table.add_row("Graph Index", graph_note)
                 else:
                     table.add_row("Graph Index", "[dim]Disabled[/]")
 
@@ -536,15 +574,29 @@ def status_command(
                     f" · metrics: {metrics_str}",
                 )
 
-            lsp = features.get("lsp")
-            if isinstance(lsp, dict):
-                if lsp.get("enabled"):
-                    langs = ", ".join(lsp.get("languages", []) or [])
-                    table.add_row("LSP", f"[green]enabled[/] ({langs})")
+            # LSP cross-references (exact cross-file calls).
+            lsp_feat = features.get("lsp")
+            if isinstance(lsp_feat, dict):
+                if lsp_feat.get("enabled"):
+                    langs = ", ".join(lsp_feat.get("active") or []) or "—"
+                    table.add_row("LSP", f"[green]active[/] ({langs})")
+                elif lsp_feat.get("detected"):
+                    det = ", ".join(lsp_feat.get("detected") or [])
+                    table.add_row("LSP", f"[yellow]idle[/] — detected {det}")
                 else:
-                    table.add_row(
-                        "LSP", "[dim]disabled[/] (set BRAINPALACE_LSP_LANGUAGES)"
-                    )
+                    configured = lsp_feat.get("configured") or []
+                    if configured:
+                        langs = ", ".join(configured)
+                        table.add_row(
+                            "LSP",
+                            f"[yellow]not installed[/] for {langs} — "
+                            f"run [bold]brainpalace lsp install[/]",
+                        )
+                    else:
+                        table.add_row(
+                            "LSP",
+                            "[dim]not found[/] — install pyright for exact call edges",
+                        )
 
             git_idx = features.get("git_index")
             if isinstance(git_idx, dict):

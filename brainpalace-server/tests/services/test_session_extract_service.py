@@ -50,10 +50,20 @@ class FakeGraph:
         subject_type=None,
         object_type=None,
         source_chunk_id=None,
+        source_file=None,
+        domain="code",
     ):
         self.triplets.append((subject, predicate, obj))
         self.typed.append((subject_type, predicate, object_type))
         return True
+
+    def invalidate_by_source_file(
+        self, source_file, domain="code"
+    ):  # noqa: ANN001,ANN201
+        return 0
+
+    def sweep_orphan_nodes(self, domain="code"):  # noqa: ANN001,ANN201
+        return 0
 
 
 def _payload(decisions: int = 2) -> SessionExtraction:

@@ -19,7 +19,15 @@ import {
   isUnreachable,
 } from "../components/TabState";
 
-const RUN_MODES = ["hybrid", "vector", "bm25", "graph", "multi"] as const;
+const RUN_MODES = [
+  "hybrid",
+  "vector",
+  "bm25",
+  "graph",
+  "multi",
+  "compute",
+  "scan",
+] as const;
 
 const COMPARE_MODES = ["bm25", "vector", "hybrid", "graph"] as const;
 const RERANK_OPTIONS = [
@@ -381,21 +389,40 @@ export function Queries({ instanceId }: { instanceId?: string }) {
                 {runResults.total_results === 1 ? "" : "s"} ·{" "}
                 {Math.round(runResults.query_time_ms)} ms
               </p>
-              {runResults.results.length === 0 ? (
-                <p className="text-sm text-fg-faint">No matching chunks.</p>
-              ) : (
-                <ul className="flex flex-col gap-1.5">
-                  {runResults.results.slice(0, 5).map((r, i) => (
-                    <li
-                      key={i}
-                      className="truncate rounded-lg border border-line/60 bg-ink-700/30 px-3 py-2 font-mono text-xs text-fg-muted"
-                      title={r.source}
-                    >
-                      {r.source}
-                    </li>
-                  ))}
-                </ul>
-              )}
+              {(() => {
+                const agg = runResults.compute ?? runResults.scan;
+                if (agg != null) {
+                  return agg.length === 0 ? (
+                    <p className="text-sm text-fg-faint">No aggregation rows.</p>
+                  ) : (
+                    <ul className="flex flex-col gap-1.5">
+                      {agg.slice(0, 10).map((r, i) => (
+                        <li
+                          key={i}
+                          className="rounded-lg border border-line/60 bg-ink-700/30 px-3 py-2 font-mono text-xs text-fg-muted"
+                        >
+                          {r.label}: {r.value}
+                        </li>
+                      ))}
+                    </ul>
+                  );
+                }
+                return runResults.results.length === 0 ? (
+                  <p className="text-sm text-fg-faint">No matching chunks.</p>
+                ) : (
+                  <ul className="flex flex-col gap-1.5">
+                    {runResults.results.slice(0, 5).map((r, i) => (
+                      <li
+                        key={i}
+                        className="truncate rounded-lg border border-line/60 bg-ink-700/30 px-3 py-2 font-mono text-xs text-fg-muted"
+                        title={r.source}
+                      >
+                        {r.source}
+                      </li>
+                    ))}
+                  </ul>
+                );
+              })()}
             </div>
           )}
 

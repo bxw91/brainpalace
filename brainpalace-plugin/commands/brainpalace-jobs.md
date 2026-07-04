@@ -10,6 +10,10 @@ parameters:
     type: bool
     required: false
     default: false
+  - name: approve
+    type: bool
+    required: false
+    default: false
   - name: limit
     type: integer
     required: false
@@ -201,6 +205,7 @@ brainpalace index <path> --force
 |------|------|---------|-------------|
 | --watch | bool | false | Poll every 3 seconds |
 | --cancel | bool | false | Cancel the specified job |
+| --approve | bool | false | Approve a budget-blocked job (spends embedding tokens) |
 | --limit | integer | 20 | Max jobs to show (default: 20) |
 | --url | text | "" | BrainPalace server URL (default: from config or http://127.0.0.1:8000) |
 | --json | bool | false | Output as JSON |

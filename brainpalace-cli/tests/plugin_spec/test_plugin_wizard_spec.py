@@ -5,16 +5,15 @@ structure, configuration keys, and behavioral content. They run against the
 wizard source file directly and do not require a running server.
 """
 
-import os
 import pathlib
-import pytest
 
+import pytest
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
 
-PLUGIN_DIR = pathlib.Path(__file__).parent.parent
+PLUGIN_DIR = pathlib.Path(__file__).resolve().parents[3] / "brainpalace-plugin"
 WIZARD_PATH = PLUGIN_DIR / "commands" / "brainpalace-setup.md"
 CONFIG_WIZARD_PATH = PLUGIN_DIR / "commands" / "brainpalace-config.md"
 
@@ -96,49 +95,47 @@ def test_setup_wizard_has_step_6_query_mode(setup_wizard_content: str) -> None:
 
 def test_setup_wizard_has_step_7_write_config(setup_wizard_content: str) -> None:
     """Step 7 of the wizard must write a config.yaml file."""
-    assert "config.yaml" in setup_wizard_content, (
-        "Step 7 must write config.yaml."
-    )
+    assert "config.yaml" in setup_wizard_content, "Step 7 must write config.yaml."
 
 
 def test_setup_wizard_sets_embedding_config_keys(setup_wizard_content: str) -> None:
     """Wizard must record embedding.provider and embedding.model."""
-    assert "embedding.provider" in setup_wizard_content, (
-        "Wizard must record embedding.provider."
-    )
-    assert "embedding.model" in setup_wizard_content, (
-        "Wizard must record embedding.model."
-    )
+    assert (
+        "embedding.provider" in setup_wizard_content
+    ), "Wizard must record embedding.provider."
+    assert (
+        "embedding.model" in setup_wizard_content
+    ), "Wizard must record embedding.model."
 
 
 def test_setup_wizard_sets_storage_backend_key(setup_wizard_content: str) -> None:
     """Wizard must record storage.backend with chroma or postgres values."""
-    assert "storage.backend" in setup_wizard_content, (
-        "Wizard must record storage.backend."
-    )
-    assert '"chroma"' in setup_wizard_content or "chroma" in setup_wizard_content, (
-        "Wizard must mention ChromaDB as a storage option."
-    )
-    assert '"postgres"' in setup_wizard_content or "postgres" in setup_wizard_content, (
-        "Wizard must mention PostgreSQL as a storage option."
-    )
+    assert (
+        "storage.backend" in setup_wizard_content
+    ), "Wizard must record storage.backend."
+    assert (
+        '"chroma"' in setup_wizard_content or "chroma" in setup_wizard_content
+    ), "Wizard must mention ChromaDB as a storage option."
+    assert (
+        '"postgres"' in setup_wizard_content or "postgres" in setup_wizard_content
+    ), "Wizard must mention PostgreSQL as a storage option."
 
 
 def test_setup_wizard_sets_graphrag_config_keys(setup_wizard_content: str) -> None:
     """Wizard must record graphrag.enabled and graphrag.store_type."""
-    assert "graphrag.enabled" in setup_wizard_content, (
-        "Wizard must record graphrag.enabled."
-    )
-    assert "graphrag.store_type" in setup_wizard_content, (
-        "Wizard must record graphrag.store_type."
-    )
+    assert (
+        "graphrag.enabled" in setup_wizard_content
+    ), "Wizard must record graphrag.enabled."
+    assert (
+        "graphrag.store_type" in setup_wizard_content
+    ), "Wizard must record graphrag.store_type."
 
 
 def test_setup_wizard_writes_config_yaml(setup_wizard_content: str) -> None:
     """Step 7 must write config.yaml using python3 yaml.dump for safe serialization."""
-    assert "yaml.dump" in setup_wizard_content or "config.yaml" in setup_wizard_content, (
-        "Step 7 must write config.yaml (ideally using yaml.dump for safe serialization)."
-    )
+    assert (
+        "yaml.dump" in setup_wizard_content or "config.yaml" in setup_wizard_content
+    ), "Step 7 must write config.yaml (ideally using yaml.dump for safe serialization)."
 
 
 def test_setup_wizard_has_multiple_askuserquestion_blocks(
@@ -161,8 +158,9 @@ def test_setup_wizard_has_multiple_askuserquestion_blocks(
 def test_setup_wizard_step4_postgres_bm25_note(setup_wizard_content: str) -> None:
     """Step 4: PostgreSQL selection includes BM25/tsvector informational note."""
     assert "tsvector" in setup_wizard_content, (
-        "Step 4 (Storage Backend) must mention tsvector when PostgreSQL is selected. "
-        "PostgreSQL replaces BM25 with tsvector — users should know --mode bm25 still works."
+        "Step 4 (Storage Backend) must mention tsvector when PostgreSQL is "
+        "selected. PostgreSQL replaces BM25 with tsvector — users should know "
+        "--mode bm25 still works."
     )
 
 
@@ -170,16 +168,20 @@ def test_setup_wizard_step5_graphrag_postgres_gate(setup_wizard_content: str) ->
     """Step 5: GraphRAG gate explains PostgreSQL incompatibility."""
     assert "GraphRAG requires ChromaDB" in setup_wizard_content, (
         "Step 5 (GraphRAG) must gate GraphRAG on backend selection. "
-        "GraphRAG is incompatible with PostgreSQL backend (hard error in query_service.py). "
-        "Users must be told this before selecting GraphRAG."
+        "GraphRAG is incompatible with PostgreSQL backend (hard error in "
+        "query_service.py). Users must be told this before selecting GraphRAG."
     )
 
 
 def test_setup_wizard_step6_cache_awareness(setup_wizard_content: str) -> None:
     """Step 6: Query mode step mentions auto-enabled caches."""
-    assert "auto-enabled" in setup_wizard_content or "auto-active" in setup_wizard_content or (
-        "embedding cache" in setup_wizard_content.lower()
-        and "query cache" in setup_wizard_content.lower()
+    assert (
+        "auto-enabled" in setup_wizard_content
+        or "auto-active" in setup_wizard_content
+        or (
+            "embedding cache" in setup_wizard_content.lower()
+            and "query cache" in setup_wizard_content.lower()
+        )
     ), (
         "Step 6 (Query Mode) must mention that embedding and query caches are "
         "automatically active. Users finishing setup should know caches exist."
@@ -202,9 +204,9 @@ def test_config_wizard_step12_includes_auto_port_discovery_text(
     """Step 12 must document automatic API port discovery from 8000-8300."""
     lowered = config_wizard_content.lower()
     assert "step 12" in lowered
-    assert "8000-8300" in config_wizard_content, (
-        "Step 12 must specify API port scan range 8000-8300."
-    )
+    assert (
+        "8000-8300" in config_wizard_content
+    ), "Step 12 must specify API port scan range 8000-8300."
     assert "available" in lowered and "port" in lowered and "api" in lowered, (
         "Step 12 must state that wizard discovers an available API port "
         "instead of assuming 8000."

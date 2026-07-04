@@ -1,11 +1,18 @@
 #!/usr/bin/env bash
 #
 # dev-install-from-source.sh — reinstall BrainPalace (CLI + server + dashboard)
-# from THIS local source tree over the existing pipx install, then restore the
+# from the `stable` branch over the existing pipx install, then restore the
 # exact set of project servers + dashboard that were running before.
 #
+# Source is ALWAYS the `stable` branch AS IT STANDS WHEN THIS RUNS — never the
+# checked-out working tree. Each run materializes `stable`'s current tip into an
+# ephemeral detached worktree and builds from there, so running this from a feature
+# branch (or with uncommitted WIP) still installs clean current `stable`, and your
+# VS Code checkout on another branch is never disturbed. Override the source ref
+# with BRAINPALACE_INSTALL_REF=<branch> if you must install a different branch.
+#
 # Repo-development tooling. Fully automatic and idempotent:
-#   1. rebuild the dashboard SPA from the CURRENT frontend source (npm ci + build)
+#   1. rebuild the dashboard SPA from the `stable` frontend source (npm ci + build)
 #      so the injected dashboard never ships a stale static/ bundle (static/ is
 #      gitignored generated output, not committed)
 #   2. snapshot which project servers + the dashboard are currently running
@@ -16,7 +23,7 @@
 #   5. restart exactly what was running before — servers first, then the dashboard
 #      if (and only if) it was up before
 #
-# Guarantee: everything installed is built from THIS source tree — the SPA from
+# Guarantee: everything installed is built from the `stable` tree — the SPA from
 # frontend/src (rebuilt here), the Python packages with --no-cache-dir fresh wheels.
 #
 # It deliberately refuses to reinstall while anything is still running, so you
@@ -26,6 +33,7 @@
 #   scripts/dev-install-from-source.sh            # full auto (stop → install → restore)
 #   scripts/dev-install-from-source.sh --no-restart   # stop + install, leave stopped
 #   scripts/dev-install-from-source.sh --dry-run      # print the plan, change nothing
+#   BRAINPALACE_INSTALL_REF=<branch> scripts/dev-install-from-source.sh  # override ref
 #
 # Via Taskfile:
 #   task install:from-source
@@ -36,9 +44,6 @@ set -euo pipefail
 export PYTHON_KEYRING_BACKEND="${PYTHON_KEYRING_BACKEND:-keyring.backends.null.Keyring}"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CLI_DIR="$REPO_ROOT/brainpalace-cli"
-SERVER_DIR="$REPO_ROOT/brainpalace-server"
-DASH_DIR="$REPO_ROOT/brainpalace-dashboard"
 
 NO_RESTART=0
 DRY_RUN=0
@@ -46,7 +51,7 @@ for arg in "$@"; do
   case "$arg" in
     --no-restart) NO_RESTART=1 ;;
     --dry-run)    DRY_RUN=1 ;;
-    -h|--help)    sed -n '2,30p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    -h|--help)    sed -n '2,37p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) echo "unknown flag: $arg" >&2; exit 2 ;;
   esac
 done
@@ -55,25 +60,44 @@ log() { printf '\033[1;36m[install-from-source]\033[0m %s\n' "$*"; }
 err() { printf '\033[1;31m[install-from-source] ERROR:\033[0m %s\n' "$*" >&2; }
 run() { if [ "$DRY_RUN" -eq 1 ]; then printf '  + %s\n' "$*"; else "$@"; fi; }
 
-for bin in pipx jq brainpalace curl npm node; do
+for bin in pipx jq brainpalace curl npm node git; do
   command -v "$bin" >/dev/null || { err "'$bin' not found on PATH"; exit 1; }
 done
+
+# --- materialize the source ref (always `stable`) into an ephemeral worktree ----
+# `from-source` builds a SOURCE tree; pin that tree to `stable` so running this from
+# a feature branch (or with uncommitted WIP) can't install unrelated work over the
+# pipx env — the surprise that motivated this. Build from a DETACHED worktree of the
+# ref's CURRENT tip (detached so it coexists with any real `stable` checkout, and so
+# the caller's VS Code checkout on another branch is never touched) under the
+# gitignored `.claude/worktrees/`, then remove it on exit. Only committed `stable`
+# state is installed — no uncommitted edits from any branch leak in. Override the ref
+# with BRAINPALACE_INSTALL_REF=<branch> for the rare case you must install something
+# else. This whole block is why a plain `git switch stable` is NOT used: that would
+# rewrite the one shared working tree the caller has open in their editor.
+git -C "$REPO_ROOT" rev-parse --git-dir >/dev/null 2>&1 \
+  || { err "from-source needs a git checkout (to materialize the source branch)"; exit 1; }
+INSTALL_REF="${BRAINPALACE_INSTALL_REF:-stable}"
+git -C "$REPO_ROOT" rev-parse --verify "$INSTALL_REF" >/dev/null 2>&1 \
+  || { err "source ref '$INSTALL_REF' not found in $REPO_ROOT"; exit 1; }
+SRC_ROOT="$REPO_ROOT/.claude/worktrees/install-from-source"
+cleanup_src_worktree() { git -C "$REPO_ROOT" worktree remove --force "$SRC_ROOT" >/dev/null 2>&1 || true; }
+trap cleanup_src_worktree EXIT
+git -C "$REPO_ROOT" worktree remove --force "$SRC_ROOT" >/dev/null 2>&1 || true   # reap a stale one
+log "Materializing '$INSTALL_REF' (current tip) into an ephemeral worktree ($SRC_ROOT)…"
+git -C "$REPO_ROOT" worktree add --detach --force "$SRC_ROOT" "$INSTALL_REF" >/dev/null \
+  || { err "failed to materialize '$INSTALL_REF' into a worktree"; exit 1; }
+
+CLI_DIR="$SRC_ROOT/brainpalace-cli"
+SERVER_DIR="$SRC_ROOT/brainpalace-server"
+DASH_DIR="$SRC_ROOT/brainpalace-dashboard"
 for d in "$CLI_DIR" "$SERVER_DIR" "$DASH_DIR"; do
-  [ -d "$d" ] || { err "package dir missing: $d (run from a source checkout)"; exit 1; }
+  [ -d "$d" ] || { err "package dir missing in '$INSTALL_REF': $d"; exit 1; }
 done
 
 # --- source provenance: prove WHAT tree we are about to install ----------------
-# This script installs the working tree as-is (incl. uncommitted edits) — that is
-# the point of a from-source install. Log the exact branch + commit + dirty state
-# so it is unambiguous which source the local install now reflects.
-if command -v git >/dev/null && git -C "$REPO_ROOT" rev-parse --git-dir >/dev/null 2>&1; then
-  GIT_BRANCH="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?')"
-  GIT_SHA="$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || echo '?')"
-  GIT_DIRTY=""; git -C "$REPO_ROOT" diff --quiet 2>/dev/null && git -C "$REPO_ROOT" diff --cached --quiet 2>/dev/null || GIT_DIRTY=" +local-uncommitted-changes"
-  log "Source tree: $REPO_ROOT @ ${GIT_BRANCH}/${GIT_SHA}${GIT_DIRTY}"
-else
-  log "Source tree: $REPO_ROOT (not a git checkout)"
-fi
+INSTALL_SHA="$(git -C "$REPO_ROOT" rev-parse --short "$INSTALL_REF" 2>/dev/null || echo '?')"
+log "Source tree: $SRC_ROOT @ ${INSTALL_REF}/${INSTALL_SHA} (committed tip, built in isolation)"
 
 # --- 0. rebuild the dashboard SPA from CURRENT source -------------------------
 # pip/pipx packages whatever already sits in brainpalace_dashboard/static/. That

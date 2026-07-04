@@ -1,12 +1,16 @@
 ---
 name: memory-curator
-description: Distil recent session decisions into curated memory and prune/merge stale or duplicate memories, on the subscription model
+description: Distil recent session decisions into curated memory and prune/merge stale or duplicate memories ("daily distill" / "weekly curate"), on the subscription model
+# `triggers:`/`skills:` feed `brainpalace install-agent` runtime converters
+# (OpenCode/Gemini/skill-runtime). Claude Code ignores them — delegation there
+# is driven by `description` alone, so keep descriptions trigger-rich.
 triggers:
   - pattern: "distil recent sessions|curate memory|prune stale memories|daily distill|weekly curate"
     type: message_pattern
 skills:
   - using-brainpalace
-last_validated: 2026-06-24
+tools: Bash, Read, Glob
+last_validated: 2026-07-04
 ---
 
 # Memory Curator Agent

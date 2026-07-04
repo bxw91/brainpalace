@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-24
+last_validated: 2026-06-29
 ---
 
 # Releasing BrainPalace
@@ -213,13 +213,31 @@ The version lives in **one place per package**: `pyproject.toml`.
         --title "BrainPalace YY.M.N" --notes-file <notes>   # re-fires publish
       ```
 13. **Refresh the cli lock** so the committed lock and local cli-from-source
-    builds pull the matching server: `(cd brainpalace-cli && poetry update
-    brainpalace-rag --lock)`, then commit on `stable`. The cli depends on
-    `brainpalace-rag` by PyPI version (not a local path), so `task install` for
-    the cli installs whatever the lock pins — without this step a cli-from-source
-    dev env keeps the *previous* server release. The pin stays `^YY.M.1`; only the
-    lock entry moves. Run it **after** step 12 confirms the new version is live on
-    PyPI. (Poetry caches the index — if version solving fails because it can't
+    builds pull the matching server **and dashboard**: `(cd brainpalace-cli &&
+    poetry update brainpalace-rag brainpalace-dashboard --lock)`, then commit on
+    `stable`. The cli depends on **both** `brainpalace-rag` and
+    `brainpalace-dashboard` by PyPI version (not a local path), so `task install`
+    for the cli installs whatever the lock pins — without this step a
+    cli-from-source dev env keeps the *previous* server **and dashboard** release.
+    The pins stay `^YY.M.1`; only the lock entries move. Run it **after** step 12
+    confirms the new version is live on PyPI.
+
+    > **Refresh `brainpalace-dashboard` too — not just the server (regression
+    > guard).** The cli lock pins the dashboard as well, and it is consumed by the
+    > `tests/doc_sync/` **dogfood** tests, which import the LIVE dashboard
+    > (`brainpalace_dashboard.ui_schema`) and reflect it against the LIVE cli
+    > `config_schema`. If only `brainpalace-rag` is refreshed each release, the
+    > dashboard pin silently rots: a later cli refactor that renames/drops a
+    > `config_schema` symbol the *old* pinned dashboard still imports (e.g. the
+    > `API_KNOWN_FIELDS` → bind-section removal in `62a1d8c2`) makes those dogfood
+    > tests fail in `task before-push` `test:cov` with an `AttributeError` from
+    > `ui_schema.py` — and the failure surfaces a release or more *later*, far from
+    > the refactor. The publish workflow's **Dashboard Gate** (Py 3.12, all three
+    > packages at the new release) is immune because it installs the freshly-built
+    > dashboard, so this gap is *local-gate-only* and easy to miss. If you hit it
+    > mid-release, refresh the pin to the latest published-compatible dashboard
+    > (`poetry update brainpalace-dashboard` in `brainpalace-cli`) and re-run the
+    > gate; commit the moved lock entry with the release. (Poetry caches the index — if version solving fails because it can't
     see the new release even though it's live on PyPI's simple index, the stale
     entry is the **repository cache**, not just `_http`. `poetry cache clear --all
     pypi` does **not** clear it — the source key is `PyPI` (capitalized), so that

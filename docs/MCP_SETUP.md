@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-27
+last_validated: 2026-07-04
 ---
 
 # MCP setup — connecting AI clients to BrainPalace
@@ -128,7 +128,9 @@ Claude Code users typically prefer the **skill model** installed by the plugin
 (`brainpalace query …` via slash commands). MCP here is for users who want
 explicit typed tool calls instead of skill-mediated CLI.
 
-Add to `~/.claude/settings.json`:
+Claude Code does **not** read `mcpServers` from `~/.claude/settings.json`.
+Either save the block below as `.mcp.json` in your project root, or register
+it once with `claude mcp add brainpalace -- brainpalace mcp`:
 
 ```json
 {

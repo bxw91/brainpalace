@@ -18,6 +18,10 @@ from brainpalace_server.config.bind_config import BindConfig
 from brainpalace_server.config.bm25_config import BM25Config
 from brainpalace_server.config.extraction_config import ExtractionConfig
 from brainpalace_server.config.git_config import GitIndexingConfig
+from brainpalace_server.config.graph_indexing_config import (
+    GraphIndexingConfig,
+    GraphLspConfig,
+)
 from brainpalace_server.config.indexing_config import IndexingConfig
 from brainpalace_server.config.provider_config import (
     ComputeConfig,
@@ -75,9 +79,11 @@ SECTION_MODELS: dict[str, type[BaseModel]] = {
     "usage_metrics": UsageMetricsConfig,
     "bind": BindConfig,
     "server": ServerConfig,
+    "graph_indexing": GraphIndexingConfig,
 }
 NESTED_MODELS: dict[str, type[BaseModel]] = {
     "session_indexing.archive": SessionArchiveConfig,
+    "graph_indexing.lsp": GraphLspConfig,
 }
 
 # Verbatim copy of ui_schema.SECTION_ORDER (16 entries). The dashboard-side test
@@ -88,6 +94,7 @@ GROUP_ORDER: list[tuple[str, str]] = [
     ("reranker", "Reranker"),
     ("bm25", "BM25"),
     ("graphrag", "GraphRAG"),
+    ("graph_indexing", "Graph Indexing : LSP"),
     ("compute", "Compute Query"),
     ("storage", "Storage"),
     ("indexing", "Indexing"),
@@ -138,6 +145,10 @@ GROUP_DESCRIPTIONS: dict[str, str] = {
     "requires EXTRACTION_PROVIDER_ENABLED=true); auto = subagent + paid safety-net.",
     "indexing": "Large-file re-embed guards and which paths are skipped when "
     "indexing. exclude_patterns are globs never indexed.",
+    "graph_indexing": "Language-server (LSP) cross-references for the code "
+    "graph — exact cross-file `calls` edges. auto = enable a language when its "
+    "server binary (e.g. pyright) is detected; on = force; off = disable. "
+    "AST-only intra-file calls work regardless.",
 }
 
 
@@ -179,6 +190,9 @@ def _annotation_options(annotation: Any) -> list[str] | None:
 _VALIDATOR_ENUMS: dict[str, set[str]] = {
     "storage.backend": cs.VALID_STORAGE_BACKENDS,
     "graphrag.store_type": cs.VALID_GRAPHRAG_STORE_TYPES,
+    # graph_indexing.lsp.mode: nested model field — options_for("annotation:...")
+    # would need to resolve through two model hops; use validator: instead.
+    "graph_indexing.lsp.mode": {"auto", "on", "off"},
 }
 
 
@@ -454,6 +468,24 @@ FIELD_OVERRIDES: dict[str, dict[str, Any]] = {
         "prompt": "Exclude patterns",
         "help": "Glob patterns never indexed (one per row).",
     },
+    # --- graph_indexing.lsp ---
+    "graph_indexing.lsp.mode": {
+        "prompt": "LSP mode",
+        "help": "auto = enable an on-toggled language when its server binary is "
+        "found on PATH/venv (recommended); on = force on-toggled languages; "
+        "off = disable LSP. AST intra-file calls are unaffected.",
+        "options_ref": "validator:graph_indexing.lsp.mode",
+    },
+    "graph_indexing.lsp.python": {
+        "prompt": "Python (pyright)",
+        "help": "Use a Python language server for exact cross-file calls. "
+        "auto mode needs pyright/pyright-langserver installed.",
+    },
+    "graph_indexing.lsp.typescript": {
+        "prompt": "TypeScript/JS",
+        "help": "Use the TypeScript language server for exact cross-file calls. "
+        "auto mode needs typescript-language-server installed.",
+    },
     # --- bind ---
     "bind.bind_host": {"prompt": "Bind host"},
     "bind.port_range_start": {"prompt": "Port range start"},
@@ -541,6 +573,7 @@ SECTION_FIELD_ORDER: dict[str, list[str]] = {
         "max_files",
     ],
     "session_archiving": ["enabled", "dir", "retain_days", "reconcile_seconds"],
+    "graph_indexing": ["mode", "python", "typescript"],
 }
 
 
@@ -634,6 +667,12 @@ DEFAULT_FALLBACKS: dict[str, Any] = {
     "graphrag.store_type": "sqlite",
     "graphrag.use_code_metadata": True,
     "compute.min_confidence": 0.7,
+    # graph_indexing.lsp.* are three levels deep; _model_default only walks
+    # section.field (depth 2). Mirror the GraphLspConfig code defaults here so
+    # both surfaces (CLI init grid and dashboard) resolve the same effective value.
+    "graph_indexing.lsp.mode": "auto",
+    "graph_indexing.lsp.python": True,
+    "graph_indexing.lsp.typescript": True,
 }
 
 

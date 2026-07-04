@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-28
+last_validated: 2026-07-04
 ---
 
 # Session Indexing
@@ -626,6 +626,11 @@ while `timeline()` still reconstructs the full chain. See
 - **Cross-session linking** (entity canonicalisation, decision supersession,
   promotion to curated memory, stale-decision penalty) — see
   [GRAPH_TAXONOMY](GRAPH_TAXONOMY.md#cross-session-linking-phase-140).
+  File-like mentions that name an indexed code file or symbol additionally
+  resolve onto the canonical code graph node (deterministic, never-guess;
+  unresolved mentions stay session-domain string nodes). Effectively
+  SQLite-only — the `simple` graph backend lacks the exact-lookup methods
+  resolution needs, so it degrades to "no link" there.
 
 ## Not yet (later phases)
 

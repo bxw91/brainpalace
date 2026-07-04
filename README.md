@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-28
+last_validated: 2026-07-04
 ---
 
 <div align="center">
@@ -37,6 +37,18 @@ session verbatim copy with summarisation and embedding, a temporal knowledge gra
 and git/LSP-aware indexing. Use it from the CLI, over MCP or
 as a Claude Code plugin. Runs fully local on Ollama or with cloud LLMs.
 
+|   |   |
+|:-:|:-:|
+| [<img src="docs/images/dash-1-usage.png" alt="Usage" width="420">](docs/images/dash-1-usage.png) | [<img src="docs/images/dash-2-config.png" alt="Config" width="420">](docs/images/dash-2-config.png) |
+
+|   |   |
+|:-:|:-:|
+| [<img src="docs/images/dash-3-queries.png" alt="Queries" width="420">](docs/images/dash-3-queries.png) | [<img src="docs/images/dash-4-cache.png" alt="Cache" width="420">](docs/images/dash-4-cache.png) |
+
+|   |
+|:-:|
+| [<img src="docs/images/dash-5-graph.png" alt="Graph" width="680">](docs/images/dash-5-graph.png) |
+
 ## Install
 
 Pick the path that matches how you'll use BrainPalace. All paths share the
@@ -68,7 +80,15 @@ same prerequisites and end with the same `brainpalace` CLI on your `PATH`.
    claude plugins install brainpalace@brainpalace-marketplace
    ```
 
-   Then **restart Claude Code** (or start a new session) and follow instructions. Full BrainPalace plugin reference : [`docs/PLUGIN_GUIDE.md`](docs/PLUGIN_GUIDE.md).
+   Then **restart Claude Code** (or start a new session) and follow instructions.
+
+**Got more projects to index later?** Go to project folder, start Claude Code and type :
+
+```bash
+/brainpalace-init
+```
+
+Full BrainPalace plugin reference : [`docs/PLUGIN_GUIDE.md`](docs/PLUGIN_GUIDE.md).
 
 ---
 
@@ -85,15 +105,14 @@ curl -sSL https://raw.githubusercontent.com/bxw91/brainpalace/main/scripts/setup
 brainpalace init
 ```
 
-How-To: [`docs/INSTALL.md`](docs/INSTALL.md).
-
 ---
 
-### Need more control?
+### Install for other AI runtimes
 
-CI / no-TTY, step-by-step manual install, low-level `install.sh` flags,
-install for other AI runtimes (Codex, OpenCode, Gemini CLI), Windows / WSL2
+Install for other AI runtimes (Codex, OpenCode, Gemini CLI), Windows / WSL2
 notes — all in [`docs/INSTALL.md`](docs/INSTALL.md).
+
+---
 
 ### Web dashboard
 
@@ -106,6 +125,8 @@ brainpalace dashboard start          # localhost:8787, opens a browser
 ```
 
 Full reference: [`docs/DASHBOARD.md`](docs/DASHBOARD.md).
+
+---
 
 ## What is BrainPalace
 
@@ -132,84 +153,90 @@ with optional cloud providers for embeddings and summarisation.
   all config via forms, view stats, jobs, cache, graph, sessions, logs, and
   query history. Launch it with `brainpalace dashboard start` (port 8787;
   localhost-only, optional bearer token). See [DASHBOARD](docs/DASHBOARD.md).
-- **Hybrid search** — BM25 + vector + GraphRAG, fused per query (`hybrid`,
-  `multi`) or selectable per call (`bm25`, `vector`, `graph`).
-- **Compute query mode** — set-level questions over your sessions (sum/count/
-  average, grouped by ISO-week or month, "which … the most" superlatives) over
-  typed numeric records, instead of returning documents (`--mode compute`).
-  Counts (files touched, tools used, decisions, open threads) are derived **free**
-  from session summaries — no extra API call.
-- **Multi-language search** — BM25 tokenizes each document in its own natural
-  language (stemming + stopwords), so keyword/hybrid search is precise for
-  non-English docs. ~27 Snowball languages + a Croatian stemmer; `stem` or
-  `lemma` engine; per-query `--language` override. See [Languages](#languages).
-- **Session intelligence** — capture AI-coding sessions into curated memory
-  (`remember`/`recall`, markdown source-of-truth), searchable summaries +
-  decisions, and a **typed knowledge graph** (Decision / Error / File / …).
-  Cross-session linking supersedes stale decisions and promotes durable ones
-  into memory. **Automatic (passive) capture indexes Claude Code transcripts
-  only** (`~/.claude/projects/…/*.jsonl`) — it's a *server* feature, so it works
-  from **either install** (CLI-only or the plugin) — archiving needs no plugin.
-  (Session *summarisation* in the default `subagent` mode does need the Claude
-  Code plugin; CLI-only installs archive but don't summarise.)
-  **On by default for new projects** (`brainpalace init`; opt out with
-  `init --no-sessions`). "Claude Code-specific" is about the transcript
-  *source*, not the install method. Other runtimes (OpenCode, Gemini CLI, Codex)
-  have no passive capture — they push memory explicitly via the plugin's
-  `/brainpalace-extract-session`. See [SESSION_INDEXING](docs/SESSION_INDEXING.md).
-- **Session summarisation — `subagent` default (Claude-Code-only)** — `init`
-  writes `mode: subagent`: sessions are summarised **only inside Claude Code**
-  (the plugin, free on your Claude Code subscription — Haiku, after your first
-  turn, drawing on your subscription's usage limits, no separate API bill; it
-  owns its hooks). **The server never summarises on its own** — no surprise API
-  bill; if Claude Code didn't summarise a session, it stays un-summarised. Opt
-  in to server-side summarisation with `mode: provider` (your configured AI;
-  prefer local Ollama — free + private) or `mode: auto` (defer to the plugin,
-  server fallback with a 24h safety net). Under `provider`/`auto`, no session is
-  ever silently skipped (retry + catch-up sweep + durable queue); a unified
-  `.done` marker means flips never double-summarise. `backfill-sessions`
-  summarises old chats.
+
+- **Hybrid search** — BM25 keyword + semantic vector + GraphRAG, fused per query
+  (`hybrid`, `multi`) or picked per call (`bm25`, `vector`, `graph`).
+  See [Search Modes](#search-modes).
+
+- **Compute query mode** — ask set-level questions over your sessions — totals,
+  counts, and "which … the most" superlatives — instead of getting back
+  documents (`--mode compute`). Session counts (files touched, tools used,
+  decisions) are derived **free** from summaries, no extra API call.
+  See [COMPUTE](docs/COMPUTE.md).
+
+- **Multi-language search** — keyword search stays precise in non-English docs:
+  per-language tokenizing across ~27 languages plus a Croatian stemmer, with a
+  per-query `--language` override. See [Languages](#languages).
+
+- **Session intelligence** — turns your AI-coding sessions into searchable
+  memory: summaries, decisions, and a **typed knowledge graph** (Decision /
+  Error / File / …), plus `remember`/`recall` curated notes that supersede stale
+  decisions and keep the durable ones. Auto-captures Claude Code transcripts;
+  other runtimes push via `/brainpalace-extract-session`. On by default for new
+  projects (opt out with `init --no-sessions`).
+  See [SESSION_INDEXING](docs/SESSION_INDEXING.md).
+
+- **Session summarisation — free or near-free** — inside Claude Code the plugin
+  summarises sessions on your subscription (Haiku, no separate API bill), or run
+  it server-side on local Ollama (free + private). The server never summarises
+  behind your back — no surprise cost — and `backfill-sessions` catches up old
+  chats. See [SESSION_INDEXING](docs/SESSION_INDEXING.md).
+
+- **GraphRAG** — entity + relationship extraction for dependency-aware queries:
+  "what calls X", "modules importing Y", "classes extending Z".
+  See [GRAPHRAG_GUIDE](docs/GRAPHRAG_GUIDE.md).
+
 - **Persistent graph backend** — opt-in `store_type: sqlite` with **temporal
   validity** (per-edge validity windows, `invalidate`, `timeline`); scales past
   the in-memory default. See [GRAPHRAG_GUIDE](docs/GRAPHRAG_GUIDE.md).
-- **Time-decay ranking** — newer chunks rank higher (configurable half-life).
-- **Git-history indexing** — commit messages + diff stats as a searchable
-  source, bridging *why* ↔ *what*. See [GIT_HISTORY](docs/GIT_HISTORY.md).
+
 - **LSP cross-references** (opt-in) — typed `calls`/`extends`/`implements`
   symbol graph from a real language server. See
   [LSP_INTEGRATION](docs/LSP_INTEGRATION.md).
+
+- **Git-history indexing** — commit messages + diff stats as a searchable
+  source, bridging *why* ↔ *what*. See [GIT_HISTORY](docs/GIT_HISTORY.md).
+
 - **AST-aware code chunking** — tree-sitter for Python, TypeScript,
   JavaScript, Java, Kotlin, C, C++, C#, Go, Rust, Swift.
-- **LLM code summaries** — optional AI-generated per-chunk descriptions to
-  lift semantic recall on code.
-- **GraphRAG** — entity + relationship extraction. Dependency-aware
-  queries: "what calls X", "modules importing Y", "classes extending Z".
+  See [CODE_INDEXING](docs/CODE_INDEXING.md).
+
+- **Time-decay ranking** — newer chunks rank higher (configurable half-life).
+  See [CONFIGURATION](docs/CONFIGURATION.md).
+
 - **Cross-encoder reranking** — opt-in two-stage retrieval for higher
-  precision on the top-k.
-- **`.gitignore`-aware indexing + watching** — honours every project
-  `.gitignore` (full Git semantics, nested + negation), plus the repo-local
-  `.git/info/exclude`, your global `core.excludesFile`, and a built-in default
-  exclude list (`node_modules`, `__pycache__`, `.venv`, `dist`, `build`, …).
-- **File watcher** — per-folder, debounced, post-enqueue cooldown.
-  `brainpalace folders add` defaults to `--watch auto` (live re-index on
-  change); `brainpalace index <path>` leaves a folder's watch setting
-  unchanged. Disable with `--watch off`.
+  precision on the top-k. See [CONFIGURATION](docs/CONFIGURATION.md).
+
+- **`.gitignore`-aware indexing + watching** — honours your project `.gitignore`
+  (nested + negation), `.git/info/exclude`, your global excludes, and sensible
+  built-in defaults (`node_modules`, `.venv`, `dist`, …).
+  See [CODE_INDEXING](docs/CODE_INDEXING.md).
+
+- **File watcher** — per-folder, debounced live re-index on change; `folders
+  add` watches by default, disable with `--watch off`.
+  See [USER_GUIDE](docs/USER_GUIDE.md).
+
 - **Nested projects auto-excluded** — a subfolder with its own `.brainpalace/`
-  is a separate project, so its whole subtree is skipped from the outer
-  project's indexing + watching (no double-indexing). Checked live, so removing
-  the nested `.brainpalace/` re-includes it.
+  is a separate project, so its subtree is skipped from the outer project (no
+  double-indexing). Checked live. See [ARCHITECTURE](docs/ARCHITECTURE.md).
+
 - **Multi-instance** — one server per project, automatic port allocation,
   `.brainpalace/runtime.json` discovery. Helpers: `whoami`, `status --all`,
-  `stop --url`.
+  `stop --url`. See [ARCHITECTURE](docs/ARCHITECTURE.md).
+
 - **URL auto-discovery** — CLI walks up from CWD to the owning server.
-  Works correctly in mono-repos.
+  Works correctly in mono-repos. See [ARCHITECTURE](docs/ARCHITECTURE.md).
+
 - **Incremental indexing** — manifest + SHA-256; only changed files
   re-embed; chunk eviction tracks deletes.
+  See [CODE_INDEXING](docs/CODE_INDEXING.md).
+
 - **Embedding cache** — TTL 3600 s, hit-rate tracked. Cuts provider cost
-  on reindex.
+  on reindex. See [CONFIGURATION](docs/CONFIGURATION.md).
+
 - **Pluggable providers** — embeddings (OpenAI · Cohere · Ollama),
   summarisation (Anthropic · OpenAI · Gemini · Grok · Ollama). Fully
-  local mode via Ollama for both.
+  local mode via Ollama for both. See [Pluggable Providers](#pluggable-providers).
 
 ## Search Modes
 

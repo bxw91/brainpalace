@@ -274,9 +274,6 @@ async def index_documents(
         # Get indexing service and rebuild graph from existing chunks
         indexing_service = request.app.state.indexing_service
         try:
-            graph_manager = indexing_service.graph_index_manager
-
-            # Get existing chunks from vector store
             vector_store = indexing_service.vector_store
             if not vector_store.is_initialized:
                 raise HTTPException(
@@ -284,30 +281,23 @@ async def index_documents(
                     detail="No documents indexed. Index documents first before "
                     "rebuilding the graph.",
                 )
-
-            # Clear existing graph and rebuild
-            graph_manager.clear()
-            graph_manager.graph_store.initialize()
-
-            # Get all documents from BM25 index (has the text content)
-            bm25_manager = indexing_service.bm25_manager
-            if bm25_manager._index is not None:
-                nodes = bm25_manager._index.nodes
-                triplet_count = graph_manager.build_from_documents(nodes)
-                logger.info(f"Graph index rebuilt with {triplet_count} triplets")
-
-                return IndexResponse(
-                    job_id="rebuild_graph",
-                    status="completed",
-                    message=f"Graph index rebuilt successfully with {triplet_count} "
-                    "triplets",
-                )
-            else:
+            triplet_count = await indexing_service.rebuild_graph_from_corpus(
+                request_body.folder_path
+            )
+            if triplet_count == 0:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="No documents indexed. Index documents first before "
                     "rebuilding the graph.",
                 )
+            logger.info(f"Graph index rebuilt with {triplet_count} triplets")
+
+            return IndexResponse(
+                job_id="rebuild_graph",
+                status="completed",
+                message=f"Graph index rebuilt successfully with {triplet_count} "
+                "triplets",
+            )
 
         except HTTPException:
             raise

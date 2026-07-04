@@ -1,6 +1,9 @@
 ---
 name: setup-assistant
-description: Proactively assists with BrainPalace installation and configuration
+description: Proactively assists with BrainPalace installation and configuration — use for install/setup/config requests, "command not found", missing API keys, Postgres/pgvector connection errors, embedding dimension mismatches, and BM25 language questions
+# `triggers:`/`skills:` feed `brainpalace install-agent` runtime converters
+# (OpenCode/Gemini/skill-runtime). Claude Code ignores them — delegation there
+# is driven by `description` alone, so keep descriptions trigger-rich.
 triggers:
   - pattern: "install.*agent.?brain|setup.*brain|configure.*brain"
     type: message_pattern
@@ -22,23 +25,22 @@ triggers:
     type: message_pattern
 skills:
   - configuring-brainpalace
-allowed_tools:
-  - Read
-  - Glob
-  - "Bash(~/.claude/plugins/brainpalace/scripts/*)"
-  - "Bash(.claude/plugins/brainpalace/scripts/*)"
-  - "Write(~/.brainpalace/**)"
-  - "Edit(~/.brainpalace/**)"
-  - "Write(~/.config/brainpalace/**)"
-  - "Edit(~/.config/brainpalace/**)"
-  - "Write(.claude/brainpalace/**)"
-  - "Edit(.claude/brainpalace/**)"
-last_validated: 2026-06-28
+tools: Read, Glob, Bash, Write, Edit
+last_validated: 2026-07-04
 ---
 
 # Setup Assistant Agent
 
 Proactively helps users install, configure, and troubleshoot BrainPalace.
+
+## Write/Edit path discipline
+
+Claude Code agent frontmatter confines tool *names* only, so path scoping is a
+behavioral rule: only Write/Edit files under `~/.config/brainpalace/`,
+`~/.brainpalace/` (legacy), `.brainpalace/`, `.claude/brainpalace/`, and the
+project `.claude/settings.json` merge in Step 0 of `/brainpalace-setup`. Only
+run scripts from the plugin's own `scripts/` directory. Never touch other
+project files.
 
 ## When to Activate
 
@@ -64,6 +66,9 @@ This agent activates when detecting patterns suggesting the user needs setup ass
 - "need to index documents"
 - "want to query my codebase"
 - "looking for document search"
+- "exact call graph" / "cross-file calls" / "install pyright" → run
+  `brainpalace lsp install` (BrainPalace also offers this when graph indexing /
+  LSP is enabled during `init`/`doctor`)
 
 ### Error Triggers
 

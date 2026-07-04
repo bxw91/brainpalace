@@ -86,8 +86,9 @@ def test_budget_guard_allows_exactly_at_limit():
     enforce_token_budget([C()], limit=100, force=False)
 
 
-def test_job_worker_surfaces_budget_error_as_failed_job():
-    """BudgetExceededError flows through the worker's except and fails the job."""
+def test_job_worker_parks_budget_error_as_blocked_job():
+    """BudgetExceededError flows through the worker's except and PARKS the job as
+    BLOCKED (pause+approve design) instead of failing it terminally."""
     import asyncio
     from unittest.mock import AsyncMock, MagicMock
 
@@ -117,7 +118,9 @@ def test_job_worker_surfaces_budget_error_as_failed_job():
 
     budget_error = BudgetExceededError(
         "Index would embed ~5,000 tokens, over the budget of 1,000. "
-        "Raise indexing.max_embed_tokens_per_job or re-run with force_budget=true."
+        "Raise indexing.max_embed_tokens_per_job or re-run with force_budget=true.",
+        estimated_tokens=5000,
+        limit=1000,
     )
     mock_indexing_service._run_indexing_pipeline = AsyncMock(side_effect=budget_error)
 
@@ -125,5 +128,7 @@ def test_job_worker_surfaces_budget_error_as_failed_job():
 
     asyncio.get_event_loop().run_until_complete(worker._process_job(job))
 
-    assert job.status == JobStatus.FAILED
-    assert "force_budget" in (job.error or "")
+    assert job.status == JobStatus.BLOCKED
+    assert job.budget_info == {"estimated_tokens": 5000, "limit": 1000}
+    assert job.finished_at is None
+    assert "--approve" in (job.error or "")

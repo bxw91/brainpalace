@@ -383,12 +383,13 @@ class JobQueueStore:
             dedupe_key: SHA256 dedupe key.
 
         Returns:
-            Matching job in PENDING or RUNNING status, or None.
+            Matching job in PENDING, RUNNING, or BLOCKED status, or None.
         """
         for job in self._jobs.values():
             if job.dedupe_key == dedupe_key and job.status in (
                 JobStatus.PENDING,
                 JobStatus.RUNNING,
+                JobStatus.BLOCKED,
             ):
                 return job
         return None
@@ -401,6 +402,15 @@ class JobQueueStore:
         """
         pending = [j for j in self._jobs.values() if j.status == JobStatus.PENDING]
         return sorted(pending, key=lambda j: j.enqueued_at)
+
+    async def get_blocked_jobs(self) -> list[JobRecord]:
+        """Get all budget-blocked jobs, newest first.
+
+        Returns:
+            BLOCKED jobs ordered by enqueue time descending.
+        """
+        blocked = [j for j in self._jobs.values() if j.status == JobStatus.BLOCKED]
+        return sorted(blocked, key=lambda j: j.enqueued_at, reverse=True)
 
     async def get_running_job(self) -> JobRecord | None:
         """Get the currently running job, if any.
@@ -438,6 +448,7 @@ class JobQueueStore:
         running = 0
         completed = 0
         failed = 0
+        blocked = 0
         cancelled = 0
         current_job_id = None
         current_job_running_time_ms = None
@@ -455,6 +466,8 @@ class JobQueueStore:
                 completed += 1
             elif job.status == JobStatus.FAILED:
                 failed += 1
+            elif job.status == JobStatus.BLOCKED:
+                blocked += 1
             elif job.status == JobStatus.CANCELLED:
                 cancelled += 1
 
@@ -463,6 +476,7 @@ class JobQueueStore:
             running=running,
             completed=completed,
             failed=failed,
+            blocked=blocked,
             cancelled=cancelled,
             total=len(self._jobs),
             current_job_id=current_job_id,

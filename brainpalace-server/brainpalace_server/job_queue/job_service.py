@@ -8,6 +8,7 @@ import logging
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from brainpalace_server.job_queue.job_store import JobQueueStore
 from brainpalace_server.models import IndexRequest
@@ -183,6 +184,7 @@ class JobQueueService:
             injector_script=request.injector_script,
             folder_metadata_file=request.folder_metadata_file,
             force=request.force,
+            force_budget=request.force_budget,
             source=source,
             watch_mode=request.watch_mode,
             watch_debounce_seconds=request.watch_debounce_seconds,
@@ -313,6 +315,7 @@ class JobQueueService:
             include_code=job.include_code,
             supported_languages=job.supported_languages,
             force=job.force,
+            force_budget=job.force_budget,
             include_patterns=job.include_patterns,
             include_types=job.include_types,
             exclude_patterns=job.exclude_patterns,
@@ -365,6 +368,7 @@ class JobQueueService:
             running=stats.running,
             completed=stats.completed,
             failed=stats.failed,
+            blocked=stats.blocked,
         )
 
     async def cancel_job(self, job_id: str) -> dict[str, str]:
@@ -433,6 +437,52 @@ class JobQueueService:
         return {
             "status": "unknown",
             "message": f"Job {job_id} is in unexpected status: {job.status.value}",
+        }
+
+    async def approve_job(self, job_id: str) -> dict[str, str]:
+        """Approve a budget-BLOCKED job: re-queue it with the budget bypassed.
+
+        The record is flipped in place (same id) so every surface that showed
+        the blocked job sees it continue. ``budget_info`` is kept for display.
+
+        Raises:
+            KeyError: Unknown job id.
+            ValueError: Job is not in BLOCKED status.
+        """
+        job = await self._store.get_job(job_id)
+        if job is None:
+            raise KeyError(f"Job {job_id} not found")
+        if job.status is not JobStatus.BLOCKED:
+            raise ValueError(
+                f"Job {job_id} is {job.status.value}, not blocked — nothing to approve"
+            )
+        job.force_budget = True
+        job.status = JobStatus.PENDING
+        job.error = None
+        job.finished_at = None
+        job.enqueued_at = datetime.now(timezone.utc)
+        await self._store.update_job(job)
+        logger.info("Job %s approved over budget — re-queued with force_budget", job_id)
+        return {
+            "job_id": job_id,
+            "status": "pending",
+            "message": f"Job {job_id} approved — indexing will continue",
+        }
+
+    async def get_blocked_summary(self) -> dict[str, Any] | None:
+        """Newest budget-blocked job as a plain summary dict, or None."""
+        blocked = await self._store.get_blocked_jobs()
+        if not blocked:
+            return None
+        job = blocked[0]
+        info = job.budget_info or {}
+        since = job.started_at or job.enqueued_at
+        return {
+            "job_id": job.id,
+            "folder_path": job.folder_path,
+            "estimated_tokens": info.get("estimated_tokens"),
+            "limit": info.get("limit"),
+            "blocked_since": since.isoformat() if since else None,
         }
 
     async def get_queue_stats(self) -> QueueStats:

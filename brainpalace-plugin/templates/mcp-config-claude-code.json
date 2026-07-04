@@ -1,6 +1,6 @@
 {
   "_comment_1": "Optional Claude Code MCP integration for BrainPalace.",
-  "_comment_2": "Merge the `mcpServers` block into ~/.claude/settings.json (preserving any other keys you already have there).",
+  "_comment_2": "Claude Code does NOT read mcpServers from ~/.claude/settings.json. Either save this file as .mcp.json in your project root, or register once with: claude mcp add brainpalace -- brainpalace mcp",
   "_comment_3": "NOT enabled by default — the plugin uses skills + slash commands as the primary integration. This snippet is for Claude Code users who specifically want typed MCP tool calls instead.",
   "_comment_4": "The plugin's start hook already auto-starts the HTTP server, so --ensure-server is not needed for Claude Code. Non-Claude-Code clients should add it (see docs/MCP_SETUP.md).",
   "mcpServers": {

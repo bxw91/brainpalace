@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-27
+last_validated: 2026-07-04
 ---
 
 # API Reference
@@ -800,9 +800,15 @@ List all jobs in the queue.
   "pending": 0,
   "running": 1,
   "completed": 0,
-  "failed": 0
+  "failed": 0,
+  "blocked": 0
 }
 ```
+
+A job over the per-job embedding-token budget parks as `"status": "blocked"`
+(nothing embedded) instead of `failed`; its `budget_info`
+(`{"estimated_tokens", "limit"}`) carries the numbers. Blocked jobs are counted
+in `blocked` and resumed via `POST /index/jobs/{job_id}/approve` below.
 
 ---
 
@@ -880,6 +886,37 @@ Cancel a pending or running job.
 |------|-------------|
 | `404` | Job not found |
 | `409` | Cannot cancel completed/failed/cancelled job |
+
+---
+
+#### POST /index/jobs/{job_id}/approve
+
+Approve a budget-**blocked** job: re-queue the same job (stable id) with the
+embedding-token budget bypassed (`force_budget=true`). Its `status` flips
+`blocked → pending`; `budget_info` is kept for display.
+
+**Path Parameters**:
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `job_id` | string | Blocked job identifier |
+
+**Response** `200 OK`:
+
+```json
+{
+  "job_id": "job_abc123def456",
+  "status": "pending",
+  "message": "Job job_abc123def456 approved — indexing will continue"
+}
+```
+
+**Errors**:
+
+| Code | Description |
+|------|-------------|
+| `404` | Job not found |
+| `409` | Job is not in blocked status (nothing to approve) |
 
 ---
 

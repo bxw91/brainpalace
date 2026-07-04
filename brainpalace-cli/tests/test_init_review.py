@@ -65,23 +65,23 @@ def test_review_exit_rolls_back_fresh(tmp_path, monkeypatch):
 
 
 def test_review_edit_is_persisted_sparsely(tmp_path, monkeypatch):
-    # Drill the Usage Metrics division (17): keep enabled (y), set retain_days=30,
+    # Drill the Usage Metrics division (18): keep enabled (y), set retain_days=30,
     # [C]ontinue, then Proceed.
-    # Grid order: ... 10=Chat Session : Archiving, 11=Chat Session : Vector Indexing,
-    # 12=Chat Session : Summarization, 13=Extraction Engine, 14=Server, 15=Server Mode,
-    # 16=Query Log, 17=Usage Metrics.
-    r = _invoke(tmp_path, monkeypatch, "17\ny\n30\nc\n" + _PROCEED)
+    # Grid order: ... 11=Chat Session : Archiving, 12=Chat Session : Vector Indexing,
+    # 13=Chat Session : Summarization, 14=Extraction Engine, 15=Server, 16=Server Mode,
+    # 17=Query Log, 18=Usage Metrics.
+    r = _invoke(tmp_path, monkeypatch, "18\ny\n30\nc\n" + _PROCEED)
     assert r.exit_code == 0, r.output
     assert _cfg(tmp_path)["usage_metrics"]["retain_days"] == 30
 
 
 def test_review_consent_field_not_plain_prompted(tmp_path, monkeypatch):
-    # Drilling the Chat Session : Vector Indexing division (11) routes the consent
+    # Drilling the Chat Session : Vector Indexing division (12) routes the consent
     # field (enabled) to the rich on_consent callback — never a plain ask_field. The
     # gate leads; declining it (n) fires the rich billable warning and leaves embedding
     # OFF, skipping the governed fields. Then [C]ontinue + Proceed.
-    # Grid order: 10=Chat Session : Archiving, 11=Chat Session : Vector Indexing.
-    r = _invoke(tmp_path, monkeypatch, "11\nn\nc\n" + _PROCEED)
+    # Grid order: 11=Chat Session : Archiving, 12=Chat Session : Vector Indexing.
+    r = _invoke(tmp_path, monkeypatch, "12\nn\nc\n" + _PROCEED)
     assert r.exit_code == 0, r.output
     # The consent prompt surfaced (rich warning), not a plain ask_field.
     assert "embedding chat transcripts is billable" in r.output

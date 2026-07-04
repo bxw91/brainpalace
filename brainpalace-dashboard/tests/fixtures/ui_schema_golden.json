@@ -391,6 +391,45 @@
       "label": "GraphRAG"
     },
     {
+      "description": "Language-server (LSP) cross-references for the code graph \u2014 exact cross-file `calls` edges. auto = enable a language when its server binary (e.g. pyright) is detected; on = force; off = disable. AST-only intra-file calls work regardless.",
+      "fields": [
+        {
+          "default": "auto",
+          "dotpath": "graph_indexing.lsp.mode",
+          "help": "auto = enable an on-toggled language when its server binary is found on PATH/venv (recommended); on = force on-toggled languages; off = disable LSP. AST intra-file calls are unaffected.",
+          "key": "mode",
+          "label": "LSP mode",
+          "options": [
+            "auto",
+            "off",
+            "on"
+          ],
+          "secret": false,
+          "widget": "enum"
+        },
+        {
+          "default": true,
+          "dotpath": "graph_indexing.lsp.python",
+          "help": "Use a Python language server for exact cross-file calls. auto mode needs pyright/pyright-langserver installed.",
+          "key": "python",
+          "label": "Python (pyright)",
+          "secret": false,
+          "widget": "toggle"
+        },
+        {
+          "default": true,
+          "dotpath": "graph_indexing.lsp.typescript",
+          "help": "Use the TypeScript language server for exact cross-file calls. auto mode needs typescript-language-server installed.",
+          "key": "typescript",
+          "label": "TypeScript/JS",
+          "secret": false,
+          "widget": "toggle"
+        }
+      ],
+      "key": "graph_indexing",
+      "label": "Graph Indexing : LSP"
+    },
+    {
       "description": "Aggregation query mode that sums typed numeric records extracted from sessions. Powers the compute query mode.",
       "fields": [
         {
@@ -562,7 +601,15 @@
           "widget": "stringlist"
         },
         {
-          "default": 300000,
+          "default": 0.2,
+          "dotpath": "indexing.max_embed_ratio_per_job",
+          "key": "max_embed_ratio_per_job",
+          "label": "Max embed ratio per job",
+          "secret": false,
+          "widget": "text"
+        },
+        {
+          "default": 100000,
           "dotpath": "indexing.max_embed_tokens_per_job",
           "key": "max_embed_tokens_per_job",
           "label": "Max embed tokens per job",

@@ -22,7 +22,11 @@ from typing import Any
 from brainpalace_server.config.git_config import GitIndexingConfig
 from brainpalace_server.config.indexing_config import load_indexing_config
 from brainpalace_server.indexing.git_chunker import GitCommitChunker
-from brainpalace_server.indexing.git_loader import load_commits, resolve_commit_scope
+from brainpalace_server.indexing.git_loader import (
+    git_toplevel,
+    load_commits,
+    resolve_commit_scope,
+)
 from brainpalace_server.services.indexing_service import (
     enforce_token_budget,
 )
@@ -149,6 +153,25 @@ class GitHistoryIndexService:
                 documents=[c.text for c in new_chunks],
                 metadatas=[c.metadata.to_dict() for c in new_chunks],
             )
+
+        # Plan C: deterministic commit graph (Commit modifies File /
+        # authored_by Author). Best-effort — never fails the ingest; rides the
+        # same incremental walk, so re-runs only touch new commits.
+        summary["graph_triplets"] = 0
+        try:
+            from brainpalace_server.indexing.git_graph import (  # noqa: PLC0415
+                write_commit_graph,
+            )
+
+            # ``git log --numstat`` paths are relative to the git toplevel,
+            # not the (possibly sub-directory) indexed root — join onto the
+            # toplevel so file ids match the canonical code File node ids.
+            graph_root = str(git_toplevel(target) or target)
+            summary["graph_triplets"] = write_commit_graph(
+                commits, graph_root, max_cochange_files=config.max_files
+            )
+        except Exception as exc:  # noqa: BLE001 — graph must not break ingest
+            logger.warning("Commit-graph write failed (ingest unaffected): %s", exc)
 
         # commits[0] is newest (git log default order) — persist as the new tip.
         newest_sha = commits[0].sha

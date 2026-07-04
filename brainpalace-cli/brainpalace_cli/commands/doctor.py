@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from typing import Any
 
 import click
@@ -19,8 +20,23 @@ from brainpalace_cli.diagnostics import (
     report_to_json,
     run_doctor,
 )
+from brainpalace_cli.lsp_install import EnsureResult, ensure_server
 
 console = Console()
+
+
+def _lsp_missing_languages() -> list[str]:
+    """Languages toggled on in graph_indexing.lsp whose server binary is absent.
+
+    Fail-soft: the CLI consumes the server as a versioned wheel, which may
+    predate the ``configured_languages``/``detect_servers`` API — an older (or
+    unimportable) server yields an empty list rather than crashing doctor."""
+    try:
+        from brainpalace_server.lsp import servers
+
+        return sorted(servers.configured_languages() - servers.detect_servers())
+    except Exception:  # noqa: BLE001 — server missing or too old: skip the offer
+        return []
 
 
 def extras_status_lines(config: dict[str, Any]) -> list[str]:
@@ -86,8 +102,19 @@ _STATUS_STYLE = {
         "(leaked servers that hold ports). Runs before the diagnostics."
     ),
 )
+@click.option(
+    "--yes",
+    "-y",
+    "assume_yes",
+    is_flag=True,
+    help="Auto-install missing LSP servers without prompting.",
+)
 def doctor_command(
-    url: str | None, json_output: bool, apply_fixes: bool, reap: bool
+    url: str | None,
+    json_output: bool,
+    apply_fixes: bool,
+    reap: bool,
+    assume_yes: bool,
 ) -> None:
     """Diagnose your BrainPalace setup.
 
@@ -177,6 +204,18 @@ def doctor_command(
                 "\n[dim]No safe fixes applied (nothing actionable, or all "
                 "checks already passing).[/]"
             )
+
+    # LSP: offer to install a configured-but-missing language server. Unlike
+    # init, doctor MAY auto-install on --yes (explicit diagnostic-repair intent).
+    missing = _lsp_missing_languages()
+    if missing:
+        console.print("\n[cyan]LSP language servers:[/]")
+        for lang in missing:
+            result = ensure_server(
+                lang, assume_yes=assume_yes, interactive=sys.stdin.isatty()
+            )
+            if result is EnsureResult.FAILED:
+                console.print(f"  LSP: {lang} server install failed.")
 
     if report.exit_code != 0:
         console.print(

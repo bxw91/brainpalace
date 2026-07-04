@@ -12,6 +12,7 @@ const STATUS_TONE: Record<string, string> = {
   done: "bg-run/15 text-run",
   error: "bg-bad/15 text-bad",
   failed: "bg-bad/15 text-bad",
+  blocked: "bg-warn/15 text-warn",
   cancelled: "bg-ink-600 text-fg-muted",
 };
 
@@ -278,6 +279,14 @@ export function JobDrawer({
                 {d.retry_count > 0 && (
                   <MetaRow label="Retries" value={String(d.retry_count)} />
                 )}
+                {d.budget_info &&
+                  typeof d.budget_info.estimated_tokens === "number" &&
+                  typeof d.budget_info.limit === "number" && (
+                    <MetaRow
+                      label="Budget"
+                      value={`needs ~${d.budget_info.estimated_tokens.toLocaleString()} tokens (cap ${d.budget_info.limit.toLocaleString()})`}
+                    />
+                  )}
                 {d.progress?.current_file && d.status === "running" && (
                   <MetaRow label="Current file" value={d.progress.current_file} />
                 )}
