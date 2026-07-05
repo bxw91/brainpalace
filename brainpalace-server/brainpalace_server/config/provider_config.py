@@ -340,7 +340,11 @@ class GraphRAGConfig(BaseModel):
         default=None, description="Master switch for graph indexing"
     )
     store_type: str | None = Field(
-        default=None, description="Graph store backend; only 'simple' is supported"
+        default=None,
+        description=(
+            "Graph store backend; 'sqlite' (persistent, default) or "
+            "'simple' (in-memory, JSON-persisted)"
+        ),
     )
     index_path: str | None = Field(
         default=None, description="Path for graph persistence"

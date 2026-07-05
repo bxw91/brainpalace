@@ -37,6 +37,7 @@ from .commands import (
     records_group,
     remember_command,
     reset_command,
+    rules_group,
     session_path_command,
     start_command,
     status_command,
@@ -152,6 +153,7 @@ cli.add_command(install_agent_command, name="install-agent")
 cli.add_command(install_session_hooks_command, name="install-session-hooks")
 cli.add_command(backfill_command, name="backfill-sessions")
 cli.add_command(records_group, name="records")
+cli.add_command(rules_group, name="rules")
 cli.add_command(extraction_group, name="extraction")
 cli.add_command(graph_group, name="graph")
 

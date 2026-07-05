@@ -108,6 +108,10 @@ ENDPOINT_SURFACES: dict[str, str] = {
         "unsurfaced: maintenance action (re-score low-confidence records); "
         "CLI-driven, no dashboard panel yet"
     ),
+    "/records/recompute-salience": (
+        "unsurfaced: maintenance action (re-score salience column); "
+        "CLI-driven, no dashboard panel yet"
+    ),
     "/extraction/pending": (
         "unsurfaced: AI-drain queue selector, consumed by the CC drain command, "
         "not a dashboard action"
@@ -168,4 +172,7 @@ CLI_DASHBOARD_COVERAGE: dict[str, str] = {
     ),
     "whoami": "cli_only: CWD-context helper, irrelevant in a fleet UI",
     "records": ("cli_only: record store stats/revalidate; no dashboard panel yet"),
+    "rules": (
+        "cli_only: taught confidence rules list/add/retire; " "no dashboard panel yet"
+    ),
 }

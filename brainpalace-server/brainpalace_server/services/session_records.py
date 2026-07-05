@@ -17,6 +17,12 @@ def _rid(*parts: object) -> str:
     ).hexdigest()[:16]
 
 
+def _with_salience(rec: Any) -> Any:
+    from brainpalace_server.indexing.salience import score_salience
+
+    return rec.model_copy(update={"salience": score_salience(rec)})
+
+
 _COUNT_FIELDS: tuple[tuple[str, Callable[[Any], int]], ...] = (
     ("files_touched", lambda e: len(e.files_touched)),
     ("tools_used", lambda e: len(e.tools_used)),
@@ -32,19 +38,21 @@ def derived_count_records(extraction: Any, *, ingested_at: str) -> list[Any]:
     out: list[Any] = []
     for metric, fn in _COUNT_FIELDS:
         out.append(
-            Record(
-                # value excluded from id → stable across re-distill
-                id=_rid(extraction.session_id, "session", metric),
-                subject="session",
-                metric=metric,
-                value=float(fn(extraction)),
-                unit="count",
-                ts=extraction.ended_at,
-                domain="chat-life",
-                source="session",
-                source_id=extraction.session_id,
-                ingested_at=ingested_at,
-                confidence=HIGH_CONFIDENCE,
+            _with_salience(
+                Record(
+                    # value excluded from id → stable across re-distill
+                    id=_rid(extraction.session_id, "session", metric),
+                    subject="session",
+                    metric=metric,
+                    value=float(fn(extraction)),
+                    unit="count",
+                    ts=extraction.ended_at,
+                    domain="chat-life",
+                    source="session",
+                    source_id=extraction.session_id,
+                    ingested_at=ingested_at,
+                    confidence=HIGH_CONFIDENCE,
+                )
             )
         )
     return out
@@ -60,18 +68,22 @@ def records_to_store(extraction: Any, *, ingested_at: str) -> list[Any]:
             subject=it.subject, metric=it.metric, value=it.value, unit=it.unit, ts=it.ts
         )
         out.append(
-            Record(
-                id=_rid(extraction.session_id, it.subject, it.metric, it.value, it.ts),
-                subject=it.subject,
-                metric=it.metric,
-                value=it.value,
-                unit=it.unit,
-                ts=it.ts,
-                domain="chat-life",
-                source="session",
-                source_id=extraction.session_id,
-                ingested_at=ingested_at,
-                confidence=score_confidence(cand),
+            _with_salience(
+                Record(
+                    id=_rid(
+                        extraction.session_id, it.subject, it.metric, it.value, it.ts
+                    ),
+                    subject=it.subject,
+                    metric=it.metric,
+                    value=it.value,
+                    unit=it.unit,
+                    ts=it.ts,
+                    domain="chat-life",
+                    source="session",
+                    source_id=extraction.session_id,
+                    ingested_at=ingested_at,
+                    confidence=score_confidence(cand),
+                )
             )
         )
     return out

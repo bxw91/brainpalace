@@ -39,8 +39,8 @@ BrainPalace is a RAG (Retrieval-Augmented Generation) system that indexes and se
 
 | Component | Count | Description |
 |-----------|-------|-------------|
-| **Commands** | 34 | Slash commands for all operations |
-| **Agents** | 5 | Intelligent assistants for complex tasks |
+| **Commands** | 38 | Slash commands for all operations |
+| **Agents** | 6 | Intelligent assistants for complex tasks |
 | **Skills** | 2 | Context for optimal search and configuration |
 
 ### How It Works
@@ -179,7 +179,7 @@ init`) automatically.
 
 ## Plugin Agents
 
-BrainPalace includes five intelligent agents that handle complex, multi-step tasks:
+BrainPalace includes six intelligent agents that handle complex, multi-step tasks:
 
 ### Search Assistant
 
@@ -247,6 +247,15 @@ Distils recent session decisions into curated memory and prunes or merges stale
 or duplicate memories, on the subscription model.
 
 **Triggers**: scheduled/curation runs over the memory namespace.
+
+### Graph Triplet Extractor
+
+Extracts entity/relationship triplets from a single indexed document chunk and
+submits them to BrainPalace's knowledge graph — the subagent executor of the
+shared extraction queue (free, Haiku).
+
+**Triggers**: runs over the extraction queue (e.g. via the drain command), not
+by a conversational request.
 
 ---
 
@@ -1151,11 +1160,13 @@ Then register it in `install_agent.py`'s `CONVERTERS` dict.
 
 Non-Claude-Code AI clients can talk to BrainPalace through the Model Context
 Protocol. BrainPalace ships an opt-in stdio MCP server — `brainpalace mcp` — that
-forwards calls to the existing HTTP server. The v1 tool surface is nine tools:
+forwards calls to the existing HTTP server. The v1 tool surface is twelve tools:
 `query`, `status`, `whoami`, `folders_list`, `jobs_list`, `recall`,
-`session_context`, and `ai_guide` are read-only; `memorize` writes a curated
-memory. Most tools accept an optional `path` argument so the long-lived shim is
-not pinned to its spawn-time directory.
+`session_context`, `ai_guide`, and `extraction_fetch` are read-only;
+`memorize` writes a curated memory; `extraction_submit` submits extraction
+payloads; `jobs_approve` re-queues a budget-blocked indexing job
+(write-capable, spends embedding tokens). Most tools accept an optional `path`
+argument so the long-lived shim is not pinned to its spawn-time directory.
 
 Supported clients with copy-paste config snippets:
 

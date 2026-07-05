@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-28
+last_validated: 2026-07-05
 ---
 
 # Compute Query Mode & Records Subsystem
@@ -85,6 +85,39 @@ the threshold explicitly to include PROVISIONAL records.
 
 The confidence registry is a seam for a future teaching loop: product code can
 register validators via `register_validator()` without touching engine source.
+
+### Taught rules (durable confidence teaching)
+
+Confidence validators can also be **taught and persisted** instead of only
+registered in-process: `rules.db` stores declarative predicates (`metric` +
+optional `unit` + optional `[value_min, value_max]` range → tier) that survive
+a server restart. A rule promotes only — an unmatched rule abstains (returns
+`0.0`), so `score_confidence`'s max-over-validators semantics are unchanged;
+demotion is out of scope. At most one rule is active per
+`owner + metric + unit`: adding a rule for a combination that already has an
+active rule retires the prior one and bumps the version (an edit, not a
+parallel rule) — history is preserved. `rules retire` soft-deletes a rule.
+Adding or retiring a rule immediately re-scores that metric's existing
+records (scoped to the changed metric only). See
+[API_REFERENCE.md](API_REFERENCE.md#rules-endpoints) for the `/rules*`
+endpoints and `brainpalace rules --help` for the CLI.
+
+### Salience (write-time relevance)
+
+Every record also carries a derived `salience` score (`0.0`-`1.0`), set at
+write time via a `register_salience_scorer()` registry shaped like the
+confidence registry (max over registered scorers). The seeded default is an
+age-decay scorer: `0.5 ** (age_days / half_life)`, reusing
+`BRAINPALACE_TIME_DECAY_HALF_LIFE_DAYS` (default `90.0`, the same knob that
+drives retrieval time-decay ranking) — there is no separate salience knob, so
+setting that half-life to `0` flattens default salience to `1.0` for every
+record. A freshly written record has age≈0, so it scores ~1.0 under the
+default scorer; the column only differentiates as records age, or immediately
+after `brainpalace records recompute-salience` re-scores existing rows.
+Unlike confidence validators (which see only a `RecordCandidate`), a salience
+scorer receives the full `Record`, including `domain`/`source`, so a
+domain-aware scorer is possible. No query mode reads `salience` in this
+phase — the column is a seam for a future relevance-aware consumer.
 
 ## How records get populated
 
@@ -210,7 +243,7 @@ always `[]` for a compute response.
 
 ## Configuration
 
-Three flat knobs in `Settings` (env vars + runtime read), mirroring the graphrag
+One flat knob in `Settings` (env var + runtime read), mirroring the graphrag
 pattern:
 
 Compute query mode has no switches — it is always selectable and returns empty
@@ -230,7 +263,7 @@ compute:
   min_confidence: 0.7       # null = inherit
 ```
 
-The dashboard surfaces all three fields via the config-reflection mechanism (same
+The dashboard surfaces this field via the config-reflection mechanism (same
 pattern as `graphrag:`). The lifespan applies YAML overrides at startup.
 
 ## CLI
@@ -245,6 +278,15 @@ brainpalace records stats                  # total, unverified, distinct metrics
 brainpalace records stats --json
 brainpalace records revalidate             # re-score all low-confidence records
 brainpalace records revalidate --metric files_touched   # restrict to one metric
+brainpalace records recompute-salience     # re-score all records' salience column
+brainpalace records recompute-salience --metric weight  # restrict to one metric
+
+# Taught confidence rules (durable, survive restart)
+brainpalace rules add --metric weight --unit kg --min 30 --max 300 --tier HIGH
+brainpalace rules list
+brainpalace rules list --all               # include retired rules
+brainpalace rules show <rule_id>
+brainpalace rules retire <rule_id>
 ```
 
 The query renderer prints `label: value` for compute rows; `--json` passes the
@@ -256,8 +298,14 @@ The query renderer prints `label: value` for compute rows; `--json` passes the
 |--------|------|-------------|
 | `GET` | `/records/stats` | Record store statistics |
 | `POST` | `/records/revalidate` | Re-score low-confidence records |
+| `POST` | `/records/recompute-salience` | Re-score the derived salience column |
+| `GET` | `/rules?active=` | List taught confidence rules |
+| `POST` | `/rules` | Teach a confidence rule |
+| `GET` | `/rules/{rule_id}` | Get one taught rule |
+| `POST` | `/rules/{rule_id}/retire` | Retire (soft-delete) a taught rule |
 
-See [API_REFERENCE.md](API_REFERENCE.md#records-endpoints) for full request and
+See [API_REFERENCE.md](API_REFERENCE.md#records-endpoints) and
+[API_REFERENCE.md](API_REFERENCE.md#rules-endpoints) for full request and
 response shapes.
 
 ## Status
@@ -285,5 +333,5 @@ over time as sessions complete.
 ## Related
 
 - [SESSION_INDEXING.md](SESSION_INDEXING.md) — how records get populated (session extraction)
-- [CONFIGURATION.md](CONFIGURATION.md#compute-configuration) — the three config knobs
+- [CONFIGURATION.md](CONFIGURATION.md#compute-configuration) — the compute config knob
 - [API_REFERENCE.md](API_REFERENCE.md#records-endpoints) — endpoint reference

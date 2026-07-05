@@ -6,7 +6,7 @@ context: brainpalace
 agent: setup-assistant
 skills:
   - configuring-brainpalace
-last_validated: 2026-06-24
+last_validated: 2026-07-05
 ---
 
 # Verify BrainPalace Setup
@@ -48,12 +48,12 @@ brainpalace config show 2>/dev/null || echo "Config not available"
 
 ### Step 4: Check Project Initialization
 
-`.brainpalace/config.json` holds the **project settings** written by
-`brainpalace init`; **provider settings** (embedding/summarization) live beside it
-in `.brainpalace/config.yaml`. Both files are expected in an initialized project.
+`.brainpalace/config.yaml` holds both the **project settings** written by
+`brainpalace init` and the **provider settings** (embedding/summarization) in
+one file. It is expected in an initialized project.
 
 ```bash
-ls -la .brainpalace/config.json 2>/dev/null
+ls -la .brainpalace/config.yaml 2>/dev/null
 ```
 
 ### Step 5: Check Server Status (if running)
@@ -90,7 +90,7 @@ Configuration
 Project Setup
 -------------
 [OK] Project initialized: .brainpalace/
-[OK] Config file: .brainpalace/config.json (project settings)
+[OK] Config file: .brainpalace/config.yaml (project settings)
 
 Server Status
 -------------
@@ -168,7 +168,7 @@ API Keys:
 
 Project:
   [x] .brainpalace/ exists
-  [x] config.json present (project settings)
+  [x] config.yaml present (project settings)
 
 Server:
   [x] Server running

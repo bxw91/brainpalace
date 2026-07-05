@@ -8,6 +8,7 @@ from .jobs import router as jobs_router
 from .metrics import router as metrics_router
 from .query import router as query_router
 from .records import router as records_router
+from .rules import router as rules_router
 from .runtime import router as runtime_router
 
 __all__ = [
@@ -19,5 +20,6 @@ __all__ = [
     "metrics_router",
     "query_router",
     "records_router",
+    "rules_router",
     "runtime_router",
 ]

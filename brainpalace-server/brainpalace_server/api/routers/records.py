@@ -56,3 +56,22 @@ async def records_revalidate(body: dict[str, Any], request: Request) -> dict[str
     rs = _get_record_store(request)
     rescored = rs.revalidate(score_confidence, metric=body.get("metric"))
     return {"rescored": rescored}
+
+
+@router.post(
+    "/recompute-salience",
+    summary="Recompute record salience",
+    description=(
+        "Re-scores the derived salience column on every record (optional "
+        "``metric`` filter) using the registered salience scorer. Facts are "
+        "immutable; only the salience score changes. Returns the count."
+    ),
+)
+async def records_recompute_salience(
+    body: dict[str, Any], request: Request
+) -> dict[str, int]:
+    from brainpalace_server.indexing.salience import score_salience
+
+    rs = _get_record_store(request)
+    rescored = rs.recompute_salience(score_salience, metric=body.get("metric"))
+    return {"rescored": rescored}

@@ -21,6 +21,21 @@ _Entries accumulate here between releases. The release step renames this to
 `## [YY.M.N] - DATE` and adds a fresh empty `## [Unreleased]` above it — never
 hand-number an unreleased section._
 
+## [26.7.3] - 2026-07-05
+
+### Added
+- **Durable taught rules + salience seam (memory Phase 5).** Confidence rules
+  now persist in `rules.db` (owner/version/retire) and load on start; `rules`
+  CLI + `/rules` endpoints manage them. Records carry a write-time `salience`
+  score with `register_salience_scorer` + a `records recompute-salience` path.
+
+### Changed
+- **Layer B prose verification now runs every release (marker gate).**
+  `before-push` runs `lint:doc-verify` (`verify-docs --check`): fails unless the
+  doc-verifier was run for THIS release's diff, so count/config prose drift can't
+  accumulate unseen. Never blocks on an LLM verdict; the net-diff base defaults to
+  the previous `release:` commit (`main` was degenerate — unrelated histories).
+
 ## [26.7.2] - 2026-07-05
 
 ### Added

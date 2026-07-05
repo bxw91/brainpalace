@@ -266,6 +266,8 @@ tasks:
       # Process gate ONLY: asserts the doc-verifier agent was run for THIS diff
       # (records a per-diff marker). Never calls a model, never gates on an LLM
       # verdict. Satisfy it in-session: `/brainpalace-verify-docs --changed`.
+      # Wired into `before-push` (release gate) so prose drift can't accumulate
+      # across releases; the net-diff base is the previous `release:` commit.
       - "{{.POETRY}} run brainpalace verify-docs --check"
 
   lint:docs-gates-ci:
@@ -325,13 +327,17 @@ tasks:
       - task: lint:ai-guidance-parity
       - echo "--- Checking interface doc-sync ---"
       - task: lint:doc-sync
-      # NB: Layer B prose verification (lint:doc-verify) is intentionally NOT a
-      # push gate. It is advisory + probabilistic + costs subscription, and Layer
-      # A (doc-sync, above) already hard-gates every machine-owned fact (flags,
-      # commands, modes, providers, MCP tools, endpoints). Prose drift is surfaced
-      # on a WEEKLY cadence instead: the SessionStart reminder hook
-      # (.claude/hooks/sessionstart-docverify-sweep.sh) offers a sweep at most once
-      # a week. Run on demand any time: `task lint:doc-verify` / `/brainpalace-verify-docs`.
+      # Layer B prose verification (MARKER gate, no LLM call): assert the
+      # doc-verifier was run for THIS release's diff so count/config prose drift
+      # can't build up unseen across releases. It NEVER blocks on an LLM verdict —
+      # only on "was `/brainpalace-verify-docs --changed` run for the current
+      # diff". Satisfy it in-session before the gate: run the doc-verifier, which
+      # records the per-diff marker. The net-diff base is the previous `release:`
+      # commit (not `main` — unrelated histories here). Broader latent drift in
+      # docs this release didn't touch is still swept WEEKLY via the SessionStart
+      # reminder hook (.claude/hooks/sessionstart-docverify-sweep.sh, `--all`).
+      - echo "--- Checking Layer B prose verification (marker) ---"
+      - task: lint:doc-verify
       - echo "--- Type checking ---"
       - task: typecheck
       - echo "--- Running tests with coverage ---"

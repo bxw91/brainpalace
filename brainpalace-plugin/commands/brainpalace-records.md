@@ -1,10 +1,10 @@
 ---
 name: brainpalace-records
-description: Manage typed numeric records (compute mode) — stats and revalidation
+description: Manage typed numeric records (compute mode) — stats, revalidation, salience recompute
 parameters:
 skills:
   - using-brainpalace
-last_validated: 2026-06-24
+last_validated: 2026-07-05
 ---
 
 # BrainPalace Records
@@ -12,9 +12,11 @@ last_validated: 2026-06-24
 ## Purpose
 
 Manages the typed numeric record store used by the `compute` query mode.
-Exposes two subcommands: `stats` (shows total records, unverified count, and
-distinct metric names) and `revalidate` (re-scores low-confidence records,
-optionally filtered to a single metric).
+Exposes three subcommands: `stats` (shows total records, unverified count, and
+distinct metric names), `revalidate` (re-scores low-confidence records,
+optionally filtered to a single metric), and `recompute-salience` (re-scores the
+derived salience column via the registered scorer, optionally filtered to a
+single metric).
 
 ## Usage
 
@@ -28,6 +30,7 @@ optionally filtered to a single metric).
 |------------|-------------|
 | stats | Show record store statistics (total, unverified, metrics) |
 | revalidate | Re-score low-confidence records (confidence < 0.7) |
+| recompute-salience | Re-score the derived salience column via the registered scorer |
 
 ## Execution
 
@@ -35,6 +38,8 @@ optionally filtered to a single metric).
 brainpalace records stats
 brainpalace records revalidate
 brainpalace records revalidate --metric bodyweight
+brainpalace records recompute-salience
+brainpalace records recompute-salience --metric bodyweight
 ```
 
 ## Related Commands

@@ -32,14 +32,15 @@ _KEYS = {"subject", "source_id"}
 
 _INSERT_SQL = """INSERT INTO records
     (id,subject,metric,value,unit,ts,iso_week,ym,domain,source,source_id,
-     ingested_at,confidence,properties)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+     ingested_at,confidence,salience,properties)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     ON CONFLICT(id) DO UPDATE SET
       subject=excluded.subject, metric=excluded.metric, value=excluded.value,
       unit=excluded.unit, ts=excluded.ts, iso_week=excluded.iso_week,
       ym=excluded.ym, domain=excluded.domain, source=excluded.source,
       source_id=excluded.source_id, ingested_at=excluded.ingested_at,
-      confidence=excluded.confidence, properties=excluded.properties"""
+      confidence=excluded.confidence, salience=excluded.salience,
+      properties=excluded.properties"""
 
 
 def derive_buckets(ts: str | None) -> tuple[str | None, str | None]:
@@ -71,14 +72,35 @@ class RecordStore:
                 iso_week TEXT, ym TEXT,
                 domain TEXT NOT NULL DEFAULT 'code',
                 source TEXT, source_id TEXT, ingested_at TEXT,
-                confidence REAL NOT NULL DEFAULT 0.0, properties TEXT
+                confidence REAL NOT NULL DEFAULT 0.0,
+                salience REAL NOT NULL DEFAULT 0.0, properties TEXT
             );
             CREATE INDEX IF NOT EXISTS idx_records_metric ON records(metric);
-            CREATE INDEX IF NOT EXISTS idx_records_domain ON records(domain);
             CREATE INDEX IF NOT EXISTS idx_records_subject ON records(subject);
+            """
+        )
+        # idempotent migration for pre-Phase-5 (and older) stores: ALTER-add any
+        # column the CREATE TABLE above would define but a legacy table lacks,
+        # before indexing it (mirrors the graph-store domain-column migration
+        # in sqlite_graph_store.py). Indexes on these columns are created only
+        # after the columns are guaranteed to exist.
+        cols = {r[1] for r in self._conn.execute("PRAGMA table_info(records)")}
+        for col, ddl in (
+            ("domain", "TEXT NOT NULL DEFAULT 'code'"),
+            ("ts", "TEXT"),
+            ("source", "TEXT"),
+            ("source_id", "TEXT"),
+            ("salience", "REAL NOT NULL DEFAULT 0.0"),
+        ):
+            if col not in cols:
+                self._conn.execute(f"ALTER TABLE records ADD COLUMN {col} {ddl}")
+        self._conn.executescript(
+            """
+            CREATE INDEX IF NOT EXISTS idx_records_domain ON records(domain);
             CREATE INDEX IF NOT EXISTS idx_records_ts ON records(ts);
             CREATE INDEX IF NOT EXISTS idx_records_source_id ON records(source_id);
             CREATE INDEX IF NOT EXISTS idx_records_source ON records(source);
+            CREATE INDEX IF NOT EXISTS idx_records_salience ON records(salience);
             """
         )
         self._conn.commit()
@@ -103,6 +125,7 @@ class RecordStore:
                     r.source_id,
                     r.ingested_at,
                     r.confidence,
+                    r.salience,
                     json.dumps(r.properties or {}),
                 )
             )
@@ -294,6 +317,60 @@ class RecordStore:
                 )
                 self._conn.execute(
                     "UPDATE records SET confidence=? WHERE id=?", (scorer(cand), rid)
+                )
+                n += 1
+        return n
+
+    def recompute_salience(
+        self,
+        scorer: Callable[[Record], float],
+        *,
+        metric: str | None = None,
+    ) -> int:
+        """Re-score the derived salience column (facts immutable), mirroring
+        ``revalidate``. Rebuilds a full ``Record`` per row (incl. domain/source)
+        so a domain-aware scorer works (Finding B). Optional ``metric`` filter.
+        Returns rows re-scored."""
+        where = "1=1"
+        params: list[object] = []
+        if metric is not None:
+            where += " AND metric = ?"
+            params.append(metric)
+        rows = self._conn.execute(
+            "SELECT id,subject,metric,value,unit,ts,domain,source,source_id,"
+            f"ingested_at,confidence FROM records WHERE {where}",
+            params,
+        ).fetchall()
+        n = 0
+        with self._conn:
+            for (
+                rid,
+                subject,
+                m,
+                value,
+                unit,
+                ts,
+                domain,
+                source,
+                source_id,
+                ingested_at,
+                confidence,
+            ) in rows:
+                rec = Record(
+                    id=rid,
+                    subject=subject,
+                    metric=m,
+                    value=value,
+                    unit=unit,
+                    ts=ts,
+                    domain=domain,
+                    source=source,
+                    source_id=source_id,
+                    ingested_at=ingested_at,
+                    confidence=confidence,
+                )
+                self._conn.execute(
+                    "UPDATE records SET salience=? WHERE id=?", (scorer(rec), rid)
                 )
                 n += 1
         return n

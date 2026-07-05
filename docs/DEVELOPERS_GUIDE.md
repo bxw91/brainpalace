@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-24
+last_validated: 2026-07-05
 ---
 
 # BrainPalace Developer Guide
@@ -97,7 +97,7 @@ flowchart TB
 
 | Module | Path | Description |
 |---|---|---|
-| `brainpalace_cli.mcp_server` | `brainpalace-cli/brainpalace_cli/mcp_server/` | Opt-in stdio MCP shim invoked as `brainpalace mcp`. Thin wrapper over `DocServeClient` + `discovery.py` exposing 9 tools (`query`, `status`, `whoami`, `folders_list`, `jobs_list`, `recall`, `session_context`, `ai_guide` are read-only; `memorize` writes a curated memory) to MCP-aware AI clients. Tests at `brainpalace-cli/tests/mcp_server/`. **Named `mcp_server`, not `mcp`** — the original `mcp` name collided with the SDK's top-level `mcp` package under `coverage --cov=brainpalace_cli` instrumentation, so renaming the sub-package was the surgical fix. CLI subcommand `mcp` (user-facing) is unchanged. |
+| `brainpalace_cli.mcp_server` | `brainpalace-cli/brainpalace_cli/mcp_server/` | Opt-in stdio MCP shim invoked as `brainpalace mcp`. Thin wrapper over `DocServeClient` + `discovery.py` exposing 12 tools (`query`, `status`, `whoami`, `folders_list`, `jobs_list`, `recall`, `session_context`, `ai_guide`, `extraction_fetch` are read-only; `memorize` writes a curated memory; `extraction_submit` submits extraction payloads; `jobs_approve` re-queues a budget-blocked indexing job, write-capable) to MCP-aware AI clients. Tests at `brainpalace-cli/tests/mcp_server/`. **Named `mcp_server`, not `mcp`** — the original `mcp` name collided with the SDK's top-level `mcp` package under `coverage --cov=brainpalace_cli` instrumentation, so renaming the sub-package was the surgical fix. CLI subcommand `mcp` (user-facing) is unchanged. |
 
 ---
 
@@ -423,8 +423,9 @@ diverge from the inherited one:
 Do **not** reintroduce verbatim "copy the global into the project" writes — that
 breaks inheritance (a later global edit would no longer propagate).
 
-> `config.json` (server `bind_host`/ports, runtime-managed) is **not** layered;
-> only `config.yaml` participates in `code < global < project` resolution.
+> Server `bind_host`/ports live in the `bind:` block of `config.yaml`, which
+> **does** participate in `code < global < project` resolution like any other
+> section.
 
 ### Dashboard's own config (`dashboard.yaml`)
 
@@ -570,7 +571,7 @@ nested, marker-delimited tiers — **NUDGE ⊂ CORE ⊂ FULL**:
 |------|----------------|----------|---------------|
 | **NUDGE** | ~580 | SessionStart hook `additionalContext` | Plugin users already load FULL via the skill; the hook only nudges. |
 | **CORE** | ~4.2 K | MCP `Server(instructions=...)` | MCP clients have no skill/hook — they need the whole decision contract at connect. |
-| **FULL** | ~7.7 K | generated SKILL.md, `ai-guide --tier full`, `ai_guide` MCP tool | The complete guide; pulled on demand. |
+| **FULL** | ~14.7 K | generated SKILL.md, `ai-guide --tier full`, `ai_guide` MCP tool | The complete guide; pulled on demand. |
 
 CORE is a literal slice of FULL; NUDGE a literal slice of CORE — never
 hand-maintained copies. The loader/renderer is `brainpalace_cli/ai_guidance.py`;

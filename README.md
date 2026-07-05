@@ -69,7 +69,7 @@ same prerequisites and end with the same `brainpalace` CLI on your `PATH`.
 
 > **Recommended if you use Claude Code.** Richest UX and it summarises your chat
 > sessions for through your Claude Code subscription (subagent calls to Haiku).
-> 34 slash commands, 5 agents, 2 skills.
+> 38 slash commands, 6 agents, 2 skills.
 
 **Install the plugin:**
 
@@ -141,7 +141,7 @@ with optional cloud providers for embeddings and summarisation.
 | **Server** (`brainpalace-rag`) | FastAPI backend — indexing pipeline, BM25 + vector + GraphRAG stores, REST API |
 | **CLI** (`brainpalace-cli`) | Click-based command-line client; primary interface for automation, mono-repos, and standalone use |
 | **MCP server** (`brainpalace mcp`) | Opt-in stdio shim for non-Claude-Code AI clients (VS Code / Copilot, Cursor, Kilo Code, Cline, Continue, Zed) |
-| **Claude Code plugin** | 34 slash commands, 5 agents, 2 skills for Claude Code users |
+| **Claude Code plugin** | 38 slash commands, 6 agents, 2 skills for Claude Code users |
 | **Web dashboard** (`brainpalace dashboard`) | Standalone browser control plane — manage every project server from one tab (instances, config, stats, jobs, cache, graph, sessions, logs, query history). Included with the CLI on Python 3.12+. See [DASHBOARD](docs/DASHBOARD.md) |
 
 ## Features
@@ -403,7 +403,7 @@ Or via the CLI: [docs/PROVIDER_CONFIGURATION.md](docs/PROVIDER_CONFIGURATION.md)
 
 ## Claude Code Plugin
 
-The plugin ships **34 slash commands**, **5 agents**, and **2 skills**.
+The plugin ships **38 slash commands**, **6 agents**, and **2 skills**.
 Full reference: [docs/PLUGIN_GUIDE.md](docs/PLUGIN_GUIDE.md).
 
 | Category | Commands |
@@ -421,6 +421,7 @@ Full reference: [docs/PLUGIN_GUIDE.md](docs/PLUGIN_GUIDE.md).
 | Setup Assistant | Guided installation and troubleshooting |
 | Memory Curator | Distil session decisions into curated memory; prune/merge stale entries (subscription model) |
 | Chat Session Extractor | Extract summary, decisions, and graph triplets from a finished session and submit to BrainPalace |
+| Graph Triplet Extractor | Extracts entity/relationship triplets from a single indexed chunk for the shared extraction queue |
 
 | Skill | Purpose |
 |---|---|
@@ -432,8 +433,8 @@ Full reference: [docs/PLUGIN_GUIDE.md](docs/PLUGIN_GUIDE.md).
 ```
 brainpalace/
 ├── brainpalace-plugin/                     # Claude Code plugin
-│   ├── commands/                            # 34 slash commands
-│   ├── agents/                              # 5 agents
+│   ├── commands/                            # 38 slash commands
+│   ├── agents/                              # 6 agents
 │   ├── skills/                              # 2 context skills
 │   └── templates/                           # mcp-config-claude-code.json + sessionstart hook
 ├── brainpalace-server/                     # FastAPI backend (REST API)

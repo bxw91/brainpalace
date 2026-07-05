@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-25
+last_validated: 2026-07-05
 ---
 
 # Provider Configuration Reference
@@ -54,7 +54,7 @@ brainpalace-serve
 | Provider | Embeddings | Summarization | Reranking | API Key Required |
 |----------|-----------|---------------|-----------|------------------|
 | **OpenAI** | text-embedding-3-large (3072d)<br>text-embedding-3-small (1536d)<br>text-embedding-ada-002 (1536d) | gpt-4o-mini<br>gpt-4 | - | OPENAI_API_KEY |
-| **Anthropic** | - | claude-haiku-4-5-20251001<br>claude-sonnet-4-5-20250219<br>claude-opus-4-6 | - | ANTHROPIC_API_KEY |
+| **Anthropic** | - | claude-haiku-4-5-20251001<br>claude-sonnet-4-5-20250514<br>claude-opus-4-5-20251101 | - | ANTHROPIC_API_KEY |
 | **Ollama** | nomic-embed-text (768d)<br>mxbai-embed-large (1024d)<br>all-minilm (384d) | llama3.2<br>mistral<br>codellama | llama3.2<br>mistral | (none - local) |
 | **Cohere** | embed-english-v3.0 (1024d)<br>embed-multilingual-v3.0 (1024d)<br>embed-english-light-v3.0 (384d) | - | - | COHERE_API_KEY |
 | **Gemini** | - | gemini-3.1-flash-lite<br>gemini-3.5-flash | - | GOOGLE_API_KEY |
@@ -325,7 +325,7 @@ settings.
 # config.yaml
 graphrag:
   enabled: true
-  store_type: simple        # only 'simple' (in-memory, JSON-persisted)
+  store_type: sqlite        # 'sqlite' (persistent, default) or 'simple' (in-memory, JSON-persisted)
   use_code_metadata: true
 ```
 
@@ -335,7 +335,7 @@ env-var value):
 | Field | Type | Maps to env var | Description |
 |-------|------|-----------------|-------------|
 | `enabled` | bool | `ENABLE_GRAPH_INDEX` | Master switch for graph indexing |
-| `store_type` | string | `GRAPH_STORE_TYPE` | only `simple` (in-memory, JSON-persisted) |
+| `store_type` | string | `GRAPH_STORE_TYPE` | `sqlite` (persistent, default) or `simple` (in-memory, JSON-persisted) |
 | `index_path` | string | `GRAPH_INDEX_PATH` | Path for graph persistence |
 | `extraction_model` | string | `GRAPH_EXTRACTION_MODEL` | Model for entity extraction |
 | `max_triplets_per_chunk` | int | `GRAPH_MAX_TRIPLETS_PER_CHUNK` | Max triplets per document chunk |
@@ -391,7 +391,7 @@ storage:
 
 graphrag:
   enabled: true
-  store_type: simple
+  store_type: sqlite
   use_code_metadata: true
 ```
 

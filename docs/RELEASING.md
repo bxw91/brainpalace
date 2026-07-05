@@ -129,6 +129,16 @@ The version lives in **one place per package**: `pyproject.toml`.
    [DEVELOPERS_GUIDE.md](DEVELOPERS_GUIDE.md#dashboard-parity-surface-every-feature).
    - [ ] `task before-push` green (includes `lint:dashboard-parity`) — every new
          config/CLI/endpoint is surfaced in the dashboard or allowlisted.
+7b. **Layer B prose verification (marker gate).** `before-push` now runs
+   `lint:doc-verify`, which fails unless the doc-verifier was run for THIS
+   release's diff — so count/config prose drift can't accumulate unseen across
+   releases. It never blocks on an LLM verdict, only on "was it run". Before the
+   gate, in a Claude Code session run `/brainpalace-verify-docs --changed` (or
+   dispatch the doc-verifier agent): it judges the affected docs and records the
+   per-diff marker. The net-diff base is the previous `release:` commit (not
+   `main` — `stable`/`main` have unrelated histories). Broader latent drift in
+   docs this release didn't touch stays on the WEEKLY `--all` sweep.
+   - [ ] `/brainpalace-verify-docs --changed` run; per-diff marker recorded.
 8. **Gate**: `task before-push` must exit 0. **Necessary, not sufficient** — the
    `publish-to-pypi.yml` workflow re-runs the gate (`task test`) in a *pristine
    CI env* that has **no Claude Code plugin installed** and may resolve a
@@ -160,6 +170,27 @@ The version lives in **one place per package**: `pyproject.toml`.
      builds the cli venv against local source, and **restores `poetry.lock`** after
      — so the gate tests THIS release while the committed lock stays PyPI-pinned
      (step 12 refreshes it after publish). No manual path-dep juggling needed.
+
+     > **The publish workflow's own gates need this too — do not remove it.**
+     > `publish-to-pypi.yml`'s **Quality Gate** and **Dashboard Gate** jobs set
+     > `BRAINPALACE_RELEASE=1` job-wide for the same reason: at gate time this
+     > release's server/dashboard are **not on PyPI yet** (they upload later in the
+     > same run), so any `task install` — including the one `cli:test` triggers via
+     > `deps: [install]`, which otherwise clobbers a manual path-install — must
+     > build against local sibling source. 26.7.2 first failed exactly here: the
+     > gates installed the previous (narrower) server and the query-mode import
+     > guard / parity check tripped on drift. If you ever add a step that installs
+     > siblings in those jobs, keep it under `BRAINPALACE_RELEASE=1`.
+
+   - **Widening a shared enum (or any runtime guard vs the installed server) is a
+     server-first, same-release change.** The MCP `QueryMode` Literal is *derived
+     from and guarded against* the server enum (it `raise`s on drift at import).
+     So adding a query mode (or similar cross-package enum widening) means the CLI
+     is momentarily **ahead** of the published server: it MUST ship in the same
+     release, server-first (the publish job already waits for `brainpalace-rag` on
+     PyPI before the cli), and the gates MUST run against local source (bullet
+     above) — never let the cli reach users ahead of a matching server, or
+     `brainpalace mcp` hard-fails on the version skew.
 
    **8a. Dashboard-absent CI rehearsal — now automatic.** The 3.11 publish/PR-QA
    quality gate runs in a **server+cli env with no dashboard installed** (the

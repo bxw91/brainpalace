@@ -75,6 +75,7 @@ from .routers import (
     jobs_router,
     query_router,
     records_router,
+    rules_router,
     runtime_router,
 )
 
@@ -1509,6 +1510,30 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             app.state.record_store = None
             logger.warning("RecordStore setup failed: %s", exc)
 
+        # Phase 5: durable taught-rule store — load persisted rules into the
+        # validator registry on start (reset first for a deterministic list).
+        try:
+            from brainpalace_server.indexing.record_validation import (  # noqa: PLC0415
+                reset_validators,
+            )
+            from brainpalace_server.indexing.taught_rules import (  # noqa: PLC0415
+                load_taught_rules,
+            )
+            from brainpalace_server.storage.taught_rule_store import (  # noqa: PLC0415
+                TaughtRuleStore,
+            )
+
+            reset_validators()
+            _rules_db = db_path(state_dir, "rules.db")
+            app.state.taught_rule_store = TaughtRuleStore(_rules_db)
+            _loaded = load_taught_rules(app.state.taught_rule_store)
+            logger.info(
+                "TaughtRuleStore initialized: %s (%d rules)", _rules_db, _loaded
+            )
+        except Exception as exc:  # noqa: BLE001 — never block startup
+            app.state.taught_rule_store = None
+            logger.warning("TaughtRuleStore setup failed: %s", exc)
+
         # Usage telemetry store (own sqlite file; best-effort; gated by config).
         try:
             from brainpalace_server.config.usage_metrics_config import (  # noqa: PLC0415
@@ -1943,6 +1968,7 @@ app.include_router(jobs_router, prefix="/index/jobs", tags=["Jobs"])
 app.include_router(query_router, prefix="/query", tags=["Querying"])
 app.include_router(runtime_router, prefix="/runtime", tags=["Runtime"])
 app.include_router(records_router, prefix="/records", tags=["Records"])
+app.include_router(rules_router, prefix="/rules", tags=["Rules"])
 from brainpalace_server.api.routers.memories import (  # noqa: E402 — late import, registered after app setup
     router as memories_router,
 )

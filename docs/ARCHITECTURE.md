@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-24
+last_validated: 2026-07-05
 ---
 
 # BrainPalace System Architecture
@@ -104,7 +104,7 @@ BrainPalace treats code as a first-class citizen with:
 | **ChromaDB** | Vector similarity search with OpenAI embeddings |
 | **GraphRAG** | Knowledge graph for entity relationships |
 | **Fusion Engine** | Combines results using Reciprocal Rank Fusion |
-| **MCP Server** (opt-in) | stdio shim — `brainpalace mcp` — exposes 5 read-only tools over the Model Context Protocol so non-Claude-Code AI clients (VS Code native / GitHub Copilot, Cursor, Kilo Code, Cline, Continue, Zed) call the HTTP server through typed tool calls instead of shell-outs. Lives at `brainpalace-cli/brainpalace_cli/mcp_server/`; full setup in [`MCP_SETUP.md`](MCP_SETUP.md). |
+| **MCP Server** (opt-in) | stdio shim — `brainpalace mcp` — exposes 12 tools (9 read-only, 3 write-capable) over the Model Context Protocol so non-Claude-Code AI clients (VS Code native / GitHub Copilot, Cursor, Kilo Code, Cline, Continue, Zed) call the HTTP server through typed tool calls instead of shell-outs. Lives at `brainpalace-cli/brainpalace_cli/mcp_server/`; full setup in [`MCP_SETUP.md`](MCP_SETUP.md). |
 
 ---
 
@@ -349,7 +349,7 @@ User Query: brainpalace query "how does authentication work" --mode hybrid
 
 **Implementation**: `.brainpalace/` directory per project stores state, indexes, and runtime info.
 
-`brainpalace init` writes CLI/runtime state such as `.brainpalace/config.json` and `runtime.json`, while provider/search configuration for setup flows is typically authored in `.brainpalace/config.yaml`; both files live under the same `.brainpalace/` root.
+`brainpalace init` writes project + provider/search configuration to `.brainpalace/config.yaml`; `runtime.json` (server bind host/port/pid) is written separately when the server starts (`brainpalace start`) — both files live under the same `.brainpalace/` root.
 
 ### 2. AST-Aware Chunking
 

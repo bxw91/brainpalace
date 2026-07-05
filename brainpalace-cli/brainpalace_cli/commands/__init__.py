@@ -25,6 +25,7 @@ from .recall import recall_command
 from .records import records_group
 from .remember import remember_command
 from .reset import reset_command
+from .rules import rules_group
 from .session_hooks import install_session_hooks_command
 from .sessions import session_path_command, submit_session_command
 from .start import start_command
@@ -64,6 +65,7 @@ __all__ = [
     "recall_command",
     "remember_command",
     "reset_command",
+    "rules_group",
     "session_path_command",
     "start_command",
     "submit_session_command",

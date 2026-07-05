@@ -508,6 +508,70 @@ restricted to a single metric. Returns the number of records rescored.
 
 ---
 
+#### POST /records/recompute-salience
+
+Re-score the derived `salience` column on every record (write-time relevance,
+seeded with an age-decay default; see [COMPUTE.md](COMPUTE.md)), optionally
+restricted to a single metric. Facts are immutable — only the salience score
+changes. Returns the number of records rescored.
+
+**Request Body**:
+
+```json
+{
+  "metric": "files_touched"
+}
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `metric` | string | (omit for all) | Restrict recompute to this metric only |
+
+**Response** `200 OK`:
+
+```json
+{
+  "rescored": 12
+}
+```
+
+**Errors**:
+
+| Code | Description |
+|------|-------------|
+| `503` | RecordStore not available on this server |
+
+---
+
+### Rules Endpoints
+
+Durable taught confidence rules (Phase 5). A rule declares that records
+matching a metric (and optionally a unit and a `[value_min, value_max]` range)
+score at a given confidence tier (`HIGH`, `PROVISIONAL`, `UNVERIFIED`) instead
+of the default numeric-sanity baseline. Rules persist in `rules.db` and reload
+on every server start. At most one rule is active per `owner + metric + unit`
+— adding a rule for a combination that already has an active rule retires the
+old one and bumps the version (an edit, not a parallel rule); `retire`
+soft-deletes (history is kept). Adding or retiring a rule immediately
+re-scores that metric's existing records. See [COMPUTE.md](COMPUTE.md).
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/rules?active=` | List taught rules (active-only by default) |
+| `POST` | `/rules` | Teach a rule: `{owner, metric, tier, unit?, value_min?, value_max?}` → `{id}` |
+| `GET` | `/rules/{rule_id}` | Get one taught rule by id |
+| `POST` | `/rules/{rule_id}/retire` | Retire (soft-delete) a taught rule → `{retired: bool}` |
+
+**Errors**:
+
+| Code | Description |
+|------|-------------|
+| `400` | Missing required field, unsupported tier, or `value_min > value_max` |
+| `404` | No rule with that id (`GET /rules/{rule_id}`) |
+| `503` | TaughtRuleStore not available on this server |
+
+---
+
 ### Git History Endpoints
 
 Git-history indexing (Phase 130). **Off by default** behind a `git_indexing:`

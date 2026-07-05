@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import threading
 from typing import Callable
 
 from brainpalace_server.models.record import RecordCandidate
@@ -13,17 +14,20 @@ UNVERIFIED_CONFIDENCE = 0.3
 
 Validator = Callable[[RecordCandidate], float]
 _VALIDATORS: list[Validator] = []
+_LOCK = threading.Lock()
 
 
 def register_validator(fn: Validator) -> None:
     """Phase-4 product hook. Never edits engine source; a taught rule is gated
     by the user before it is registered (never silently activated)."""
-    _VALIDATORS.append(fn)
+    with _LOCK:
+        _VALIDATORS.append(fn)
 
 
 def reset_validators() -> None:
-    _VALIDATORS.clear()
-    _VALIDATORS.extend([_authored, _numeric_sanity])
+    with _LOCK:
+        _VALIDATORS.clear()
+        _VALIDATORS.extend([_authored, _numeric_sanity])
 
 
 # authored, bounded — do NOT grow per user
@@ -51,5 +55,7 @@ _VALIDATORS.extend([_authored, _numeric_sanity])
 
 
 def score_confidence(c: RecordCandidate) -> float:
-    best = max((v(c) for v in _VALIDATORS), default=0.0)
+    with _LOCK:
+        validators = list(_VALIDATORS)  # snapshot; iterate outside the lock
+    best = max((v(c) for v in validators), default=0.0)
     return best if best > 0.0 else UNVERIFIED_CONFIDENCE

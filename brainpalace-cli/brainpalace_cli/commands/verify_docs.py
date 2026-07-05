@@ -186,6 +186,22 @@ def _changed_paths(base: str) -> list[str]:
     return sorted(n for n in names if n)
 
 
+def _default_base() -> str:
+    """Base ref for the `--changed` / `--check` net diff. `main` (the historical
+    Click default) is WRONG for this repo: `stable` (the working branch) and
+    `main` (the squashed publish mirror) have UNRELATED histories, so `main...HEAD`
+    is empty and the affected set collapses to nothing — the `--check` gate then
+    trivially passes and prose drift builds up unseen.
+
+    The real done-boundary is the PREVIOUS release: the most recent `release:`
+    commit reachable from HEAD. `before-push` runs at RELEASING step 8, before the
+    new release commit is made at step 9, so this always resolves to the prior
+    release — i.e. exactly the changes THIS release ships. Falls back to `main`
+    when no release commit exists (a fresh repo / non-release history)."""
+    rel = _git("log", "-E", "--grep=^release:", "--format=%H", "-1")
+    return rel[0] if rel else "main"
+
+
 #: Docs that are NEITHER verified by Layer B NOR usable as grounding for another
 #: doc's claim — historical / frozen / scratch material that describes PAST or
 #: INTENDED state, so grounding live code against it is meaningless (false verdicts
@@ -1601,7 +1617,10 @@ def _render_report(summary: dict[str, Any]) -> str:
     help="Verify the net-diff affected set (done-boundary).",
 )
 @click.option(
-    "--base", default="main", help="Base ref for --changed net diff (default: main)."
+    "--base",
+    default=None,
+    help="Base ref for --changed net diff (default: the previous `release:` "
+    "commit; `main` is degenerate here — unrelated histories).",
 )
 @click.option(
     "--record",
@@ -1670,7 +1689,7 @@ def verify_docs_command(
     paths: tuple[str, ...],
     all_docs: bool,
     changed: bool,
-    base: str,
+    base: str | None,
     record_file: str | None,
     check_marker: bool,
     resettle: bool,
@@ -1711,6 +1730,8 @@ def verify_docs_command(
     lists CONTRADICTED + UNVERIFIABLE (PENDING stays silent).
     """
     _require_repo()
+    if base is None:
+        base = _default_base()
     if check_marker:
         # B5 process gate (advisory, opt-in for pre-push wiring): did verify-docs
         # run for THIS diff? Compares the current net-diff fingerprint to the one
