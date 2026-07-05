@@ -25,6 +25,14 @@ jobs:
     name: Quality Gate
     runs-on: ubuntu-latest
 
+    # This release's server/dashboard are not on PyPI yet (they publish later in
+    # THIS run), so every `task install` — including the one `cli:test` triggers
+    # via its `deps: [install]` — must build the cli venv against LOCAL sibling
+    # source, not the previous published version. Without this the installed
+    # server is one release behind and the query-mode guard/parity gate fails.
+    env:
+      BRAINPALACE_RELEASE: "1"
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -112,6 +120,12 @@ jobs:
   dashboard-gate:
     name: Dashboard Gate
     runs-on: ubuntu-latest
+
+    # Same reason as quality-gate: force `task install` to build against LOCAL
+    # sibling source so the cli venv carries THIS release's server (not the
+    # previous published one), or the doc-sync query-mode guard fails on drift.
+    env:
+      BRAINPALACE_RELEASE: "1"
 
     # The quality-gate job above runs in a 3.11 server+cli env where the dashboard
     # is NOT installed, so its doc-sync run skips /dashboard checks and its wrapped
