@@ -32,7 +32,12 @@ from brainpalace_server.models import (
     QueryResponse,
     QueryResult,
 )
-from brainpalace_server.models.query import ComputeResult, ScanResult
+from brainpalace_server.models.query import (
+    AbsenceResult,
+    ComputeResult,
+    ScanResult,
+    TimelineResult,
+)
 from brainpalace_server.providers import ProviderRegistry
 from brainpalace_server.storage import (
     StorageBackendProtocol,
@@ -373,6 +378,50 @@ class QueryService:
                     total_results=len(scan_results),
                 )
 
+        # Auto-router, absence leg (Phase 3). Runs AFTER compute and scan;
+        # absence tells are disjoint from theirs, so the order is collision-free.
+        # Empty absence (no plan / no record_store / no rows) falls through.
+        from brainpalace_server.services.query_router import classify_absence_intent
+
+        if (
+            stage1_request.mode == QueryMode.HYBRID
+            and getattr(self, "record_store", None) is not None
+            and classify_absence_intent(stage1_request.query)
+        ):
+            absence_results = await self._execute_absence_query(stage1_request)
+            if absence_results:
+                elapsed = (time.time() - start_time) * 1000
+                return QueryResponse(
+                    results=[],
+                    absence=absence_results,
+                    query_time_ms=elapsed,
+                    total_results=len(absence_results),
+                )
+
+        # Auto-router, timeline leg (Phase 4). Runs AFTER compute, scan, and
+        # absence; timeline tells are disjoint from theirs, so the order is
+        # collision-free (compute wins a query carrying both a compute and a
+        # timeline tell). Empty timeline (no plan / no graph / no entity / no
+        # edges) falls through to hybrid.
+        from brainpalace_server.services.query_router import classify_timeline_intent
+
+        _tl_gm = getattr(self, "graph_index_manager", None)
+        _tl_graph = getattr(_tl_gm, "graph_store", None) if _tl_gm is not None else None
+        if (
+            stage1_request.mode == QueryMode.HYBRID
+            and _tl_graph is not None
+            and classify_timeline_intent(stage1_request.query)
+        ):
+            timeline_results = await self._execute_timeline_query(stage1_request)
+            if timeline_results:
+                elapsed = (time.time() - start_time) * 1000
+                return QueryResponse(
+                    results=[],
+                    timeline=timeline_results,
+                    query_time_ms=elapsed,
+                    total_results=len(timeline_results),
+                )
+
         # Read-only: vector/hybrid/multi need to embed the query text (a
         # provider call). On a cache miss, degrade to BM25 (purely lexical, no
         # network) so the server stays queryable offline. GRAPH and BM25 are
@@ -413,6 +462,30 @@ class QueryService:
                 scan=scan_rows,
                 query_time_ms=elapsed,
                 total_results=len(scan_rows),
+            )
+
+        # Absence early-return: anti-join rows are not documents — skip the
+        # retrieval tail entirely, exactly like compute and scan.
+        if stage1_request.mode == QueryMode.ABSENCE:
+            absence_rows = await self._execute_absence_query(stage1_request)
+            elapsed = (time.time() - start_time) * 1000
+            return QueryResponse(
+                results=[],
+                absence=absence_rows,
+                query_time_ms=elapsed,
+                total_results=len(absence_rows),
+            )
+
+        # Timeline early-return: history rows are not documents — skip the
+        # retrieval tail entirely, exactly like compute, scan, and absence.
+        if stage1_request.mode == QueryMode.TIMELINE:
+            timeline_rows = await self._execute_timeline_query(stage1_request)
+            elapsed = (time.time() - start_time) * 1000
+            return QueryResponse(
+                results=[],
+                timeline=timeline_rows,
+                query_time_ms=elapsed,
+                total_results=len(timeline_rows),
             )
 
         # Execute Stage 1 retrieval
@@ -991,6 +1064,113 @@ class QueryService:
                     score=abs(float(v)) / maxv,
                 )
             )
+        return out
+
+    async def _execute_absence_query(
+        self, request: QueryRequest
+    ) -> list[AbsenceResult]:
+        """Execute an absence (anti-join over records) query — Phase 3.
+
+        Returns [] when no RecordStore is attached, no plan compiles from the
+        query, or nothing qualifies — callers (auto-router) treat empty as a
+        signal to fall back to normal retrieval. Explicit mode=absence returns
+        the empty list directly (no fallback).
+        """
+        import asyncio
+
+        from brainpalace_server.config import settings as _settings
+        from brainpalace_server.models.query import AbsenceResult
+        from brainpalace_server.services.absence_compiler import compile_absence
+
+        rs = getattr(self, "record_store", None)
+        if rs is None:
+            return []
+        plan = compile_absence(
+            request.query,
+            rs.distinct_metrics(),
+            rs.distinct_sources(),
+            rs.distinct_domains(),
+        )
+        if plan is None:
+            return []
+        items = await asyncio.to_thread(
+            rs.absent_subjects,
+            partition=plan.partition,
+            present_in=plan.present_in,
+            absent_from=plan.absent_from,
+            key=plan.key,
+            metric=plan.metric,
+            since=plan.since,
+            until=plan.until,
+            limit=plan.limit,
+            min_confidence=getattr(_settings, "COMPUTE_MIN_CONFIDENCE", 0.7),
+        )
+        return [
+            AbsenceResult(
+                label=str(it),
+                present_in=plan.present_in,
+                absent_from=plan.absent_from,
+                partition=plan.partition,
+            )
+            for it in items
+        ]
+
+    async def _execute_timeline_query(
+        self, request: QueryRequest
+    ) -> list[TimelineResult]:
+        """Execute a timeline (edge-validity/supersession history walk) — Phase 4.
+
+        Resolves the named entity against graph node names (search_nodes) and
+        returns its full ordered edge history (timeline_named). Returns [] when
+        no graph is attached, no plan compiles, the entity resolves to no node,
+        or the entity has no edges — callers (auto-router) treat empty as a
+        signal to fall back to normal retrieval. Explicit mode=timeline returns
+        the empty list directly (no fallback). Graph calls are synchronous, like
+        graph mode and the stale-decision penalty.
+        """
+        from brainpalace_server.models.query import TimelineResult
+        from brainpalace_server.services.timeline_compiler import compile_timeline
+
+        gm = getattr(self, "graph_index_manager", None)
+        graph = getattr(gm, "graph_store", None) if gm is not None else None
+        if (
+            graph is None
+            or not hasattr(graph, "search_nodes")
+            or not hasattr(graph, "timeline_named")
+        ):
+            return []
+        plan = compile_timeline(request.query)
+        if plan is None:
+            return []
+        # H2: prefer an EXACT (case-insensitive) node-name match over a mere
+        # substring hit. search_nodes ranks by active-edge degree, so the busiest
+        # substring match ("oauth.py" for "auth.py") would otherwise win over the
+        # entity the user named — the exact bug find_decision_nodes avoids by
+        # being exact-only. Fetch a few candidates and pick the exact one first.
+        nodes = graph.search_nodes(plan.entity, limit=5)
+        if not nodes:
+            return []
+        _low = plan.entity.lower()
+        chosen = next(
+            (n for n in nodes if str(n.get("name", "")).lower() == _low), nodes[0]
+        )
+        name = chosen.get("name")
+        if not name:
+            return []
+        rows = graph.timeline_named(name)
+        out = [
+            TimelineResult(
+                subject=str(r.get("subject", "")),
+                predicate=str(r.get("predicate", "")),
+                object=str(r.get("object", "")),
+                valid_from=r.get("valid_from"),
+                valid_until=r.get("valid_until"),
+                valid=bool(r.get("valid", r.get("valid_until") is None)),
+            )
+            for r in rows
+        ]
+        if plan.limit is not None:
+            out = out[: plan.limit]
         return out
 
     async def _execute_scan_query(self, request: QueryRequest) -> list[ScanResult]:

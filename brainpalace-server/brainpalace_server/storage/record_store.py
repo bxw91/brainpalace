@@ -25,6 +25,11 @@ _GROUPS = {
     "unit": "unit",
 }
 
+# absence anti-join: only these columns may be partitioned/keyed on
+# (never interpolate raw user input as a SQL identifier).
+_PARTITIONS = {"metric", "source", "domain"}
+_KEYS = {"subject", "source_id"}
+
 _INSERT_SQL = """INSERT INTO records
     (id,subject,metric,value,unit,ts,iso_week,ym,domain,source,source_id,
      ingested_at,confidence,properties)
@@ -73,6 +78,7 @@ class RecordStore:
             CREATE INDEX IF NOT EXISTS idx_records_subject ON records(subject);
             CREATE INDEX IF NOT EXISTS idx_records_ts ON records(ts);
             CREATE INDEX IF NOT EXISTS idx_records_source_id ON records(source_id);
+            CREATE INDEX IF NOT EXISTS idx_records_source ON records(source);
             """
         )
         self._conn.commit()
@@ -186,6 +192,72 @@ class RecordStore:
             gparams.append(int(limit))
         cur = self._conn.execute(sql, gparams)
         return [(r[0], float(r[1] or 0.0)) for r in cur.fetchall()]
+
+    def absent_subjects(
+        self,
+        *,
+        partition: str,
+        present_in: str,
+        absent_from: str,
+        key: str = "subject",
+        metric: str | None = None,
+        since: str | None = None,
+        until: str | None = None,
+        limit: int | None = None,
+        min_confidence: float = 0.7,
+    ) -> list[str]:
+        """Keys present where ``partition == present_in`` but absent where
+        ``partition == absent_from`` (both sides confidence-gated). Anti-join
+        over indexed columns; [] when nothing qualifies."""
+        if partition not in _PARTITIONS:
+            raise ValueError(f"unsupported partition: {partition!r}")
+        if key not in _KEYS:
+            raise ValueError(f"unsupported key: {key!r}")
+
+        def _side(value: str) -> tuple[str, list[object]]:
+            where = [f"{partition} = ?", "confidence >= ?"]
+            params: list[object] = [value, min_confidence]
+            if metric is not None:
+                where.append("metric = ?")
+                params.append(metric)
+            if since is not None:
+                where.append("ts >= ?")
+                params.append(since)
+            if until is not None:
+                where.append("ts < ?")
+                params.append(until)
+            return " AND ".join(where), params
+
+        lwhere, lparams = _side(present_in)
+        rwhere, rparams = _side(absent_from)
+        sql = (
+            f"SELECT DISTINCT {key} FROM records WHERE {lwhere} "
+            f"AND {key} NOT IN (SELECT {key} FROM records WHERE {rwhere}) "
+            f"ORDER BY {key}"
+        )
+        params = [*lparams, *rparams]
+        if limit is not None:
+            sql += " LIMIT ?"
+            params.append(int(limit))
+        cur = self._conn.execute(sql, params)
+        return [r[0] for r in cur.fetchall() if r[0] is not None]
+
+    def distinct_sources(self) -> list[str]:
+        return [
+            r[0]
+            for r in self._conn.execute(
+                "SELECT DISTINCT source FROM records "
+                "WHERE source IS NOT NULL ORDER BY source"
+            ).fetchall()
+        ]
+
+    def distinct_domains(self) -> list[str]:
+        return [
+            r[0]
+            for r in self._conn.execute(
+                "SELECT DISTINCT domain FROM records ORDER BY domain"
+            ).fetchall()
+        ]
 
     def count_unverified(self, *, min_confidence: float = 0.7) -> int:
         return int(

@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-29
+last_validated: 2026-07-05
 ---
 
 # Releasing BrainPalace
@@ -74,6 +74,20 @@ The version lives in **one place per package**: `pyproject.toml`.
 
 ## Release checklist
 
+> **One-command local prep.** Steps 3–8 (the LOCAL, reversible half — version
+> bump across all six sites, changelog roll, reinstall, doc-freshness re-stamp,
+> and the full `before-push` gate) are automated by
+> **`task release:prep -- <YY.M.N>`** (e.g. `task release:prep -- 26.7.2`). It
+> sets `BRAINPALACE_RELEASE=1` for you so the siblings resolve to local source
+> and the gate is allowed to run. Land your work on `stable` (step 1), pick the
+> version (step 2), run that one task, then do the outward-facing steps 9–13 by
+> hand (commit, mirror to `main`, tag, create the GitHub Release). The
+> per-site/per-step detail below stays authoritative — read it to understand what
+> the task does or to run a step manually. Under the hood it calls
+> `scripts/bump_version.py` (six version sites) and `scripts/roll_changelog.py`
+> (Unreleased → versioned section), both guarded by
+> `brainpalace-cli/tests/test_version_consistency.py`.
+
 1. **Land all work on `stable`** and get `task before-push` green
    (`export PYTHON_KEYRING_BACKEND=keyring.backends.null.Keyring` first, or
    Poetry dies on the headless keyring).
@@ -135,6 +149,17 @@ The version lives in **one place per package**: `pyproject.toml`.
      imports. See [DEVELOPERS_GUIDE.md → CLI ↔ dashboard import boundary](DEVELOPERS_GUIDE.md#cli--dashboard-import-boundary-the-dashboard-is-optional).
      `task release:rehearse-ci` (step 8a) now import-blocks the dashboard for the
      cli/server suites, so this fails locally instead of in CI.
+   - **Local-sibling gate — automatic under `BRAINPALACE_RELEASE=1`.** The cli pins
+     `brainpalace-rag`/`brainpalace-dashboard` by PyPI version, and the *previous*
+     release is already published — so a plain cli install resolves the **old**
+     sibling. Any endpoint / module / config field **added this release** would then
+     read as false drift in the dogfood + doc-sync tests (they reflect docs against
+     the LIVE installed server+dashboard), false-failing the gate. Because the gate
+     is run with `BRAINPALACE_RELEASE=1` (already required by the before-push
+     guard), `cli:install` now force-switches the siblings to **local path deps**,
+     builds the cli venv against local source, and **restores `poetry.lock`** after
+     — so the gate tests THIS release while the committed lock stays PyPI-pinned
+     (step 12 refreshes it after publish). No manual path-dep juggling needed.
 
    **8a. Dashboard-absent CI rehearsal — now automatic.** The 3.11 publish/PR-QA
    quality gate runs in a **server+cli env with no dashboard installed** (the

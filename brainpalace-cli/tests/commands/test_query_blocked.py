@@ -31,6 +31,8 @@ def _fake_client(index_blocked: dict[str, Any] | None):
                 total_results=0,
                 compute=None,
                 scan=None,
+                absence=None,
+                timeline=None,
                 index_blocked=index_blocked,
             )
 

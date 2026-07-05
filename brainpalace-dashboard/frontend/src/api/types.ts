@@ -405,12 +405,19 @@ export type ReplayResult = {
   [k: string]: unknown;
 };
 export type AggRow = { label: string; value: number };
+export type AbsenceRow = {
+  label: string;
+  present_in?: string;
+  absent_from?: string;
+};
 export type ReplayResponse = {
   results: ReplayResult[];
   query_time_ms: number;
   total_results: number;
   compute?: AggRow[] | null;
   scan?: AggRow[] | null;
+  absence?: AbsenceRow[] | null;
+  timeline?: TimelineRow[] | null;
 };
 
 /** Server log tail (server `/health/logs`). */

@@ -163,6 +163,21 @@
     "grounding_tier": "code",
     "evidence": "context.py defines GET /context/session-start with CONTEXT_ENABLED guard returning 503"
   },
+  "0332790dd627bdb4db1b6f589ff4aa1b22107478a25c0c315c25b0068a552bef": {
+    "doc": "docs/ABSENCE.md",
+    "claim": "Confidence: HIGH-only by default (confidence >= 0.7) on both sides -- a low-confidence row neither creates nor fills a gap",
+    "grounding": "brainpalace-server/brainpalace_server/storage/record_store.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "reused cached verdict, claim unchanged in current prose",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/config/settings.py",
+      "brainpalace-server/brainpalace_server/storage/record_store.py",
+      "docs/COMPUTE.md"
+    ],
+    "grounding_hash": "1460b8c4ac11156c8d5aadc8204e2fbee0b2262de9dcaf969e957e2cd24bf7fc"
+  },
   "0408e284919d38487136207817a38fbdbae32e11d598e5aa84bb0123e2bcd648": {
     "doc": "brainpalace-plugin/commands/brainpalace-dashboard.md",
     "claim": "The dashboard is included with the CLI automatically on Python 3.12+ (it carries a python >= 3.12 marker, so it's skipped on 3.10/3.11 \u2014 the CLI still installs).",
@@ -379,6 +394,19 @@
       "brainpalace-dashboard/brainpalace_dashboard/config.py"
     ],
     "grounding_hash": "ff0a0488bf3370e684d8c9d3bc1708961ebf19817468da83a5a7b229fb4bc154"
+  },
+  "07b44108d382f13f14b78563c094fd1c198a563a953fdf008cc8288460658537": {
+    "doc": "docs/ABSENCE.md",
+    "claim": "CLI: brainpalace query ... --mode absence and --mode absence --json are valid invocations",
+    "grounding": "brainpalace-cli/brainpalace_cli/commands/query.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "reused cached verdict, claim unchanged in current prose",
+    "grounding_files": [
+      "brainpalace-cli/brainpalace_cli/commands/query.py"
+    ],
+    "grounding_hash": "5029d904d48408421b7b435b0bfb80f18e5f52e7caa767dfaf7111ae48e0973e"
   },
   "07b463664e7e12b9f8bb3ed9659ba27770a1607758ce412e71a0eb243f6a6044": {
     "doc": "docs/MCP_SETUP.md",
@@ -722,6 +750,22 @@
     ],
     "grounding_hash": "b2d9960f6f0c5f918e262d17e2049fa25338f8c5f8f3e3fd6f94a80fbdd71248"
   },
+  "0f322fbf133385050bd8da1487269ebf5814aa5bc22bcbaebb02ef1c0763058c": {
+    "doc": "docs/ABSENCE.md",
+    "claim": "--json contract for absence: results is always [], rows live under absence; each row has label, present_in, absent_from, partition, score (reserved, always 0.0)",
+    "grounding": "brainpalace-server/brainpalace_server/models/query.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "reused cached verdict, claim unchanged in current prose",
+    "grounding_files": [
+      "brainpalace-cli/brainpalace_cli/client/api_client.py",
+      "brainpalace-cli/brainpalace_cli/commands/query.py",
+      "brainpalace-server/brainpalace_server/models/query.py",
+      "brainpalace-server/brainpalace_server/services/query_service.py"
+    ],
+    "grounding_hash": "8e1a79425a4894638e994aaedfd69ea365d76e6c2769da8d0917fbddb5811c7b"
+  },
   "0f5866c4ff9491bab6fe46fab55b40dc83c4a38ff200eb66bbe19dfd9cbb7711": {
     "doc": "brainpalace-plugin/commands/brainpalace-verify.md",
     "claim": "Verification steps include checking package version, Python version, provider config, project initialization, server status",
@@ -853,6 +897,19 @@
       "brainpalace-cli/brainpalace_cli/commands/reset.py"
     ],
     "grounding_hash": "c9c0186ecf37e72a2b896e5882f4a1dbd46c86137f7913815d0b89063d90a1e5"
+  },
+  "119637f76ea7e8c3679d850119fe85f1cbb47674b8c0bdd87fe8122a163c7421": {
+    "doc": "docs/ABSENCE.md",
+    "claim": "Live-store snapshot: answers reflect whatever the records store currently holds -- there is no retention/eviction of records today, so results are a snapshot of the current store, not a class distinction",
+    "grounding": "brainpalace-server/brainpalace_server/storage/record_store.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "record_store.py has no retention_days/ttl/eviction logic for typed records; the store simply holds whatever has been extracted, matching the reworded claim that there is no retention/eviction mechanism",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/storage/record_store.py"
+    ],
+    "grounding_hash": "f780e0d81bfea1c5048aa8b62e53b295c64f677cb22a6b86d6107f8c0b97b114"
   },
   "12150eddd159f18633fa0cc9ac89296466923124834548a166c0a4bb3035c5b2": {
     "doc": "docs/PERFORMANCE_TRADEOFFS.md",
@@ -1009,6 +1066,20 @@
       "brainpalace-server/brainpalace_server/services/query_service.py"
     ],
     "grounding_hash": "0ce6e11ed3af9f040b61351b83b9a927f9520fa21b45696eca47f2b07a918cc7"
+  },
+  "14b05efa4ae40cd42cb6bb9841977a5fb04e2b3819c9dad90021900074bb5cc9": {
+    "doc": "docs/ABSENCE.md",
+    "claim": "Single-source today: the records store currently holds one (domain=chat-life, source=session) partition, so source/domain partitions return nothing until federation adapters add other sources; metric is the axis with real data today",
+    "grounding": "brainpalace-server/brainpalace_server/services/session_records.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "reused cached verdict, claim unchanged in current prose",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/indexing/record_extractors.py",
+      "brainpalace-server/brainpalace_server/services/session_records.py"
+    ],
+    "grounding_hash": "72889f345bdcf5beedf8394e00bb0e7986298b1fb4ae66f4fdecb834d554e87d"
   },
   "14ea18a3cccdc640bfd17ff477b14eed2131c0c4c3b2e6d33ebfe54c1a3ddff0": {
     "doc": "docs/BENCHMARKS.md",
@@ -2674,6 +2745,19 @@
     ],
     "grounding_hash": "0284c3e1e50957414f1b7d7aa6949b7f681370bd1f4d91483c5371177514e672"
   },
+  "39951239a3778ad1d034c418725b86e12e7054b6713c3922928b790017c4139f": {
+    "doc": "docs/ABSENCE.md",
+    "claim": "Rows come back as the missing subjects, alphabetically",
+    "grounding": "brainpalace-server/brainpalace_server/storage/record_store.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "reused cached verdict, claim unchanged in current prose",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/storage/record_store.py"
+    ],
+    "grounding_hash": "f780e0d81bfea1c5048aa8b62e53b295c64f677cb22a6b86d6107f8c0b97b114"
+  },
   "39ae207519960624ec5ff94a30706671d76a3744e414381a46315e76c95dc560": {
     "doc": "brainpalace-plugin/skills/using-brainpalace/references/provider-configuration.md",
     "claim": "API key resolution order: api_key field -> environment variable from api_key_env -> default env var",
@@ -4154,6 +4238,19 @@
       "brainpalace-server/brainpalace_server/services/session_archive_service.py"
     ],
     "grounding_hash": "6e25477568b7628194acf2b785fd95fb5717f5efbcaa7fcb697fb043549b769f"
+  },
+  "5d150acef71461a9557d6a7adf96cd083eebc157651a65dc8f7856295860aa55": {
+    "doc": "docs/ABSENCE.md",
+    "claim": "The compiler splits the query on a negation-of-counterpart phrase: but not, but not in, but never, without, missing from, absent from, not in",
+    "grounding": "brainpalace-server/brainpalace_server/services/absence_compiler.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "absence_compiler.py negation phrase list includes ' but never ', ' but not in ', ' but not ', ' missing from ', ' absent from ', ' not in ' (and 'without' elsewhere) -- matches updated doc list including 'but not in'",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/services/absence_compiler.py"
+    ],
+    "grounding_hash": "f7655b59bb6942de6b7b3bf9f3db1ee74bdbac158846910129c6392ee256c821"
   },
   "5d996e2890be94b4f33d29c239fadacf77026118b93bebfc227e763d07e1de5e": {
     "doc": "docs/MCP_SETUP.md",
@@ -5978,6 +6075,19 @@
     ],
     "grounding_hash": "8b5b87403db427cc1843b15e3a90ff3267245357c4da5fcc3cc07f7ca12e83f2"
   },
+  "88ec31737747aea8156f8ba4ff28a12bc6afd5e7ac47740b8307de5bb7de742b": {
+    "doc": "docs/ABSENCE.md",
+    "claim": "Each side is resolved against the store's live vocabulary of metric, source, and domain values -- never a value that isn't actually stored",
+    "grounding": "brainpalace-server/brainpalace_server/services/absence_compiler.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "reused cached verdict, claim unchanged in current prose",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/services/absence_compiler.py"
+    ],
+    "grounding_hash": "f7655b59bb6942de6b7b3bf9f3db1ee74bdbac158846910129c6392ee256c821"
+  },
   "8a1f8a8d5a066a50711cba0c4e782678ca6d4c4f40ac014106b0bae731ae4c2f": {
     "doc": "CLAUDE.md",
     "claim": "lint:dashboard-parity gate imports LIVE config schema, LIVE Click group, and LIVE FastAPI app",
@@ -6562,6 +6672,20 @@
     ],
     "grounding_hash": "be632ac96b2df754db2b141fc6db8fdbf4d9a80f7155e34d4948b9ee8a280ff7"
   },
+  "95e69e4a0bf02d264fc231abd8d19623cc816f97db0fa167c43a3d83ef942ada": {
+    "doc": "docs/ABSENCE.md",
+    "claim": "--mode absence answers which subjects appear under one partition value but never under another over the typed records store; deterministic set-differencing over indexed columns: no LLM, no embeddings, no network, no cost",
+    "grounding": "brainpalace-server/brainpalace_server/services/absence_compiler.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "reused cached verdict, claim unchanged in current prose",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/services/absence_compiler.py",
+      "brainpalace-server/brainpalace_server/storage/record_store.py"
+    ],
+    "grounding_hash": "be1437040f4b875f7d60b26a220790c671104c01e0001824a18a181df588c9a6"
+  },
   "96050dee5d6e1581621e946e8befe8cbd1a555ba47a9597509fa04b7f928c9d1": {
     "doc": "brainpalace-plugin/commands/brainpalace-reset.md",
     "claim": "Server remains running after reset.",
@@ -6744,6 +6868,20 @@
       "brainpalace-server/brainpalace_server/models/query.py"
     ],
     "grounding_hash": "a2e8f529c3c0f057cd624841b967eb15f26edf360bcaf16444f5ab6686e5c679"
+  },
+  "99979d452f346da0217001fb7b1a1a1f11f1f03166b1ba145c79c2fb3c225f13": {
+    "doc": "docs/ABSENCE.md",
+    "claim": "Routing: automatic hybrid queries carrying an absence tell try absence after compute and scan; a query carrying a compute or scan tell routes there instead (how many... -> compute; what did I discuss... -> scan because of tell 'did i discuss')",
+    "grounding": "brainpalace-server/brainpalace_server/services/query_service.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "reused cached verdict, claim unchanged in current prose",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/services/query_router.py",
+      "brainpalace-server/brainpalace_server/services/query_service.py"
+    ],
+    "grounding_hash": "dcdfdbebb352b99ea2bed96bbefbe05cc3c8e977bc05f856aa896d139ce275e7"
   },
   "99d717cf37a9b3c0915d642e45d5f60c03d3709c09580f8ff5d0f71e3602ab9d": {
     "doc": "docs/EVALUATION.md",
@@ -7014,7 +7152,7 @@
   },
   "__marker__": {
     "base": "main",
-    "fingerprint": "a69f8fa72ae47cf6243ff2c3225639f08e50b253861adeffd92529efca391e33"
+    "fingerprint": "b96f747ee446a8dd2e97a85334264d392d1b8601bb685d293f5fc41fc0a5c8d1"
   },
   "a005682696e4982a6d06496acc4954268258fca0b841a0cccc0bc31ad4afbd10": {
     "doc": "brainpalace-plugin/agents/graph-triplet-extractor.md",
@@ -7220,6 +7358,20 @@
       "brainpalace-server/brainpalace_server/providers/summarization"
     ],
     "grounding_hash": "0498014bdb9e6a155e4806b22442eefff42827261ef54fa3526bad78355bb2db"
+  },
+  "a33192f5765179b75961dcadf011dc0ba0bfc21799017d1fcd8fa90558f4b917": {
+    "doc": "docs/ABSENCE.md",
+    "claim": "Absence has no switches -- it is always selectable and returns empty without qualifying records; it reuses compute.min_confidence for the confidence gate",
+    "grounding": "brainpalace-server/brainpalace_server/config/settings.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "reused cached verdict, claim unchanged in current prose",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/config/settings.py",
+      "brainpalace-server/brainpalace_server/services/query_service.py"
+    ],
+    "grounding_hash": "83f250b39073599426af377719058af76ac45e02a28d63032b3f7c5a36b64c31"
   },
   "a45cf5af69f8c5dde0110a8b6f1aaf774a4d9994482d040cc1bd1e4138d315e3": {
     "doc": "brainpalace-plugin/commands/brainpalace-folders.md",
@@ -8742,6 +8894,19 @@
     ],
     "grounding_hash": "2624cfbdbb25fd4d36aac5ce56c1d103333e18ffc8f32520bed23965e0f05d20"
   },
+  "cbeaaab29e22fccd4446e2285837ff94bd64e5cfb446d6a1d05f307d18153aea": {
+    "doc": "docs/ABSENCE.md",
+    "claim": "Empty absence falls back to normal retrieval",
+    "grounding": "brainpalace-server/brainpalace_server/services/query_service.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "reused cached verdict, claim unchanged in current prose",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/services/query_service.py"
+    ],
+    "grounding_hash": "b3388f5168bf29cfcc54565994b9e6cf96d9353b8a9947f3a2d07f556fe3e047"
+  },
   "cc12ee873bb7affeef44a612d0eff2c185a1c5d6af5204b8bd430f7f3255d451": {
     "doc": "brainpalace-plugin/skills/using-brainpalace/references/provider-configuration.md",
     "claim": "OpenAI text-embedding-3-large has 3072 dimensions; text-embedding-3-small has 1536 dims; ada-002 has 1536 dims",
@@ -8793,6 +8958,19 @@
       "brainpalace-cli/brainpalace_cli/commands/inject.py"
     ],
     "grounding_hash": "88353662870bd7ea2b28059d3cdd14fa87c578250192463c23e4fd8d9b2b2e1d"
+  },
+  "ce46cab45e6f6864a47870aeb9d5d917aff8dbe1e011686d593cdae908e58c01": {
+    "doc": "docs/ABSENCE.md",
+    "claim": "The executor anti-joins the records table on subject: rows present where partition = present_in (confidence-gated) but absent where partition = absent_from (confidence-gated)",
+    "grounding": "brainpalace-server/brainpalace_server/storage/record_store.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "reused cached verdict, claim unchanged in current prose",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/storage/record_store.py"
+    ],
+    "grounding_hash": "f780e0d81bfea1c5048aa8b62e53b295c64f677cb22a6b86d6107f8c0b97b114"
   },
   "ce7191f65cbd19c195410e6e9cf00fc01630c5e1ea4138166d328440205c00d6": {
     "doc": "brainpalace-plugin/skills/using-brainpalace/references/api_reference.md",
@@ -8962,6 +9140,20 @@
       "brainpalace-dashboard/brainpalace_dashboard/config.py"
     ],
     "grounding_hash": "ff0a0488bf3370e684d8c9d3bc1708961ebf19817468da83a5a7b229fb4bc154"
+  },
+  "d100285d168a7b15517cbd4d7ab606e300254ea6ec350cc5d929467cd0061e35": {
+    "doc": "docs/ABSENCE.md",
+    "claim": "A value never recorded is unknown, not absent; free-text framings whose words are not stored values do not compile and fall back to normal retrieval",
+    "grounding": "brainpalace-server/brainpalace_server/services/query_service.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "reused cached verdict, claim unchanged in current prose",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/services/absence_compiler.py",
+      "brainpalace-server/brainpalace_server/services/query_service.py"
+    ],
+    "grounding_hash": "7847b54b0fb9ffee2e8808876eecd8bc49df3e96c441d76365803a63e67bf5c6"
   },
   "d114d45167d4531f2c944e27e4b3097c7da9459030ee423883e39067bd3bb604": {
     "doc": "brainpalace-plugin/commands/brainpalace-install.md",
@@ -9305,6 +9497,19 @@
       "brainpalace-cli/brainpalace_cli/commands/start.py"
     ],
     "grounding_hash": "4d8dd743c19ef3b1ccf070f1f17daefdef4198c094e95cfd325a65d9c1aaec16"
+  },
+  "d8b3a654d6eef90939e27f32634c72319f9edd805e10e0f5771a9c503097f3d0": {
+    "doc": "docs/ABSENCE.md",
+    "claim": "Both sides must resolve in the same partition column, or the compiler returns no plan (never guesses)",
+    "grounding": "brainpalace-server/brainpalace_server/services/absence_compiler.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "reused cached verdict, claim unchanged in current prose",
+    "grounding_files": [
+      "brainpalace-server/brainpalace_server/services/absence_compiler.py"
+    ],
+    "grounding_hash": "f7655b59bb6942de6b7b3bf9f3db1ee74bdbac158846910129c6392ee256c821"
   },
   "d8dd8a51204b3bcb5ebc52a018534128845647ec57fe1fabb9af8dbb21664dd0": {
     "doc": "brainpalace-plugin/agents/chat-session-extractor.md",

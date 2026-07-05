@@ -43,9 +43,11 @@ _SKILL_FRONTMATTER = """\
 name: using-brainpalace
 description: |
   Expert BrainPalace skill for document search with BM25 keyword, semantic
-  vector, hybrid, graph, and multi retrieval modes.
+  vector, hybrid, graph, multi, compute, scan, absence, and timeline
+  retrieval modes.
   Use when asked to "search documentation", "query domain", "find in docs",
   "bm25 search", "hybrid search", "semantic search", "graph search", "multi search",
+  "compute query", "scan sessions", "absence query", "timeline query",
   "find dependencies", "code relationships", "searching knowledge base",
   "querying indexed documents", "finding code references", "exploring codebase",
   "what calls this function", "find imports", "trace dependencies",

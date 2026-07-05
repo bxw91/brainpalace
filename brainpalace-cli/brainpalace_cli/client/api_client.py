@@ -101,6 +101,31 @@ class ScanRow:
 
 
 @dataclass
+class AbsenceRow:
+    """One absence-mode row (subject present under one partition, absent under
+    another)."""
+
+    label: str
+    present_in: str
+    absent_from: str
+    partition: str
+    score: float = 0.0
+
+
+@dataclass
+class TimelineRow:
+    """One timeline-mode row (an entity's edge at a point in its history)."""
+
+    subject: str
+    predicate: str
+    object: str
+    valid_from: str | None = None
+    valid_until: str | None = None
+    valid: bool = True
+    score: float = 0.0
+
+
+@dataclass
 class QueryResponse:
     """Query response with results."""
 
@@ -109,6 +134,8 @@ class QueryResponse:
     total_results: int
     compute: list[ComputeRow] | None = None
     scan: list[ScanRow] | None = None
+    absence: list[AbsenceRow] | None = None
+    timeline: list[TimelineRow] | None = None
     index_blocked: dict[str, Any] | None = None
 
 
@@ -360,12 +387,44 @@ class DocServeClient:
                 for r in raw_scan
             ]
 
+        raw_absence = data.get("absence")
+        absence_rows: list[AbsenceRow] | None = None
+        if raw_absence is not None:
+            absence_rows = [
+                AbsenceRow(
+                    label=str(r.get("label", "")),
+                    present_in=str(r.get("present_in", "")),
+                    absent_from=str(r.get("absent_from", "")),
+                    partition=str(r.get("partition", "")),
+                    score=float(r.get("score", 0.0)),
+                )
+                for r in raw_absence
+            ]
+
+        raw_timeline = data.get("timeline")
+        timeline_rows: list[TimelineRow] | None = None
+        if raw_timeline is not None:
+            timeline_rows = [
+                TimelineRow(
+                    subject=str(r.get("subject", "")),
+                    predicate=str(r.get("predicate", "")),
+                    object=str(r.get("object", "")),
+                    valid_from=r.get("valid_from"),
+                    valid_until=r.get("valid_until"),
+                    valid=bool(r.get("valid", r.get("valid_until") is None)),
+                    score=float(r.get("score", 0.0)),
+                )
+                for r in raw_timeline
+            ]
+
         return QueryResponse(
             results=results,
             query_time_ms=data.get("query_time_ms", 0.0),
             total_results=data.get("total_results", len(results)),
             compute=compute_rows,
             scan=scan_rows,
+            absence=absence_rows,
+            timeline=timeline_rows,
             index_blocked=data.get("index_blocked"),
         )
 

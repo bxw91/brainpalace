@@ -20,6 +20,10 @@ import json  # noqa: E402
 
 from brainpalace_cli.doc_sync import SCHEMA_VERSION  # noqa: E402
 from brainpalace_cli.doc_sync.checkers import cli_commands  # noqa: E402
+from brainpalace_cli.doc_sync.checkers.mode_parity_checker import (
+    ModeParityChecker,  # noqa: E402
+)
+from brainpalace_cli.doc_sync.checkers.modes import ModesChecker  # noqa: E402
 from brainpalace_cli.doc_sync.checkers.plugin_docs import (
     PluginDocsChecker,  # noqa: E402
 )
@@ -36,6 +40,14 @@ _PLUGIN = REPO / "brainpalace-plugin"
 # Roots scanned for provider/install GENERATED blocks (whole plugin tree + docs +
 # repo README). Recursive — a new doc that adds a block is covered automatically.
 _PROVIDER_DOC_ROOTS = [_PLUGIN, REPO / "docs", REPO / "README.md"]
+# Doc -> mode-table style for the additional (non-canonical) GENERATED:modes
+# blocks — mirrors brainpalace_cli.commands.sync_docs._MODES_DOC_STYLES so the
+# CI gate catches the same drift `sync-docs --fix` regenerates.
+_MODES_DOC_STYLES = {
+    REPO / "README.md": "grid",
+    REPO / "docs" / "API_REFERENCE.md": "table",
+    REPO / "docs" / "USER_GUIDE.md": "commands",
+}
 #: The plugin-docs registry == the freshness manifest (a doc is "registered" iff it
 #: is stamped + freshness-gated). Dev-only skills live in the repo project scope.
 _FRESHNESS_MANIFEST = REPO / "scripts" / "doc_freshness.json"
@@ -126,6 +138,8 @@ def main() -> int:
             extra_skills_dirs=_EXTRA_SKILLS_DIRS,
         ),
         ProviderTablesChecker(doc_roots=_PROVIDER_DOC_ROOTS),
+        ModesChecker(docs_dir=_DOCS, targets=_MODES_DOC_STYLES),
+        ModeParityChecker(),
     ]
     code, records = run_check(checkers, snap)
     print(render_report(records))

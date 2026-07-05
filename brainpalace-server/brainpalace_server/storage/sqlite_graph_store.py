@@ -453,7 +453,7 @@ class SQLitePropertyGraphStore:
             "JOIN nodes s ON s.id = e.source_id "
             "JOIN nodes t ON t.id = e.target_id "
             "WHERE e.source_id = ? OR e.target_id = ? "
-            "ORDER BY e.valid_from",
+            "ORDER BY e.valid_from, e.id",
             (node_id, node_id),
         ).fetchall()
         return [

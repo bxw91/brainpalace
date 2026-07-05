@@ -16,6 +16,8 @@ class QueryMode(str, Enum):
     MULTI = "multi"  # Multi-retrieval: vector + BM25 + graph with RRF (Feature 113)
     COMPUTE = "compute"  # Set-level aggregation over typed numeric Records (Phase 1)
     SCAN = "scan"  # Deterministic map-reduce over the session archive (Phase 2)
+    ABSENCE = "absence"  # Anti-join over the records store (Phase 3)
+    TIMELINE = "timeline"  # Edge-validity/supersession history walk (Phase 4)
 
 
 class QueryRequest(BaseModel):
@@ -42,7 +44,7 @@ class QueryRequest(BaseModel):
     mode: QueryMode = Field(
         default=QueryMode.HYBRID,
         description="Retrieval mode (vector, bm25, hybrid, graph, multi, "
-        "compute, scan)",
+        "compute, scan, absence, timeline)",
     )
     alpha: float = Field(
         default=0.5,
@@ -192,6 +194,32 @@ class ScanResult(BaseModel):
     score: float = 0.0  # value normalised to 0..1 (display ordering only)
 
 
+class AbsenceResult(BaseModel):
+    """One absence-mode row: a subject present under one partition value but
+    absent under another. Not a document."""
+
+    model_config = {"frozen": True}
+    label: str  # the missing subject (row label)
+    present_in: str  # partition value the subject IS under (A)
+    absent_from: str  # partition value it is MISSING from (B)
+    partition: str  # partition column used: "metric" | "source" | "domain"
+    score: float = 0.0  # reserved for ordering parity; always 0.0 in v1
+
+
+class TimelineResult(BaseModel):
+    """One timeline-mode row: an entity's edge at a point in its history, with
+    validity. Maps 1:1 from a graph `timeline_named` row. Not a document."""
+
+    model_config = {"frozen": True}
+    subject: str
+    predicate: str
+    object: str
+    valid_from: str | None = None
+    valid_until: str | None = None  # None = still valid
+    valid: bool = True  # convenience mirror of (valid_until is None)
+    score: float = 0.0  # ordering parity; timeline is ordered by valid_from
+
+
 class QueryResult(BaseModel):
     """Single query result with source and score."""
 
@@ -279,6 +307,18 @@ class QueryResponse(BaseModel):
         default=None,
         description="Scan rows — term counts over the session archive (scan "
         "mode); null for document retrieval. When set, `results` is empty.",
+    )
+    absence: list[AbsenceResult] | None = Field(
+        default=None,
+        description="Absence rows — subjects present under one partition value "
+        "but absent under another (absence mode); null for document retrieval. "
+        "When set, `results` is empty.",
+    )
+    timeline: list[TimelineResult] | None = Field(
+        default=None,
+        description="Timeline rows — an entity's ordered edge-validity/"
+        "supersession history (timeline mode); null for document retrieval. "
+        "When set, `results` is empty.",
     )
     index_blocked: BlockedJobInfo | None = Field(
         default=None,

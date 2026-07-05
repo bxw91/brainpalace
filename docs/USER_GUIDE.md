@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-28
+last_validated: 2026-07-05
 ---
 
 # BrainPalace User Guide
@@ -58,14 +58,21 @@ BrainPalace is a RAG (Retrieval-Augmented Generation) system that indexes and se
 
 All retrieval is one command, `/brainpalace-query`, with a `--mode` flag:
 
+_Add `--alpha 0.7` to tune hybrid vector/BM25 weighting._
+
+<!--GENERATED:modes-->
 | Command | Description | Best For |
 |---------|-------------|----------|
-| `/brainpalace-query` | Hybrid search (default) | General questions |
-| `/brainpalace-query --mode vector` | Pure vector search | Conceptual queries |
-| `/brainpalace-query --mode bm25` | BM25 keyword search | Exact terms, function names |
-| `/brainpalace-query --mode hybrid --alpha 0.7` | Hybrid with alpha control | Fine-tuned searches |
-| `/brainpalace-query --mode graph` | Knowledge graph search | Dependencies, relationships |
-| `/brainpalace-query --mode multi` | All modes with RRF fusion | Maximum recall |
+| `/brainpalace-query --mode vector` | Semantic similarity search | Conceptual understanding |
+| `/brainpalace-query --mode bm25` | Keyword matching | Exact terms, error codes |
+| `/brainpalace-query` | Vector + BM25 fusion (default) | General questions |
+| `/brainpalace-query --mode graph` | Knowledge graph relationships (empty unless the graph is built) | Relationships, dependencies |
+| `/brainpalace-query --mode multi` | Fusion of vector + BM25 + graph via RRF | Comprehensive recall |
+| `/brainpalace-query --mode compute` | Set-level aggregation over typed numeric records | Aggregates over your sessions (sum/count/avg, by week/month, superlatives) |
+| `/brainpalace-query --mode scan` | Deterministic term counts over archived session transcripts (empty when the session archive is off) | Utterance history over sessions |
+| `/brainpalace-query --mode absence` | Anti-join over typed records (empty when no two stored values resolve) | Subjects present under one value but absent under another |
+| `/brainpalace-query --mode timeline` | Edge-validity/supersession history walk (empty when the entity resolves to no graph node) | How a belief/fact evolved over time |
+<!--/GENERATED-->
 
 **Time-decay (recency).** All search modes rank **newer** content higher by
 default — fresh sessions, recent commits, and just-edited code beat stale matches

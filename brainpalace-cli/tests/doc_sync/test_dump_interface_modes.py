@@ -13,17 +13,21 @@ def test_snapshot_has_modes():
         "multi",
         "compute",
         "scan",
+        "absence",
+        "timeline",
     }
 
 
 def test_dump_interface_emits_modes():
     data = json.loads(dump_interface_json())
     assert sorted(data["modes"]) == [
+        "absence",
         "bm25",
         "compute",
         "graph",
         "hybrid",
         "multi",
         "scan",
+        "timeline",
         "vector",
     ]

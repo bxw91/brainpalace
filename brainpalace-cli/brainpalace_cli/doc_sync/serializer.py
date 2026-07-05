@@ -9,6 +9,7 @@ from typing import Any
 
 from brainpalace_cli.doc_sync.facts import CommandFact
 from brainpalace_cli.doc_sync.markers import CLOSE, OPEN_FMT
+from brainpalace_cli.doc_sync.mode_meta import resolve_meta
 
 
 def _yaml_scalar(v: object) -> str:
@@ -67,12 +68,46 @@ def render_mcp_tools_table(tools: list[str]) -> str:
     return "\n".join(rows)
 
 
+def _esc(cell: str) -> str:
+    return cell.replace("|", "\\|")
+
+
 def render_modes_table(modes: list[str]) -> str:
+    """2-col `| Mode | Description |` shape (plugin brainpalace-query.md,
+    docs/API_REFERENCE.md). Description filled from the single-source MODE_META —
+    resolve_meta raises if a live mode has no entry, so this can never silently
+    render blank."""
     rows = ["| Mode | Description |", "|------|-------------|"]
-    for m in modes:  # definition order (matches the Choice)
+    for m, meta in resolve_meta(modes):  # definition order (matches the Choice)
+        rows.append(f"| `{m}` | {_esc(meta.description)} |")
+    return "\n".join(rows)
+
+
+def render_modes_grid(modes: list[str]) -> str:
+    """README shape: `| Mode | Best For | Example Query |`, mode UPPERCASE."""
+    rows = [
+        "| Mode | Best For | Example Query |",
+        "|------|----------|---------------|",
+    ]
+    for m, meta in resolve_meta(modes):
         rows.append(
-            f"| `{m}` |  |"
-        )  # description is human prose, left blank by generator
+            f'| `{m.upper()}` | {_esc(meta.best_for)} | "{_esc(meta.example)}" |'
+        )
+    return "\n".join(rows)
+
+
+def render_modes_commands(modes: list[str]) -> str:
+    """USER_GUIDE shape: `| Command | Description | Best For |`. hybrid is the
+    default mode, so its command cell omits `--mode hybrid`."""
+    rows = [
+        "| Command | Description | Best For |",
+        "|---------|-------------|----------|",
+    ]
+    for m, meta in resolve_meta(modes):
+        cmd = (
+            "/brainpalace-query" if m == "hybrid" else f"/brainpalace-query --mode {m}"
+        )
+        rows.append(f"| `{cmd}` | {_esc(meta.description)} | {_esc(meta.best_for)} |")
     return "\n".join(rows)
 
 

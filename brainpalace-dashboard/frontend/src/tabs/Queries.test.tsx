@@ -236,6 +236,75 @@ describe("retrieval explorer", () => {
     expect(options).toEqual(expect.arrayContaining(["compute", "scan"]));
   });
 
+  it("offers the absence run mode", async () => {
+    wrap(<Queries instanceId="a" />);
+    fireEvent.click(await screen.findByTestId("btn-new-query"));
+    const options = within(screen.getByTestId("select-run-mode"))
+      .getAllByRole("option")
+      .map((o) => (o as HTMLOptionElement).value);
+    expect(options).toEqual(expect.arrayContaining(["absence"]));
+  });
+
+  it("renders absence rows as 'in X, not Y' lines", async () => {
+    vi.mocked(client.replayQuery).mockResolvedValue({
+      results: [],
+      query_time_ms: 2,
+      total_results: 1,
+      absence: [{ label: "walk", present_in: "distance", absent_from: "duration" }],
+    });
+    wrap(<Queries instanceId="a" />);
+    fireEvent.click(await screen.findByTestId("btn-new-query"));
+    fireEvent.change(screen.getByTestId("select-run-mode"), {
+      target: { value: "absence" },
+    });
+    fireEvent.change(screen.getByTestId("input-run-query"), {
+      target: { value: "subjects with distance but not duration" },
+    });
+    fireEvent.click(screen.getByTestId("btn-run-query"));
+    expect(
+      await screen.findByText("walk (in distance, not duration)"),
+    ).toBeInTheDocument();
+  });
+
+  it("offers the timeline run mode", async () => {
+    wrap(<Queries instanceId="a" />);
+    fireEvent.click(await screen.findByTestId("btn-new-query"));
+    const options = within(screen.getByTestId("select-run-mode"))
+      .getAllByRole("option")
+      .map((o) => (o as HTMLOptionElement).value);
+    expect(options).toEqual(expect.arrayContaining(["timeline"]));
+  });
+
+  it("renders timeline rows as edge-history lines", async () => {
+    vi.mocked(client.replayQuery).mockResolvedValue({
+      results: [],
+      query_time_ms: 3,
+      total_results: 1,
+      timeline: [
+        {
+          subject: "d1",
+          predicate: "superseded-by",
+          object: "d2",
+          valid_from: "2026-03-01T00:00:00",
+          valid_until: null,
+          valid: true,
+        },
+      ],
+    });
+    wrap(<Queries instanceId="a" />);
+    fireEvent.click(await screen.findByTestId("btn-new-query"));
+    fireEvent.change(screen.getByTestId("select-run-mode"), {
+      target: { value: "timeline" },
+    });
+    fireEvent.change(screen.getByTestId("input-run-query"), {
+      target: { value: "how did d1 evolve" },
+    });
+    fireEvent.click(screen.getByTestId("btn-run-query"));
+    expect(
+      await screen.findByText(/d1 —superseded-by→ d2/),
+    ).toBeInTheDocument();
+  });
+
   it("renders scan rows as label: value lines", async () => {
     vi.mocked(client.replayQuery).mockResolvedValue({
       results: [],

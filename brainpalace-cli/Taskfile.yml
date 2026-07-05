@@ -30,21 +30,40 @@ tasks:
     desc: Install project dependencies (incl. the dashboard on Python 3.12+)
     cmds:
     - |
-      # Monorepo: brainpalace-rag and brainpalace-dashboard may not be on PyPI
-      # yet during development. The dashboard is a regular dependency (python
-      # >= 3.12 marker), so a plain install pulls it in on 3.12+. If resolution
-      # fails because the siblings aren't published, temporarily switch them to
-      # path dependencies, re-lock, install, then restore the committed
-      # (PyPI-version) pyproject.toml. The dashboard path dep is marked
-      # develop=true; the resulting cycle (dashboard -> cli) is handled fine by
-      # Poetry for path dependencies.
-      if ! {{.POETRY}} install 2>/dev/null; then
+      # Monorepo: brainpalace-rag and brainpalace-dashboard live in this repo but
+      # the committed pyproject pins them by PyPI version (for end-user installs).
+      # The inner loop installs those published siblings (fast). Two cases need
+      # the LOCAL sibling source instead, both handled by switching to path deps,
+      # re-locking, and installing:
+      #   1. Release gate (BRAINPALACE_RELEASE=1): the NEW version's siblings are
+      #      not on PyPI yet, but the previous version IS — so a plain install
+      #      succeeds against the OLD published sibling. The dogfood / doc-sync
+      #      tests reflect docs against the LIVE installed server+dashboard, so a
+      #      newly added endpoint / module / config field reads as false drift and
+      #      the gate fails. Forcing local source makes the gate test THIS release.
+      #   2. Siblings genuinely absent from PyPI (early dev): plain install fails.
+      # Case 1 also restores poetry.lock so the committed lock stays PyPI-pinned
+      # (RELEASING.md step 12 refreshes it after publish); case 2 leaves the
+      # path-lock (nothing is published to pin yet). The dashboard path dep is
+      # marked develop=true; the resulting cycle (dashboard -> cli) is fine for
+      # Poetry path deps.
+      restore_lock=0
+      if [ "${BRAINPALACE_RELEASE:-}" = "1" ]; then
+        need_path=1; restore_lock=1
+      elif {{.POETRY}} install 2>/dev/null; then
+        need_path=0
+      else
+        need_path=1
+      fi
+      if [ "$need_path" = "1" ]; then
         cp pyproject.toml pyproject.toml.bak
+        [ "$restore_lock" = "1" ] && cp poetry.lock poetry.lock.bak
         perl -pi -e 's|brainpalace-rag = "\^[0-9]+\.[0-9]+\.[0-9]+"|brainpalace-rag = {path = "../brainpalace-server", develop = false}|' pyproject.toml
         perl -pi -e 's|brainpalace-dashboard = \{ version = "\^[0-9]+\.[0-9]+\.[0-9]+", python = ">=3.12" \}|brainpalace-dashboard = {path = "../brainpalace-dashboard", develop = true, python = ">=3.12"}|' pyproject.toml
         {{.POETRY}} lock
         {{.POETRY}} install
         mv pyproject.toml.bak pyproject.toml
+        [ "$restore_lock" = "1" ] && mv poetry.lock.bak poetry.lock
       fi
 
   install:global:

@@ -53,6 +53,8 @@ Pick `--mode` for any inline search. Default to `hybrid` when unsure.
 | Maximum recall (ALL usages / references) | `--mode multi` |
 | Aggregation ("how many", "total", "which week had most") | `--mode compute` |
 | Own-utterance history ("which week did I mention X") | `--mode scan` |
+| Anti-join over typed records ("X but not Y") | `--mode absence` |
+| Belief/fact evolution ("how did X evolve", "history of X") | `--mode timeline` |
 
 Common flags: `--top-k N` (default 5), `--threshold F` (default 0.3),
 `--alpha F` (hybrid balance, 0=BM25…1=Vector, default 0.5), `--language CODE`
@@ -97,18 +99,7 @@ Per-result keys are `text`, `source`, `score`, `chunk_id` — there is NO
 `{"error": ...}` (with `detail`/`hint`) and a non-zero exit, with **no**
 `results` key. Never append `2>/dev/null` — diagnostics go to stderr. A
 top-level `index_blocked` object means the index is STALE (paused over
-budget) — never auto-approve.
-
-```bash
-brainpalace query "..." --mode hybrid --top-k 8 --json | python3 -c "
-import json, sys
-d = json.load(sys.stdin)
-if 'error' in d: sys.exit('brainpalace error: %s' % d['error'])
-for r in d['results']:
-    print(r['source'], r['score'])
-    print(r['text'][:500])
-"
-```
+budget) — never auto-approve. (Runnable parsing snippet: `--tier full`.)
 
 **Allowed Glob/Grep cases (NOT codebase search):** searching inside a single file
 BrainPalace already returned; non-indexed paths (`~/.claude/`, `~/.config/`,
@@ -131,6 +122,21 @@ not-indexed (no `.brainpalace/` at all → the skill yields).
 For full operational detail run `brainpalace ai-guide --tier full` (or, over MCP,
 call the `ai_guide` tool).
 <!--/CORE-->
+
+---
+
+## Parsing `--json` Output — runnable example
+
+```bash
+brainpalace query "..." --mode hybrid --top-k 8 --json | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+if 'error' in d: sys.exit('brainpalace error: %s' % d['error'])
+for r in d['results']:
+    print(r['source'], r['score'])
+    print(r['text'][:500])
+"
+```
 
 ---
 
@@ -222,6 +228,38 @@ is off or no term parses. Tie-break with compute: typed record metric wins.
 **`--json` contract for scan:** `results` is always `[]`; rows live under
 `scan`. Each row: `label`, `value` (float count), `term`, `group`
 (bucket or `null`), `score`.
+
+---
+
+## Absence Mode — Anti-Join over Typed Records
+
+`--mode absence` — anti-join over typed records: subjects present under one
+partition value (`metric`/`source`/`domain`) but absent under another
+("distance but not duration"). Deterministic, no LLM. Empty when no two
+stored values resolve, or nothing qualifies (e.g. no records exist).
+Auto-routed after compute and scan — a query carrying a compute or scan tell
+alongside an absence tell routes there instead (e.g. "did I discuss gmail but
+not session" is scan, not absence, because it carries "did i discuss").
+
+**`--json` contract for absence:** `results` is always `[]`; rows live under
+`absence`. Each row: `label` (the missing subject), `present_in`,
+`absent_from`, `partition` (`metric`/`source`/`domain`), `score` (reserved,
+always `0.0`).
+
+---
+
+## Timeline Mode — Edge-Validity / Supersession History
+
+`timeline` — walk an entity's edge-validity/supersession history in the graph:
+how a belief/fact evolved ("how did the auth decision evolve", "history of
+auth.py"). Deterministic, no LLM. Requires the graph index (`ENABLE_GRAPH_INDEX`);
+empty when the named entity resolves to no graph node or has no edges.
+Auto-routed after compute, scan, and absence — a query carrying one of those
+tells alongside a timeline tell routes there instead.
+
+**`--json` contract for timeline:** `results` is always `[]`; rows live under
+`timeline`. Each row: `subject`, `predicate`, `object`, `valid_from`,
+`valid_until` (`null` = still valid), `valid`, `score`.
 
 ---
 

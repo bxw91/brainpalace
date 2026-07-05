@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-04
+last_validated: 2026-07-05
 ---
 
 <div align="center">
@@ -45,9 +45,7 @@ as a Claude Code plugin. Runs fully local on Ollama or with cloud LLMs.
 |:-:|:-:|
 | [<img src="docs/images/dash-3-queries.png" alt="Queries" width="420">](docs/images/dash-3-queries.png) | [<img src="docs/images/dash-4-cache.png" alt="Cache" width="420">](docs/images/dash-4-cache.png) |
 
-|   |
-|:-:|
-| [<img src="docs/images/dash-5-graph.png" alt="Graph" width="680">](docs/images/dash-5-graph.png) |
+<a href="docs/images/dash-5-graph.png"><img src="docs/images/dash-5-graph.png" alt="Graph" width="100%"></a>
 
 ## Install
 
@@ -240,14 +238,19 @@ with optional cloud providers for embeddings and summarisation.
 
 ## Search Modes
 
+<!--GENERATED:modes-->
 | Mode | Best For | Example Query |
 |------|----------|---------------|
-| `HYBRID` | General questions (default) | "How does caching work?" |
 | `VECTOR` | Conceptual understanding | "Explain the architecture" |
-| `BM25` | Exact terms, error codes | "NullPointerException", "getUserById" |
+| `BM25` | Exact terms, error codes | "NullPointerException, getUserById" |
+| `HYBRID` | General questions | "How does caching work?" |
 | `GRAPH` | Relationships, dependencies | "What classes use AuthService?" |
-| `MULTI` | Comprehensive search (all modes via RRF) | "Everything about data validation" |
-| `COMPUTE` | Set-level aggregates over your sessions (sum/count/avg, by week/month, superlatives) | "How many files did I touch this week?" |
+| `MULTI` | Comprehensive recall | "Everything about data validation" |
+| `COMPUTE` | Aggregates over your sessions (sum/count/avg, by week/month, superlatives) | "How many files did I touch this week?" |
+| `SCAN` | Utterance history over sessions | "Which week did I mention retries most?" |
+| `ABSENCE` | Subjects present under one value but absent under another | "Subjects with distance but not duration" |
+| `TIMELINE` | How a belief/fact evolved over time | "How did the auth decision evolve?" |
+<!--/GENERATED-->
 
 ## Usage Examples
 

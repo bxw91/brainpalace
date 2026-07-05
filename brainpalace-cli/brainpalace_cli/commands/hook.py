@@ -171,7 +171,21 @@ def hook_userpromptsubmit() -> None:
 # Query modes a guarded subagent prompt must reference to prove it will search
 # via BrainPalace. Mirrors the modes accepted by `brainpalace query --mode` and
 # the MCP/skill `query` tool's `mode` argument.
-_GUARD_QUERY_MODES = ("hybrid", "bm25", "vector", "graph", "multi")
+# The 9 query modes. Kept a CLI-local literal (NOT imported from the server enum)
+# because hook.py is a fast, server-import-free shim loaded on every CLI call; the
+# contract_parity gate (tests/doc_sync/test_mode_parity.py + lint:doc-sync) holds
+# this tuple equal to brainpalace_server.models.query.QueryMode.
+_GUARD_QUERY_MODES = (
+    "hybrid",
+    "bm25",
+    "vector",
+    "graph",
+    "multi",
+    "compute",
+    "scan",
+    "absence",
+    "timeline",
+)
 _GUARD_MODES_ALT = "|".join(_GUARD_QUERY_MODES)
 # A prompt proves BrainPalace search two equivalent ways:
 #   CLI form — `brainpalace query ... --mode <mode>`
@@ -217,7 +231,7 @@ _GUARD_SEARCH_INTENT_RE = re.compile(
 )
 _GUARD_DENY_REASON = (
     "Subagent prompt must instruct BrainPalace search: include "
-    "`brainpalace query ... --mode <hybrid|bm25|vector|graph|multi>`. "
+    f"`brainpalace query ... --mode <{_GUARD_MODES_ALT}>`. "
     "If genuinely exempt, open the prompt with a line "
     "`# BRAINPALACE_EXEMPT: <reason of 20+ chars>`."
 )

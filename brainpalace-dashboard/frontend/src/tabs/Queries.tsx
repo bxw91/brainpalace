@@ -27,6 +27,8 @@ const RUN_MODES = [
   "multi",
   "compute",
   "scan",
+  "absence",
+  "timeline",
 ] as const;
 
 const COMPARE_MODES = ["bm25", "vector", "hybrid", "graph"] as const;
@@ -390,6 +392,41 @@ export function Queries({ instanceId }: { instanceId?: string }) {
                 {Math.round(runResults.query_time_ms)} ms
               </p>
               {(() => {
+                if (runResults.timeline != null) {
+                  return runResults.timeline.length === 0 ? (
+                    <p className="text-sm text-fg-faint">
+                      No history found — no recognizable entity, or it has no graph
+                      edges.
+                    </p>
+                  ) : (
+                    <ul className="flex flex-col gap-1.5">
+                      {runResults.timeline.slice(0, 12).map((r, i) => (
+                        <li
+                          key={i}
+                          className="rounded-lg border border-line/60 bg-ink-700/30 px-3 py-2 font-mono text-xs text-fg-muted"
+                        >
+                          {`${r.valid === false ? "✗" : "✓"} ${r.subject} —${r.predicate}→ ${r.object} (${r.valid_from ?? "?"} … ${r.valid_until ?? "now"})`}
+                        </li>
+                      ))}
+                    </ul>
+                  );
+                }
+                if (runResults.absence != null) {
+                  return runResults.absence.length === 0 ? (
+                    <p className="text-sm text-fg-faint">No gaps found.</p>
+                  ) : (
+                    <ul className="flex flex-col gap-1.5">
+                      {runResults.absence.slice(0, 10).map((r, i) => (
+                        <li
+                          key={i}
+                          className="rounded-lg border border-line/60 bg-ink-700/30 px-3 py-2 font-mono text-xs text-fg-muted"
+                        >
+                          {`${r.label} (in ${r.present_in}, not ${r.absent_from})`}
+                        </li>
+                      ))}
+                    </ul>
+                  );
+                }
                 const agg = runResults.compute ?? runResults.scan;
                 if (agg != null) {
                   return agg.length === 0 ? (

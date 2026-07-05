@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-04
+last_validated: 2026-07-05
 ---
 
 # API Reference
@@ -279,14 +279,19 @@ Execute a search query.
 
 **Mode Values**:
 
+<!--GENERATED:modes-->
 | Mode | Description |
 |------|-------------|
-| `bm25` | Keyword-only search |
-| `vector` | Semantic-only search |
-| `hybrid` | BM25 + Vector fusion |
-| `graph` | Knowledge graph traversal |
-| `multi` | All three with RRF |
-| `compute` | Set-level aggregation over typed numeric Records |
+| `vector` | Semantic similarity search |
+| `bm25` | Keyword matching |
+| `hybrid` | Vector + BM25 fusion (default) |
+| `graph` | Knowledge graph relationships (empty unless the graph is built) |
+| `multi` | Fusion of vector + BM25 + graph via RRF |
+| `compute` | Set-level aggregation over typed numeric records |
+| `scan` | Deterministic term counts over archived session transcripts (empty when the session archive is off) |
+| `absence` | Anti-join over typed records (empty when no two stored values resolve) |
+| `timeline` | Edge-validity/supersession history walk (empty when the entity resolves to no graph node) |
+<!--/GENERATED-->
 
 **Compute mode response** — when `mode` is `compute` (or auto-routed to
 compute), `results` is always `[]` and aggregation rows appear under `compute`:

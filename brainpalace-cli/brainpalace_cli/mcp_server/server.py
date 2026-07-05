@@ -76,8 +76,8 @@ app: Server = Server("brainpalace", instructions=_INSTRUCTIONS)
 # risk in the Phase Q plan).
 _TOOL_DESCRIPTIONS: dict[str, str] = {
     "query": (
-        "Search indexed docs / code via BM25, vector, hybrid, graph, "
-        "or multi-mode fusion."
+        "Search indexed docs and code; pick the retrieval strategy via the "
+        "`mode` argument."
     ),
     "status": "BrainPalace server health and indexing state.",
     "whoami": (

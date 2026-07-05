@@ -7,6 +7,7 @@ from __future__ import annotations
 import re
 import subprocess
 from pathlib import Path
+from typing import Callable
 
 from brainpalace_cli.doc_sync.facts import CommandFact, InterfaceSnapshot
 from brainpalace_cli.doc_sync.markers import (
@@ -20,9 +21,19 @@ from brainpalace_cli.doc_sync.serializer import (
     render_flags_section,
     render_flags_table,
     render_mcp_tools_table,
+    render_modes_commands,
+    render_modes_grid,
     render_modes_table,
     render_params_yaml,
 )
+
+#: style name -> renderer(modes) -> markdown body. Each target doc registers the
+#: style matching its own richer column shape; all pull from the same MODE_META.
+MODES_RENDERERS: dict[str, Callable[[list[str]], str]] = {
+    "table": render_modes_table,
+    "grid": render_modes_grid,
+    "commands": render_modes_commands,
+}
 
 _PARAMS_RE = re.compile(r"^parameters:.*?(?=^\S|\Z)", re.MULTILINE | re.DOTALL)
 
@@ -115,6 +126,24 @@ def regenerate_query_modes(path: Path, modes: list[str]) -> None:
             + f"{OPEN_FMT.format(name='modes')}\n{table}\n{CLOSE}\n"
         )
     path.write_text(text, encoding="utf-8")
+
+
+def regenerate_modes_block(path: Path, modes: list[str], style: str) -> bool:
+    """Refresh the GENERATED:modes block in ``path`` IF PRESENT, using the renderer
+    for ``style`` (mirrors regenerate_provider_tables: these tables are placed by a
+    human where they belong, never auto-appended). Returns True if the file changed,
+    False when the file has no modes block (skipped, untouched)."""
+    render = MODES_RENDERERS[style]
+    text = path.read_text(encoding="utf-8")
+    try:
+        find_block(text, "modes")
+    except MarkerError:
+        return False
+    new_text = replace_block(text, "modes", render(modes))
+    if new_text != text:
+        path.write_text(new_text, encoding="utf-8")
+        return True
+    return False
 
 
 def regenerate_provider_tables(path: Path, snap: InterfaceSnapshot) -> bool:

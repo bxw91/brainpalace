@@ -1,6 +1,6 @@
 {
   "CLAUDE.md": "a68b785eee27856c46ea7448496168ac4ee8ed83f966f7075174188859ea131c",
-  "README.md": "2ffb313fb3c146e30246171ea888f982c318fe8e604571023111b1ec5d867fcf",
+  "README.md": "264f421e136242a1e127784e9eaae222f79996ee052a75740155f680b3f3fa10",
   "brainpalace-plugin/README.md": "be25c9ffe3304f4de998e560c742f8193051de9fe755fc83dc1873f79ac04e74",
   "brainpalace-plugin/agents/chat-session-extractor.md": "1755b539c56404123c4ecf70b27d3ba4603736fe8675100bab6fe4f3e87db582",
   "brainpalace-plugin/agents/graph-triplet-extractor.md": "2aff76df720b4baadcb549e358f5320975a94fe207f4553a633a8e10d956d92d",
@@ -63,10 +63,11 @@
   "brainpalace-plugin/skills/using-brainpalace/references/troubleshooting-guide.md": "1c05262813568fe72424165f2289581d5f661aa9884b59b15ab61e18379b796f",
   "brainpalace-plugin/skills/using-brainpalace/references/vector-search-guide.md": "6b0d2e96c9b20ce91639fa8ed09b269a44905b7e36643c1732bd4d710df0aa3b",
   "brainpalace-plugin/skills/using-brainpalace/references/version-management.md": "e452f6c73e9dfbe688b412f5e5781fcabef7895dc34219debe2116c6ff93a81c",
-  "docs/API_REFERENCE.md": "e804294d88e35bb1b1dd9321fdbd245f0e65cc8baa2b5daddd89bce30c8b1247",
+  "docs/ABSENCE.md": "30b470219b7995ff06387c46972523cf16c587ba64891153e49ccf0e81cdf007",
+  "docs/API_REFERENCE.md": "ba678e19645981c73508b1c72d148068d4e66a9c16727ad7967cf8a8d757277a",
   "docs/ARCHITECTURE.md": "6a373d8ea9b0d1ca60d108248d6a754a277dd713f50c8df08b04d241ecd9003a",
   "docs/BENCHMARKS.md": "c21a79a6af72113e5f32af8bab840735f2dcc9243d9866789e559b6f5a3967fc",
-  "docs/CHANGELOG.md": "c131a2aaa94a04763b49a9d693672891ac4080b1febcd355c5ff472afe5be889",
+  "docs/CHANGELOG.md": "ddc82e42efc71d26ba2332ff7ce4394d98c682f96a0d617c4f501753bf301d52",
   "docs/CODE_INDEXING.md": "2aa04e216b30c5bc96e4060536de6399c77aa763b062d33088686f6867d2f643",
   "docs/COMPUTE.md": "e1984aa11c365ccefb3cd4004596a0a96ffa8d3eadc872008be3268c178b8ff9",
   "docs/CONFIGURATION.md": "7c56a3deba259b0d87b19e89e78f3e5decdcc15b73c96cb4b3ceaced989c4b90",
@@ -88,10 +89,11 @@
   "docs/POSTGRESQL_SETUP.md": "b0b5176ad6f78326a77418d2442f0a0618bb16f991494f4c9f770b500865999f",
   "docs/PROVIDER_CONFIGURATION.md": "61ba99cb6fd1094ee43ca331f0cd1227251337f79ca22a65b67ae73cdd72fd79",
   "docs/QUICK_START.md": "46138f750540c7d83c55c9d318edec5cfcb3fc81375c5e503c23c10afd0d1164",
-  "docs/RELEASING.md": "57c01b0b3e297d3029347b456b7e8a038906aa4be1dae5bc6063ed74628b4fbe",
+  "docs/RELEASING.md": "d17574553cb9d3b7f341cfb87255cbb7894d33ab9294328f56f059c7d0aec64d",
   "docs/SCAN.md": "67c5fad5a0dbd5f98ec35e4d5b4235da7824ec73fd9388b369b05597af550812",
   "docs/SESSION_CONTEXT.md": "bf059c0e75c480b31cfb31eef090adfb927e7f582d2905c94b1f71edbe6210b3",
   "docs/SESSION_INDEXING.md": "19a9b0c60ed3315d22605f90eef06bb1fd0d1f6b3fa413d1b867e3e743cd4a09",
   "docs/SETUP_PLAYGROUND.md": "7d408c7743071a303906bd02a3c1abe201aeda0e41c2ee67941f5c2ef9c4bbd4",
-  "docs/USER_GUIDE.md": "d2945630ff66d9e398080901ba8eb7e63051547c3873e84cf284f991482b0653"
+  "docs/TIMELINE.md": "3b8a6dc88a2fb3c3702e28338a1a7d086068ff19f009e758c8b244b039c4c79c",
+  "docs/USER_GUIDE.md": "f6ceba85202ee37f83d7b87399add716c7243f5fa96361790c2ebbf24d6fb630"
 }

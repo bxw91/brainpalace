@@ -143,7 +143,7 @@ just the presence of `results`.
 | --url | text | "" | BrainPalace server URL (default: from config or http://127.0.0.1:8000) |
 | --top-k | integer | 5 | Number of results to return (default: 5) |
 | --threshold | float | 0.3 | Minimum similarity threshold 0-1 (default: 0.3) |
-| --mode | choice | hybrid | Retrieval mode: 'vector' (semantic similarity), 'bm25' (keyword matching), 'hybrid' (vector+bm25), 'graph' (knowledge graph relationships; empty unless the graph is built — ENABLE_GRAPH_INDEX gates building it), 'multi' (fusion of vector+bm25+graph), 'compute' (set-level aggregation over typed numeric records; empty unless record extraction has populated them), 'scan' (deterministic term counts over the archived session transcripts; 'which week did I mention X most'; empty when the session archive is off). Default: hybrid. |
+| --mode | choice | hybrid | Retrieval mode: 'vector' (semantic similarity), 'bm25' (keyword matching), 'hybrid' (vector+bm25), 'graph' (knowledge graph relationships; empty unless the graph is built — ENABLE_GRAPH_INDEX gates building it), 'multi' (fusion of vector+bm25+graph), 'compute' (set-level aggregation over typed numeric records; empty unless record extraction has populated them), 'scan' (deterministic term counts over the archived session transcripts; 'which week did I mention X most'; empty when the session archive is off), 'absence' (anti-join over typed records: subjects present under one partition value but absent under another, e.g. 'distance but not duration'; empty when no two stored values resolve), 'timeline' (walk an entity's edge-validity/supersession history: how a belief/fact evolved, e.g. 'how did the auth decision evolve'; empty when the named entity resolves to no graph node), Default: hybrid. |
 | --alpha | float | 0.5 | Weight for hybrid search (1.0 = pure vector, 0.0 = pure bm25, default: 0.5) |
 | --json | bool | false | Output as JSON |
 | --full | bool | false | Show full text content |
@@ -159,11 +159,13 @@ just the presence of `results`.
 <!--GENERATED:modes-->
 | Mode | Description |
 |------|-------------|
-| `vector` |  |
-| `bm25` |  |
-| `hybrid` |  |
-| `graph` |  |
-| `multi` |  |
-| `compute` |  |
-| `scan` |  |
+| `vector` | Semantic similarity search |
+| `bm25` | Keyword matching |
+| `hybrid` | Vector + BM25 fusion (default) |
+| `graph` | Knowledge graph relationships (empty unless the graph is built) |
+| `multi` | Fusion of vector + BM25 + graph via RRF |
+| `compute` | Set-level aggregation over typed numeric records |
+| `scan` | Deterministic term counts over archived session transcripts (empty when the session archive is off) |
+| `absence` | Anti-join over typed records (empty when no two stored values resolve) |
+| `timeline` | Edge-validity/supersession history walk (empty when the entity resolves to no graph node) |
 <!--/GENERATED-->

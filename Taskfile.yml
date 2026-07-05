@@ -377,6 +377,55 @@ tasks:
       - cd brainpalace-cli && env -u VIRTUAL_ENV poetry run pytest tests -q
       - echo "--- CI rehearsal passed (dashboard-absent gate green) ---"
 
+  release:prep:
+    # One command for the LOCAL, reversible half of RELEASING.md (steps 3-8):
+    # bump every version site, roll the changelog, reinstall so `--version`
+    # reflects the bump, restamp any audited doc whose content changed this
+    # release, then run the full release gate. Leaves ONLY the outward-facing,
+    # irreversible half to a human: commit on stable, mirror to main, tag, and
+    # create the GitHub Release (which publishes to PyPI) — steps 9-13.
+    #
+    # BRAINPALACE_RELEASE=1 for the whole task so `install` force-switches the
+    # cli's siblings to LOCAL path deps (this release's server/dashboard aren't on
+    # PyPI yet) and `before-push` is allowed by the beforepush guard.
+    #
+    # Usage:  task release:prep -- 26.7.2
+    desc: "Prep a release locally: bump all version sites, roll changelog, reinstall, restamp changed docs, run the gate (usage: task release:prep -- 26.7.2)"
+    env:
+      BRAINPALACE_RELEASE: "1"
+    vars:
+      VERSION: "{{.CLI_ARGS}}"
+    preconditions:
+      - sh: 'test -n "{{.VERSION}}"'
+        msg: "usage: task release:prep -- <YY.M.N>   (e.g. task release:prep -- 26.7.2)"
+    cmds:
+      - echo "--- Bumping version to {{.VERSION}} across all six sites ---"
+      - python3 scripts/bump_version.py "{{.VERSION}}"
+      - echo "--- Rolling CHANGELOG to {{.VERSION}} ---"
+      - python3 scripts/roll_changelog.py "{{.VERSION}}"
+      - echo "--- Reinstalling (local siblings) so --version reflects the bump ---"
+      - task: install
+      - echo "--- Restamping audited docs whose content changed this release ---"
+      - |
+        set -uo pipefail
+        # NB: check_doc_freshness exits NON-ZERO precisely when docs are stale —
+        # that is the signal we act on, not a failure. Capture its output and
+        # swallow the status (|| true); do NOT `set -e` here or the release aborts
+        # exactly when there is something to re-stamp.
+        stale=$(python3 scripts/check_doc_freshness.py --json 2>/dev/null \
+          | python3 -c "import sys,json;print('\n'.join(d['file'] for d in json.load(sys.stdin)['stale']))" || true)
+        if [ -n "$stale" ]; then
+          printf '%s\n' "$stale" | xargs python3 scripts/add_audit_metadata.py
+          echo "restamped (releaser attests these are current as of this release):"
+          printf '%s\n' "$stale" | sed 's/^/  /'
+        else
+          echo "no audited docs changed — nothing to restamp"
+        fi
+      - echo "--- Running the release gate (before-push, ~10 min) ---"
+      - task: before-push
+      - echo "=== release:prep complete for {{.VERSION}} ==="
+      - echo "Next (HUMAN, outward-facing, irreversible) — commit the bump+changelog on stable, mirror to main, tag v{{.VERSION}}, then create the GitHub Release which publishes to PyPI. See docs/RELEASING.md steps 9-13."
+
   ci:
     desc: Simulate full CI pipeline locally
     cmds:

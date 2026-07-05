@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-04
+last_validated: 2026-07-05
 ---
 
 # Changelog
@@ -20,6 +20,40 @@ Entries are kept short (≤ 3 sentences and ≤ 320 characters); see
 _Entries accumulate here between releases. The release step renames this to
 `## [YY.M.N] - DATE` and adds a fresh empty `## [Unreleased]` above it — never
 hand-number an unreleased section._
+
+## [26.7.2] - 2026-07-05
+
+### Added
+- A generic cross-surface **parity harness** (`doc_sync/contract_parity.py`) plus
+  the `query_modes` contract: the server enum is the single source of truth and a
+  new gate (`ModeParityChecker`, in `lint:doc-sync`, and a fast `task test:cli`
+  unit test) fails on any mode-set drift across the CLI Choice, MCP Literal, hook
+  guard, or `MODE_META`, in either direction. Adds a dispatcher-completeness test.
+- **Mode tables auto-generated from a single source.** README, USER_GUIDE,
+  API_REFERENCE, and the plugin's `brainpalace-query.md` each keep their own
+  richer column shape but now render from one `MODE_META` map
+  (`doc_sync/mode_meta.py`), gated by `sync-docs --fix`/`--check` (and
+  `lint:doc-sync`) — a new `--mode` value can no longer silently miss a doc.
+- **`absence` query mode (Phase 3).** Deterministic no-LLM anti-join over the
+  typed records store — subjects present under one partition value
+  (`metric`/`source`/`domain`) but absent under another. Adds `--mode absence`, a
+  `--json` `absence` field, a dashboard run mode, and a `records(source)` index
+  (see `docs/ABSENCE.md`).
+- **`timeline` query mode (Phase 4).** Deterministic no-LLM walk of an entity's
+  edge-validity and supersession history in the knowledge graph, answering "how
+  did X evolve" over the existing `search_nodes`/`timeline_named` surface with no
+  new schema. Adds `--mode timeline`, a `--json` `timeline` field, and a dashboard
+  run mode (see `docs/TIMELINE.md`).
+
+### Fixed
+- MCP `query` tool rejected the `compute`, `scan`, `absence`, and `timeline`
+  modes (its `QueryMode` was a stale 5-value Literal). It is now **derived** from
+  the server `QueryMode` enum, and the hook subagent guard + AI-guidance skill
+  frontmatter were likewise brought to all 9 modes.
+- **Release gate tests the release, not the last one.** Under
+  `BRAINPALACE_RELEASE=1`, `cli:install` builds the cli venv against **local**
+  server/dashboard source (restoring `poetry.lock`), so a new endpoint/module/
+  config field no longer reads as false drift against the published sibling.
 
 ## [26.7.1] - 2026-07-04
 

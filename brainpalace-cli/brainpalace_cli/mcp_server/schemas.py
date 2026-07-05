@@ -8,8 +8,9 @@ context (see the "tool description context cost" risk in the Phase Q plan).
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any, Literal, get_args
 
+from brainpalace_server.models.query import QueryMode as _ServerQueryMode
 from pydantic import BaseModel, Field
 
 # Optional list filters default to ``[]`` (not ``None``) so the generated JSON
@@ -17,7 +18,27 @@ from pydantic import BaseModel, Field
 # MCP clients mishandle (the "null parameter during query" problem). The client
 # treats an empty list as "no filter" (see api_client.query), so ``[]`` == omit.
 
-QueryMode = Literal["bm25", "vector", "hybrid", "graph", "multi"]
+# Explicit so mypy (strict) keeps a real static type for the `mode` field, and
+# guarded so it can never SHIP narrower/wider than the server enum: the import
+# fails the MCP process on drift, and the contract_parity gate fails CI. Keep the
+# values in server-enum order.
+QueryMode = Literal[
+    "vector",
+    "bm25",
+    "hybrid",
+    "graph",
+    "multi",
+    "compute",
+    "scan",
+    "absence",
+    "timeline",
+]
+if set(get_args(QueryMode)) != {m.value for m in _ServerQueryMode}:
+    raise RuntimeError(
+        "MCP QueryMode Literal drifted from server QueryMode enum: "
+        f"literal={sorted(get_args(QueryMode))} "
+        f"enum={sorted(m.value for m in _ServerQueryMode)}"
+    )
 
 # Shared: override CWD-based server discovery. See the CWD-coupling risk
 # in the Phase Q plan — the long-lived stdio MCP process is pinned to its

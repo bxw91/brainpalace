@@ -19,6 +19,7 @@ from brainpalace_cli.doc_sync.checkers.provider_tables import ProviderTablesChec
 from brainpalace_cli.doc_sync.checkers.skills import SkillsChecker
 from brainpalace_cli.doc_sync.generator import (
     regenerate_mcp_tools,
+    regenerate_modes_block,
     regenerate_provider_tables,
     regenerate_query_modes,
 )
@@ -43,6 +44,14 @@ _PLUGIN = _REPO_ROOT / "brainpalace-plugin"
 # Roots scanned for provider/install GENERATED blocks (whole plugin tree + docs +
 # both READMEs). Recursive — a new doc that adds a block is covered automatically.
 _PROVIDER_DOC_ROOTS = [_PLUGIN, _DOCS, _REPO_ROOT / "README.md"]
+# Doc -> mode-table style, for the additional (non-canonical) GENERATED:modes
+# blocks: each doc keeps its own richer column shape, all rendered from the same
+# MODE_META single source (see doc_sync/mode_meta.py).
+_MODES_DOC_STYLES: dict[Path, str] = {
+    _REPO_ROOT / "README.md": "grid",
+    _DOCS / "API_REFERENCE.md": "table",
+    _DOCS / "USER_GUIDE.md": "commands",
+}
 
 
 def _require_repo() -> None:
@@ -77,7 +86,7 @@ def _provider_doc_files() -> list[Path]:
 def _checkers() -> list[Any]:
     return [
         CliCommandsChecker(docs_dir=_DOCS_DIR),
-        ModesChecker(docs_dir=_DOCS_DIR),
+        ModesChecker(docs_dir=_DOCS_DIR, targets=_MODES_DOC_STYLES),
         SkillsChecker(
             skills_dir=_SKILLS_DIR,
             docs_dir=_DOCS_DIR,
@@ -131,6 +140,9 @@ def sync_docs_command(mode_check: bool, mode_fix: bool) -> None:
         regenerate_mcp_tools(_DOCS_DIR / MCP_CANONICAL, snap.mcp_tools)
         for doc in _provider_doc_files():
             regenerate_provider_tables(doc, snap)
+        for doc, style in _MODES_DOC_STYLES.items():
+            if doc.exists():
+                regenerate_modes_block(doc, snap.modes, style)
         prose_needed = run_fix(checkers, snap)
         for item in prose_needed:
             click.echo(

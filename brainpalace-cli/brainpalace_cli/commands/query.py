@@ -86,7 +86,17 @@ def _maybe_print_ai_hint() -> None:
     "--mode",
     default="hybrid",
     type=click.Choice(
-        ["vector", "bm25", "hybrid", "graph", "multi", "compute", "scan"],
+        [
+            "vector",
+            "bm25",
+            "hybrid",
+            "graph",
+            "multi",
+            "compute",
+            "scan",
+            "absence",
+            "timeline",
+        ],
         case_sensitive=False,
     ),
     help=(
@@ -98,7 +108,14 @@ def _maybe_print_ai_hint() -> None:
         "unless record extraction has populated them), "
         "'scan' (deterministic term counts over the archived session "
         "transcripts; 'which week did I mention X most'; empty when the "
-        "session archive is off). Default: hybrid."
+        "session archive is off), "
+        "'absence' (anti-join over typed records: subjects present under one "
+        "partition value but absent under another, e.g. 'distance but not "
+        "duration'; empty when no two stored values resolve), "
+        "'timeline' (walk an entity's edge-validity/supersession history: "
+        "how a belief/fact evolved, e.g. 'how did the auth decision evolve'; "
+        "empty when the named entity resolves to no graph node), "
+        "Default: hybrid."
     ),
 )
 @click.option(
@@ -237,6 +254,18 @@ def query_command(
                     import dataclasses
 
                     output["scan"] = [dataclasses.asdict(s) for s in response.scan]
+                if response.absence is not None:
+                    import dataclasses
+
+                    output["absence"] = [
+                        dataclasses.asdict(a) for a in response.absence
+                    ]
+                if response.timeline is not None:
+                    import dataclasses
+
+                    output["timeline"] = [
+                        dataclasses.asdict(t) for t in response.timeline
+                    ]
                 blocked = getattr(response, "index_blocked", None)
                 if blocked is not None:
                     output["index_blocked"] = blocked
@@ -288,6 +317,46 @@ def query_command(
                     for scan_row in response.scan:
                         console.print(f"{scan_row.label}: {scan_row.value:g}")
                 _maybe_print_ai_hint()
+                return
+
+            # Absence mode: print "in X, not Y" lines
+            if response.absence is not None:
+                console.print(
+                    f"\n[bold]Query:[/] {query_text}\n"
+                    f"[dim]Absence results in {response.query_time_ms:.1f}ms[/]\n"
+                )
+                if not response.absence:
+                    console.print(
+                        "[yellow]No gaps found (no two stored values resolved, "
+                        "or nothing is absent).[/]"
+                    )
+                else:
+                    for absence_row in response.absence:
+                        console.print(
+                            f"{absence_row.label}  (in {absence_row.present_in}, "
+                            f"not {absence_row.absent_from})"
+                        )
+                _maybe_print_ai_hint()
+                return
+
+            # Timeline mode: print entity edge-validity history lines
+            if response.timeline is not None:
+                if not response.timeline:
+                    # M3: empty has two causes — no entity parsed from the query,
+                    # or the entity resolved to no node / no edges. Cover both.
+                    console.print(
+                        "[yellow]No history found — the query named no "
+                        "recognizable entity, or the entity resolved to no graph "
+                        "node / has no edges. Try 'history of <name>'.[/]"
+                    )
+                else:
+                    for tl_row in response.timeline:
+                        mark = "[green]✓[/]" if tl_row.valid else "[dim]✗[/]"
+                        until = tl_row.valid_until or "now"
+                        console.print(
+                            f"{mark} {tl_row.subject} —{tl_row.predicate}→ "
+                            f"{tl_row.object}  [{tl_row.valid_from or '?'} … {until}]"
+                        )
                 return
 
             # Display header
