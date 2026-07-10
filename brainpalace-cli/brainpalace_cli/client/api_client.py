@@ -58,6 +58,9 @@ class IndexingStatus:
     migration: dict[str, Any] | None = None
     graph_index: dict[str, Any] | None = None
     features: dict[str, Any] | None = None
+    #: Programmatic text-ingest chunk count block ({"chunks": int}); separate
+    #: from folder-manifest-derived total_documents (spec Item 3).
+    text_ingest: dict[str, Any] | None = None
     #: Index-drift warnings (embedding provider/model or storage backend changed
     #: away from what the existing index was built with). Empty when consistent.
     index_warnings: list[str] = field(default_factory=list)
@@ -287,6 +290,7 @@ class DocServeClient:
             embedding_cache=data.get("embedding_cache"),
             graph_index=data.get("graph_index"),
             features=data.get("features"),
+            text_ingest=data.get("text_ingest"),
             index_warnings=data.get("index_warnings") or [],
         )
 
@@ -300,8 +304,11 @@ class DocServeClient:
         source_types: list[str] | None = None,
         languages: list[str] | None = None,
         file_paths: list[str] | None = None,
+        domains: list[str] | None = None,
+        metadata_filter: dict[str, str] | None = None,
         time_decay: bool = True,
         language: str | None = None,
+        include_sensitive: bool = False,
     ) -> QueryResponse:
         """
         Query indexed documents.
@@ -315,8 +322,15 @@ class DocServeClient:
             source_types: Filter by source types (doc, code, test).
             languages: Filter by programming languages.
             file_paths: Filter by file path patterns.
+            domains: Filter to chunks ingested under one of these domains
+                (reserved `domain` metadata key; OR across values).
+            metadata_filter: Filter to chunks whose metadata exact-matches
+                every key/value pair (AND across keys).
             language: BM25 query language override (ISO 639-1). Defaults to
                 the project bm25.language setting when None.
+            include_sensitive: Reveal rows marked sensitive (interactive CLI
+                only). Omitted from the request when False, so MCP/dashboard
+                callers — which never pass it — stay at default-deny.
 
         Returns:
             QueryResponse with matching results.
@@ -330,6 +344,8 @@ class DocServeClient:
         }
         if not time_decay:
             request_data["time_decay"] = False
+        if include_sensitive:
+            request_data["include_sensitive"] = True
         # Truthy (not ``is not None``) so an empty list means "no filter" — the
         # MCP QueryInput now defaults these to ``[]`` (avoids a nullable-union
         # JSON schema that some LLM clients mishandle). Empty == omit == default.
@@ -339,6 +355,10 @@ class DocServeClient:
             request_data["languages"] = languages
         if file_paths:
             request_data["file_paths"] = file_paths
+        if domains:
+            request_data["domains"] = domains
+        if metadata_filter:
+            request_data["metadata_filter"] = metadata_filter
         if language is not None:
             request_data["language"] = language
 
@@ -449,6 +469,9 @@ class DocServeClient:
         watch_mode: str | None = None,
         watch_debounce_seconds: int | None = None,
         rebuild_graph: bool = False,
+        domain: str | None = None,
+        authority: str | None = None,
+        force_authority: bool = False,
     ) -> IndexResponse:
         """
         Enqueue an indexing job for documents and optionally code from a folder.
@@ -474,6 +497,11 @@ class DocServeClient:
             watch_debounce_seconds: Per-folder debounce in seconds.
             rebuild_graph: Rebuild the graph index from existing chunks only
                 (no embedding); returns a completed response, not a queued job.
+            domain: Optional user-facing domain label for the folder (6.5).
+            authority: Binary provenance trust level: 'authoritative' or
+                'reference' (6.5). None lets the server resolve the default.
+            force_authority: Allow an external folder to be registered as
+                'authoritative' (6.5).
 
         Returns:
             IndexResponse with job ID and queue status.
@@ -490,7 +518,12 @@ class DocServeClient:
             "exclude_patterns": exclude_patterns,
             "force": force,
             "force_budget": force_budget,
+            "force_authority": force_authority,
         }
+        if domain is not None:
+            body["domain"] = domain
+        if authority is not None:
+            body["authority"] = authority
         if include_types is not None:
             body["include_types"] = include_types
         if injector_script is not None:
@@ -520,6 +553,225 @@ class DocServeClient:
             status=data["status"],
             message=data.get("message"),
         )
+
+    def ingest_text(
+        self,
+        *,
+        items: list[dict[str, Any]],
+        sensitivity: str = "normal",
+        language: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        Ingest free text with caller-supplied provenance (spec Item 3).
+
+        Args:
+            items: List of {text, metadata, domain, source, source_id} dicts.
+            sensitivity: Sensitivity mark applied to all items in this call.
+            language: Optional BM25 language override.
+
+        Returns:
+            Response dict with chunks_new, chunks_kept, chunks_deleted,
+            chunk_ids, source_ids.
+        """
+        body: dict[str, Any] = {"items": items, "sensitivity": sensitivity}
+        if language:
+            body["language"] = language
+        return self._request("POST", "/ingest/text", json=body)
+
+    def ingest_records(
+        self,
+        *,
+        items: list[dict[str, Any]],
+        sensitivity: str = "normal",
+    ) -> dict[str, Any]:
+        """Ingest caller-asserted typed records (POST /ingest/records).
+
+        Args:
+            items: List of {subject, metric, value, unit?, ts?, domain, source,
+                source_id, confidence?, properties?} dicts.
+            sensitivity: Sensitivity mark applied to all items in this call.
+
+        Returns:
+            Response dict with the number of records persisted.
+        """
+        return self._request(
+            "POST",
+            "/ingest/records",
+            json={"items": items, "sensitivity": sensitivity},
+        )
+
+    def ingest_references(
+        self,
+        *,
+        items: list[dict[str, Any]],
+        sensitivity: str = "normal",
+    ) -> dict[str, Any]:
+        """Ingest lazy-tier references (POST /ingest/references).
+
+        Args:
+            items: List of {pointer, summary, domain, source, source_id} dicts.
+            sensitivity: Sensitivity mark applied to all items in this call.
+
+        Returns:
+            Response dict with the number of references persisted.
+        """
+        return self._request(
+            "POST",
+            "/ingest/references",
+            json={"items": items, "sensitivity": sensitivity},
+        )
+
+    def references_list(self, domain: str | None = None) -> dict[str, Any]:
+        """List references, optionally filtered by domain (GET /references)."""
+        params = {"domain": domain} if domain else None
+        return self._request("GET", "/references", params=params)
+
+    def references_search(
+        self,
+        *,
+        query: str,
+        top_k: int = 5,
+        domain: str | None = None,
+        include_sensitive: bool = False,
+    ) -> dict[str, Any]:
+        """Semantic search over reference summaries (POST /references/search)."""
+        body: dict[str, Any] = {
+            "query": query,
+            "top_k": top_k,
+            "include_sensitive": include_sensitive,
+        }
+        if domain:
+            body["domain"] = domain
+        return self._request("POST", "/references/search", json=body)
+
+    def references_embed_missing(self) -> dict[str, Any]:
+        """Backfill embeddings for references lacking one
+        (POST /references/embed-missing)."""
+        return self._request("POST", "/references/embed-missing")
+
+    def ingest_sources(
+        self,
+        *,
+        domain: str | None = None,
+        source: str | None = None,
+        include_sensitive: bool = False,
+    ) -> dict[str, Any]:
+        """List distinct ingested source_ids (GET /ingest/sources).
+
+        Args:
+            domain: Optional domain filter.
+            source: Optional raw-source filter.
+            include_sensitive: Reveal sources whose chunks are marked sensitive.
+
+        Returns:
+            Response dict with `sources` (each: source_id, domain, source,
+            chunk_count, ingested_at) and `total`.
+        """
+        params: dict[str, Any] = {}
+        if domain:
+            params["domain"] = domain
+        if source:
+            params["source"] = source
+        if include_sensitive:
+            params["include_sensitive"] = True
+        return self._request("GET", "/ingest/sources", params=params or None)
+
+    def ingest_show(
+        self,
+        source_id: str,
+        *,
+        offset: int = 0,
+        limit: int = 50,
+        include_sensitive: bool = False,
+    ) -> dict[str, Any]:
+        """Show one source_id's ingested chunks, paginated
+        (GET /ingest/text/{source_id}).
+
+        Args:
+            source_id: Caller-supplied source id used at ingest time.
+            offset: Pagination offset.
+            limit: Page size.
+            include_sensitive: Reveal chunks marked sensitive.
+
+        Returns:
+            Response dict with source_id, total, offset, limit, and chunks
+            (each: chunk_id, text, metadata).
+        """
+        params: dict[str, Any] = {"offset": offset, "limit": limit}
+        if include_sensitive:
+            params["include_sensitive"] = True
+        return self._request("GET", f"/ingest/text/{source_id}", params=params)
+
+    def ingest_delete(self, source_id: str) -> dict[str, Any]:
+        """
+        Delete all ingested chunks for a source_id (un-ingest).
+
+        Args:
+            source_id: Caller-supplied source id used at ingest time.
+
+        Returns:
+            Response dict with chunks_deleted.
+        """
+        return self._request("DELETE", f"/ingest/text/{source_id}")
+
+    def ingest_forget(self, source_id: str) -> dict[str, Any]:
+        """
+        Full forget: delete a source_id across all three ingest tiers
+        (DELETE /ingest/source/{source_id}).
+
+        Args:
+            source_id: Caller-supplied source id used at ingest time.
+
+        Returns:
+            Response dict with chunks_deleted, records_deleted,
+            references_deleted.
+        """
+        return self._request("DELETE", f"/ingest/source/{source_id}")
+
+    # --- identity (G5): person / alias / link ---------------------------
+
+    def entities_person(self, person: dict[str, Any]) -> dict[str, Any]:
+        """Upsert a person (POST /entities/person)."""
+        return self._request("POST", "/entities/person", json=person)
+
+    def entities_alias(self, alias: dict[str, Any]) -> dict[str, Any]:
+        """Bind a surface to a person (POST /entities/alias)."""
+        return self._request("POST", "/entities/alias", json=alias)
+
+    def entities_link(self, link: dict[str, Any]) -> dict[str, Any]:
+        """Attach a ref to a person or record it unresolved
+        (POST /entities/link)."""
+        return self._request("POST", "/entities/link", json=link)
+
+    def entities_resolve(
+        self,
+        *,
+        surface: str,
+        scope: str | None = None,
+        at: str | None = None,
+        ref: str | None = None,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Ranked candidates + evidence (GET /entities/resolve). Never picks."""
+        params: dict[str, Any] = {"surface": surface}
+        if scope is not None:
+            params["scope"] = scope
+        if at is not None:
+            params["at"] = at
+        if ref is not None:
+            params["ref"] = ref
+        if session_id is not None:
+            params["session_id"] = session_id
+        return self._request("GET", "/entities/resolve", params=params)
+
+    def entities_unresolved(self) -> dict[str, Any]:
+        """The unresolved-link bucket (GET /entities/unresolved)."""
+        return self._request("GET", "/entities/unresolved")
+
+    def entities_backfill(self) -> dict[str, Any]:
+        """Re-score unresolved links against current aliases
+        (POST /entities/backfill)."""
+        return self._request("POST", "/entities/backfill")
 
     def estimate_index(
         self,

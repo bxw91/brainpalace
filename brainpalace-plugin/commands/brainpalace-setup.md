@@ -6,7 +6,7 @@ context: brainpalace
 agent: setup-assistant
 skills:
   - configuring-brainpalace
-last_validated: 2026-07-04
+last_validated: 2026-07-05
 ---
 
 # Complete BrainPalace Setup
@@ -510,7 +510,9 @@ The provider is configured globally — new projects inherit it.
 > **Same question set as `brainpalace init`.** `brainpalace init` (sparse PROJECT config)
 > asks the **same project-config-backed questions** as the `install` GLOBAL flow above
 > (and `brainpalace config wizard`, which is a back-compat alias of `init`'s editor):
-> embedding, summarizer, **reranker**,
+> embedding, summarizer, **reranker**, **doc-trust weight**
+> (`ranking.doc_weight` — `1.0` docs equal to code, `0.5` half-weight default,
+> `0.0` docs excluded; non-interactive `--doc-weight <0.0-1.0>`),
 > **embed-sessions** (`session_indexing.enabled` — billable opt-in, default OFF),
 > **session-archive** (`session_indexing.archive.enabled` — free local backup of
 > full raw transcripts incl. secrets, default ON), **git-history**, and **doc-graph

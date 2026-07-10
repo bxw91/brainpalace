@@ -56,6 +56,5 @@ brainpalace rules retire <rule_id>
 
 ### Flags
 <!--GENERATED:flags-->
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
+_This command takes no top-level flags._
 <!--/GENERATED-->

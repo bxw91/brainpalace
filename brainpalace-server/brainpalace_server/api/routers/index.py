@@ -403,6 +403,9 @@ async def index_documents(
             watch_mode=request_body.watch_mode,
             watch_debounce_seconds=request_body.watch_debounce_seconds,
             trigger=request_body.trigger,
+            domain=request_body.domain,
+            authority=request_body.authority,
+            force_authority=request_body.force_authority,
         )
 
         result = await job_service.enqueue_job(
@@ -415,6 +418,12 @@ async def index_documents(
         # Path validation error (outside project)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        ) from e
+    except PermissionError as e:
+        # External path claiming authoritative without force_authority (6.5)
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
             detail=str(e),
         ) from e
     except Exception as e:

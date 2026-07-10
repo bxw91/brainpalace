@@ -2,7 +2,7 @@
 name: brainpalace-extraction
 description: Graph-extraction drain queue (used by the AI drain command)
 parameters:
-last_validated: 2026-06-26
+last_validated: 2026-07-10
 ---
 
 # BrainPalace Extraction
@@ -54,6 +54,5 @@ brainpalace extraction submit --json -   # read from stdin
 
 ### Flags
 <!--GENERATED:flags-->
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
+_This command takes no top-level flags._
 <!--/GENERATED-->

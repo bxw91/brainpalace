@@ -1008,6 +1008,29 @@
       "label": "Query Log"
     },
     {
+      "description": "How search ranks results. doc_weight down-ranks documentation relative to code (0.0 excludes docs, 0.5 default, 1.0 treats them equally).",
+      "fields": [
+        {
+          "default": 0.5,
+          "dotpath": "ranking.doc_weight",
+          "key": "doc_weight",
+          "label": "Doc weight",
+          "secret": false,
+          "widget": "text"
+        },
+        {
+          "default": 0.7,
+          "dotpath": "ranking.reference_rank_penalty",
+          "key": "reference_rank_penalty",
+          "label": "Reference rank penalty",
+          "secret": false,
+          "widget": "text"
+        }
+      ],
+      "key": "ranking",
+      "label": "Retrieval Ranking"
+    },
+    {
       "fields": [
         {
           "default": true,
@@ -1028,6 +1051,21 @@
       ],
       "key": "usage_metrics",
       "label": "Usage Metrics"
+    },
+    {
+      "description": "This project's own identity. domain (default 'code') is what new folders inherit when --domain is omitted, and what an external folder must explicitly match to be treated as an authoritative claim over the project (requires --force).",
+      "fields": [
+        {
+          "default": "code",
+          "dotpath": "project.domain",
+          "key": "domain",
+          "label": "Domain",
+          "secret": false,
+          "widget": "text"
+        }
+      ],
+      "key": "project",
+      "label": "Project Identity"
     }
   ]
 }

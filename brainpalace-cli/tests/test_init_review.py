@@ -65,12 +65,12 @@ def test_review_exit_rolls_back_fresh(tmp_path, monkeypatch):
 
 
 def test_review_edit_is_persisted_sparsely(tmp_path, monkeypatch):
-    # Drill the Usage Metrics division (18): keep enabled (y), set retain_days=30,
+    # Drill the Usage Metrics division (19): keep enabled (y), set retain_days=30,
     # [C]ontinue, then Proceed.
     # Grid order: ... 11=Chat Session : Archiving, 12=Chat Session : Vector Indexing,
     # 13=Chat Session : Summarization, 14=Extraction Engine, 15=Server, 16=Server Mode,
-    # 17=Query Log, 18=Usage Metrics.
-    r = _invoke(tmp_path, monkeypatch, "18\ny\n30\nc\n" + _PROCEED)
+    # 17=Query Log, 18=Retrieval Ranking, 19=Usage Metrics.
+    r = _invoke(tmp_path, monkeypatch, "19\ny\n30\nc\n" + _PROCEED)
     assert r.exit_code == 0, r.output
     assert _cfg(tmp_path)["usage_metrics"]["retain_days"] == 30
 

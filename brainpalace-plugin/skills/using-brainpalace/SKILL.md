@@ -24,10 +24,10 @@ allowed-tools:
   - Bash
   - Read
 metadata:
-  version: 7.4.0
+  version: 7.7.0
   category: ai-tools
   author: bxw91
-  last_validated: 2026-06-16
+  last_validated: 2026-07-10
 ---
 
 # BrainPalace Expert Skill
@@ -69,6 +69,9 @@ Common flags: `--top-k N` (default 5), `--threshold F` (default 0.3),
 `--alpha F` (hybrid balance, 0=BM25…1=Vector, default 0.5), `--language CODE`
 (per-query BM25 tokenization override; bm25/hybrid only).
 
+Docs rank below code (`ranking.doc_weight`=0.5 default); `--source-types code`
+filters.
+
 ### Before Anything Else — Project Indexed Check
 
 Run this **first**:
@@ -84,16 +87,14 @@ brainpalace whoami    # exits 0 (indexed + server up), 1 (no project), or 2 (ind
 - **Exit `2`** → indexed but server not running. Searches fail until started —
   follow "When the server is down" below.
 
-If the `brainpalace` CLI is not installed (command not found), treat as exit `1` and yield.
+CLI not installed (command not found) → treat as exit `1`, yield.
 
 ### Search Rule — Non-Negotiable (when indexed)
 
 When the check passed, BrainPalace is the first entry point for codebase search.
 Never use Glob, Grep, or Bash `find`/`rg` against indexed project source — even
-when you think you know the path or token. This is not a latency trade: an exact
-symbol/token/path lookup goes to `--mode bm25`, which queries the local keyword
-index with **no embedding round-trip**, returning in milliseconds (vector/hybrid
-pay the embed call, so reserve them for conceptual queries). Pick a mode, then:
+when you think you know the path or token (see the NUDGE rationale above). Pick
+a mode, then:
 
 ```bash
 brainpalace query "..." --mode <picked> --top-k 8 --json
@@ -110,11 +111,10 @@ Per-result keys are `text`, `source`, `score`, `chunk_id` — there is NO
 top-level `index_blocked` object means the index is STALE (paused over
 budget) — never auto-approve. (Runnable parsing snippet: `--tier full`.)
 
-**Allowed Glob/Grep cases (NOT codebase search):** searching inside a single file
-BrainPalace already returned; non-indexed paths (`~/.claude/`, `~/.config/`,
-`/tmp/`, dotfiles, settings/logs); files modified since `last_indexed`
-(`brainpalace folders list`); paths in the project's `exclude_patterns`; listing
-directory STRUCTURE only (`ls`, `find <path> -maxdepth N -type d`).
+**Allowed Glob/Grep (NOT codebase search):** inside a file BrainPalace already
+returned; non-indexed paths (`~/.claude/`, `~/.config/`, `/tmp/`, dotfiles,
+settings/logs); files changed since `last_indexed`; paths in `exclude_patterns`;
+listing directory STRUCTURE only (`ls`, `find <path> -maxdepth N -type d`).
 
 ### When the Server Is Down
 
@@ -128,8 +128,12 @@ but server not running):
 Server-down (`.brainpalace/` exists, process not running) is distinct from
 not-indexed (no `.brainpalace/` at all → the skill yields).
 
-For full operational detail run `brainpalace ai-guide --tier full` (or, over MCP,
-call the `ai_guide` tool).
+**Sensitivity:** `sensitivity != "normal"` rows (records, graph nodes, session
+chunks, memory — incl. private-session derivatives) are hidden by default
+everywhere, incl. memory recall/boost/session-context. `--include-sensitive`
+reveals, CLI-only; MCP/dashboard never reveal.
+
+Full detail: `brainpalace ai-guide --tier full` (MCP: the `ai_guide` tool).
 
 ---
 
@@ -145,6 +149,17 @@ for r in d['results']:
     print(r['text'][:500])
 "
 ```
+
+---
+
+## Content Filters — `--domain` / `--meta`
+
+`--domain D` (repeatable, OR) scopes results to chunks ingested under that
+`/ingest` domain (the reserved `domain` metadata key — an owner or app
+namespace). `--meta k=v` (repeatable, AND across keys) exact-matches any
+chunk metadata key, including `/ingest`'s reserved `source`/`source_id`.
+Both compose with `--source-types`/`--languages`/`--file-paths` and with
+sensitivity default-deny.
 
 ---
 
@@ -283,6 +298,19 @@ block you actually receive, not on a fixed expectation. Manually-saved memory
 
 ---
 
+## Reference Catalog — Lazy-Tier Pointers
+
+AI clients may search references: `brainpalace references search "<query>"`
+semantically searches summary text over the lazy-tier reference catalog
+(pointer + summary entries for sources fetched-and-extracted on demand — not
+yet embedded as full document chunks). Top matches also surface inline in
+`hybrid`/`vector`/`multi`/`graph` results, tagged `type: reference`, so you
+may see one without searching for it directly. `brainpalace references
+resolve <id>` prints the stored pointer + summary; ingest the resolved body
+as searchable text via `brainpalace ingest` when you need it in full.
+
+---
+
 ## When Not to Use
 
 This skill focuses on **searching and querying**. Do NOT use for installation,
@@ -330,6 +358,16 @@ symbol) or by a unique display name; an ambiguous name fails with the
 candidate ids listed. On failure stdout is `{"error": ...}` with a non-zero
 exit — same contract as `query --json`. `cochange` needs `git_indexing`
 enabled.
+
+---
+
+## Cross-instance search (household multi-instance)
+
+Cross-instance search: `query --also <path-or-url>` (repeatable) fans a query
+out to sibling BrainPalace instances and RRF-merges the results, tagging each
+`--json` result with an `"instance"` key (`"local"` or the sibling's
+path/URL); a down sibling warns on stderr and is skipped (local results still
+render).
 
 ---
 

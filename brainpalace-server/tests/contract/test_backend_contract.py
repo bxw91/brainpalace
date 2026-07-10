@@ -244,3 +244,81 @@ class TestStorageBackendContract:
                 dimensions=9,
                 stored_metadata=metadata,
             )
+
+    # Methods DocumentIngestService (POST /ingest/text) requires on the live
+    # backend. The service was written against the VectorStoreManager facade,
+    # so every real StorageBackendProtocol impl must expose them or ingest
+    # 500s. Parametrized over both backends (postgres skips without
+    # DATABASE_URL).
+    async def test_get_existing_ids_returns_only_present(
+        self, storage_backend: Any
+    ) -> None:
+        await _upsert_documents(
+            storage_backend,
+            ["present-1", "present-2"],
+            ["a", "b"],
+            [BASE_EMBEDDING, BASE_EMBEDDING],
+            [_default_metadata(1), _default_metadata(2)],
+        )
+
+        existing = await storage_backend.get_existing_ids(
+            ["present-1", "present-2", "absent-x"]
+        )
+
+        assert existing == {"present-1", "present-2"}
+
+    async def test_get_existing_ids_empty_input(self, storage_backend: Any) -> None:
+        assert await storage_backend.get_existing_ids([]) == set()
+
+    async def test_get_ids_by_where_filters_by_metadata(
+        self, storage_backend: Any
+    ) -> None:
+        await _upsert_documents(
+            storage_backend,
+            ["ing-1", "other-1"],
+            ["shared body", "unrelated"],
+            [BASE_EMBEDDING, BASE_EMBEDDING],
+            [
+                {"source_type": "ingest", "source_id": "s1"},
+                {"source_type": "doc", "source_id": "s1"},
+            ],
+        )
+
+        ids = await storage_backend.get_ids_by_where(
+            {"$and": [{"source_type": "ingest"}, {"source_id": "s1"}]}
+        )
+
+        assert ids == {"ing-1"}
+
+    async def test_get_by_id_embedding_round_trips_through_upsert(
+        self, storage_backend: Any
+    ) -> None:
+        # The embed-frugal keep-and-refresh path reads row["embedding"] and
+        # re-upserts it verbatim (no re-embed). The stored vector must come
+        # back in a form the SAME backend's upsert accepts — list (postgres)
+        # or ndarray (chroma). This is exactly what 500'd on postgres, where
+        # get_by_id returned no embedding at all.
+        await _upsert_documents(
+            storage_backend,
+            ["emb-1"],
+            ["body"],
+            [BASE_EMBEDDING],
+            [_default_metadata(1)],
+        )
+
+        row = await storage_backend.get_by_id("emb-1")
+        assert row is not None
+        assert row["embedding"] is not None
+        assert len(row["embedding"]) == len(BASE_EMBEDDING)
+
+        # Re-upsert the stored embedding unchanged (the refresh) must not raise.
+        await _upsert_documents(
+            storage_backend,
+            ["emb-1"],
+            ["body refreshed"],
+            [row["embedding"]],
+            [_default_metadata(2)],
+        )
+        refreshed = await storage_backend.get_by_id("emb-1")
+        assert refreshed is not None
+        assert refreshed["text"] == "body refreshed"

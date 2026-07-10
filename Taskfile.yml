@@ -32,6 +32,9 @@ includes:
   dashboard:
     taskfile: ./brainpalace-dashboard/Taskfile.yml
     dir: ./brainpalace-dashboard
+  life:
+    taskfile: ./brainpalace-life/Taskfile.yml
+    dir: ./brainpalace-life
 
 tasks:
   default:
@@ -49,6 +52,7 @@ tasks:
       - task: server:install
       - task: cli:install
       - task: dashboard:install
+      - task: life:install
       - task: install:dashboard-ui
       - task: install:hooks
 
@@ -158,6 +162,7 @@ tasks:
       - task: server:test
       - task: cli:test
       - task: dashboard:test
+      - task: life:test
 
   eval:
     desc: >-
@@ -212,6 +217,7 @@ tasks:
       - task: server:lint
       - task: cli:lint
       - task: dashboard:lint
+      - task: life:lint
 
   lint:fix:
     desc: Lint and auto-fix issues
@@ -219,6 +225,7 @@ tasks:
       - task: server:lint:fix
       - task: cli:lint:fix
       - task: dashboard:lint:fix
+      - task: life:lint:fix
 
   lint:yaml:
     desc: Validate YAML frontmatter in plugin command files
@@ -241,6 +248,11 @@ tasks:
     dir: ./{{.CLI_DIR}}
     cmds:
       - "{{.POETRY}} run python -m brainpalace_cli.config_parity"
+
+  lint:import-boundary:
+    desc: "Fail if brainpalace-life imports the engine outside the seam allowlist"
+    cmds:
+      - python3 scripts/check_import_boundary.py
 
   lint:changelog:
     desc: "Fail if an Unreleased/current-release changelog entry exceeds 3 sentences"
@@ -290,6 +302,7 @@ tasks:
       - task: server:typecheck
       - task: cli:typecheck
       - task: dashboard:typecheck
+      - task: life:typecheck
 
   vet:
     desc: Perform all static analysis
@@ -303,6 +316,7 @@ tasks:
       - task: lint
       - task: typecheck
       - task: lint:config-parity
+      - task: lint:import-boundary
 
   # ===================
   # Pre-Push Workflow
@@ -321,6 +335,8 @@ tasks:
       - task: lint:doc-freshness
       - echo "--- Checking changelog style ---"
       - task: lint:changelog
+      - echo "--- Checking product import boundary ---"
+      - task: lint:import-boundary
       - echo "--- Checking dashboard parity ---"
       - task: lint:dashboard-parity
       - echo "--- Checking AI-guidance parity ---"

@@ -141,11 +141,28 @@ class TestSupersession:
 class FakeMemory:
     def __init__(self) -> None:
         self.added: list[str] = []
+        self.add_calls: list[dict] = []
 
     async def add(  # noqa: ANN001,ANN201
-        self, text, section="Project", tags=None, origin="user", confidence=1.0
+        self,
+        text,
+        section="Project",
+        tags=None,
+        origin="user",
+        confidence=1.0,
+        sensitivity="normal",
+        *,
+        reclaim=False,
+        supersedes=None,
     ):
         self.added.append(text)
+        self.add_calls.append(
+            {
+                "text": text,
+                "reclaim": reclaim,
+                "supersedes": supersedes,
+            }
+        )
 
     def load(self):
         return []
@@ -162,6 +179,9 @@ class TestPromotion:
         n = await promote_decisions(payload, mem)
         assert n == 1
         assert any("adopt Redis" in t for t in mem.added)
+        # reclaim-aware write path (memory-cap-reclaim, d1e8c46c) must be used.
+        assert mem.add_calls[0]["reclaim"] is True
+        assert mem.add_calls[0]["supersedes"] is None
 
     async def test_decision_without_rationale_skipped(self) -> None:
         mem = FakeMemory()

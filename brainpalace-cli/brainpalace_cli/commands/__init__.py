@@ -11,6 +11,7 @@ from .extraction import extraction_group
 from .folders import folders_group
 from .hook import hook_group
 from .index import index_command
+from .ingest import ingest_command
 from .init import init_command
 from .inject import inject_command
 from .install_agent import install_agent_command
@@ -23,6 +24,7 @@ from .plugin_detect import plugin_group
 from .query import query_command
 from .recall import recall_command
 from .records import records_group
+from .references import references_group
 from .remember import remember_command
 from .reset import reset_command
 from .rules import rules_group
@@ -48,6 +50,7 @@ __all__ = [
     "doctor_command",
     "folders_group",
     "index_command",
+    "ingest_command",
     "inject_command",
     "init_command",
     "install_agent_command",
@@ -62,6 +65,7 @@ __all__ = [
     "hook_group",
     "query_command",
     "records_group",
+    "references_group",
     "recall_command",
     "remember_command",
     "reset_command",

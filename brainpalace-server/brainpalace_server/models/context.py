@@ -20,6 +20,10 @@ class SessionContext(BaseModel):
         default=False, description="True if some memories were dropped for budget"
     )
     memory_count: int = Field(default=0, description="Curated memories included")
+    curate_due: bool = Field(
+        default=False,
+        description="True when an auto-curation nudge should fire this session",
+    )
     blocked_job: dict[str, Any] | None = Field(
         default=None,
         description=(

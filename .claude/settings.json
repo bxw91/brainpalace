@@ -8,6 +8,21 @@
             "type": "command",
             "command": "bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/pretooluse-beforepush-guard.sh\"",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/pretooluse-brainpalace-search-guard.sh\"",
+            "timeout": 55
+          }
+        ]
+      },
+      {
+        "matcher": "Grep|Glob",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/pretooluse-brainpalace-search-guard.sh\"",
+            "timeout": 55
           }
         ]
       }

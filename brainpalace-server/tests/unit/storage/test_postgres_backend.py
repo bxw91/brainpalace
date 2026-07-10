@@ -319,10 +319,18 @@ class TestGetById:
     """Tests for get_by_id() method."""
 
     async def test_returns_document_dict(self, backend: PostgresBackend) -> None:
-        """get_by_id() returns document dict."""
+        """get_by_id() returns document dict incl. the parsed embedding.
+
+        The SELECT reads (document_text, metadata, embedding); pgvector returns
+        the vector as its text form, which get_by_id json-parses to list[float].
+        """
         mock_conn = AsyncMock()
         mock_result = MagicMock()
-        mock_result.fetchone.return_value = ("doc text", {"key": "val"})
+        mock_result.fetchone.return_value = (
+            "doc text",
+            {"key": "val"},
+            "[0.1, 0.2, 0.3]",
+        )
         mock_conn.execute = AsyncMock(return_value=mock_result)
         mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
         mock_conn.__aexit__ = AsyncMock(return_value=False)
@@ -334,6 +342,7 @@ class TestGetById:
         assert result is not None
         assert result["text"] == "doc text"
         assert result["metadata"] == {"key": "val"}
+        assert result["embedding"] == [0.1, 0.2, 0.3]
 
     async def test_returns_none_when_not_found(self, backend: PostgresBackend) -> None:
         """get_by_id() returns None when not found."""

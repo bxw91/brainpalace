@@ -185,10 +185,14 @@ class SessionReconciler:
         provider_billable: bool = False,
         usage_metrics_store: Any | None = None,
         usage_metrics_retain_days: int = 30,
+        memory_curator: Any | None = None,
+        curate_state_dir: Path | None = None,
     ) -> None:
         self.interval_seconds = max(1, interval_seconds)
         self._usage_metrics_store = usage_metrics_store
         self._usage_metrics_retain_days = usage_metrics_retain_days
+        self._memory_curator = memory_curator
+        self._curate_state_dir = curate_state_dir
         self._kw: dict[str, Any] = {
             "sessions_dir": sessions_dir,
             "archive_service": archive_service,
@@ -216,6 +220,14 @@ class SessionReconciler:
         except Exception as exc:  # noqa: BLE001 — one bad sweep must not kill the loop
             logger.warning("session reconcile sweep failed: %s", exc)
             result = {"archived": 0, "indexed": 0}
+        # Provider-mode memory curation rides the same sweep (weekly cadence via the
+        # stamp inside curate_if_due). None when not provider/auto+enabled.
+        curator = self._memory_curator
+        if curator is not None and self._curate_state_dir is not None:
+            try:
+                await curator.curate_if_due(self._curate_state_dir)
+            except Exception as exc:  # noqa: BLE001 — curation must not kill the loop
+                logger.warning("memory curation sweep failed: %s", exc)
         # Prune old usage-metrics buckets on each tick (§6-F6). Best-effort.
         if self._usage_metrics_store is not None:
             import time as _time  # noqa: PLC0415

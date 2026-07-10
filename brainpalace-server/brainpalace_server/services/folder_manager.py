@@ -33,6 +33,11 @@ class FolderRecord:
         include_code: Whether to index code files (preserved for watcher jobs)
         source: Provenance of the registration (e.g. 'manual', 'watch',
             'folders_add', 'reconcile', 'init', 'unknown')
+        domain: Optional user-facing domain label for the folder (e.g. 'code',
+            'home'). None means unset (6.5).
+        authority: Binary provenance trust level: 'authoritative' or
+            'reference'. Missing/None on load always means 'authoritative'
+            (decision D — no backfill) (6.5).
     """
 
     folder_path: str
@@ -43,6 +48,8 @@ class FolderRecord:
     watch_debounce_seconds: int | None = None
     include_code: bool = False
     source: str = "unknown"
+    domain: str | None = None
+    authority: str = "authoritative"
 
 
 class FolderManager:
@@ -98,6 +105,8 @@ class FolderManager:
         watch_debounce_seconds: int | None = None,
         include_code: bool = False,
         source: str = "unknown",
+        domain: str | None = None,
+        authority: str = "authoritative",
     ) -> FolderRecord:
         """Add or update a folder record.
 
@@ -113,6 +122,11 @@ class FolderManager:
             include_code: Whether code files were indexed (preserved for watcher jobs)
             source: Provenance of the registration (e.g. 'manual', 'watch',
                 'folders_add', 'reconcile', 'init')
+            domain: Optional user-facing domain label (6.5). Callers that want
+                to preserve an existing record's value must pass it explicitly.
+            authority: Binary provenance trust level: 'authoritative' or
+                'reference' (6.5, decision D default). Callers that want to
+                preserve an existing record's value must pass it explicitly.
 
         Returns:
             The created or updated FolderRecord
@@ -129,6 +143,8 @@ class FolderManager:
             watch_debounce_seconds=watch_debounce_seconds,
             include_code=include_code,
             source=source,
+            domain=domain,
+            authority=authority,
         )
 
         async with self._lock:
@@ -272,6 +288,8 @@ class FolderManager:
                         watch_debounce_seconds=data.get("watch_debounce_seconds"),
                         include_code=data.get("include_code", False),
                         source=data.get("source", "unknown"),
+                        domain=data.get("domain"),
+                        authority=data.get("authority") or "authoritative",
                     )
                     records[record.folder_path] = record
                 except (json.JSONDecodeError, KeyError, TypeError) as e:

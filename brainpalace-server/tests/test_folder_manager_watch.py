@@ -203,6 +203,83 @@ async def test_add_folder_persists_watch_fields() -> None:
         assert loaded.include_code is True
 
 
+# ---------------------------------------------------------------------------
+# FolderRecord domain + authority (6.5): persist + tolerant load
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_folder_record_domain_authority_round_trip() -> None:
+    """A record with domain + authority set survives save/load via JSONL."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        state_dir = Path(tmpdir) / "state"
+        state_dir.mkdir()
+        docs_dir = Path(tmpdir) / "home-docs"
+        docs_dir.mkdir()
+
+        folder_manager = FolderManager(state_dir=state_dir)
+        await folder_manager.initialize()
+
+        record = FolderRecord(
+            folder_path=str(docs_dir),
+            chunk_count=3,
+            last_indexed="2026-07-06T00:00:00+00:00",
+            chunk_ids=["a"],
+            domain="home",
+            authority="reference",
+        )
+        async with folder_manager._lock:
+            folder_manager._cache[record.folder_path] = record
+            await folder_manager._persist()
+
+        folder_manager2 = FolderManager(state_dir=state_dir)
+        await folder_manager2.initialize()
+        records = await folder_manager2.list_folders()
+
+        assert len(records) == 1
+        loaded = records[0]
+        assert loaded.domain == "home"
+        assert loaded.authority == "reference"
+
+
+@pytest.mark.asyncio
+async def test_load_jsonl_missing_domain_authority_defaults() -> None:
+    """A JSONL line without domain/authority keys loads as authoritative.
+
+    Decision D: missing/None means "authoritative" — no backfill.
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        state_dir = Path(tmpdir) / "state"
+        state_dir.mkdir()
+        docs_dir = Path(tmpdir) / "docs"
+        docs_dir.mkdir()
+        jsonl_path = state_dir / "state" / "indexed_folders.jsonl"
+        jsonl_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Copy of a line the current code produces, WITHOUT domain/authority.
+        legacy_record = {
+            "folder_path": str(docs_dir),
+            "chunk_count": 5,
+            "last_indexed": "2026-05-01T00:00:00+00:00",
+            "chunk_ids": ["x"],
+            "watch_mode": "off",
+            "watch_debounce_seconds": None,
+            "include_code": False,
+            "source": "manual",
+        }
+        with open(jsonl_path, "w") as f:
+            f.write(json.dumps(legacy_record) + "\n")
+
+        folder_manager = FolderManager(state_dir=state_dir)
+        await folder_manager.initialize()
+
+        records = await folder_manager.list_folders()
+        assert len(records) == 1
+        record = records[0]
+        assert record.domain is None
+        assert record.authority == "authoritative"
+
+
 @pytest.mark.asyncio
 async def test_add_folder_default_watch_fields_backward_compat() -> None:
     """add_folder with no watch kwargs uses defaults (backward compat callers)."""

@@ -20,6 +20,7 @@ headers. Unknown lines are preserved so hand-edits survive.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 import secrets
@@ -95,6 +96,7 @@ class MemoryService:
         self._vector_store = vector_store
         self._embeddings = embedding_generator
         self.char_cap = char_cap if char_cap is not None else settings.MEMORY_CHAR_CAP
+        self._lock = asyncio.Lock()
 
     # ----- markdown source of truth -------------------------------------
 
@@ -128,6 +130,7 @@ class MemoryService:
                     section=section,
                     tags=tags,
                     origin=tag.get("origin") or "user",
+                    sensitivity=tag.get("sensitivity") or "normal",
                     confidence=conf,
                     created_at=tag.get("created") or _now_iso(),
                     last_referenced_at=tag.get("last_ref") or None,
@@ -148,6 +151,7 @@ class MemoryService:
             for m in by_section[section]:
                 tagbody = (
                     f"ab:id={m.id} tags={','.join(m.tags)} origin={m.origin} "
+                    f"sensitivity={m.sensitivity} "
                     f"conf={m.confidence} created={m.created_at} "
                     f"last_ref={m.last_referenced_at or ''} "
                     f"obsoleted={m.obsoleted_at or ''} "
@@ -164,6 +168,22 @@ class MemoryService:
     def char_count(self) -> int:
         return len(self.path.read_text(encoding="utf-8")) if self.path.exists() else 0
 
+    # ----- eviction --------------------------------------------------------
+
+    _EVICTABLE_PREFIX = "session:"
+
+    def _is_evictable(self, m: Memory) -> bool:
+        """Only active, auto-promoted (origin=session:*) entries may be evicted."""
+        return m.is_active and (m.origin or "").startswith(self._EVICTABLE_PREFIX)
+
+    def _eviction_order(self, memories: list[Memory]) -> list[Memory]:
+        """Evictable entries, worst-first: oldest ref, then lowest confidence."""
+        evictable = [m for m in memories if self._is_evictable(m)]
+        return sorted(
+            evictable,
+            key=lambda m: (m.last_referenced_at or m.created_at, m.confidence),
+        )
+
     # ----- mutations -----------------------------------------------------
 
     async def add(
@@ -173,50 +193,139 @@ class MemoryService:
         tags: list[str] | None = None,
         origin: str = "user",
         confidence: float = 1.0,
+        sensitivity: str = "normal",
+        *,
+        reclaim: bool = False,
+        supersedes: str | None = None,
     ) -> Memory:
-        memories = self.load()
-        norm = _norm(text)
-        for m in memories:
-            if m.is_active and (_norm(m.text) == norm or norm in _norm(m.text)):
-                raise MemoryDuplicateError(
-                    f"near-duplicate of existing memory {m.id!r}"
-                )
-        mem = Memory(
-            id=_new_id(),
-            text=text.strip(),
-            section=section.strip() or DEFAULT_SECTION,
-            tags=tags or [],
-            origin=origin,
-            confidence=confidence,
-        )
-        candidate = self._render(memories + [mem])
-        if len(candidate) > self.char_cap:
-            raise MemoryCapError(
-                f"memory file would exceed cap ({len(candidate)} > {self.char_cap}); "
-                "obsolete or consolidate entries first"
+        async with self._lock:
+            memories = self.load()
+            norm = _norm(text)
+            for m in memories:
+                if m.is_active and (_norm(m.text) == norm or norm in _norm(m.text)):
+                    raise MemoryDuplicateError(
+                        f"near-duplicate of existing memory {m.id!r}"
+                    )
+
+            mem = Memory(
+                id=_new_id(),
+                text=text.strip(),
+                section=section.strip() or DEFAULT_SECTION,
+                tags=tags or [],
+                origin=origin,
+                confidence=confidence,
+                sensitivity=sensitivity,
             )
-        memories.append(mem)
-        self._save(memories)
-        await self._sync_one(mem)
-        return mem
+
+            # Reclaim DELETES (physically removes) entries so the file shrinks;
+            # obsoleting would keep them in _render output and not free cap.
+            removed_ids: set[str] = set()
+            if reclaim and supersedes:
+                target = self._match_superseded(memories, supersedes)
+                if target is not None:
+                    removed_ids.add(target.id)
+
+            # Write-time semantic dedupe (embeddings-only; independent of reclaim).
+            # A strong match means the user is re-asserting an existing fact — the new
+            # entry supersedes the old (newest wins), so drop the old before insert.
+            dupe = await self._find_semantic_supersede(text, memories)
+            if dupe is not None:
+                removed_ids.add(dupe.id)
+
+            def _persisted() -> list[Memory]:
+                return [m for m in memories if m.id not in removed_ids]
+
+            candidate = self._render(_persisted() + [mem])
+            if len(candidate) > self.char_cap:
+                if not reclaim:
+                    raise MemoryCapError(
+                        f"memory file would exceed cap ({len(candidate)} > "
+                        f"{self.char_cap}); obsolete or consolidate entries first"
+                    )
+                for victim in self._eviction_order(_persisted()):
+                    removed_ids.add(victim.id)
+                    candidate = self._render(_persisted() + [mem])
+                    if len(candidate) <= self.char_cap:
+                        break
+                if len(candidate) > self.char_cap:
+                    raise MemoryCapError(
+                        f"memory file would exceed cap ({len(candidate)} > "
+                        f"{self.char_cap}) even after evicting all evictable "
+                        "entries; curate manual facts"
+                    )
+
+            final = _persisted() + [mem]
+            self._save(final)
+            if removed_ids:
+                await self._delete_from_index(list(removed_ids))
+            await self._sync_one(mem)
+            return mem
+
+    def _match_superseded(
+        self, memories: list[Memory], supersedes: str
+    ) -> Memory | None:
+        """Find an active session-decision entry whose decision-text matches.
+
+        Promoted decisions are stored as ``"<text> — <rationale>"``; ``supersedes``
+        holds the prior decision's ``text``. Match the pre-``—`` segment by EXACT
+        normalized equality — a substring match risks obsoleting the wrong entry.
+        """
+        want = _norm(supersedes)
+        for m in memories:
+            if not m.is_active or "session-decision" not in m.tags:
+                continue
+            if _norm(m.text.split(" — ")[0]) == want:
+                return m
+        return None
+
+    async def _find_semantic_supersede(
+        self, text: str, memories: list[Memory]
+    ) -> Memory | None:
+        """Embeddings-only near-duplicate detection for write-time curation.
+
+        Returns the active entry the new text should supersede (top embedding match
+        at or above MEMORY_DEDUPE_THRESHOLD), or None. No-op when the shadow index or
+        embeddings are unavailable — the markdown remains source of truth (ADR 0001)."""
+        if self._vector_store is None or self._embeddings is None:
+            return None
+        threshold = float(getattr(settings, "MEMORY_DEDUPE_THRESHOLD", 0.92))
+        try:
+            emb = await self._embeddings.embed_query(text)
+            results = await self._vector_store.similarity_search(
+                query_embedding=emb,
+                top_k=1,
+                similarity_threshold=threshold,
+            )
+        except Exception as exc:  # noqa: BLE001 — dedupe is best-effort, never fatal
+            logger.warning("write-time dedupe search failed: %s", exc)
+            return None
+        if not results or results[0].score < threshold:
+            return None
+        mid = results[0].metadata.get("memory_id", results[0].chunk_id)
+        for m in memories:
+            if m.id == mid and m.is_active:
+                return m
+        return None
 
     async def obsolete(
         self, memory_id: str, superseded_by: str | None = None
     ) -> Memory:
-        memories = self.load()
-        target = self._find(memories, memory_id)
-        target.obsoleted_at = _now_iso()
-        target.superseded_by = superseded_by
-        self._save(memories)
-        await self._delete_from_index([memory_id])
-        return target
+        async with self._lock:
+            memories = self.load()
+            target = self._find(memories, memory_id)
+            target.obsoleted_at = _now_iso()
+            target.superseded_by = superseded_by
+            self._save(memories)
+            await self._delete_from_index([memory_id])
+            return target
 
     async def delete(self, memory_id: str) -> None:
-        memories = self.load()
-        self._find(memories, memory_id)  # raises if missing
-        remaining = [m for m in memories if m.id != memory_id]
-        self._save(remaining)
-        await self._delete_from_index([memory_id])
+        async with self._lock:
+            memories = self.load()
+            self._find(memories, memory_id)  # raises if missing
+            remaining = [m for m in memories if m.id != memory_id]
+            self._save(remaining)
+            await self._delete_from_index([memory_id])
 
     def _find(self, memories: list[Memory], memory_id: str) -> Memory:
         for m in memories:
@@ -271,7 +380,11 @@ class MemoryService:
     # ----- recall --------------------------------------------------------
 
     async def recall(
-        self, query: str, top_k: int = 5, similarity_threshold: float = 0.0
+        self,
+        query: str,
+        top_k: int = 5,
+        similarity_threshold: float = 0.0,
+        include_sensitive: bool = False,
     ) -> tuple[list[MemoryHit], float]:
         if self._vector_store is None or self._embeddings is None:
             return [], 0.0
@@ -289,7 +402,11 @@ class MemoryService:
                 score=r.score,
                 section=r.metadata.get("section", DEFAULT_SECTION),
                 tags=[t for t in r.metadata.get("tags", "").split(",") if t],
+                sensitivity=r.metadata.get("sensitivity", "normal"),
             )
             for r in results
         ]
+        # Default-deny: drop sensitive memories unless the caller opted in.
+        if not include_sensitive:
+            hits = [h for h in hits if h.sensitivity == "normal"]
         return hits, (time.perf_counter() - start) * 1000.0

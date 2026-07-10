@@ -22,6 +22,7 @@ from .commands import (
     folders_group,
     hook_group,
     index_command,
+    ingest_command,
     init_command,
     inject_command,
     install_agent_command,
@@ -35,6 +36,7 @@ from .commands import (
     query_command,
     recall_command,
     records_group,
+    references_group,
     remember_command,
     reset_command,
     rules_group,
@@ -50,6 +52,7 @@ from .commands import (
     verify_docs_command,
     whoami_command,
 )
+from .commands.entities import entities_group
 from .commands.graph import graph_group
 
 
@@ -138,6 +141,7 @@ cli.add_command(context_command, name="context")
 cli.add_command(submit_session_command, name="submit-session")
 cli.add_command(session_path_command, name="session-path")
 cli.add_command(index_command, name="index")
+cli.add_command(ingest_command, name="ingest")
 cli.add_command(inject_command, name="inject")
 cli.add_command(jobs_command, name="jobs")
 cli.add_command(reset_command, name="reset")
@@ -153,9 +157,11 @@ cli.add_command(install_agent_command, name="install-agent")
 cli.add_command(install_session_hooks_command, name="install-session-hooks")
 cli.add_command(backfill_command, name="backfill-sessions")
 cli.add_command(records_group, name="records")
+cli.add_command(references_group, name="references")
 cli.add_command(rules_group, name="rules")
 cli.add_command(extraction_group, name="extraction")
 cli.add_command(graph_group, name="graph")
+cli.add_command(entities_group, name="entities")
 
 # Register doc-sync maintenance commands (hidden; deterministic, never call an LLM)
 cli.add_command(sync_docs_command, name="sync-docs")

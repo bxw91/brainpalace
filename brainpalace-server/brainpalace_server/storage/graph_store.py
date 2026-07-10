@@ -447,6 +447,7 @@ class GraphStoreManager:
         subject_domain: str | None = None,
         object_domain: str | None = None,
         edge_properties: dict[str, Any] | None = None,
+        sensitivity: str = "normal",
     ) -> bool:
         """Add a triplet to the graph.
 
@@ -543,10 +544,18 @@ class GraphStoreManager:
             if hasattr(store, "_conn"):
                 # SQLite store: attr-based holders carry id != name + domain.
                 subject_node: Any = _GNode(
-                    s_id, s_name, subject_type or "Entity", subject_domain or domain
+                    s_id,
+                    s_name,
+                    subject_type or "Entity",
+                    subject_domain or domain,
+                    sensitivity,
                 )
                 object_node: Any = _GNode(
-                    o_id, o_name, object_type or "Entity", object_domain or domain
+                    o_id,
+                    o_name,
+                    object_type or "Entity",
+                    object_domain or domain,
+                    sensitivity,
                 )
 
                 class _GRel:
@@ -747,18 +756,26 @@ class GraphStoreManager:
         )
         return result
 
-    def timeline_named(self, entity_name: str) -> list[dict[str, Any]]:
+    def timeline_named(
+        self, entity_name: str, include_sensitive: bool = False
+    ) -> list[dict[str, Any]]:
         """Name-resolved timeline; empty on simple backend or disabled."""
         if not settings.ENABLE_GRAPH_INDEX or self._graph_store is None:
             return []
         store = self._graph_store
         if not hasattr(store, "timeline_named"):
             return []
-        result: list[dict[str, Any]] = store.timeline_named(entity_name)
+        result: list[dict[str, Any]] = store.timeline_named(
+            entity_name, include_sensitive=include_sensitive
+        )
         return result
 
     def search_nodes(
-        self, text: str, limit: int = 20, domains: list[str] | None = None
+        self,
+        text: str,
+        limit: int = 20,
+        domains: list[str] | None = None,
+        include_sensitive: bool = False,
     ) -> list[dict[str, Any]]:
         """Browse-search nodes; empty on simple backend or disabled."""
         if not settings.ENABLE_GRAPH_INDEX or self._graph_store is None:
@@ -767,7 +784,7 @@ class GraphStoreManager:
         if not hasattr(store, "search_nodes"):
             return []
         result: list[dict[str, Any]] = store.search_nodes(
-            text, limit=limit, domains=domains
+            text, limit=limit, domains=domains, include_sensitive=include_sensitive
         )
         return result
 
@@ -799,6 +816,49 @@ class GraphStoreManager:
             node_ids, limit=limit, domains=domains
         )
         return result
+
+    def upsert_person_node(
+        self,
+        person_id: str,
+        name: str | None,
+        *,
+        kind: str = "person",
+        domain: str = "home",
+        sensitivity: str = "normal",
+    ) -> bool:
+        """G5 D2: project an identity ``person`` row into the graph as a single
+        node, so relational traversal ("Mama's brother") works when GraphRAG is
+        enabled. This is a **one-way** write — identity is user-asserted ground
+        truth in its own store (D1) and is NEVER read back out of the graph.
+        No-op (returns False) when the graph index is disabled or the store
+        lacks the property-graph API, so identity works unchanged with graph
+        off. The node id is the person id; label is the capitalised kind."""
+        if not settings.ENABLE_GRAPH_INDEX or self._graph_store is None:
+            return False
+        store = self._graph_store
+        if not hasattr(store, "upsert_nodes"):
+            return False
+        label = (kind or "person").capitalize()
+        display = name or "(unknown)"
+        try:
+            if hasattr(store, "_conn"):
+                node: Any = _GNode(person_id, display, label, domain, sensitivity)
+            else:
+                from llama_index.core.graph_stores.types import (  # noqa: PLC0415
+                    EntityNode,
+                )
+
+                node = EntityNode(name=display, label=label)
+            store.upsert_nodes([node])
+            self._update_counts()
+            self._last_updated = datetime.now(timezone.utc)
+            return True
+        except Exception as e:  # noqa: BLE001 — projection is best-effort
+            logger.error(
+                "graph_store.upsert_person_node: failed",
+                extra={"person_id": person_id, "error": str(e)},
+            )
+            return False
 
     def set_node_properties(self, props_by_id: dict[str, dict[str, Any]]) -> int:
         """Merge node properties; 0 on simple backend or disabled."""
@@ -982,12 +1042,20 @@ class GraphStoreManager:
 
 
 class _GNode:
-    def __init__(self, id: str, name: str, label: str, domain: str) -> None:
+    def __init__(
+        self,
+        id: str,
+        name: str,
+        label: str,
+        domain: str,
+        sensitivity: str = "normal",
+    ) -> None:
         self.id = id
         self.name = name
         self.label = label
         self.properties: dict[str, Any] = {}
         self.domain = domain
+        self.sensitivity = sensitivity
 
 
 class _MinimalGraphStore:

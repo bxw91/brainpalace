@@ -132,6 +132,25 @@ class IndexRequest(BaseModel):
         ),
     )
 
+    # Provenance/authority (Phase 6.5)
+    domain: str | None = Field(
+        default=None,
+        description="Optional user-facing domain label for the folder (e.g. "
+        "'code', 'home'). None means unset.",
+    )
+    authority: str | None = Field(
+        default=None,
+        description="Binary provenance trust level: 'authoritative' or "
+        "'reference'. None means let the server resolve the default "
+        "(internal paths default to 'authoritative', external paths to "
+        "'reference').",
+    )
+    force_authority: bool = Field(
+        default=False,
+        description="Bypass the external-path authority guard: allows an "
+        "out-of-tree folder to be registered as 'authoritative'.",
+    )
+
     model_config = {
         "json_schema_extra": {
             "examples": [

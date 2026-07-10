@@ -17,7 +17,7 @@ metadata:
   category: ai-tools
   author: bxw91
   last_validated: 2026-06-13
-last_validated: 2026-07-03
+last_validated: 2026-07-05
 ---
 
 # Configuring BrainPalace
@@ -179,6 +179,9 @@ fixed sequence); the agent asks in this order:
 > (`config wizard --global` is a back-compat alias; GLOBAL config) ask the **same
 > project-config-backed questions**, so the front-ends never drift: embedding
 > provider/model, summarizer provider/model, **reranker** (enabled),
+> **doc-trust weight** (`ranking.doc_weight` — how much docs are trusted vs code
+> in search: `1.0` equal, `0.5` half-weight default, `0.0` excluded; non-interactive
+> `--doc-weight <0.0-1.0>`),
 > **embed-sessions** (`session_indexing.enabled` — billable opt-in, default OFF),
 > **session-archive** (`session_indexing.archive.enabled` — free local backup of
 > full raw transcripts incl. secrets, default ON), **git-history**

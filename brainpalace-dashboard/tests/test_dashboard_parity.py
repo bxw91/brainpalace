@@ -185,8 +185,11 @@ _DASHBOARD_ROUTE_PREFIXES = (
     "/context",
     "/runtime",
     "/records",
+    "/references",
     "/extraction",
     "/metrics",
+    "/ingest",
+    "/entities",
 )
 
 

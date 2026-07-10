@@ -404,6 +404,8 @@ class JobWorker:
                 force=job.force,
                 force_budget=job.force_budget,
                 trigger=job.source,
+                domain=job.domain,
+                authority=job.authority,
             )
 
             # Build content injector if job has injection params
@@ -806,6 +808,8 @@ class JobWorker:
                         watch_debounce_seconds=job.watch_debounce_seconds,
                         include_code=folder_record.include_code,
                         source=folder_record.source,
+                        domain=folder_record.domain,
+                        authority=folder_record.authority,
                     )
                     logger.info(
                         f"Updated watch config for {job.folder_path}: "

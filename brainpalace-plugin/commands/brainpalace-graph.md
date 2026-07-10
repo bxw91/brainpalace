@@ -67,6 +67,5 @@ line per path/dependent/co-changed file.
 
 ### Flags
 <!--GENERATED:flags-->
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
+_This command takes no top-level flags._
 <!--/GENERATED-->

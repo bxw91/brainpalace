@@ -46,7 +46,7 @@ def test_proceed_keeps_scope_and_estimates_with_include_code():
         ) as es,
         patch("brainpalace_cli.commands.init.click.prompt", return_value="proceed"),
     ):
-        out = _estimate_and_confirm_local(Path("/p"), Path("/p/config.yaml"), True)
+        out = _estimate_and_confirm_local([Path("/p")], Path("/p/config.yaml"), True)
     assert out is True
     assert es.call_count == 1
     assert es.call_args.kwargs["include_code"] is True
@@ -60,7 +60,9 @@ def test_cancel_returns_none():
         ),
         patch("brainpalace_cli.commands.init.click.prompt", return_value="cancel"),
     ):
-        assert _estimate_and_confirm_local(Path("/p"), Path("/p/c.yaml"), True) is None
+        assert (
+            _estimate_and_confirm_local([Path("/p")], Path("/p/c.yaml"), True) is None
+        )
 
 
 def test_change_then_proceed_flips_scope_and_reestimates():
@@ -75,7 +77,7 @@ def test_change_then_proceed_flips_scope_and_reestimates():
             side_effect=lambda *a, **k: next(prompts),
         ),
     ):
-        out = _estimate_and_confirm_local(Path("/p"), Path("/p/c.yaml"), True)
+        out = _estimate_and_confirm_local([Path("/p")], Path("/p/c.yaml"), True)
     assert out is False  # changed scope → code off
     assert es.call_count == 2  # re-estimated after change
     include_flags = [c.kwargs["include_code"] for c in es.call_args_list]

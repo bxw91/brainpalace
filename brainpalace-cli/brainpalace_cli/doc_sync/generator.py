@@ -18,8 +18,8 @@ from brainpalace_cli.doc_sync.markers import (
     replace_block,
 )
 from brainpalace_cli.doc_sync.serializer import (
+    render_flags_block,
     render_flags_section,
-    render_flags_table,
     render_mcp_tools_table,
     render_modes_commands,
     render_modes_grid,
@@ -86,13 +86,19 @@ def _replace_params_frontmatter(text: str, cmd: CommandFact) -> str:
 def regenerate_command_doc(path: Path, cmd: CommandFact) -> None:
     text = path.read_text(encoding="utf-8")
     text = _replace_params_frontmatter(text, cmd)
-    if cmd.flags:
-        try:
-            find_block(text, "flags")
-            text = replace_block(text, "flags", render_flags_table(cmd))
-        except MarkerError:
+    try:
+        find_block(text, "flags")
+    except MarkerError:
+        if cmd.flags:
             # No block yet: CREATE one by appending a Flags section to the body.
             text = text.rstrip("\n") + "\n\n" + render_flags_section(cmd) + "\n"
+        # else: no block and no flags — nothing to do (unchanged behavior).
+    else:
+        # D4: NORMALIZE, never delete, an existing block — this also covers a
+        # command that lost all its flags (e.g. `ingest` becoming a group):
+        # its stale table is replaced with the explicit no-flags one-liner
+        # instead of being left stale forever.
+        text = replace_block(text, "flags", render_flags_block(cmd))
     path.write_text(text, encoding="utf-8")
 
 

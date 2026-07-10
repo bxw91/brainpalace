@@ -37,16 +37,28 @@ class JobQueueService:
     Backpressure is handled at the router level, not here.
     """
 
-    def __init__(self, store: JobQueueStore, project_root: Path | None = None) -> None:
+    def __init__(
+        self,
+        store: JobQueueStore,
+        project_root: Path | None = None,
+        project_domain: str | None = None,
+    ) -> None:
         """Initialize the job queue service.
 
         Args:
             store: The underlying job queue store for persistence.
             project_root: Root directory for path validation. If None, all paths
                 are allowed and path validation is skipped.
+            project_domain: This project's own domain (config `project.domain`,
+                "code" unless changed). Used to (a) default a folder's domain
+                when the caller omits ``--domain`` and (b) recognize an
+                EXPLICIT external-folder domain claim that matches it as an
+                authoritative claim requiring ``--force`` (6.5 Task 5). None
+                disables both — no default, no domain-claim gate.
         """
         self._store = store
         self._project_root = project_root.resolve() if project_root else None
+        self._project_domain = project_domain
         logger.info(
             f"JobQueueService initialized with project_root={self._project_root}"
         )
@@ -123,10 +135,61 @@ class JobQueueService:
 
         Raises:
             ValueError: If path is outside project root and allow_external is False.
+            PermissionError: If the path is outside project root and would be
+                registered as 'authoritative' without force_authority (6.5).
         """
         # Validate and resolve path
         resolved_path = self._validate_path(request.folder_path, allow_external)
         folder_path_str = str(resolved_path)
+
+        # 6.5: resolve folder domain/authority. Externality is derived from
+        # the path prefix — never from allow_external (init -F sends
+        # allow_external=True for in-tree targets too, so the flag alone
+        # does not mean "external"). External folders default to
+        # 'reference'; claiming 'authoritative' for an external folder
+        # requires force_authority.
+        is_external = False
+        if self._project_root is not None:
+            try:
+                resolved_path.relative_to(self._project_root)
+            except ValueError:
+                is_external = True
+
+        # Task 5: an EXTERNAL folder that EXPLICITLY claims the project's own
+        # domain (via --domain) is treated the same as an explicit
+        # --authority authoritative claim — it requires --force. A domain
+        # left unset by the caller is NOT a claim (it is defaulted below,
+        # after this gate, purely for storage) so existing external-folder
+        # registrations without --domain are unaffected.
+        domain_claims_project = (
+            request.domain is not None
+            and self._project_domain is not None
+            and request.domain == self._project_domain
+        )
+
+        if request.authority is not None:
+            effective_authority = request.authority
+        elif is_external and not domain_claims_project:
+            effective_authority = "reference"
+        else:
+            effective_authority = "authoritative"
+
+        if (
+            is_external
+            and effective_authority == "authoritative"
+            and not request.force_authority
+        ):
+            raise PermissionError(
+                f"Path '{resolved_path}' is outside the project root and "
+                "cannot be registered as 'authoritative' without "
+                "force_authority. Pass --force to confirm."
+            )
+
+        # Domain defaulting happens AFTER the authority gate above so it can
+        # never retroactively turn an omitted --domain into a claim.
+        effective_domain = request.domain
+        if effective_domain is None and self._project_domain is not None:
+            effective_domain = self._project_domain
 
         # Compute deduplication key
         dedupe_key = JobRecord.compute_dedupe_key(
@@ -188,6 +251,8 @@ class JobQueueService:
             source=source,
             watch_mode=request.watch_mode,
             watch_debounce_seconds=request.watch_debounce_seconds,
+            domain=effective_domain,
+            authority=effective_authority,
             status=JobStatus.PENDING,
             enqueued_at=datetime.now(timezone.utc),
         )

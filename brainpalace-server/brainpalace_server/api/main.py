@@ -72,6 +72,7 @@ from .routers import (
     folders_router,
     health_router,
     index_router,
+    ingest_router,
     jobs_router,
     query_router,
     records_router,
@@ -931,6 +932,28 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # Exposed so the self-heal heartbeat can run the periodic deep-clean.
         app.state.manifest_tracker = manifest_tracker
 
+        # Programmatic text-ingest service (spec Item 3 / G2). Built only when
+        # embedding is available; a missing provider key leaves it None so the
+        # POST /ingest/text endpoint returns an actionable 503 (Item-1 guardrail)
+        # instead of crashing startup. Queries keep working regardless.
+        app.state.document_ingest_service = None
+        try:
+            if storage_backend is not None:
+                from brainpalace_server.indexing import get_embedding_generator
+                from brainpalace_server.indexing.chunking import ContextAwareChunker
+                from brainpalace_server.services.document_ingest_service import (
+                    DocumentIngestService,
+                )
+
+                app.state.document_ingest_service = DocumentIngestService(
+                    embedding_generator=get_embedding_generator(),
+                    storage_backend=storage_backend,
+                    chunker=ContextAwareChunker(),
+                    bm25_manager=getattr(app.state, "bm25_manager", None),
+                )
+        except Exception:  # noqa: BLE001 — ingest is optional; queries still work
+            logger.exception("text-ingest service unavailable")
+
         # Self-heal on every start. RECOVER FIRST, DESTROY LAST:
         #   stage 1 — restore lost chunks (code/doc AND git) from dead Chroma
         #     segments + the embedding cache — constructive, NO re-embed / no
@@ -1257,6 +1280,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 # OFF (needs only storage_backend + embedder + summarizer). Never
                 # blocks startup; failure leaves distiller=None (archive still runs).
                 distiller = None
+                app.state.memory_curator = None
                 try:
                     extract_mode = app.state.extraction_mode_session
                     if distill_would_run:
@@ -1329,6 +1353,32 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                         logger.info(
                             "Session distiller enabled (engine=%s).", extract_mode
                         )
+
+                        # Provider-mode memory curation shares the summarization
+                        # provider + the extraction cost-lock. subagent/auto's
+                        # in-session path is the SessionStart nudge (curate_due); the
+                        # server only curates when a paid/local provider is authorized.
+                        from brainpalace_server.config.extraction_config import (
+                            extraction_provider_enabled,
+                        )
+
+                        if (
+                            extract_mode in ("provider", "auto")
+                            and extraction_provider_enabled()
+                            and app.state.memory_service is not None
+                        ):
+                            from brainpalace_server.services.memory_curator_service import (  # noqa: E501
+                                MemoryCurator,
+                            )
+
+                            app.state.memory_curator = MemoryCurator(
+                                summarizer=ProviderRegistry.get_summarization_provider(
+                                    _summ_settings
+                                ),
+                                memory_service=app.state.memory_service,
+                            )
+                        else:
+                            app.state.memory_curator = None
                 except Exception as exc:  # noqa: BLE001 — never block startup
                     logger.warning("Session distiller setup failed: %s", exc)
 
@@ -1444,6 +1494,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                         drain_cooldown=app.state.extraction_drain_cooldown,
                         provider_budget=_provider_budget,
                         provider_billable=_provider_billable,
+                        memory_curator=getattr(app.state, "memory_curator", None),
+                        curate_state_dir=state_dir,
                     )
                     await reconciler.start()
                     app.state.session_reconciler = reconciler
@@ -1509,6 +1561,56 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         except Exception as exc:  # noqa: BLE001 — never block startup
             app.state.record_store = None
             logger.warning("RecordStore setup failed: %s", exc)
+
+        # Phase 6: lazy-tier reference catalog (SQLite WAL) + register the
+        # session record adapter into the in-memory ingestion registry.
+        try:
+            from brainpalace_server.storage.reference_catalog_store import (  # noqa: PLC0415
+                ReferenceCatalogStore,
+            )
+
+            _refcat_db = db_path(state_dir, "reference_catalog.db")
+            app.state.reference_catalog_store = ReferenceCatalogStore(_refcat_db)
+            logger.info("ReferenceCatalogStore initialized: %s", _refcat_db)
+        except Exception as exc:  # noqa: BLE001 — never block startup
+            app.state.reference_catalog_store = None
+            logger.warning("ReferenceCatalogStore setup failed: %s", exc)
+
+        # G5: identity store (person / alias / link) — user-asserted ground
+        # truth in its own SQLite file (D1). None-safe: the /entities router
+        # 503s and the ingest cascade no-ops when it failed to build.
+        try:
+            from brainpalace_server.storage.identity_store import (  # noqa: PLC0415
+                IdentityStore,
+            )
+
+            _identity_db = db_path(state_dir, "identity.db")
+            app.state.identity_store = IdentityStore(_identity_db)
+            logger.info("IdentityStore initialized: %s", _identity_db)
+            # Wire it into the (already-built) ingest service so the G5 Task 6
+            # delete/re-ingest cascade reaches a live store. The service is
+            # constructed earlier in lifespan than this store, so bind here.
+            _ingest = getattr(app.state, "document_ingest_service", None)
+            if _ingest is not None:
+                _ingest.identity_store = app.state.identity_store
+        except Exception as exc:  # noqa: BLE001 — never block startup
+            app.state.identity_store = None
+            logger.warning("IdentityStore setup failed: %s", exc)
+
+        try:
+            from brainpalace_server.ingestion.adapter import (  # noqa: PLC0415
+                register_adapter,
+                reset_adapters,
+            )
+            from brainpalace_server.services.session_records import (  # noqa: PLC0415
+                SessionRecordAdapter,
+            )
+
+            reset_adapters()  # deterministic registry across reloads
+            register_adapter(SessionRecordAdapter())
+            logger.info("Ingestion adapters registered: session")
+        except Exception as exc:  # noqa: BLE001 — never block startup
+            logger.warning("Adapter registration failed: %s", exc)
 
         # Phase 5: durable taught-rule store — load persisted rules into the
         # validator registry on start (reset first for a deterministic list).
@@ -1577,6 +1679,44 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             except Exception:  # noqa: BLE001
                 pass
 
+        # Phase 6.5a: load per-project ranking config (doc_weight) from config.yaml.
+        try:
+            from brainpalace_server.config.provider_config import (  # noqa: PLC0415
+                load_merged_config_dict,
+            )
+            from brainpalace_server.config.ranking_config import (  # noqa: PLC0415
+                RankingConfig,
+            )
+
+            _merged = load_merged_config_dict(
+                (state_dir / "config.yaml") if state_dir else None
+            )
+            app.state.ranking_config = RankingConfig(**(_merged.get("ranking") or {}))
+        except Exception as exc:  # noqa: BLE001 — never block startup; default 0.5
+            app.state.ranking_config = RankingConfig()
+            # ERROR (not warning): a swallowed config-load failure once shipped a
+            # silently-dead doc_weight. Loud so a real failure can't hide again.
+            logger.error("RankingConfig load failed, using default 0.5: %s", exc)
+
+        # Task 5 (6.5): load the project's own domain (config.yaml `project:`
+        # section, default "code"). Threaded into JobQueueService below so
+        # folders default their domain to it and an external folder claiming
+        # this same domain triggers the --force gate.
+        try:
+            from brainpalace_server.config.project_config import (  # noqa: PLC0415
+                ProjectConfig,
+            )
+
+            _project_cfg_dict = load_merged_config_dict(
+                (state_dir / "config.yaml") if state_dir else None
+            )
+            app.state.project_domain = ProjectConfig(
+                **(_project_cfg_dict.get("project") or {})
+            ).domain
+        except Exception as exc:  # noqa: BLE001 — never block startup; default "code"
+            app.state.project_domain = "code"
+            logger.warning("ProjectConfig load failed, using default 'code': %s", exc)
+
         # Create query service with storage_backend (Phase 9)
         query_service = QueryService(
             storage_backend=storage_backend,
@@ -1588,6 +1728,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 "archive_dir",
                 None,
             ),
+            ranking_config=app.state.ranking_config,
+            reference_catalog_store=getattr(app.state, "reference_catalog_store", None),
+            identity_store=getattr(app.state, "identity_store", None),
         )
         app.state.query_service = query_service
 
@@ -1631,6 +1774,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             job_service = JobQueueService(
                 store=job_store,
                 project_root=project_root,
+                project_domain=getattr(app.state, "project_domain", None),
             )
             app.state.job_service = job_service
             logger.info("Job queue service initialized")
@@ -1714,6 +1858,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             job_service = JobQueueService(
                 store=job_store,
                 project_root=project_root,
+                project_domain=getattr(app.state, "project_domain", None),
             )
             app.state.job_service = job_service
 
@@ -1968,7 +2113,13 @@ app.include_router(jobs_router, prefix="/index/jobs", tags=["Jobs"])
 app.include_router(query_router, prefix="/query", tags=["Querying"])
 app.include_router(runtime_router, prefix="/runtime", tags=["Runtime"])
 app.include_router(records_router, prefix="/records", tags=["Records"])
+app.include_router(ingest_router, prefix="/ingest", tags=["Ingest"])
 app.include_router(rules_router, prefix="/rules", tags=["Rules"])
+from brainpalace_server.api.routers.references import (  # noqa: E402 — late import, registered after app setup
+    router as references_router,
+)
+
+app.include_router(references_router, prefix="/references", tags=["References"])
 from brainpalace_server.api.routers.memories import (  # noqa: E402 — late import, registered after app setup
     router as memories_router,
 )
@@ -2004,6 +2155,11 @@ from brainpalace_server.api.routers.metrics import (  # noqa: E402 — late impo
 )
 
 app.include_router(metrics_router, prefix="/metrics", tags=["Metrics"])
+from brainpalace_server.api.routers.entities import (  # noqa: E402 — late import, registered after app setup
+    router as entities_router,
+)
+
+app.include_router(entities_router, prefix="/entities", tags=["Entities"])
 
 
 @app.get("/", include_in_schema=False)

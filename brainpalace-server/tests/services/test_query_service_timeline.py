@@ -36,13 +36,15 @@ class _FakeGraph:
             ]
         }
 
-    def search_nodes(self, text: str, limit: int = 20, domains=None):
+    def search_nodes(
+        self, text: str, limit: int = 20, domains=None, include_sensitive: bool = False
+    ):
         for name in self._rows:
             if text.lower() in name.lower():
                 return [{"id": "n", "name": name, "label": "Decision", "degree": 2}]
         return []
 
-    def timeline_named(self, entity_name: str):
+    def timeline_named(self, entity_name: str, include_sensitive: bool = False):
         return self._rows.get(entity_name, [])
 
 
@@ -114,14 +116,14 @@ async def test_exact_name_wins_over_busier_substring() -> None:
     """H2: an exact node-name match beats a busier substring hit."""
 
     class _G:
-        def search_nodes(self, text, limit=20, domains=None):
+        def search_nodes(self, text, limit=20, domains=None, include_sensitive=False):
             # busiest substring hit first, exact match second
             return [
                 {"name": "oauth.py", "degree": 9},
                 {"name": "auth.py", "degree": 1},
             ]
 
-        def timeline_named(self, entity_name):
+        def timeline_named(self, entity_name, include_sensitive=False):
             return (
                 [
                     {

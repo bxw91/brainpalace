@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-05
+last_validated: 2026-07-06
 ---
 
 # Compute Query Mode & Records Subsystem
@@ -206,6 +206,20 @@ chunks from search) — records with `source="session"` are excluded from every
 aggregate. There is no per-query override. On this repo `extraction.mode:
 off` already engages it, which is why `brainpalace status` reads *"Session Recall:
 … disabled data hidden"*.
+
+### Privacy — sensitivity default-deny (Phase 7)
+
+Independent of the session hard-off above, any record marked
+`sensitivity != "normal"` is excluded from every aggregate/absence result by
+default — same default-deny that applies to graph nodes, session chunks, and
+curated memories (see [ARCHITECTURE.md](ARCHITECTURE.md) / `CLAUDE.md`). A
+record's mark is set once (nothing in the engine decides it automatically) but
+**propagates**: records/graph triplets/promoted memories derived from a
+session marked `sensitivity="private"` inherit that mark, so a private session
+cannot launder itself into a visible aggregate via distillation.
+`brainpalace query --include-sensitive` reveals sensitive rows — interactive
+CLI only; MCP and the dashboard always omit the flag, so a sensitive record
+never reaches those surfaces.
 
 ### `--json` response shape
 

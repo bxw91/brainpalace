@@ -74,6 +74,15 @@ class QueryRequest(BaseModel):
             "false disables it, null (default) follows ENABLE_RERANKING."
         ),
     )
+    include_sensitive: bool = Field(
+        default=False,
+        description=(
+            "Reveal rows marked sensitivity != 'normal' (records + graph "
+            "nodes). Default-deny: sensitive rows are hidden unless this is "
+            "true. Only the interactive CLI sets it; MCP/dashboard/hooks omit "
+            "it, so sensitive rows never reach shared or third-party surfaces."
+        ),
+    )
 
     # Content filtering
     source_types: list[str] | None = Field(
@@ -90,6 +99,25 @@ class QueryRequest(BaseModel):
         default=None,
         description="Filter by specific file paths (supports wildcards)",
         examples=[["docs/*.md"], ["src/**/*.py"]],
+    )
+    domains: list[str] | None = Field(
+        default=None,
+        description=(
+            "Filter to chunks ingested under one of these domains (the "
+            "reserved `domain` metadata key set by /ingest — a consumer's "
+            "namespace, e.g. an owner or app id). Post-retrieval, OR across "
+            "values, exact match."
+        ),
+        examples=[["home-assistant"], ["billing", "support"]],
+    )
+    metadata_filter: dict[str, str] | None = Field(
+        default=None,
+        description=(
+            "Filter to chunks whose metadata exact-matches every key/value "
+            "pair given (AND across keys). Works against any chunk metadata "
+            "key, including ingest's reserved `source`/`source_id`."
+        ),
+        examples=[{"source": "home-assistant"}, {"owner": "alice", "kind": "log"}],
     )
 
     # BM25 query language override

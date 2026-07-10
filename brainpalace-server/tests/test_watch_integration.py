@@ -127,6 +127,8 @@ class TestJobWorkerWatchIntegration:
         mock_record.chunk_ids = ["c1", "c2"]
         mock_record.include_code = True
         mock_record.source = "manual"
+        mock_record.domain = None
+        mock_record.authority = "authoritative"
         mock_folder_manager.get_folder = AsyncMock(return_value=mock_record)
         mock_folder_manager.add_folder = AsyncMock(return_value=mock_record)
 
@@ -143,6 +145,8 @@ class TestJobWorkerWatchIntegration:
             watch_debounce_seconds=15,
             include_code=True,
             source=mock_record.source,
+            domain=mock_record.domain,
+            authority=mock_record.authority,
         )
 
         # Verify FileWatcherService.add_folder_watch was called

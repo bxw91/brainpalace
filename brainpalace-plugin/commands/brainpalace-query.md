@@ -46,11 +46,27 @@ parameters:
     type: text
     required: false
     default: ""
+  - name: domain
+    type: text
+    required: false
+    default: ""
+  - name: meta
+    type: text
+    required: false
+    default: ""
   - name: no-time-decay
     type: bool
     required: false
     default: false
   - name: language
+    type: text
+    required: false
+    default: ""
+  - name: include-sensitive
+    type: bool
+    required: false
+    default: false
+  - name: also
     type: text
     required: false
     default: ""
@@ -151,8 +167,12 @@ just the presence of `results`.
 | --source-types | text | "" | Comma-separated source types to filter by (doc,code,test) |
 | --languages | text | "" | Comma-separated programming languages to filter by |
 | --file-paths | text | "" | Comma-separated file path patterns to filter by (wildcards supported) |
+| --domain | text | "" | Filter to chunks ingested under this domain (the reserved `domain` metadata key set by /ingest — an owner or app namespace). Repeatable; OR across values. |
+| --meta | text | "" | Filter to chunks whose metadata exact-matches key=value. Repeatable; AND across keys. Example: --meta owner=alice --meta kind=log |
 | --no-time-decay | bool | false | Disable age-weighted ranking for this query (newer-ranked-higher). |
 | --language | text | "" | BM25 query language override (ISO 639-1, e.g. en, de, hr). Overrides the project bm25.language for this query only. |
+| --include-sensitive | bool | false | Reveal rows marked sensitive (interactive CLI only; hidden by default). |
+| --also | text | "" | Fan out to a sibling BrainPalace instance (project path or URL) and RRF-merge its results with the local ones (household multi-instance M1). Repeatable. A path is resolved via the running-instance registry ('brainpalace list'); an unreachable/unresolvable sibling prints a warning and is skipped — local results still render. |
 <!--/GENERATED-->
 
 ## Modes

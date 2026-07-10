@@ -8,7 +8,7 @@ from brainpalace_cli.client.api_client import IndexingStatus
 from brainpalace_cli.commands.status import status_command
 
 
-def _status(features, graph_index=None):
+def _status(features, graph_index=None, text_ingest=None):
     return IndexingStatus(
         total_documents=3,
         total_chunks=42,
@@ -19,18 +19,40 @@ def _status(features, graph_index=None):
         indexed_folders=[],
         features=features,
         graph_index=graph_index,
+        text_ingest=text_ingest,
     )
 
 
-def _invoke(features, graph_index=None):
+def _invoke(features, graph_index=None, text_ingest=None):
     health = MagicMock(status="healthy", message=None, version="1.0.0")
     runner = CliRunner()
     with patch("brainpalace_cli.commands.status.DocServeClient") as client_cls:
         inst = client_cls.return_value.__enter__.return_value
-        inst.status.return_value = _status(features, graph_index=graph_index)
+        inst.status.return_value = _status(
+            features, graph_index=graph_index, text_ingest=text_ingest
+        )
         inst.health.return_value = health
         result = runner.invoke(status_command, [])
     return result
+
+
+def test_status_renders_text_ingest_when_present():
+    result = _invoke(
+        {"doc_indexing": {"active": True, "total_chunks": 42, "total_documents": 3}},
+        text_ingest={"chunks": 7},
+    )
+    assert result.exit_code == 0, result.output
+    assert "Text Ingest" in result.output
+    assert "7" in result.output
+
+
+def test_status_hides_text_ingest_when_zero():
+    result = _invoke(
+        {"doc_indexing": {"active": True, "total_chunks": 42, "total_documents": 3}},
+        text_ingest={"chunks": 0},
+    )
+    assert result.exit_code == 0, result.output
+    assert "Text Ingest" not in result.output
 
 
 def test_status_renders_session_memory_on():
@@ -52,6 +74,55 @@ def test_status_renders_session_memory_on():
     assert "Session Memory" in out
     assert "42" in out and "5" in out
     assert "watching" in out
+
+
+def test_status_renders_memory_cap_usage():
+    result = _invoke(
+        {
+            "doc_indexing": {"active": True, "total_chunks": 42, "total_documents": 3},
+            "file_watcher": {"enabled": True, "watched_folders": 1},
+            "session_memory": {
+                "enabled": True,
+                "watcher_running": True,
+                "session_chunks": 42,
+                "curated_memories": 5,
+                "memory_char_count": 1200,
+                "memory_char_cap": 8000,
+                "memory_cap_pressure": None,
+            },
+        }
+    )
+    assert result.exit_code == 0, result.output
+    # Rich wraps long cell text across lines (and interleaves table borders), so
+    # the used/cap figure and its unit label may not be contiguous. Assert the
+    # load-bearing figure and the unit label independently.
+    assert "1200/8000" in result.output
+    assert "chars" in result.output
+
+
+def test_status_renders_memory_cap_pressure_warning():
+    result = _invoke(
+        {
+            "doc_indexing": {"active": True, "total_chunks": 42, "total_documents": 3},
+            "file_watcher": {"enabled": True, "watched_folders": 1},
+            "session_memory": {
+                "enabled": True,
+                "watcher_running": True,
+                "session_chunks": 42,
+                "curated_memories": 5,
+                "memory_char_count": 8000,
+                "memory_char_cap": 8000,
+                "memory_cap_pressure": {
+                    "at": "2026-07-09T00:00:00+00:00",
+                    "skipped": 3,
+                },
+            },
+        }
+    )
+    assert result.exit_code == 0, result.output
+    flat = " ".join(result.output.split())
+    assert "cap pressure" in flat
+    assert "3 promotions skipped" in flat
 
 
 def test_status_renders_session_memory_off():

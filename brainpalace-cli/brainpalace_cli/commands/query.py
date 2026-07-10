@@ -12,6 +12,7 @@ from ..client import (
     exit_on_connection_error,
 )
 from ..config import get_server_url
+from ..merge import rrf_merge
 
 console = Console()
 
@@ -42,6 +43,45 @@ def _ai_hint_enabled() -> bool:
     except Exception:
         pass
     return True
+
+
+def _resolve_instance_url(value: str) -> str | None:
+    """Resolve an ``--also`` value to a reachable sibling base URL.
+
+    A value starting with ``http`` is used as-is. Otherwise it's treated as
+    a project path: resolved to its absolute root and looked up in the
+    running registry (the same source ``brainpalace list`` reads — see
+    ``commands/list_cmd.py``) to find the live server's ``base_url``.
+    Returns ``None`` when the path is not a known, currently-running
+    instance (the caller degrades gracefully — warn and skip).
+    """
+    if value.startswith("http"):
+        return value
+
+    from pathlib import Path
+
+    from .list_cmd import get_registry, read_runtime
+
+    root = str(Path(value).resolve())
+    entry = get_registry().get(root)
+    if entry is None:
+        return None
+    state_dir = Path(entry.get("state_dir", ""))
+    runtime = read_runtime(state_dir)
+    if not runtime:
+        return None
+    base_url = runtime.get("base_url")
+    return base_url if base_url else None
+
+
+def _result_to_dict(r: object) -> dict[str, object]:
+    """Convert a ``QueryResult`` to the plain-dict shape ``rrf_merge`` wants."""
+    return {
+        "text": r.text,  # type: ignore[attr-defined]
+        "source": r.source,  # type: ignore[attr-defined]
+        "score": r.score,  # type: ignore[attr-defined]
+        "chunk_id": r.chunk_id,  # type: ignore[attr-defined]
+    }
 
 
 def _maybe_print_ai_hint() -> None:
@@ -141,6 +181,25 @@ def _maybe_print_ai_hint() -> None:
     help="Comma-separated file path patterns to filter by (wildcards supported)",
 )
 @click.option(
+    "--domain",
+    "domains",
+    multiple=True,
+    help=(
+        "Filter to chunks ingested under this domain (the reserved `domain` "
+        "metadata key set by /ingest — an owner or app namespace). "
+        "Repeatable; OR across values."
+    ),
+)
+@click.option(
+    "--meta",
+    "metadata_pairs",
+    multiple=True,
+    help=(
+        "Filter to chunks whose metadata exact-matches key=value. "
+        "Repeatable; AND across keys. Example: --meta owner=alice --meta kind=log"
+    ),
+)
+@click.option(
     "--no-time-decay",
     is_flag=True,
     help="Disable age-weighted ranking for this query (newer-ranked-higher).",
@@ -152,6 +211,23 @@ def _maybe_print_ai_hint() -> None:
     help=(
         "BM25 query language override (ISO 639-1, e.g. en, de, hr). "
         "Overrides the project bm25.language for this query only."
+    ),
+)
+@click.option(
+    "--include-sensitive",
+    is_flag=True,
+    help="Reveal rows marked sensitive (interactive CLI only; hidden by default).",
+)
+@click.option(
+    "--also",
+    "also_paths",
+    multiple=True,
+    help=(
+        "Fan out to a sibling BrainPalace instance (project path or URL) and "
+        "RRF-merge its results with the local ones (household multi-instance "
+        "M1). Repeatable. A path is resolved via the running-instance "
+        "registry ('brainpalace list'); an unreachable/unresolvable sibling "
+        "prints a warning and is skipped — local results still render."
     ),
 )
 def query_command(
@@ -167,8 +243,12 @@ def query_command(
     source_types: str | None,
     languages: str | None,
     file_paths: str | None,
+    domains: tuple[str, ...],
+    metadata_pairs: tuple[str, ...],
     no_time_decay: bool,
     query_language: str | None,
+    include_sensitive: bool,
+    also_paths: tuple[str, ...],
 ) -> None:
     """Search indexed documents with natural language or keyword query.
 
@@ -211,6 +291,16 @@ def query_command(
     file_paths_list = (
         [fp.strip() for fp in file_paths.split(",")] if file_paths else None
     )
+    domains_list = list(domains) if domains else None
+
+    metadata_filter_dict: dict[str, str] | None = None
+    if metadata_pairs:
+        metadata_filter_dict = {}
+        for pair in metadata_pairs:
+            key, sep, value = pair.partition("=")
+            if not sep:
+                raise click.UsageError(f"--meta expects key=value, got '{pair}'")
+            metadata_filter_dict[key.strip()] = value.strip()
 
     try:
         with DocServeClient(base_url=resolved_url) as client:
@@ -223,9 +313,111 @@ def query_command(
                 source_types=source_types_list,
                 languages=languages_list,
                 file_paths=file_paths_list,
+                domains=domains_list,
+                metadata_filter=metadata_filter_dict,
                 time_decay=not no_time_decay,
                 language=query_language,
+                include_sensitive=include_sensitive,
             )
+
+            # Multi-instance fan-out (household M1). Only applies to the
+            # standard results-list contract — compute/scan/absence/timeline
+            # modes have no per-chunk_id RRF story, so --also is a no-op for
+            # them and the single-instance response renders as usual below.
+            simple_results_mode = (
+                response.compute is None
+                and response.scan is None
+                and response.absence is None
+                and response.timeline is None
+            )
+            if also_paths and simple_results_mode:
+                result_lists: list[tuple[str, list[dict[str, object]]]] = [
+                    ("local", [_result_to_dict(r) for r in response.results])
+                ]
+                for also_value in also_paths:
+                    sibling_url = _resolve_instance_url(also_value)
+                    if sibling_url is None:
+                        click.echo(
+                            f"Warning: could not resolve sibling instance "
+                            f"'{also_value}' (not a URL and not a known "
+                            f"running project) — skipping.",
+                            err=True,
+                        )
+                        continue
+                    try:
+                        with DocServeClient(base_url=sibling_url) as sibling:
+                            sibling_response = sibling.query(
+                                query_text=query_text,
+                                top_k=top_k,
+                                similarity_threshold=threshold,
+                                mode=mode.lower(),
+                                alpha=alpha,
+                                source_types=source_types_list,
+                                languages=languages_list,
+                                file_paths=file_paths_list,
+                                domains=domains_list,
+                                metadata_filter=metadata_filter_dict,
+                                time_decay=not no_time_decay,
+                                language=query_language,
+                                include_sensitive=include_sensitive,
+                            )
+                    except ConnectionError as e:
+                        click.echo(
+                            f"Warning: sibling instance '{also_value}' "
+                            f"({sibling_url}) is unreachable — skipping. "
+                            f"({e})",
+                            err=True,
+                        )
+                        continue
+                    result_lists.append(
+                        (
+                            also_value,
+                            [_result_to_dict(r) for r in sibling_response.results],
+                        )
+                    )
+
+                merged = rrf_merge(result_lists, top_k=top_k)
+
+                if json_output:
+                    import json
+
+                    click.echo(
+                        json.dumps(
+                            {
+                                "query": query_text,
+                                "total_results": len(merged),
+                                "query_time_ms": response.query_time_ms,
+                                "results": merged,
+                            },
+                            indent=2,
+                        )
+                    )
+                    return
+
+                console.print(
+                    f"\n[bold]Query:[/] {query_text}\n"
+                    f"[dim]Merged {len(merged)} results across "
+                    f"{len(result_lists)} instance(s)[/]\n"
+                )
+                if not merged:
+                    console.print("[yellow]No matching documents found.[/]")
+                    return
+                for i, r in enumerate(merged, 1):
+                    text = str(r.get("text", ""))
+                    if not full and len(text) > 300:
+                        text = text[:300] + "..."
+                    header = Text()
+                    header.append(f"[{i}] ", style="bold cyan")
+                    header.append(str(r.get("source", "")), style="bold")
+                    header.append("  Score: ", style="dim")
+                    header.append(f"{float(r.get('score', 0.0)):.2%}", style="bold")
+                    header.append("  Instance: ", style="dim")
+                    header.append(str(r.get("instance", "")), style="italic")
+                    console.print(
+                        Panel(text, title=header, border_style="dim", padding=(0, 1))
+                    )
+                _maybe_print_ai_hint()
+                return
 
             if json_output:
                 import json

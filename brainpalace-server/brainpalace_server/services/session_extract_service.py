@@ -45,6 +45,7 @@ def _chunk(
     chunk_index: int,
     total: int,
     extra: dict[str, Any],
+    sensitivity: str = "normal",
 ) -> TextChunk:
     base_extra: dict[str, Any] = {
         "session_id": payload.session_id,
@@ -59,6 +60,7 @@ def _chunk(
         chunk_index=chunk_index,
         total_chunks=total,
         source_type=source_type,
+        sensitivity=sensitivity,
         extra=base_extra,
     )
     return TextChunk(
@@ -132,8 +134,14 @@ class SessionExtractService:
         memory_service: Any | None = None,
         project_root: str = "",
         record_store: Any | None = None,
+        sensitivity: str = "normal",
     ) -> SessionExtractResult:
         sid = payload.session_id
+        # Propagate the SOURCE session's sensitivity into every derived store
+        # (chunks, graph, records, memory) so a private session cannot launder
+        # itself into visible data. This inherits an existing mark; it does not
+        # decide one (PLAN-NOTE D — only a test marks a source private).
+        source_sensitivity = sensitivity
 
         # Idempotency: purge prior summary/decision chunks for this session.
         for stype in (_SUMMARY_TYPE, _DECISION_TYPE):
@@ -160,6 +168,7 @@ class SessionExtractService:
                     "tools_used": payload.tools_used,
                     "files_touched": [f.path for f in payload.files_touched],
                 },
+                source_sensitivity,
             )
         )
         for i, d in enumerate(payload.decisions):
@@ -173,6 +182,7 @@ class SessionExtractService:
                     i + 1,
                     total,
                     {"files": d.files, "supersedes": d.supersedes},
+                    source_sensitivity,
                 )
             )
 
@@ -226,7 +236,13 @@ class SessionExtractService:
                             graph_store,
                         )
                     )
-                    if graph_store.add_triplet(subj, t.relation, obj, **kwargs):
+                    if graph_store.add_triplet(
+                        subj,
+                        t.relation,
+                        obj,
+                        sensitivity=source_sensitivity,
+                        **kwargs,
+                    ):
                         triplets_stored += 1
                 except Exception as exc:  # noqa: BLE001 — graph is best-effort
                     logger.debug("add_triplet failed: %s", exc)
@@ -252,6 +268,7 @@ class SessionExtractService:
                 record_store,
                 payload,
                 ingested_at=datetime.now(timezone.utc).isoformat(),
+                sensitivity=source_sensitivity,
             )
         except Exception as exc:  # noqa: BLE001 — records are best-effort
             logger.debug("persist_records failed: %s", exc)
@@ -261,7 +278,19 @@ class SessionExtractService:
             settings, "BRAINPALACE_PROMOTE_DECISIONS", True
         ):
             try:
-                promoted = await promote_decisions(payload, memory_service)
+                # Cap-pressure marker lives beside the memory file so the
+                # status/health reader (Path(memory_service.path).parent) finds it.
+                marker_dir = None
+                try:
+                    marker_dir = Path(memory_service.path).parent
+                except Exception:  # noqa: BLE001 — marker is best-effort
+                    marker_dir = None
+                promoted = await promote_decisions(
+                    payload,
+                    memory_service,
+                    sensitivity=source_sensitivity,
+                    state_dir=marker_dir,
+                )
                 if promoted:
                     logger.debug("promoted %d decision(s) to curated memory", promoted)
             except Exception as exc:  # noqa: BLE001

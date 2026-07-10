@@ -19,15 +19,42 @@ take effect next session — prefix-cache friendly).
 from __future__ import annotations
 
 import logging
+import time
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from brainpalace_server.config.extraction_config import resolve_extraction_mode
 from brainpalace_server.config.settings import settings
 from brainpalace_server.models.context import SessionContext
+from brainpalace_server.storage_paths import STATE_SUBDIR
 
 if TYPE_CHECKING:
     from brainpalace_server.services.memory_service import MemoryService
 
 logger = logging.getLogger(__name__)
+
+
+def curate_due(state_dir: Path, memory_count: int) -> bool:
+    """True when an in-session auto-curation nudge should fire: session extraction is
+    running in an in-session mode (subagent/auto), memory is non-empty, and the weekly
+    stamp is stale/absent. PURE — reads the stamp, never writes it (the CLI stamps
+    `last-curate` on emit; the provider curator stamps itself server-side).
+
+    `provider`/`off` return False here: provider curation is the server's job (see
+    MemoryCurator), off means no curation at all."""
+    if memory_count <= 0:
+        return False
+    if resolve_extraction_mode("session") not in ("subagent", "auto"):
+        return False
+    stamp = state_dir / STATE_SUBDIR / "last-curate"
+    interval = getattr(settings, "MEMORY_CURATE_INTERVAL_DAYS", 7) * 86400
+    try:
+        if stamp.exists() and time.time() - stamp.stat().st_mtime < interval:
+            return False
+    except Exception:  # noqa: BLE001 — unreadable stamp → fail closed (no nudge)
+        return False
+    return True
+
 
 _CHARS_PER_TOKEN = 4
 
@@ -106,6 +133,12 @@ class SessionContextService:
         # manually-saved `brainpalace remember` facts.
         if not summarization_on:
             memories = [m for m in memories if (m.origin or "user") == "user"]
+        # Default-deny sensitive memory on the session-start PUSH surface: this
+        # block feeds the SessionStart hook / MCP context resource / dashboard,
+        # none of which can opt in. Missing mark ⇒ "normal" ⇒ visible.
+        memories = [
+            m for m in memories if getattr(m, "sensitivity", "normal") == "normal"
+        ]
         memories.sort(key=lambda m: (m.confidence, m.created_at), reverse=True)
 
         if memories:
@@ -145,11 +178,23 @@ class SessionContextService:
 
         text = "\n".join(lines).rstrip() + "\n"
         memory_count = sum(1 for line in lines if line.startswith("- ("))
+
+        curate_flag = False
+        if project_root and self._memory is not None:
+            try:
+                active_total = sum(1 for m in self._memory.load() if m.is_active)
+                curate_flag = curate_due(
+                    Path(project_root) / ".brainpalace", active_total
+                )
+            except Exception as exc:  # noqa: BLE001 — gate must never fail the block
+                logger.warning("session context: curate gate failed: %s", exc)
+
         return SessionContext(
             text=text,
             token_estimate=_est_tokens(text),
             sections=sections,
             truncated=truncated,
             memory_count=memory_count,
+            curate_due=curate_flag,
             blocked_job=blocked_job,
         )

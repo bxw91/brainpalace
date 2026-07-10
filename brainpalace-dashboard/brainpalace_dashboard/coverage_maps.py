@@ -124,6 +124,74 @@ ENDPOINT_SURFACES: dict[str, str] = {
         "not a dashboard action"
     ),
     "/metrics/usage": "Usage (telemetry tab)",
+    # --- text ingest (spec Item 3) ---
+    "/ingest/text": (
+        "unsurfaced: programmatic text-ingest with caller provenance, driven by "
+        "the `brainpalace ingest` CLI / in-process adapters; no dashboard panel yet"
+    ),
+    "/ingest/sources": (
+        "unsurfaced: enumerate distinct ingested source_ids with provenance + "
+        "chunk counts, driven by `brainpalace ingest sources`; no dashboard panel yet"
+    ),
+    "/ingest/text/{source_id}": (
+        "unsurfaced: un-ingest a source_id (DELETE, `brainpalace ingest --delete`) "
+        "and list its chunks (GET, `brainpalace ingest show`); no dashboard panel yet"
+    ),
+    "/ingest/source/{source_id}": (
+        "unsurfaced: full forget (chunks + records + references cascade) for "
+        "a source_id, driven by `brainpalace ingest --forget`; no dashboard "
+        "panel yet"
+    ),
+    "/ingest/records": (
+        "unsurfaced: HTTP write of caller-asserted typed records, driven by "
+        "`brainpalace ingest record` / in-process adapters; no dashboard panel yet"
+    ),
+    "/ingest/references": (
+        "unsurfaced: HTTP write of lazy-tier references, driven by "
+        "`brainpalace ingest reference` / in-process adapters; no dashboard panel yet"
+    ),
+    # --- reference catalog (Round 2 Plan C) ---
+    "/references": (
+        "unsurfaced: reference-catalog listing, driven by the "
+        "`brainpalace references` CLI; no dashboard panel yet"
+    ),
+    "/references/search": (
+        "unsurfaced: semantic search over reference summaries, driven by "
+        "`brainpalace references search`; no dashboard panel yet"
+    ),
+    "/references/embed-missing": (
+        "unsurfaced: backfill reference summary embeddings, driven by "
+        "`brainpalace references embed-missing`; no dashboard panel yet"
+    ),
+    # --- identity store (G5): person / alias / link ---
+    "/entities/person": (
+        "unsurfaced: identity upsert (also the EmittedEntity sink), driven by "
+        "`brainpalace entities person` / in-process ingest; no dashboard panel yet"
+    ),
+    "/entities/alias": (
+        "unsurfaced: bind a surface to a person, driven by "
+        "`brainpalace entities alias`; no dashboard panel yet"
+    ),
+    "/entities/link": (
+        "unsurfaced: attach a ref to a person / record it unresolved, driven by "
+        "`brainpalace entities link`; no dashboard panel yet"
+    ),
+    "/entities/link/{link_id}": (
+        "unsurfaced: retract a link, driven by the entities API; "
+        "no dashboard panel yet"
+    ),
+    "/entities/resolve": (
+        "unsurfaced: ranked identity candidates (engine never picks), driven by "
+        "`brainpalace entities resolve`; no dashboard panel yet"
+    ),
+    "/entities/unresolved": (
+        "unsurfaced: the unresolved-link bucket, driven by "
+        "`brainpalace entities unresolved`; no dashboard panel yet"
+    ),
+    "/entities/backfill": (
+        "unsurfaced: re-score unresolved links against current aliases, driven by "
+        "`brainpalace entities backfill`; no dashboard panel yet"
+    ),
 }
 
 # Every CLI command -> "tab/action" it maps to, or "cli_only: <reason>".
@@ -136,12 +204,17 @@ CLI_DASHBOARD_COVERAGE: dict[str, str] = {
     "context": "cli_only: agent context block, not user-facing",
     "dashboard": "cli_only: launches the dashboard itself",
     "doctor": "cli_only: local diagnostics CLI",
+    "entities": (
+        "cli_only: identity person/alias/link management + candidate resolution; "
+        "no dashboard panel yet"
+    ),
     "extraction": "cli_only: AI subagent extraction executor, not a UI surface",
     "dump-interface": "cli_only: hidden doc-sync introspection, not a UI surface",
     "folders": "Folders",
     "graph": "Graph",
     "hook": "cli_only: internal hook dispatcher, not a user command",
     "index": "Folders",
+    "ingest": "cli_only: scripted text ingest, advanced",
     "init": ("cli_only: project bootstrap; dashboard manages existing projects only"),
     "inject": "cli_only: scripted enrichment, advanced",
     "install-agent": "cli_only: runtime plugin install",
@@ -152,6 +225,14 @@ CLI_DASHBOARD_COVERAGE: dict[str, str] = {
     "mcp": "cli_only: stdio MCP transport, not a UI surface",
     "memories": "Sessions",
     "plugin": "cli_only: Claude Code plugin management",
+    # NOTE: this gate classifies whole commands (keys MUST match a live Click
+    # command name exactly), not individual flags. `query --include-sensitive`
+    # (sensitivity enforcement, Phase 7) is a flag-level carve-out under the
+    # already-classified `query` command below, not a separate map entry: it
+    # is cli_only by design — the dashboard's /replay proxy never forwards
+    # `include_sensitive` (see tests/test_replay_omits_sensitive.py) because
+    # the dashboard is a shared surface that must never reveal
+    # sensitivity-marked rows.
     "query": "Queries (replay)",
     "read-only": "Config (server.read_only toggle + Overview read-only banner)",
     "recall": "Queries (replay) / Sessions",
@@ -172,6 +253,10 @@ CLI_DASHBOARD_COVERAGE: dict[str, str] = {
     ),
     "whoami": "cli_only: CWD-context helper, irrelevant in a fleet UI",
     "records": ("cli_only: record store stats/revalidate; no dashboard panel yet"),
+    "references": (
+        "cli_only: reference catalog list/search/resolve/embed-missing; "
+        "no dashboard panel yet"
+    ),
     "rules": (
         "cli_only: taught confidence rules list/add/retire; " "no dashboard panel yet"
     ),

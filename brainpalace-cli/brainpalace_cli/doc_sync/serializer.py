@@ -61,6 +61,22 @@ def render_flags_table(cmd: CommandFact) -> str:
     return "\n".join(rows)
 
 
+#: D4 — a command that loses all its flags (e.g. `ingest` becoming a group)
+#: still needs SOME content inside its flags block: an empty table would be
+#: indistinguishable from "not yet regenerated" and a deleted block would
+#: special-case the marker parser for no benefit. Generator and checker share
+#: this exact string so a `--fix` run is idempotent.
+NO_FLAGS_TEXT = "_This command takes no top-level flags._"
+
+
+def render_flags_block(cmd: CommandFact) -> str:
+    """Render the flags-block CONTENT: the table when the command has flags,
+    or the explicit no-flags one-liner when it doesn't."""
+    if not cmd.flags:
+        return NO_FLAGS_TEXT
+    return render_flags_table(cmd)
+
+
 def render_mcp_tools_table(tools: list[str]) -> str:
     rows = ["| Tool | Description |", "|------|-------------|"]
     for t in sorted(tools):  # alpha order

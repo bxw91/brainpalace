@@ -26,7 +26,7 @@ from brainpalace_cli.doc_sync.facts import (
 )
 from brainpalace_cli.doc_sync.markers import MarkerError, find_block
 from brainpalace_cli.doc_sync.referential import dangling_tokens
-from brainpalace_cli.doc_sync.serializer import render_flags_table
+from brainpalace_cli.doc_sync.serializer import render_flags_block
 
 SURFACE = "cli"
 
@@ -189,7 +189,7 @@ class CliCommandsChecker:
             except MarkerError:
                 inner = None  # no body block (allowed: frontmatter is the contract)
             if inner is not None:
-                expected = render_flags_table(live[name])
+                expected = render_flags_block(live[name])
                 if inner.strip() != expected.strip():
                     records.append(
                         DriftRecord(

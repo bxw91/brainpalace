@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-24
+last_validated: 2026-07-10
 ---
 
 # Curated Memory
@@ -87,9 +87,60 @@ Pure `bm25` mode is unaffected; `--no-memory` / `use_memory=false` disables it.
 | `MEMORY_RECALL_K` | `3` | memory hits considered in the boost pass |
 | `MEMORY_MIN_SCORE` | `0.35` | relevance floor before a memory can boost in |
 | `MEMORY_COLLECTION` | `brainpalace_memories` | Chroma shadow-index name |
+| `MEMORY_CURATE_INTERVAL_DAYS` | `7` | minimum days between curation runs (cadence for BOTH the in-session nudge and the server-side curator) |
+| `MEMORY_DEDUPE_THRESHOLD` | `0.92` | write-time supersede floor: a new `remember` fact whose top embedding match to an active memory scores ≥ this supersedes it (newest wins) |
 
-When the file hits the cap, `remember` refuses — obsolete or consolidate entries
-first. The cap keeps memory curated and small (high signal).
+When the file hits the cap, manual `remember` refuses — obsolete or consolidate
+entries first. The cap keeps memory curated and small (high signal).
+
+## Eviction & cap reclaim
+
+Auto-promoted decisions (`origin=session:*`, written by server-side
+`promote_decisions`) go through a **reclaim-aware** write path so a full memory
+file never silently goes read-only:
+
+- **Eviction.** When admitting a new auto-promoted fact would exceed the cap,
+  the worst evictable entries are physically deleted first — worst-first by
+  oldest reference (falling back to creation time), then lowest confidence —
+  until the new fact fits.
+- **Manual facts are sacred.** Only `origin=session:*` entries are evictable;
+  `origin=user` facts (from `remember`) are **never** auto-evicted.
+- **Cross-session supersession.** A promoted decision carrying `supersedes`
+  deletes the prior matching session-decision entry (exact decision-text match),
+  so the superseding fact replaces it instead of piling up.
+- **Write-time dedupe.** When embeddings + shadow index are available, a manual
+  `remember` whose top embedding match to an active memory scores ≥
+  `MEMORY_DEDUPE_THRESHOLD` (default `0.92`) supersedes that entry — re-asserting
+  a fact replaces its near-duplicate (newest wins) instead of adding a second
+  copy. Embeddings-only (no LLM); a no-op when the shadow index is absent.
+- **Loud fallback.** If only protected manual facts remain and the cap is still
+  hit, the promotion is skipped and a cap-pressure marker
+  (`memory_cap_pressure.json`) is written beside the memory file. `brainpalace
+  status` surfaces it as a `⚠ cap pressure — N promotions skipped` warning
+  instead of dropping decisions silently; a later successful promotion clears it.
+
+## Auto-curation (gated by `extraction.mode`)
+
+Curation rides the single `extraction.mode` (session) switch — there is no
+separate enable toggle. The mode selects which path runs, at most once per
+`MEMORY_CURATE_INTERVAL_DAYS` (the shared cadence for both):
+
+- **`subagent` / `auto` → in-session nudge.** The auto-wired `brainpalace hook
+  sessionstart` appends a best-effort directive nudging the model to run the
+  `memory-curator` subagent (obsolete superseded entries, delete duplicates,
+  consolidate verbose ones, keep under the cap). The server computes the
+  `curate_due` gate as a pure predicate (reads the weekly stamp, never writes
+  it); the CLI stamps `.brainpalace/last-curate` only when it actually emits the
+  nudge, so a non-emitting context fetch never consumes the due state.
+- **`provider` / `auto` → server-side curator.** A `MemoryCurator` shares the
+  configured summarization provider (like `SessionDistiller`) and runs on the
+  periodic reconcile sweep. It carries the second cost-lock
+  `EXTRACTION_PROVIDER_ENABLED` (and the distiller gate `SESSION_DISTILL_ENABLED`)
+  — no paid tokens without it. It stamps `.brainpalace/last-curate` server-side
+  after a completed run (even at 0 changes); a provider/parse failure leaves the
+  stamp untouched so the run retries next sweep. All mutations go through
+  `MemoryService` (cap + lock honored).
+- **`off` → no curation** on either path.
 
 ## Session-start injection
 

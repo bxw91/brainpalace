@@ -52,6 +52,7 @@ class ChunkMetadata:
     total_chunks: int
     source_type: str  # "doc", "code", or "test"
     created_at: datetime = field(default_factory=datetime.utcnow)
+    sensitivity: str = "normal"  # "normal" = visible; anything else = default-denied
 
     # Document-specific metadata
     language: str | None = None  # For docs/code: language type
@@ -73,6 +74,12 @@ class ChunkMetadata:
     # BM25 multi-language: detected or assigned natural-language code for this chunk
     text_language: str | None = None
 
+    # Provenance/authority (Phase 6.5): inherited from the owning folder.
+    # None means unset; to_dict omits absent keys (decision D — missing
+    # authority is treated as authoritative downstream).
+    domain: str | None = None
+    authority: str | None = None
+
     # Additional flexible metadata
     extra: dict[str, Any] = field(default_factory=dict)
 
@@ -85,6 +92,7 @@ class ChunkMetadata:
             "chunk_index": self.chunk_index,
             "total_chunks": self.total_chunks,
             "source_type": self.source_type,
+            "sensitivity": self.sensitivity,
             "created_at": self.created_at.isoformat(),
         }
 
@@ -99,6 +107,10 @@ class ChunkMetadata:
             data["content_type"] = self.content_type
         if self.text_language:
             data["text_language"] = self.text_language
+        if self.domain:
+            data["domain"] = self.domain
+        if self.authority:
+            data["authority"] = self.authority
         if self.symbol_name:
             data["symbol_name"] = self.symbol_name
         if self.symbol_kind:
@@ -170,6 +182,8 @@ class CodeChunk:
         imports: list[str] | None = None,
         extra: dict[str, Any] | None = None,
         text_language: str | None = None,
+        domain: str | None = None,
+        authority: str | None = None,
     ) -> "CodeChunk":
         """Create a CodeChunk with properly structured metadata."""
         file_name = source.split("/")[-1] if "/" in source else source
@@ -192,6 +206,8 @@ class CodeChunk:
             decorators=decorators,
             imports=imports,
             text_language=text_language,
+            domain=domain,
+            authority=authority,
             extra=extra or {},
         )
 
@@ -343,6 +359,8 @@ class ContextAwareChunker:
                         "section_title",
                         "content_type",
                         "text_language",
+                        "domain",
+                        "authority",
                     }
                 }
 
@@ -358,6 +376,8 @@ class ContextAwareChunker:
                     section_title=doc_section_title,
                     content_type=doc_content_type,
                     text_language=document.metadata.get("text_language"),
+                    domain=document.metadata.get("domain"),
+                    authority=document.metadata.get("authority"),
                     extra=extra_metadata,
                 )
 
@@ -869,7 +889,9 @@ class CodeChunker:
                             symbol_kind = overlapping_symbols[0]["kind"]
 
                 doc_extra = {
-                    k: v for k, v in document.metadata.items() if k != "text_language"
+                    k: v
+                    for k, v in document.metadata.items()
+                    if k not in {"text_language", "domain", "authority"}
                 }
                 chunk = CodeChunk.create(
                     chunk_id=f"chunk_{stable_id[:16]}",
@@ -884,6 +906,8 @@ class CodeChunker:
                     start_line=start_line,
                     end_line=end_line,
                     text_language=document.metadata.get("text_language"),
+                    domain=document.metadata.get("domain"),
+                    authority=document.metadata.get("authority"),
                     extra=doc_extra,
                 )
                 chunks.append(chunk)

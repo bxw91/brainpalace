@@ -589,6 +589,15 @@ def _load_yaml_config(path: Path) -> dict[str, Any]:
     """
     from brainpalace_server.providers.exceptions import ConfigurationError
 
+    # Tolerate a directory (e.g. a caller handing us `state_dir` instead of the
+    # config file): resolve to the conventional `config.yaml` inside it. A bare
+    # `open(dir)` raises IsADirectoryError, which is easy to swallow and hard to
+    # spot — see the doc_weight regression. `.exists()` guards upstream do NOT
+    # catch this, since a directory also `.exists()`.
+    path = Path(path)
+    if path.is_dir():
+        path = path / "config.yaml"
+
     try:
         with open(path) as f:
             config = yaml.safe_load(f)

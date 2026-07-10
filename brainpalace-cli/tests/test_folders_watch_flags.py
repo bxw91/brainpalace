@@ -111,6 +111,56 @@ class TestFoldersAddWatchFlags:
             call_kwargs = mock_client.index.call_args
             assert call_kwargs.kwargs.get("watch_debounce_seconds") == 10
 
+    def test_allow_external_flag_forwarded(
+        self,
+        runner: CliRunner,
+        mock_index_response: IndexResponse,
+        tmp_path: object,
+    ) -> None:
+        """--allow-external passes allow_external=True to client.index()."""
+        with patch(
+            "brainpalace_cli.commands.folders.DocServeClient"
+        ) as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client.__enter__ = MagicMock(return_value=mock_client)
+            mock_client.__exit__ = MagicMock(return_value=False)
+            mock_client.index = MagicMock(return_value=mock_index_response)
+            mock_client_cls.return_value = mock_client
+
+            result = runner.invoke(
+                add_folder_cmd,
+                [str(tmp_path), "--allow-external", "--url", "http://test:8000"],
+            )
+
+            assert result.exit_code == 0, result.output
+            call_kwargs = mock_client.index.call_args
+            assert call_kwargs.kwargs.get("allow_external") is True
+
+    def test_allow_external_defaults_false(
+        self,
+        runner: CliRunner,
+        mock_index_response: IndexResponse,
+        tmp_path: object,
+    ) -> None:
+        """Bare 'folders add' defaults allow_external=False."""
+        with patch(
+            "brainpalace_cli.commands.folders.DocServeClient"
+        ) as mock_client_cls:
+            mock_client = MagicMock()
+            mock_client.__enter__ = MagicMock(return_value=mock_client)
+            mock_client.__exit__ = MagicMock(return_value=False)
+            mock_client.index = MagicMock(return_value=mock_index_response)
+            mock_client_cls.return_value = mock_client
+
+            result = runner.invoke(
+                add_folder_cmd,
+                [str(tmp_path), "--url", "http://test:8000"],
+            )
+
+            assert result.exit_code == 0, result.output
+            call_kwargs = mock_client.index.call_args
+            assert call_kwargs.kwargs.get("allow_external") is False
+
     def test_bare_add_defaults_watch_auto(
         self,
         runner: CliRunner,

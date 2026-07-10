@@ -32,15 +32,15 @@ _KEYS = {"subject", "source_id"}
 
 _INSERT_SQL = """INSERT INTO records
     (id,subject,metric,value,unit,ts,iso_week,ym,domain,source,source_id,
-     ingested_at,confidence,salience,properties)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+     ingested_at,confidence,salience,properties,sensitivity)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     ON CONFLICT(id) DO UPDATE SET
       subject=excluded.subject, metric=excluded.metric, value=excluded.value,
       unit=excluded.unit, ts=excluded.ts, iso_week=excluded.iso_week,
       ym=excluded.ym, domain=excluded.domain, source=excluded.source,
       source_id=excluded.source_id, ingested_at=excluded.ingested_at,
       confidence=excluded.confidence, salience=excluded.salience,
-      properties=excluded.properties"""
+      properties=excluded.properties, sensitivity=excluded.sensitivity"""
 
 
 def derive_buckets(ts: str | None) -> tuple[str | None, str | None]:
@@ -73,7 +73,8 @@ class RecordStore:
                 domain TEXT NOT NULL DEFAULT 'code',
                 source TEXT, source_id TEXT, ingested_at TEXT,
                 confidence REAL NOT NULL DEFAULT 0.0,
-                salience REAL NOT NULL DEFAULT 0.0, properties TEXT
+                salience REAL NOT NULL DEFAULT 0.0, properties TEXT,
+                sensitivity TEXT NOT NULL DEFAULT 'normal'
             );
             CREATE INDEX IF NOT EXISTS idx_records_metric ON records(metric);
             CREATE INDEX IF NOT EXISTS idx_records_subject ON records(subject);
@@ -91,6 +92,7 @@ class RecordStore:
             ("source", "TEXT"),
             ("source_id", "TEXT"),
             ("salience", "REAL NOT NULL DEFAULT 0.0"),
+            ("sensitivity", "TEXT NOT NULL DEFAULT 'normal'"),
         ):
             if col not in cols:
                 self._conn.execute(f"ALTER TABLE records ADD COLUMN {col} {ddl}")
@@ -101,6 +103,7 @@ class RecordStore:
             CREATE INDEX IF NOT EXISTS idx_records_source_id ON records(source_id);
             CREATE INDEX IF NOT EXISTS idx_records_source ON records(source);
             CREATE INDEX IF NOT EXISTS idx_records_salience ON records(salience);
+            CREATE INDEX IF NOT EXISTS idx_records_sensitivity ON records(sensitivity);
             """
         )
         self._conn.commit()
@@ -127,6 +130,7 @@ class RecordStore:
                     r.confidence,
                     r.salience,
                     json.dumps(r.properties or {}),
+                    r.sensitivity,
                 )
             )
         return rows
@@ -167,6 +171,7 @@ class RecordStore:
         exclude_sources: list[str] | None = None,
         order: str = "desc",
         limit: int | None = None,
+        include_sensitive: bool = False,
     ) -> list[tuple[str | None, float]]:
         if op not in _OPS:
             raise ValueError(f"unsupported op: {op!r}")
@@ -193,6 +198,8 @@ class RecordStore:
             qs = ",".join("?" * len(exclude_sources))
             where.append(f"(source IS NULL OR source NOT IN ({qs}))")
             params.extend(exclude_sources)
+        if not include_sensitive:
+            where.append("sensitivity = 'normal'")
         where_sql = " AND ".join(where)
         if group_by is None:
             cur = self._conn.execute(
@@ -228,6 +235,7 @@ class RecordStore:
         until: str | None = None,
         limit: int | None = None,
         min_confidence: float = 0.7,
+        include_sensitive: bool = False,
     ) -> list[str]:
         """Keys present where ``partition == present_in`` but absent where
         ``partition == absent_from`` (both sides confidence-gated). Anti-join
@@ -249,10 +257,18 @@ class RecordStore:
             if until is not None:
                 where.append("ts < ?")
                 params.append(until)
+            if not include_sensitive:
+                where.append("sensitivity = 'normal'")
             return " AND ".join(where), params
 
         lwhere, lparams = _side(present_in)
         rwhere, rparams = _side(absent_from)
+        # Intentional: the anti-join filters BOTH legs by sensitivity, so a
+        # subject whose only presence in `absent_from` is a sensitive row
+        # reads as absent from that leg and is returned. This is correct
+        # under "sensitive = invisible" — to a default viewer the sensitive
+        # row does not exist, so the subject genuinely is absent. Do not
+        # "fix" this by excluding the key from the anti-join subquery.
         sql = (
             f"SELECT DISTINCT {key} FROM records WHERE {lwhere} "
             f"AND {key} NOT IN (SELECT {key} FROM records WHERE {rwhere}) "

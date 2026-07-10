@@ -84,11 +84,12 @@ class SQLitePropertyGraphStore:
         cur.executescript(
             """
             CREATE TABLE IF NOT EXISTS nodes (
-                id         TEXT PRIMARY KEY,
-                name       TEXT NOT NULL,
-                label      TEXT,
-                properties TEXT,
-                domain     TEXT NOT NULL DEFAULT 'code'
+                id          TEXT PRIMARY KEY,
+                name        TEXT NOT NULL,
+                label       TEXT,
+                properties  TEXT,
+                domain      TEXT NOT NULL DEFAULT 'code',
+                sensitivity TEXT NOT NULL DEFAULT 'normal'
             );
             CREATE INDEX IF NOT EXISTS idx_nodes_name
                 ON nodes (name COLLATE NOCASE);
@@ -120,9 +121,18 @@ class SQLitePropertyGraphStore:
                 "ALTER TABLE nodes ADD COLUMN domain TEXT NOT NULL DEFAULT 'code'"
             )
             self._conn.commit()
+        if "sensitivity" not in cols:
+            self._conn.execute(
+                "ALTER TABLE nodes ADD COLUMN sensitivity TEXT NOT NULL "
+                "DEFAULT 'normal'"
+            )
+            self._conn.commit()
         # Always ensure the domain index exists (safe for new DBs too).
         self._conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_nodes_domain ON nodes (domain)"
+        )
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_nodes_sensitivity ON nodes (sensitivity)"
         )
         self._conn.commit()
         ecols = {
@@ -150,13 +160,14 @@ class SQLitePropertyGraphStore:
                 getattr(n, "label", None),
                 json.dumps(dict(getattr(n, "properties", {}) or {}), default=str),
                 getattr(n, "domain", "code"),
+                getattr(n, "sensitivity", "normal"),
             )
             for n in nodes
         ]
         self._conn.executemany(
             """
-            INSERT INTO nodes (id, name, label, properties, domain)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO nodes (id, name, label, properties, domain, sensitivity)
+            VALUES (?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
                 label = excluded.label,
@@ -166,7 +177,8 @@ class SQLitePropertyGraphStore:
                         THEN nodes.properties
                     ELSE excluded.properties
                 END,
-                domain = excluded.domain
+                domain = excluded.domain,
+                sensitivity = excluded.sensitivity
             """,
             rows,
         )
@@ -230,6 +242,7 @@ class SQLitePropertyGraphStore:
         *,
         as_of: datetime | str | None = None,
         include_invalid: bool = False,
+        include_sensitive: bool = True,
     ) -> list[tuple[EntityNode, Relation, EntityNode]]:
         # llama_index semantics: a bare get_triplets (no entity filter) returns
         # nothing meaningful for our callers; they always pass entity_names.
@@ -241,12 +254,23 @@ class SQLitePropertyGraphStore:
             return []
 
         placeholders = ",".join("?" * len(node_ids))
+        # JOIN both endpoint nodes so a sensitive endpoint drops the edge when
+        # not allowed — GRAPH mode's real read, and the only place a private far
+        # endpoint could leak via result["object"] (the edges SELECT has no node
+        # data otherwise). Default include_sensitive=True keeps internal
+        # migration/replay callers full-visibility; the query path passes the
+        # resolved flag explicitly.
         sql = (
-            "SELECT id, source_id, target_id, label, properties, "
-            "valid_from, valid_until FROM edges "
-            f"WHERE (source_id IN ({placeholders}) OR target_id IN ({placeholders}))"
+            "SELECT e.id, e.source_id, e.target_id, e.label, e.properties, "
+            "e.valid_from, e.valid_until FROM edges e "
+            "JOIN nodes s ON s.id = e.source_id "
+            "JOIN nodes t ON t.id = e.target_id "
+            f"WHERE (e.source_id IN ({placeholders}) "
+            f"OR e.target_id IN ({placeholders}))"
         )
         params: list[Any] = [*node_ids, *node_ids]
+        if not include_sensitive:
+            sql += " AND s.sensitivity = 'normal' AND t.sensitivity = 'normal'"
         sql, params = self._apply_temporal(sql, params, as_of, include_invalid)
         rows = self._conn.execute(sql, params).fetchall()
         return [self._row_to_triplet(row) for row in rows]
@@ -441,21 +465,26 @@ class SQLitePropertyGraphStore:
         rows = self._conn.execute(sql, params).fetchall()
         return [{"id": r["id"], "name": r["name"], "label": r["label"]} for r in rows]
 
-    def timeline_named(self, entity_name: str) -> list[dict[str, Any]]:
+    def timeline_named(
+        self, entity_name: str, include_sensitive: bool = False
+    ) -> list[dict[str, Any]]:
         """Like ``timeline`` but with subject/object resolved to node names."""
         node_id = self._id_for_name(entity_name)
         if node_id is None:
             return []
-        rows = self._conn.execute(
+        sql = (
             "SELECT e.label AS predicate, e.valid_from, e.valid_until, "
             "       s.name AS subject, t.name AS object "
             "FROM edges e "
             "JOIN nodes s ON s.id = e.source_id "
             "JOIN nodes t ON t.id = e.target_id "
-            "WHERE e.source_id = ? OR e.target_id = ? "
-            "ORDER BY e.valid_from, e.id",
-            (node_id, node_id),
-        ).fetchall()
+            "WHERE (e.source_id = ? OR e.target_id = ?) "
+        )
+        params: list[Any] = [node_id, node_id]
+        if not include_sensitive:
+            sql += "AND s.sensitivity = 'normal' AND t.sensitivity = 'normal' "
+        sql += "ORDER BY e.valid_from, e.id"
+        rows = self._conn.execute(sql, params).fetchall()
         return [
             {
                 "subject": r["subject"],
@@ -473,6 +502,7 @@ class SQLitePropertyGraphStore:
         text: str,
         limit: int = 20,
         domains: list[str] | None = None,
+        include_sensitive: bool = False,
     ) -> list[dict[str, Any]]:
         """Name-substring node search with active-edge degree (browser seeds)."""
         escaped = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
@@ -484,6 +514,8 @@ class SQLitePropertyGraphStore:
             "FROM nodes n WHERE n.name LIKE ? ESCAPE '\\' COLLATE NOCASE "
         )
         params: list[Any] = [f"%{escaped}%"]
+        if not include_sensitive:
+            sql += "AND n.sensitivity = 'normal' "
         if domains:
             ph = ",".join("?" * len(domains))
             sql += f"AND n.domain IN ({ph}) "

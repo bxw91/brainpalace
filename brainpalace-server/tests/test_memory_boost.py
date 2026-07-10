@@ -21,7 +21,9 @@ class StubMemory:
     def __init__(self, hits):
         self._hits = hits
 
-    async def recall(self, query, top_k=3, similarity_threshold=0.0):
+    async def recall(
+        self, query, top_k=3, similarity_threshold=0.0, include_sensitive=False
+    ):
         return self._hits[:top_k], 1.0
 
 

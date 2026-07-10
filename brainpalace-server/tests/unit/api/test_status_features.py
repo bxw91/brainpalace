@@ -91,6 +91,7 @@ def _client(
     session_chunks,
     archive_stats=None,
     archive_enabled=None,
+    ingest_chunks=0,
 ):
     app = FastAPI()
     app.include_router(router)
@@ -101,6 +102,8 @@ def _client(
     async def _get_count(where=None):
         if where and where.get("source_type") == "session_turn":
             return session_chunks
+        if where and where.get("source_type") == "ingest":
+            return ingest_chunks
         return 42  # total_chunks
 
     backend.get_count = AsyncMock(side_effect=_get_count)
@@ -176,6 +179,30 @@ def test_status_reports_feature_block():
     assert feats["session_archive"]["enabled"] is True
     assert feats["session_archive"]["retain_days"] == 0
     assert feats["graph_index"]["enabled"] is False
+
+
+def test_status_reports_text_ingest_count():
+    # Ingested-text chunks (source_type="ingest") get their own count block,
+    # separate from total_documents (which stays folder-manifest-derived).
+    client = _client(
+        session_enabled=False,
+        session_running=False,
+        curated=0,
+        session_chunks=0,
+        ingest_chunks=5,
+    )
+    data = client.get("/status").json()
+    assert data["text_ingest"]["chunks"] == 5
+    # Not folded into folder-manifest document totals.
+    assert data["total_documents"] == 3
+
+
+def test_status_text_ingest_zero_when_none():
+    client = _client(
+        session_enabled=False, session_running=False, curated=0, session_chunks=0
+    )
+    data = client.get("/status").json()
+    assert data["text_ingest"]["chunks"] == 0
 
 
 def test_status_feature_block_session_disabled():
@@ -380,3 +407,28 @@ def test_features_doc_graph_extraction_state_is_valid():
         assert dge["state"] in ("off", "subagent", "provider", "unavailable")
     assert isinstance(dge["pending"], int)
     assert isinstance(dge["ungraphed"], bool)
+
+
+# ---------------------------------------------------------------------------
+# Phase 6.5a — ranking (doc_weight) feature block
+# ---------------------------------------------------------------------------
+
+
+def test_features_ranking_defaults_half_without_state():
+    # No app.state.ranking_config wired (e.g. older test client) ⇒ default 0.5.
+    client = _client(
+        session_enabled=True, session_running=True, curated=0, session_chunks=0
+    )
+    ranking = client.get("/status").json()["features"]["ranking"]
+    assert ranking["doc_weight"] == 0.5
+
+
+def test_features_ranking_reflects_configured_weight():
+    from brainpalace_server.config.ranking_config import RankingConfig
+
+    client = _client(
+        session_enabled=True, session_running=True, curated=0, session_chunks=0
+    )
+    client.app.state.ranking_config = RankingConfig(doc_weight=0.2)
+    ranking = client.get("/status").json()["features"]["ranking"]
+    assert ranking["doc_weight"] == 0.2

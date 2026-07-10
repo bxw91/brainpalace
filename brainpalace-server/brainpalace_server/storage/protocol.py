@@ -337,3 +337,17 @@ class StorageBackendProtocol(Protocol):
             StorageError: If the delete operation fails.
         """
         ...
+
+    async def get_ids_by_where(self, where: dict[str, Any]) -> set[str]:
+        """Return the chunk ids whose metadata matches ``where``.
+
+        Used for source-addressed lookups (e.g. resolving a person's link
+        refs to live chunk ids, or collecting a source's chunks for replace).
+
+        Args:
+            where: Metadata filter (same dialect as ``get_count``).
+
+        Returns:
+            Set of matching chunk ids (empty when nothing matches).
+        """
+        ...

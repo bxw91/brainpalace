@@ -1,4 +1,10 @@
 #!/bin/bash
+# DEPRECATED (retained for non-Claude runtimes / manual use). Daily distil is now
+# performed server-side by `promote_decisions` (durable session decisions are
+# promoted into curated memory automatically at extraction time, with cap-reclaim
+# eviction). This standalone template is no longer the recommended path for
+# Claude Code — the auto-wired `brainpalace hook sessionstart` covers it.
+#
 # OPT-IN daily memory-distil hook for Claude Code (BrainPalace, Phase 080).
 #
 # At most once per day, asks the in-session (subscription-tier) model to run the

@@ -20,11 +20,21 @@ calls no-op.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
+from brainpalace_server.services.memory_service import MemoryCapError
+
 logger = logging.getLogger(__name__)
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
 
 # Entities that look like source files get canonicalised; everything else
 # (free-text concepts, decisions) is left alone.
@@ -138,12 +148,19 @@ def apply_supersessions(payload: Any, graph: Any, project_root: str = "") -> int
     return count
 
 
-async def promote_decisions(payload: Any, memory_service: Any) -> int:
+async def promote_decisions(
+    payload: Any,
+    memory_service: Any,
+    sensitivity: str = "normal",
+    state_dir: Path | None = None,
+) -> int:
     """Promote durable current decisions into curated memory (030).
 
-    A decision qualifies when it has a rationale and is not superseded within the
-    same payload. Cap/duplicate errors are swallowed (best-effort). Returns the
-    number promoted.
+    Uses the reclaim-aware write path so a full memory file evicts stale
+    auto-promoted entries (and obsoletes cross-session superseded ones) instead
+    of silently dropping new decisions. If the file is full of protected manual
+    facts, a cap-pressure marker is written (surfaced by ``status``) rather than
+    swallowed at DEBUG.
     """
     if memory_service is None:
         return 0
@@ -152,6 +169,7 @@ async def promote_decisions(payload: Any, memory_service: Any) -> int:
         d.supersedes for d in payload.decisions if getattr(d, "supersedes", None)
     }
     promoted = 0
+    skipped_cap = 0
     for d in payload.decisions:
         if not getattr(d, "rationale", None):
             continue
@@ -163,8 +181,30 @@ async def promote_decisions(payload: Any, memory_service: Any) -> int:
                 text,
                 tags=["session-decision"],
                 origin=f"session:{payload.session_id}",
+                sensitivity=sensitivity,
+                reclaim=True,
+                supersedes=getattr(d, "supersedes", None),
             )
             promoted += 1
-        except Exception as exc:  # noqa: BLE001 — cap/dup/etc are non-fatal
-            logger.debug("decision promotion skipped: %s", exc)
+        except MemoryCapError as exc:
+            skipped_cap += 1
+            logger.warning("decision promotion skipped (memory cap full): %s", exc)
+        except Exception as exc:  # noqa: BLE001 — dup/etc are non-fatal
+            logger.warning(
+                "decision promotion skipped (%s): %s", type(exc).__name__, exc
+            )
+
+    if state_dir is not None:
+        marker = state_dir / "memory_cap_pressure.json"
+        try:
+            if skipped_cap:
+                marker.write_text(
+                    json.dumps({"at": _now_iso(), "skipped": skipped_cap})
+                )
+            elif marker.exists():
+                # Pressure relieved (a promotion succeeded) → clear the stale
+                # warning so `status` doesn't show it forever.
+                marker.unlink()
+        except Exception as exc:  # noqa: BLE001 — marker is best-effort
+            logger.debug("cap-pressure marker update failed: %s", exc)
     return promoted

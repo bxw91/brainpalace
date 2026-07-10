@@ -88,6 +88,58 @@ def test_reconciler_tick_runs_one_sweep(tmp_path, monkeypatch):
     assert calls["n"] == 1
 
 
+def test_tick_invokes_memory_curator(tmp_path, monkeypatch):
+    from brainpalace_server.services import session_reconciler as sr
+
+    async def fake_once(**kw):
+        return {"archived": 0, "indexed": 0}
+
+    monkeypatch.setattr(sr, "reconcile_once", fake_once)
+
+    class _Curator:
+        def __init__(self):
+            self.state_dir = None
+
+        async def curate_if_due(self, state_dir):
+            self.state_dir = state_dir
+            return 0
+
+    cur = _Curator()
+    rec = sr.SessionReconciler(
+        interval_seconds=600,
+        sessions_dir=tmp_path,
+        archive_service=None,
+        sess_svc=None,
+        session_cfg=_Cfg(),
+        caps=_Caps(),
+        distiller=None,
+        memory_curator=cur,
+        curate_state_dir=tmp_path,
+    )
+    asyncio.run(rec._tick())
+    assert cur.state_dir == tmp_path  # curate_if_due awaited with the state dir
+
+
+def test_tick_no_curator_is_noop(tmp_path, monkeypatch):
+    from brainpalace_server.services import session_reconciler as sr
+
+    async def fake_once(**kw):
+        return {"archived": 0, "indexed": 0}
+
+    monkeypatch.setattr(sr, "reconcile_once", fake_once)
+    rec = sr.SessionReconciler(
+        interval_seconds=600,
+        sessions_dir=tmp_path,
+        archive_service=None,
+        sess_svc=None,
+        session_cfg=_Cfg(),
+        caps=_Caps(),
+        distiller=None,
+    )
+    # No memory_curator wired → _tick completes without error.
+    assert asyncio.run(rec._tick()) == {"archived": 0, "indexed": 0}
+
+
 def test_distiller_runs_on_live_when_archive_off(tmp_path, monkeypatch):
     """Archive (copy) OFF + extraction ON: the distiller summarizes the LIVE
     source transcripts — the three capabilities are independent."""

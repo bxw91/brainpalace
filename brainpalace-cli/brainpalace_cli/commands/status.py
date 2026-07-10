@@ -440,12 +440,25 @@ def status_command(
             if isinstance(sess, dict):
                 if sess.get("enabled"):
                     sess_state = "watching" if sess.get("watcher_running") else "idle"
+                    cap_txt = ""
+                    cap_cap = int(sess.get("memory_char_cap", 0) or 0)
+                    if cap_cap:
+                        cap_used = int(sess.get("memory_char_count", 0) or 0)
+                        cap_txt = f", {cap_used}/{cap_cap} chars"
+                    pressure = sess.get("memory_cap_pressure")
+                    warn_txt = ""
+                    if pressure:
+                        skipped = int(pressure.get("skipped", 0) or 0)
+                        warn_txt = (
+                            f"\n[yellow]⚠ cap pressure — {skipped} promotions "
+                            f"skipped (curate memory)[/]"
+                        )
                     table.add_row(
                         "Session Memory",
                         f"[green]on[/] ({sess_state}) — "
                         f"{int(sess.get('session_chunks', 0) or 0):,} session "
                         f"chunks, {int(sess.get('curated_memories', 0) or 0):,} "
-                        f"curated",
+                        f"curated{cap_txt}{warn_txt}",
                     )
                 else:
                     table.add_row(
@@ -504,6 +517,23 @@ def status_command(
                     f"vectors {v_txt}, summaries {s_txt}{suffix}",
                 )
 
+            # Doc-trust ranking weight (Phase 6.5a) — how much docs are trusted
+            # vs code in search. Read once at startup (config change needs a
+            # server restart to refresh).
+            ranking = features.get("ranking")
+            if isinstance(ranking, dict):
+                doc_weight = float(ranking.get("doc_weight", 0.5))
+                if doc_weight < 1.0:
+                    table.add_row(
+                        "Doc Trust Weight",
+                        f"{doc_weight:g} (docs ranked below code)",
+                    )
+                else:
+                    table.add_row(
+                        "Doc Trust Weight",
+                        f"{doc_weight:g} (docs equal to code)",
+                    )
+
             # Show embedding cache status if available (Phase 16)
             embedding_cache = indexing.embedding_cache
             if embedding_cache:
@@ -548,6 +578,18 @@ def status_command(
                     table.add_row("Graph Index", graph_note)
                 else:
                     table.add_row("Graph Index", "[dim]Disabled[/]")
+
+            # Programmatic text-ingest chunks (spec Item 3). Shown only when
+            # present, to keep code-project status noise-free. Separate from
+            # Total Documents, which stays folder-manifest-derived.
+            text_ingest = getattr(indexing, "text_ingest", None)
+            if isinstance(text_ingest, dict):
+                ingest_chunks = int(text_ingest.get("chunks", 0) or 0)
+                if ingest_chunks > 0:
+                    table.add_row(
+                        "Text Ingest",
+                        f"[green]{ingest_chunks:,}[/] chunks",
+                    )
 
             # Doc-graph extraction (Plan 4, spec §12). Always shown when the
             # feature block is present — even in `off` so un-graphed chunks are
@@ -607,6 +649,18 @@ def status_command(
                     table.add_row(
                         "Git Index",
                         "[dim]off[/] (enable: brainpalace init --git-history)",
+                    )
+
+            # Reference catalog (Round 2 Plan C) — shown only when references
+            # exist, to keep code-project status noise-free.
+            refs = features.get("references")
+            if isinstance(refs, dict) and refs.get("enabled"):
+                ref_total = int(refs.get("total", 0) or 0)
+                if ref_total > 0:
+                    ref_unembedded = int(refs.get("unembedded", 0) or 0)
+                    table.add_row(
+                        "References",
+                        f"[green]{ref_total:,}[/] ({ref_unembedded:,} unembedded)",
                     )
 
             # Index health: self-heal audit (#5). Only show a row when a heal

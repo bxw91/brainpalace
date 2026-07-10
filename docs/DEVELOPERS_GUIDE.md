@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-05
+last_validated: 2026-07-07
 ---
 
 # BrainPalace Developer Guide
@@ -612,6 +612,25 @@ punctuation like `—` `…` `⊂` is allowed; accented/Cyrillic letters fail).
 > **Why this section exists:** three independent front-ends (plugin/MCP/hook) for
 > the same instructions drift the instant one is edited. One source + a generated
 > skill + a parity gate makes drift a failing test, not a silent gap.
+
+---
+
+## Import boundary — `lint:import-boundary`
+
+`brainpalace-life/` (the product subpackage) may reach the engine ONLY through
+the nine `brainpalace_server` submodules named in the `ALLOWED_SEAMS` allowlist
+of `scripts/check_import_boundary.py` — the ingestion adapter/sink, the
+record-validation and salience registries, the domain registry, the
+query-service read entrypoint, and the record/graph/query DTO models — never
+engine internals (storage, other services) or anything under `brainpalace_cli`,
+and never by opening an engine data file (`.brainpalace/…`) directly. The gate
+AST-scans product source (not tests) and runs in `task check` + `task
+before-push`. Adding a new seam = add the engine module to `ALLOWED_SEAMS` with a
+one-line reason.
+
+The same allowlist is the compatibility contract for external consumers building
+on the engine directly — see
+[docs/BUILDING_ON_BRAINPALACE.md](BUILDING_ON_BRAINPALACE.md).
 
 ---
 

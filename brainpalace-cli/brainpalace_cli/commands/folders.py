@@ -162,6 +162,39 @@ def list_folders_cmd(url: str | None, json_output: bool) -> None:
     default=False,
     help="Bypass the per-job embedding-token budget cap for this job.",
 )
+@click.option(
+    "--allow-external",
+    "allow_external",
+    is_flag=True,
+    default=False,
+    help="Allow indexing a folder outside the project tree (bypasses the "
+    "server's project-root containment guard).",
+)
+@click.option(
+    "--domain",
+    "domain",
+    default=None,
+    help="Optional user-facing domain label for the folder (e.g. 'code', 'home'). "
+    "Default: the project's own domain (config project.domain, 'code' unless "
+    "changed) — an external folder that explicitly claims this domain is "
+    "treated as authoritative and requires --force (6.5).",
+)
+@click.option(
+    "--authority",
+    "authority",
+    type=click.Choice(["authoritative", "reference"], case_sensitive=False),
+    default=None,
+    help="Binary provenance trust level. Default: 'authoritative' for "
+    "in-tree folders, 'reference' for external folders (6.5).",
+)
+@click.option(
+    "--force",
+    "force_authority",
+    is_flag=True,
+    default=False,
+    help="Allow an external folder to be registered as 'authoritative' "
+    "(bypasses the external-path authority guard).",
+)
 @click.option("--json", "json_output", is_flag=True, help="Output as JSON")
 def add_folder_cmd(
     folder_path: str,
@@ -171,6 +204,10 @@ def add_folder_cmd(
     debounce_seconds: int | None,
     text_language: str | None,
     force_budget: bool,
+    allow_external: bool,
+    domain: str | None,
+    authority: str | None,
+    force_authority: bool,
     json_output: bool,
 ) -> None:
     """Index documents from a folder (alias for 'brainpalace index').
@@ -200,6 +237,10 @@ def add_folder_cmd(
                 watch_mode=watch_mode,
                 watch_debounce_seconds=debounce_seconds,
                 force_budget=force_budget,
+                allow_external=allow_external,
+                domain=domain,
+                authority=authority,
+                force_authority=force_authority,
             )
 
             if json_output:

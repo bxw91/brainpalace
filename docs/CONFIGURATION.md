@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-28
+last_validated: 2026-07-05
 ---
 
 # Configuration Reference
@@ -21,6 +21,7 @@ This document provides a comprehensive reference for all BrainPalace configurati
 - [Embedding Cache Configuration](#embedding-cache-configuration)
 - [Reranking Configuration](#reranking-configuration)
 - [Time-Decay Ranking](#time-decay-ranking)
+- [Doc-Trust Ranking](#doc-trust-ranking)
 - [Cross-Session Linking](#cross-session-linking)
 - [Session, Git & LSP Sources](#session-git--lsp-sources)
 - [Per-Project Configuration](#per-project-configuration)
@@ -525,6 +526,37 @@ export BRAINPALACE_TIME_DECAY_HALF_LIFE_DAYS="30"
 # Disable decay entirely
 export BRAINPALACE_TIME_DECAY_HALF_LIFE_DAYS="0"
 ```
+
+---
+
+## Doc-Trust Ranking
+
+Softly down-ranks documentation chunks vs code in search by multiplying a
+`doc`-type result's score by `ranking.doc_weight` before ranking (Phase 6.5a).
+Non-doc source types (`code`, `test`, …) are never touched. Applied only in
+chunk-mode queries (record/graph/compute early-return before this step).
+
+**Behavior change:** the `0.5` default applies to **existing projects on
+upgrade too** — docs now rank below code unless you set `doc_weight: 1.0`.
+
+```yaml
+# config.yaml — per-project switch (default 0.5)
+ranking:
+  doc_weight: 0.5
+```
+
+| Value | Meaning |
+|-------|---------|
+| `1.0` | Docs ranked equal to code (no re-ranking) |
+| `0.5` | Docs half-weight vs code (**default**) |
+| `0.0` | Docs excluded from results entirely (still indexed) |
+
+Set at `brainpalace init` (asks interactively; `--doc-weight <0.0-1.0>` sets it
+non-interactively) or later via `brainpalace config` / the dashboard — it is an
+ordinary `ranking.doc_weight` field in the ranking division/section, same as
+any other config value. Re-read once at server startup; a change takes effect
+on the next `brainpalace start`. A uniform weight only re-orders *mixed*
+doc/code result sets — an all-doc or all-code query keeps its relative order.
 
 ---
 

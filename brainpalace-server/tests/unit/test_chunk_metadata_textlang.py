@@ -212,3 +212,112 @@ async def test_code_chunker_text_language_on_typed_field_not_extra():
             f"extra keys: {list(chunk.metadata.extra)}"
         )
         assert chunk.metadata.to_dict()["text_language"] == "code"
+
+
+# ---------------------------------------------------------------------------
+# ChunkMetadata domain + authority (6.5): typed fields, only-when-set to_dict
+# ---------------------------------------------------------------------------
+
+
+def test_domain_authority_default_none_and_absent_from_to_dict():
+    """Defaults are None and to_dict() omits both keys (decision D)."""
+    m = ChunkMetadata(
+        chunk_id="c1",
+        source="f.md",
+        file_name="f.md",
+        chunk_index=0,
+        total_chunks=1,
+        source_type="doc",
+    )
+    assert m.domain is None
+    assert m.authority is None
+    d = m.to_dict()
+    assert "domain" not in d
+    assert "authority" not in d
+
+
+def test_domain_authority_serialize_when_set():
+    """Set domain/authority serialize via typed fields."""
+    m = ChunkMetadata(
+        chunk_id="c1",
+        source="f.md",
+        file_name="f.md",
+        chunk_index=0,
+        total_chunks=1,
+        source_type="doc",
+        domain="home",
+        authority="reference",
+    )
+    d = m.to_dict()
+    assert d["domain"] == "home"
+    assert d["authority"] == "reference"
+
+
+@pytest.mark.asyncio
+async def test_doc_chunker_domain_authority_on_typed_field_not_extra():
+    """Doc chunks inherit domain/authority from document metadata via typed fields."""
+    text = "Hello world. " * 30
+    doc = LoadedDocument(
+        text=text,
+        source="sample.md",
+        file_name="sample.md",
+        file_path="sample.md",
+        file_size=len(text),
+        metadata={
+            "language": "markdown",
+            "content_type": "document",
+            "domain": "home",
+            "authority": "reference",
+        },
+    )
+
+    chunker = ContextAwareChunker()
+    chunks = await chunker.chunk_single_document(doc)
+
+    assert chunks
+    for chunk in chunks:
+        assert chunk.metadata.domain == "home"
+        assert chunk.metadata.authority == "reference"
+        assert "domain" not in chunk.metadata.extra
+        assert "authority" not in chunk.metadata.extra
+        d = chunk.metadata.to_dict()
+        assert d["domain"] == "home"
+        assert d["authority"] == "reference"
+
+
+@pytest.mark.asyncio
+async def test_code_chunker_domain_authority_on_typed_field_not_extra():
+    """Code chunks inherit domain/authority from document metadata via typed fields."""
+    code = (
+        "def hello(name):\n"
+        "    return f'Hello, {name}!'\n"
+        "\n" + ("# padding\n" * 20) + "\nclass Greeter:\n"
+        "    def greet(self, name):\n"
+        "        return f'Hi, {name}!'\n"
+    )
+    doc = LoadedDocument(
+        text=code,
+        source="mod.py",
+        file_name="mod.py",
+        file_path="mod.py",
+        file_size=len(code),
+        metadata={
+            "source_type": "code",
+            "language": "python",
+            "domain": "home",
+            "authority": "reference",
+        },
+    )
+
+    chunker = CodeChunker(language="python", chunk_lines=5, max_chars=200)
+    chunks = await chunker.chunk_code_document(doc)
+
+    assert chunks
+    for chunk in chunks:
+        assert chunk.metadata.domain == "home"
+        assert chunk.metadata.authority == "reference"
+        assert "domain" not in chunk.metadata.extra
+        assert "authority" not in chunk.metadata.extra
+        d = chunk.metadata.to_dict()
+        assert d["domain"] == "home"
+        assert d["authority"] == "reference"

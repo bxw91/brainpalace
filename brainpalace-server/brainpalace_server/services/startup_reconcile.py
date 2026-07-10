@@ -151,6 +151,8 @@ async def reconcile_store_against_manifest(
                 watch_debounce_seconds=rec.watch_debounce_seconds,
                 include_code=rec.include_code,
                 source="reconcile-store",
+                domain=rec.domain,
+                authority=rec.authority,
             )
         except Exception as exc:  # noqa: BLE001 — never fail startup on a heal
             logger.warning(
@@ -543,6 +545,8 @@ async def reconcile_folders(
                 watch_debounce_seconds=rec.watch_debounce_seconds,
                 include_code=rec.include_code,
                 source="reconcile",
+                domain=rec.domain,
+                authority=rec.authority,
             )
         except Exception as exc:  # noqa: BLE001 — never fail startup on a heal
             logger.warning(

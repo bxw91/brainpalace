@@ -82,6 +82,7 @@ class SessionMeta:
     is_subagent: bool = False
     parent_session_id: str | None = None
     origin_path: str | None = None
+    sensitivity: str = "normal"
 
 
 def is_subagent_path(path: str | Path) -> bool:

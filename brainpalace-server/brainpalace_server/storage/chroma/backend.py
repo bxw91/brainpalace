@@ -343,6 +343,39 @@ class ChromaBackend:
         except Exception:  # noqa: BLE001 — cleanup probe must never crash
             return set()
 
+    async def get_existing_ids(self, ids: list[str]) -> set[str]:
+        """Return the subset of ``ids`` already present in the store.
+
+        Delegates to the VectorStoreManager facade. Required by
+        DocumentIngestService (``POST /ingest/text``) to skip re-embedding
+        unchanged chunks — raises on backend error so the write path fails
+        loudly rather than silently re-embedding everything.
+        """
+        try:
+            return await self.vector_store.get_existing_ids(ids)
+        except Exception as e:
+            raise StorageError(
+                f"Get existing IDs failed: {e}",
+                backend="chroma",
+            ) from e
+
+    async def get_ids_by_where(self, where: dict[str, Any]) -> set[str]:
+        """Return all chunk ids matching a metadata filter.
+
+        Delegates to the VectorStoreManager facade. Required by
+        DocumentIngestService to enumerate a source_id's prior chunks for
+        replace-semantics — raises on backend error so stale chunks are never
+        silently left behind (unlike the cleanup-probe ``get_ids_by_metadata``,
+        which swallows errors).
+        """
+        try:
+            return await self.vector_store.get_ids_by_where(where=where)
+        except Exception as e:
+            raise StorageError(
+                f"Get IDs by where failed: {e}",
+                backend="chroma",
+            ) from e
+
     async def get_id_source_pairs(self, where: dict[str, Any]) -> list[tuple[str, str]]:
         """Return ``(chunk_id, source)`` pairs matching a metadata filter.
 

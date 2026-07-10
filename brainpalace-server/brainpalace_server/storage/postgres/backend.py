@@ -407,8 +407,11 @@ class PostgresBackend:
             chunk_id: Unique chunk identifier.
 
         Returns:
-            Dictionary with ``text`` and ``metadata`` keys,
-            or None if not found.
+            Dictionary with ``text``, ``metadata`` and ``embedding`` keys
+            (``embedding`` is a ``list[float]`` or ``None``), or None if not
+            found. The embedding is returned so DocumentIngestService's
+            embed-frugal keep-and-refresh path can re-upsert unchanged chunks
+            without re-embedding — it reads ``row["embedding"]``.
 
         Raises:
             StorageError: If retrieval fails.
@@ -419,7 +422,7 @@ class PostgresBackend:
                 result = await conn.execute(
                     text(
                         """
-                        SELECT document_text, metadata
+                        SELECT document_text, metadata, embedding
                         FROM documents
                         WHERE chunk_id = :chunk_id
                         """
@@ -434,11 +437,96 @@ class PostgresBackend:
                 if isinstance(metadata_val, str):
                     metadata_val = json.loads(metadata_val)
 
-                return {"text": row[0], "metadata": metadata_val}
+                # pgvector returns the vector column as its text form
+                # "[0.1, 0.2, ...]" (valid JSON) — parse to list[float] so the
+                # value round-trips through upsert (which json.dumps it back).
+                embedding_val = row[2]
+                if isinstance(embedding_val, str):
+                    embedding_val = json.loads(embedding_val)
+
+                return {
+                    "text": row[0],
+                    "metadata": metadata_val,
+                    "embedding": embedding_val,
+                }
 
         except Exception as e:
             raise StorageError(
                 f"Get by ID failed: {e}",
+                backend="postgres",
+            ) from e
+
+    async def get_existing_ids(self, ids: list[str]) -> set[str]:
+        """Return the subset of ``ids`` already present in the store.
+
+        Required by DocumentIngestService (``POST /ingest/text``) to skip
+        re-embedding unchanged chunks. Raises on backend error so the write
+        path fails loudly rather than silently re-embedding everything.
+        """
+        if not ids:
+            return set()
+        engine = self.connection_manager.engine
+        try:
+            async with engine.connect() as conn:
+                result = await conn.execute(
+                    text(
+                        "SELECT chunk_id FROM documents " "WHERE chunk_id = ANY(:ids)"
+                    ),
+                    {"ids": list(ids)},
+                )
+                return {row[0] for row in result.fetchall()}
+        except Exception as e:
+            raise StorageError(
+                f"Get existing IDs failed: {e}",
+                backend="postgres",
+            ) from e
+
+    @staticmethod
+    def _flatten_where(where: dict[str, Any]) -> dict[str, Any]:
+        """Reduce a Chroma-style ``where`` to a flat JSONB-containment filter.
+
+        DocumentIngestService builds ``{"$and": [{"source_type": ...},
+        {"source_id": ...}]}``. Postgres uses JSONB containment
+        (``metadata @> filter``), which is itself an implicit AND over
+        key/value pairs, so an ``$and`` of flat equality maps to the merged
+        dict. Only the flat / ``$and``-of-flat form the ingest service emits
+        is supported; anything else raises rather than silently mis-filtering.
+        """
+        if "$and" in where:
+            merged: dict[str, Any] = {}
+            for clause in where["$and"]:
+                if not isinstance(clause, dict) or any(
+                    k.startswith("$") for k in clause
+                ):
+                    raise ValueError(f"unsupported where clause: {clause!r}")
+                merged.update(clause)
+            return merged
+        if any(k.startswith("$") for k in where):
+            raise ValueError(f"unsupported where operator in: {where!r}")
+        return dict(where)
+
+    async def get_ids_by_where(self, where: dict[str, Any]) -> set[str]:
+        """Return all chunk ids matching a metadata filter.
+
+        Required by DocumentIngestService to enumerate a source_id's prior
+        chunks for replace-semantics. Raises on backend error so stale chunks
+        are never silently left behind.
+        """
+        engine = self.connection_manager.engine
+        try:
+            flat = self._flatten_where(where)
+            async with engine.connect() as conn:
+                result = await conn.execute(
+                    text(
+                        "SELECT chunk_id FROM documents "
+                        "WHERE metadata @> CAST(:filter AS jsonb)"
+                    ),
+                    {"filter": json.dumps(flat)},
+                )
+                return {row[0] for row in result.fetchall()}
+        except Exception as e:
+            raise StorageError(
+                f"Get IDs by where failed: {e}",
                 backend="postgres",
             ) from e
 

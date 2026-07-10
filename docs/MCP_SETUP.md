@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-04
+last_validated: 2026-07-05
 ---
 
 # MCP setup — connecting AI clients to BrainPalace
@@ -66,7 +66,9 @@ handshake never hangs.
 Because the MCP shim never auto-runs `brainpalace init`, run it yourself once per
 project. `brainpalace init` (sparse PROJECT config) asks the **same question set**
 as `brainpalace install` / `brainpalace init --global` (GLOBAL config; `config wizard
---global` is a back-compat alias): embedding, summarizer, reranker, embed-sessions,
+--global` is a back-compat alias): embedding, summarizer, reranker, doc-trust weight
+(`ranking.doc_weight` — `1.0` docs equal to code, `0.5` half-weight default, `0.0`
+docs excluded; non-interactive `--doc-weight <0.0-1.0>`), embed-sessions,
 session-archive, git-history, and GraphRAG doc-extraction. The GLOBAL path
 additionally asks the web-dashboard control-plane settings (`dashboard.autostart`,
 default ON; `dashboard.port`, default 8787), written to the `dashboard:` block —

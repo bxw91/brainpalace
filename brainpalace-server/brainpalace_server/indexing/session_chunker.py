@@ -163,6 +163,7 @@ class SessionChunker:
                 chunk_index=ci,
                 total_chunks=total,
                 source_type="session_turn",
+                sensitivity=meta.sensitivity,
                 language=language,
                 extra=extra,
             )

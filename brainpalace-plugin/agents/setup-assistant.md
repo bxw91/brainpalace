@@ -26,7 +26,7 @@ triggers:
 skills:
   - configuring-brainpalace
 tools: Read, Glob, Bash, Write, Edit
-last_validated: 2026-07-04
+last_validated: 2026-07-05
 ---
 
 # Setup Assistant Agent
@@ -428,6 +428,10 @@ question wall is removed). The questions are:
 - **Embedding** provider + model
 - **Summarizer** provider + model
 - **Reranker** (`reranker.enabled`) — off by default; the local cross-encoder needs the heavy `reranker-local` extra (~2.8 GB), installed on opt-in, or use `reranker.provider=ollama`
+- **Doc-trust weight** (`ranking.doc_weight`) — how much docs are trusted vs
+  code in search: `1.0` = equal, `0.5` = docs half-weight (**default**), `0.0` =
+  docs excluded from results (still indexed). Non-interactively set with
+  `--doc-weight <0.0-1.0>`.
 - **Embed sessions** (`session_indexing.enabled`) — embed chat transcripts so
   they're searchable. **Billable opt-in, default OFF.**
 - **Session archive** (`session_indexing.archive.enabled`) — copy raw transcripts

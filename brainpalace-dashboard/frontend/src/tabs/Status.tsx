@@ -124,6 +124,8 @@ export function Status({ instanceId }: { instanceId?: string }) {
   const extraction = obj(features.session_extraction);
   const lsp = obj(features.lsp);
   const git = obj(features.git_index);
+  const references = obj(features.references);
+  const referencesEnabled = references.enabled === true;
   const cfg = obj(configQ.data);
   const bm25 = obj(cfg.bm25);
 
@@ -335,6 +337,14 @@ export function Status({ instanceId }: { instanceId?: string }) {
                 : "off"
             }
           />
+          {referencesEnabled && num(references.total) > 0 && (
+            <Row
+              label="References"
+              value={`${fmt(num(references.total))} (${fmt(
+                num(references.unembedded),
+              )} unembedded)`}
+            />
+          )}
           {healEvents > 0 && healDropped > 0 && (
             <Row
               label="Index health"

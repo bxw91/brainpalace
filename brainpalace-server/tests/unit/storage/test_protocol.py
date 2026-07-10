@@ -223,6 +223,9 @@ class MockCompleteBackend:
     ) -> int:
         return len(ids)
 
+    async def get_ids_by_where(self, where: dict[str, any]) -> set[str]:
+        return set()
+
 
 def test_protocol_complete_implementation() -> None:
     """Test that mock class with all methods satisfies protocol."""

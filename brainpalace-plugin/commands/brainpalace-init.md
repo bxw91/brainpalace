@@ -86,6 +86,10 @@ parameters:
     type: bool
     required: false
     default: ""
+  - name: doc-weight
+    type: float range
+    required: false
+    default: ""
   - name: bm25-engine
     type: choice
     required: false
@@ -94,11 +98,15 @@ parameters:
     type: bool
     required: false
     default: true
+  - name: folder
+    type: directory
+    required: false
+    default: ""
 context: brainpalace
 agent: setup-assistant
 skills:
   - configuring-brainpalace
-last_validated: 2026-06-28
+last_validated: 2026-07-05
 ---
 
 # Initialize BrainPalace Project
@@ -461,6 +469,8 @@ This allows running multiple BrainPalace instances for different projects simult
 | --migrate-graph-store | bool | "" | On an already-initialized project whose graph store is the legacy in-memory 'simple' backend, upgrade graphrag.store_type to 'sqlite' (persistent + temporal; the existing graph is replayed into sqlite on next start, with the JSON kept for rollback). Interactive runs ask (default yes). No effect on fresh inits or projects already on sqlite. |
 | --language | text | "" | Project default natural language for BM25 indexing (ISO 639-1, e.g. en, de, hr). Passed → written to bm25.language; omitted → inherit from global config / code default (en). |
 | --reranking | bool | "" | Two-stage reranking: a local cross-encoder re-scores the top candidates for finer relevance ordering. OFF by default — the local model needs the heavy reranker-local extra (~2.8 GB PyTorch). --reranking installs that extra and enables it; or set reranker.provider=ollama for a torch-free reranker. Writes reranker.enabled to config.yaml. |
+| --doc-weight | float range | "" | Trust of docs vs code in search (0.0=exclude … 0.5=default … 1.0=equal). Writes ranking.doc_weight to config.yaml non-interactively (the field is also editable in the review grid's Retrieval Ranking division). |
 | --bm25-engine | choice | "" | BM25 stemming engine: 'stem' (Snowball, no extra deps) or 'lemma' (simplemma, better recall for morphologically-rich languages). Passed → written to bm25.engine; omitted → inherit from global config / code default (stem). engine=lemma requires simplemma: pip install 'brainpalace[lemma-hr]'. |
 | --include-code | bool | true | Index source code files alongside documents (default: ON). Use --no-code for doc-only repos. Applies to the first index and to the pre-index token estimate. |
+| --folder | directory | "" | Register + index ONLY this folder at start (repeatable), instead of the whole project root. Paths outside the project tree are allowed. Implies watching the given folders; incompatible with --no-watch/--watch off. |
 <!--/GENERATED-->

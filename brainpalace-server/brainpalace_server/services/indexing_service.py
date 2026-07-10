@@ -780,6 +780,17 @@ class IndexingService:
             for _d in code_documents:
                 _d.metadata["text_language"] = "code"
 
+            # Step 2a-bis (6.5): stamp the owning folder's domain/authority on
+            # every document before chunking, so each resulting chunk inherits
+            # them (same plumbing as text_language). authority resolves to a
+            # concrete value ('authoritative' by default — decision D); domain
+            # is only stamped when the folder carries one.
+            _folder_authority = request.authority or "authoritative"
+            for _d in documents:
+                _d.metadata["authority"] = _folder_authority
+                if request.domain:
+                    _d.metadata["domain"] = request.domain
+
             all_chunks: list[TextChunk | CodeChunk] = []
             total_to_process = len(documents)
 
@@ -929,6 +940,8 @@ class IndexingService:
                     "created_at",
                     "language",
                     "text_language",
+                    "domain",
+                    "authority",
                     "heading_path",
                     "section_title",
                     "content_type",
@@ -1407,6 +1420,8 @@ class IndexingService:
                 watch_debounce_seconds=watch_debounce_seconds,
                 include_code=request.include_code,
                 source=request.trigger,
+                domain=request.domain,
+                authority=request.authority or "authoritative",
             )
 
         return eviction_summary_result

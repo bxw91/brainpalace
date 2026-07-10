@@ -281,6 +281,9 @@ class GraphTriple(BaseModel):
     source_id: str | None = Field(default=None, description="Provenance: source id")
     ingested_at: str | None = Field(default=None, description="Provenance: ISO ts")
     confidence: float = Field(default=0.0, ge=0.0, le=1.0, description="0..1")
+    sensitivity: str = Field(
+        default="normal", description="Sensitivity tier; 'normal' = visible"
+    )
     subject_id: str | None = None
     object_id: str | None = None
     subject_name: str | None = None
@@ -351,6 +354,9 @@ class GraphEntity(BaseModel):
     source_id: str | None = Field(default=None, description="Provenance: source id")
     ingested_at: str | None = Field(default=None, description="Provenance: ISO ts")
     confidence: float = Field(default=0.0, ge=0.0, le=1.0, description="0..1")
+    sensitivity: str = Field(
+        default="normal", description="Sensitivity tier; 'normal' = visible"
+    )
 
 
 class GraphIndexStatus(BaseModel):

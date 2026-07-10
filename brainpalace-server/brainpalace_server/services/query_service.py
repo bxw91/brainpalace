@@ -18,6 +18,10 @@ from brainpalace_server.config import settings
 if TYPE_CHECKING:
     from brainpalace_server.services.memory_service import MemoryService
     from brainpalace_server.services.query_cache import QueryCacheService
+    from brainpalace_server.storage.identity_store import IdentityStore
+    from brainpalace_server.storage.reference_catalog_store import (
+        ReferenceCatalogStore,
+    )
 from brainpalace_server.config.provider_config import load_provider_settings
 from brainpalace_server.config.runtime_mode import is_read_only
 from brainpalace_server.indexing import EmbeddingGenerator, get_embedding_generator
@@ -101,6 +105,26 @@ def hidden_session_source_types() -> set[str]:
     return hidden
 
 
+def _sensitivity_allowed(request: Any) -> bool:
+    """True only when the caller explicitly opted in to sensitive rows.
+
+    Default-deny (fails CLOSED): a missing/false ``include_sensitive`` hides
+    every row marked ``sensitivity != 'normal'``. Only the interactive CLI sets
+    the flag; MCP/dashboard/hooks omit it. Mirrors the session hard-off resolver
+    but with the polarity inverted (opt-in reveals, opt-out denies).
+    """
+    return getattr(request, "include_sensitive", False) is True
+
+
+def _result_sensitivity(r: Any) -> str:
+    """A chunk result's sensitivity; missing/unknown ⇒ 'normal' (visible)."""
+    val = getattr(r, "sensitivity", None)
+    if val is None:
+        meta = getattr(r, "metadata", None) or {}
+        val = meta.get("sensitivity") if isinstance(meta, dict) else None
+    return val or "normal"
+
+
 def _parse_created_at(value: Any) -> datetime | None:
     """Parse a chunk's ``created_at`` metadata into a tz-aware UTC datetime.
 
@@ -173,6 +197,9 @@ class QueryService:
         memory_service: MemoryService | None = None,
         record_store: object | None = None,
         archive_dir: str | Path | None = None,
+        ranking_config: object | None = None,
+        reference_catalog_store: ReferenceCatalogStore | None = None,
+        identity_store: IdentityStore | None = None,
     ):
         """
         Initialize the query service.
@@ -220,6 +247,15 @@ class QueryService:
         self.record_store = record_store  # Task 9: stored for Task 11 executor
         # Phase 2 (scan): session-archive root; None = archive feature off.
         self.archive_dir = archive_dir
+        # Phase 6.5a: per-project doc-trust weight (None ⇒ neutral).
+        self.ranking_config = ranking_config
+        # Round 2 Plan C: reference catalog for the hybrid-tail boost pass.
+        self.reference_catalog_store = reference_catalog_store
+        # G5 Task 8: identity store for person-filtered retrieval + grouping.
+        # None-safe: absent ⇒ person features degrade to empty/ungrouped, and
+        # ground truth stays in the identity store (never denormalized into
+        # chunk metadata — D1).
+        self.identity_store = identity_store
 
     def is_ready(self) -> bool:
         """
@@ -283,14 +319,18 @@ class QueryService:
                 "source_types": sorted(request.source_types or []),
                 "languages": sorted(request.languages or []),
                 "file_paths": sorted(request.file_paths or []),
+                "domains": sorted(request.domains or []),
+                "metadata_filter": sorted((request.metadata_filter or {}).items()),
                 "language": request.language,
+                "include_sensitive": _sensitivity_allowed(request),
             }
             cache_key = cache.make_cache_key(cache_params)
             cached = cache.get(cache_key)
             if cached is not None:
                 # Memory boost is layered fresh per call (not cached), so a
                 # cache hit still reflects current curated memory.
-                return await self._apply_memory_boost(request, cached)
+                boosted = await self._apply_memory_boost(request, cached)
+                return await self._apply_reference_boost(request, boosted)
 
         # Early return for empty index — avoids top_k=0 errors downstream
         corpus_size = await self.storage_backend.get_count()
@@ -312,7 +352,8 @@ class QueryService:
             enable_reranking = request.rerank
         original_top_k = request.top_k
 
-        # Stage 1: Adjust top_k for reranking if enabled
+        # Stage 1: Adjust top_k for reranking and/or post-retrieval filters
+        stage1_top_k = request.top_k
         if enable_reranking:
             # Calculate stage 1 candidates: top_k * multiplier, capped at max_candidates
             multiplier = getattr(settings, "RERANKER_TOP_K_MULTIPLIER", 10)
@@ -325,12 +366,25 @@ class QueryService:
                 f"Reranking enabled: Stage 1 retrieving {stage1_top_k} candidates "
                 f"for final top_k={original_top_k}"
             )
+        if request.domains or request.metadata_filter:
+            # Round 4 D4: domains/metadata_filter are applied post-retrieval
+            # (below), so retrieving only top_k candidates loses recall — a
+            # matching chunk can rank below top_k pre-filter and never
+            # surface. Over-fetch the same way reranking does; take the max
+            # so a reranking request with a filter over-fetches by whichever
+            # is larger.
+            filter_multiplier = getattr(settings, "FILTER_TOP_K_MULTIPLIER", 5)
+            filter_max_candidates = getattr(settings, "FILTER_MAX_CANDIDATES", 100)
+            filter_top_k = min(request.top_k * filter_multiplier, filter_max_candidates)
+            stage1_top_k = max(stage1_top_k, filter_top_k)
+        if stage1_top_k != request.top_k:
             # Create modified request with expanded top_k for Stage 1.
             # Internal over-fetch only: stage1_top_k may exceed the public
             # QueryRequest top_k<=50 ceiling (it is bounded by
-            # RERANKER_MAX_CANDIDATES instead). model_copy skips validation, so
-            # it does not trip the le=50 constraint and preserves every other
-            # field. Stage 2 truncates back to original_top_k.
+            # RERANKER_MAX_CANDIDATES/FILTER_MAX_CANDIDATES instead).
+            # model_copy skips validation, so it does not trip the le=50
+            # constraint and preserves every other field. Stage 2 truncates
+            # back to original_top_k / the content-filter step.
             stage1_request = request.model_copy(update={"top_k": stage1_top_k})
         else:
             stage1_request = request
@@ -501,7 +555,15 @@ class QueryService:
             results = await self._execute_hybrid_query(stage1_request)
 
         # Apply content filters if specified
-        if any([request.source_types, request.languages, request.file_paths]):
+        if any(
+            [
+                request.source_types,
+                request.languages,
+                request.file_paths,
+                request.domains,
+                request.metadata_filter,
+            ]
+        ):
             results = self._filter_results(results, request)
 
         # Hard-off session recall: drop chunks whose producing feature is
@@ -514,6 +576,12 @@ class QueryService:
                 r for r in results if getattr(r, "source_type", None) not in hidden
             ]
 
+        # Sensitivity default-deny: drop chunks marked sensitive unless the
+        # caller opted in. Post-filter is the authority (a Chroma where-clause
+        # would blank legacy chunks that predate the field); missing ⇒ "normal".
+        if not _sensitivity_allowed(request):
+            results = [r for r in results if _result_sensitivity(r) == "normal"]
+
         # Time-decay (Phase 110): age-weight before rerank/truncate so newer
         # chunks survive into top_k. No-op when disabled.
         if decay_active:
@@ -522,6 +590,10 @@ class QueryService:
         # Stale-decision penalty (Phase 140): down-rank superseded decisions.
         # Self-guards (no-op at penalty 1.0 / no graph / simple backend).
         results = self._apply_stale_decision_penalty(results)
+
+        # Phase 6.5a: soft doc-trust weighting. Pre-rerank, like time-decay;
+        # applied before cache.put so cache hits stay consistent.
+        results = self._apply_source_weights(results)
 
         # Stage 2: Apply reranking if enabled and we have more results than requested
         if enable_reranking and len(results) > original_top_k:
@@ -537,7 +609,13 @@ class QueryService:
                 f"need more than {original_top_k}"
             )
             results = results[:original_top_k]
-        # else: reranking disabled, results already at correct size
+        elif len(results) > original_top_k:
+            # Round 4 D4: filter over-fetch (no reranking) — Stage 1 pulled
+            # more than top_k candidates to preserve recall for the
+            # domains/metadata_filter post-filter above; truncate back to the
+            # caller's requested top_k now that filtering has narrowed the set.
+            results = results[:original_top_k]
+        # else: reranking disabled, no over-fetch, results already at correct size
 
         query_time_ms = (time.time() - start_time) * 1000
 
@@ -558,7 +636,8 @@ class QueryService:
         if cache is not None and cache_key is not None:
             await cache.put(cache_key, response)
 
-        return await self._apply_memory_boost(request, response)
+        boosted = await self._apply_memory_boost(request, response)
+        return await self._apply_reference_boost(request, boosted)
 
     def _apply_time_decay(
         self, results: list[QueryResult], request: QueryRequest
@@ -626,6 +705,34 @@ class QueryService:
             results.sort(key=lambda r: r.score, reverse=True)
         return results
 
+    def _apply_source_weights(self, results: list[QueryResult]) -> list[QueryResult]:
+        """Soft-multiply each result's score by its source_type weight (Phase
+        6.5a doc-trust). doc_weight 0.0 hard-drops docs. No-op when no ranking
+        config is bound. Re-sorts by weighted score (descending)."""
+        cfg = getattr(self, "ranking_config", None)
+        if cfg is None:
+            return results
+        kept: list[QueryResult] = []
+        for r in results:
+            w = cfg.weight_for(getattr(r, "source_type", None) or "")
+            if w == 0.0:
+                continue  # hard-drop this source_type
+            # 6.5 B: soft-penalize reference-authority results. Authority may
+            # live on a typed attr or in the metadata dict; missing ⇒ no
+            # penalty. penalty 0.0 hard-drops (still indexed).
+            if getattr(r, "authority", None) == "reference" or (
+                isinstance(getattr(r, "metadata", None), dict)
+                and r.metadata.get("authority") == "reference"
+            ):
+                p = cfg.reference_rank_penalty
+                if p == 0.0:
+                    continue
+                w = w * p
+            r.score *= w
+            kept.append(r)
+        kept.sort(key=lambda r: r.score, reverse=True)
+        return kept
+
     async def _apply_memory_boost(
         self, request: QueryRequest, response: QueryResponse
     ) -> QueryResponse:
@@ -645,7 +752,9 @@ class QueryService:
 
         try:
             hits, _ = await ms.recall(
-                request.query, top_k=getattr(settings, "MEMORY_RECALL_K", 3)
+                request.query,
+                top_k=getattr(settings, "MEMORY_RECALL_K", 3),
+                include_sensitive=_sensitivity_allowed(request),
             )
         except Exception as exc:  # noqa: BLE001 — boost must never break a query
             logger.warning("memory boost recall failed: %s", exc)
@@ -697,6 +806,72 @@ class QueryService:
 
         merged = sorted(
             mem_results + list(response.results),
+            key=lambda r: r.score,
+            reverse=True,
+        )[: request.top_k]
+        return QueryResponse(
+            results=merged,
+            query_time_ms=response.query_time_ms,
+            total_results=len(merged),
+        )
+
+    async def _apply_reference_boost(
+        self, request: QueryRequest, response: QueryResponse
+    ) -> QueryResponse:
+        """Merge relevant reference-catalog summaries into a response (Round 2
+        Plan C — reference discoverability).
+
+        Returns a NEW QueryResponse (never mutates the input, which may be a
+        cached instance). No-op when the reference catalog is absent/disabled,
+        the mode is pure bm25, or no reference clears the score floor.
+        """
+        store = getattr(self, "reference_catalog_store", None)
+        if store is None:
+            return response
+        if request.mode == QueryMode.BM25:
+            return response
+        if not getattr(settings, "REFERENCE_ENABLED", True):
+            return response
+
+        try:
+            query_embedding = await self.embedding_generator.embed_query(request.query)
+            hits = store.search_summaries(
+                query_embedding,
+                top_k=getattr(settings, "REFERENCE_RECALL_K", 2),
+                include_sensitive=_sensitivity_allowed(request),
+            )
+        except Exception as exc:  # noqa: BLE001 — boost must never break a query
+            logger.warning("reference boost recall failed: %s", exc)
+            return response
+
+        boost = getattr(settings, "REFERENCE_BOOST", 1.0)
+        floor = getattr(settings, "REFERENCE_MIN_SCORE", 0.35)
+        existing = {r.chunk_id for r in response.results}
+        ref_results: list[QueryResult] = []
+        for entry, score in hits:
+            if score < floor or entry.id in existing:
+                continue
+            ref_results.append(
+                QueryResult(
+                    text=entry.summary,
+                    source=f"reference/{entry.id}",
+                    score=score * boost,
+                    vector_score=score,
+                    chunk_id=entry.id,
+                    source_type="reference",
+                    metadata={
+                        "type": "reference",
+                        "domain": entry.domain,
+                        "source": entry.source,
+                        "pointer": entry.pointer,
+                    },
+                )
+            )
+        if not ref_results:
+            return response
+
+        merged = sorted(
+            ref_results + list(response.results),
             key=lambda r: r.score,
             reverse=True,
         )[: request.top_k]
@@ -949,12 +1124,14 @@ class QueryService:
                 relationship_types=relationship_types,
                 top_k=request.top_k,
                 traversal_depth=traversal_depth,
+                include_sensitive=_sensitivity_allowed(request),
             )
         else:
             graph_results = self.graph_index_manager.query(
                 query_text=request.query,
                 top_k=request.top_k,
                 traversal_depth=traversal_depth,
+                include_sensitive=_sensitivity_allowed(request),
             )
 
         if not graph_results:
@@ -1049,6 +1226,7 @@ class QueryService:
             until=plan.until,
             min_confidence=getattr(_settings, "COMPUTE_MIN_CONFIDENCE", 0.7),
             exclude_sources=exclude,
+            include_sensitive=_sensitivity_allowed(request),
         )
         maxv = max((abs(v) for _, v in rows), default=1.0) or 1.0
         out = []
@@ -1104,6 +1282,7 @@ class QueryService:
             until=plan.until,
             limit=plan.limit,
             min_confidence=getattr(_settings, "COMPUTE_MIN_CONFIDENCE", 0.7),
+            include_sensitive=_sensitivity_allowed(request),
         )
         return [
             AbsenceResult(
@@ -1147,7 +1326,9 @@ class QueryService:
         # substring match ("oauth.py" for "auth.py") would otherwise win over the
         # entity the user named — the exact bug find_decision_nodes avoids by
         # being exact-only. Fetch a few candidates and pick the exact one first.
-        nodes = graph.search_nodes(plan.entity, limit=5)
+        nodes = graph.search_nodes(
+            plan.entity, limit=5, include_sensitive=_sensitivity_allowed(request)
+        )
         if not nodes:
             return []
         _low = plan.entity.lower()
@@ -1157,7 +1338,9 @@ class QueryService:
         name = chosen.get("name")
         if not name:
             return []
-        rows = graph.timeline_named(name)
+        rows = graph.timeline_named(
+            name, include_sensitive=_sensitivity_allowed(request)
+        )
         out = [
             TimelineResult(
                 subject=str(r.get("subject", "")),
@@ -1172,6 +1355,16 @@ class QueryService:
         if plan.limit is not None:
             out = out[: plan.limit]
         return out
+
+    def _private_session_ids(self) -> set[str]:
+        """Session ids marked private for archive-scan enforcement.
+
+        Empty in-phase: nothing in the engine yet *decides* a session is
+        private (no producer, per PLAN-NOTE D) — only a test injects one via
+        monkeypatch. This is the defaulted-off seam a future "mark this
+        session private" UX would populate; it is not a persistence layer.
+        """
+        return set()
 
     async def _execute_scan_query(self, request: QueryRequest) -> list[ScanResult]:
         """Execute a scan (archive map-reduce) query — Phase 2.
@@ -1198,7 +1391,12 @@ class QueryService:
         if plan is None:
             return []
         rows = await asyncio.to_thread(
-            scan_archive, root, plan, request.language or "en"
+            scan_archive,
+            root,
+            plan,
+            request.language or "en",
+            private_session_ids=self._private_session_ids(),
+            include_sensitive=_sensitivity_allowed(request),
         )
         maxv = max((abs(v) for _, v in rows), default=1.0) or 1.0
         out: list[ScanResult] = []
@@ -1376,7 +1574,113 @@ class QueryService:
                 )
             ]
 
+        # Filter by domain (Round 4 D4): OR across values, exact match against
+        # the reserved `domain` chunk-metadata key set by /ingest.
+        if request.domains:
+            filtered_results = [
+                r
+                for r in filtered_results
+                if (r.metadata or {}).get("domain") in request.domains
+            ]
+
+        # Filter by metadata (Round 4 D4): AND across keys, exact match.
+        # Values are compared as strings so numeric/bool metadata still
+        # matches a string filter value (chunk metadata mixes types).
+        if request.metadata_filter:
+            filtered_results = [
+                r
+                for r in filtered_results
+                if all(
+                    key in (r.metadata or {}) and str(r.metadata[key]) == value
+                    for key, value in request.metadata_filter.items()
+                )
+            ]
+
         return filtered_results
+
+    async def chunk_ids_for_person(
+        self, person_id: str, *, include_sensitive: bool = False
+    ) -> list[str]:
+        """G5 Task 8: resolve a person to the live chunk ids they are linked to.
+
+        Identity is NEVER denormalized into chunk metadata (D1); ground truth
+        lives only in the identity store. So a person filter resolves here:
+        person → links → chunk addresses → live chunk ids (via the storage
+        ``source_id``/``chunk_index`` metadata), which the caller then feeds to
+        ``storage.query(where={"chunk_id": {"$in": ids}})``.
+
+        A5 sensitivity: a non-``normal`` person is hidden from default queries —
+        this returns ``[]`` unless ``include_sensitive`` is set, reusing the
+        same include-sensitive switch as chunk-level default-deny (it is the
+        *caller* that passes ``_sensitivity_allowed(request)``; no new flag).
+        External-key links (``ref_kind='external'``) are not chunk addresses and
+        are skipped."""
+        store = self.identity_store
+        if store is None:
+            return []
+        person = store.get_person(person_id)
+        if person is None:
+            return []
+        if (
+            getattr(person, "sensitivity", "normal") != "normal"
+            and not include_sensitive
+        ):
+            return []
+        ids: set[str] = set()
+        for link in store.links_for_person(person_id):
+            if link.ref_kind == "external":
+                continue
+            if "#" in link.ref:
+                sid, _, idx = link.ref.partition("#")
+                try:
+                    where: dict[str, Any] = {
+                        "$and": [{"source_id": sid}, {"chunk_index": int(idx)}]
+                    }
+                except ValueError:
+                    continue
+            else:
+                where = {"source_id": link.ref}
+            ids |= await self.storage_backend.get_ids_by_where(where)
+        return sorted(ids)
+
+    def group_results_by_person(
+        self, results: list[Any], *, include_sensitive: bool = False
+    ) -> dict[str, Any]:
+        """G5 Task 8: partition query results by the person each chunk is
+        attributed to, with an ``unresolved`` bucket for chunks no (visible)
+        person links. A chunk's address is ``{source_id}#{chunk_index}`` (span/
+        speaker links) or the bare ``source_id`` (participant links); both are
+        looked up. A5: sensitive persons are excluded unless
+        ``include_sensitive``, so their chunks fall to the unresolved bucket
+        rather than being attributed by default."""
+        store = self.identity_store
+        by_person: dict[str, list[Any]] = {}
+        unresolved: list[Any] = []
+        for r in results:
+            pids: list[str] = []
+            if store is not None:
+                meta = getattr(r, "metadata", None) or {}
+                sid = meta.get("source_id")
+                idx = meta.get("chunk_index")
+                refs: list[str] = []
+                if sid is not None and idx is not None:
+                    refs.append(f"{sid}#{idx}")
+                if sid is not None:
+                    refs.append(str(sid))
+                seen: set[str] = set()
+                for ref in refs:
+                    for pid in store.persons_for_ref(
+                        ref, include_sensitive=include_sensitive
+                    ):
+                        if pid not in seen:
+                            seen.add(pid)
+                            pids.append(pid)
+            if pids:
+                for pid in pids:
+                    by_person.setdefault(pid, []).append(r)
+            else:
+                unresolved.append(r)
+        return {"by_person": by_person, "unresolved": unresolved}
 
     def _build_where_clause(
         self, source_types: list[str] | None, languages: list[str] | None

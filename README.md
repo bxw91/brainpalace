@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-05
+last_validated: 2026-07-10
 ---
 
 <div align="center">
@@ -30,12 +30,23 @@ last_validated: 2026-07-05
 
 # BrainPalace
 
-**Vector Graph RAG for code & docs with persistent session-chat memory for AI agents.**
-BM25 (multi-lang), vector, GraphRAG, hybrid search over your codebase and
-documentation — plus persistent session-chat memory (Claude Code transcripts only), chat
-session verbatim copy with summarisation and embedding, a temporal knowledge graph,
-and git/LSP-aware indexing. Use it from the CLI, over MCP or
-as a Claude Code plugin. Runs fully local on Ollama or with cloud LLMs.
+**Universal Vector + Graph RAG with a memory store.**
+
+Built for code & docs repos with permanent chat-session memory (default install) — but it indexes any text project, like personal life-work memory recording projects.
+
+Talk to your code, docs, chat history, or any text. Explore it with Vector, BM25, Hybrid, Temporal Graph, Multi, Compute, Scan, Absence, Timeline, and Salience modes.
+
+Never track which chat session you're in. Stop today, come back in days — the memory is still there. Curate it hourly, daily, monthly, or just ask "what did we talk about last time?"
+
+Bring your own sources. Build adapters for cloud drives, email, or the web. Keep files in folders, or ingest data straight into BrainPalace so the source can go away.
+
+Any project works, not just code. Tell your LLM to read the BrainPalace instructions and push the folder in.
+
+Push anything text — source, image descriptions, sensor data, YouTube or meeting transcripts, thoughts, ideas. Indexed forever. Recalled instantly, with high accuracy and low or free local token cost.
+
+Keep your memory always ready. Never forgotten. Upgrade your own personal memory from BrainPalace.
+
+Make The Context Window Unlimited.
 
 |   |   |
 |:-:|:-:|
@@ -471,6 +482,7 @@ brainpalace/
 - [Code Indexing](docs/CODE_INDEXING.md) — AST-aware chunking
 - [Deployment](docs/DEPLOYMENT.md) — local + production deployment
 - [Developer Guide](docs/DEVELOPERS_GUIDE.md) — monorepo layout, sub-modules, contributing
+- [Building on BrainPalace](docs/BUILDING_ON_BRAINPALACE.md) — the supported external-consumer surface for building a memory product on the engine
 
 ## Development
 

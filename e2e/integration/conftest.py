@@ -166,11 +166,11 @@ def check_cohere_key():
 
 @pytest.fixture(scope="session")
 def server_process(check_api_key) -> Generator[subprocess.Popen, None, None]:
-    """Start the doc-serve server for the test session."""
+    """Start the brainpalace-serve server for the test session."""
     env = os.environ.copy()
 
     process = subprocess.Popen(
-        ["poetry", "run", "doc-serve"],
+        ["poetry", "run", "brainpalace-serve"],
         cwd=SERVER_DIR,
         env=env,
         stdout=subprocess.PIPE,

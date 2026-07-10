@@ -73,6 +73,20 @@ class Settings(BaseSettings):
     MEMORY_BOOST: float = 1.5  # Score multiplier for memory hits merged into query
     MEMORY_RECALL_K: int = 3  # Memory hits considered in the query boost pass
     MEMORY_MIN_SCORE: float = 0.35  # Relevance floor before a memory can boost in
+    # Auto-curation rides the single `extraction.mode` switch (no separate enable):
+    # subagent/auto → in-session nudge; provider → server-side curator. This interval
+    # is the cadence for BOTH paths (curation is periodic, unlike per-session summary).
+    MEMORY_CURATE_INTERVAL_DAYS: int = 7
+    # Write-time dedupe: a new manual fact whose top embedding match to an existing
+    # active memory scores >= this supersedes that entry (newest wins). Far above the
+    # MEMORY_MIN_SCORE boost floor (a different concept). Embeddings-only, no LLM.
+    MEMORY_DEDUPE_THRESHOLD: float = 0.92
+
+    # Reference-catalog discoverability (Round 2 Plan C — hybrid-tail merge)
+    REFERENCE_ENABLED: bool = True  # Master switch for the reference-boost pass
+    REFERENCE_BOOST: float = 1.0  # Score multiplier for reference hits merged in
+    REFERENCE_RECALL_K: int = 2  # Reference hits considered in the query boost pass
+    REFERENCE_MIN_SCORE: float = 0.35  # Relevance floor before a reference can boost in
 
     # Session-start context injection (Phase 035 — memory-injection)
     CONTEXT_ENABLED: bool = True  # Master switch for the session-start block
@@ -133,6 +147,14 @@ class Settings(BaseSettings):
     RERANKER_TOP_K_MULTIPLIER: int = 10  # Retrieve top_k * this for Stage 1
     RERANKER_MAX_CANDIDATES: int = 100  # Cap on Stage 1 candidates
     # Note: CrossEncoder.rank() handles batching internally, no batch_size config needed
+
+    # Post-retrieval filter over-fetch (Round 4 D4): domains/metadata_filter
+    # narrow AFTER Stage 1 retrieval, so retrieving only top_k candidates loses
+    # recall (a match could rank below top_k pre-filter and never surface).
+    # When either filter is set, Stage 1 retrieves top_k * this, capped —
+    # mirrors the RERANKER_TOP_K_MULTIPLIER/RERANKER_MAX_CANDIDATES pattern.
+    FILTER_TOP_K_MULTIPLIER: int = 5
+    FILTER_MAX_CANDIDATES: int = 100
 
     # Time-decay ranking (Phase 110): multiply each result's score by an
     # exponential age factor 0.5 ** (age_days / half_life) so newer chunks rank

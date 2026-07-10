@@ -20,21 +20,29 @@ import json, os, re
 try:
     payload = json.loads(os.environ.get("PAYLOAD") or "{}")
     path = (payload.get("tool_input") or {}).get("file_path", "") or ""
+    # Repo containment: an edit outside CLAUDE_PROJECT_DIR is never this repo's
+    # audited prose. Without this, a bare-basename match (`CLAUDE.md`, `README.md`)
+    # fires on any such file anywhere on the filesystem — e.g. ~/.claude/CLAUDE.md.
+    root = os.environ.get("CLAUDE_PROJECT_DIR") or ""
+    if not root or not path:
+        raise SystemExit
+    root = os.path.abspath(root)
+    apath = os.path.abspath(path)
+    if apath != root and not apath.startswith(root + os.sep):
+        raise SystemExit
+    rel = os.path.relpath(apath, root)
     # Audited doc surfaces (mirror scripts/check_doc_freshness.py DEFAULT_GLOBS
     # + standalone files). A pure code edit is caught by the before-push gate, so
-    # the per-edit nudge stays focused on prose.
-    # Normalise to a repo-relative path so the exclusion match below is robust to an
-    # absolute CLAUDE_PROJECT_DIR prefix.
-    rel = re.sub(r"^.*?/(?=docs/|brainpalace-plugin/|README\.md|CLAUDE\.md|AGENTS\.md)",
-                 "", path)
-    audited = bool(re.search(
-        r"(^|/)(docs/[^/]+\.md"
+    # the per-edit nudge stays focused on prose. Anchored against the repo-relative
+    # path: `docs/X.md` is audited, `vendor/docs/X.md` is not.
+    audited = bool(re.fullmatch(
+        r"docs/[^/]+\.md"
         r"|brainpalace-plugin/commands/[^/]+\.md"
         r"|brainpalace-plugin/agents/[^/]+\.md"
         r"|brainpalace-plugin/skills/[^/]+/(SKILL|references/[^/]+)\.md"
         r"|brainpalace-plugin/README\.md"
-        r"|README\.md|CLAUDE\.md|AGENTS\.md)$",
-        path,
+        r"|README\.md|CLAUDE\.md|AGENTS\.md",
+        rel,
     ))
     # MIRROR verify_docs.py `_is_excluded`: CHANGELOG / ORIGINAL_SPEC (frozen/historical)
     # and the superpowers/.planning trees are NEVER prose-verified. Nudging Layer B for

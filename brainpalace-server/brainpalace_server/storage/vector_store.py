@@ -422,7 +422,10 @@ class VectorStoreManager:
             chunk_id: The unique identifier of the chunk.
 
         Returns:
-            Dictionary with 'text' and 'metadata' keys, or None if not found.
+            Dictionary with 'text', 'metadata' and 'embedding' keys, or None
+            if not found. 'embedding' lets embed-frugal callers (e.g. the
+            text-ingest metadata refresh) reuse the stored vector without
+            re-embedding unchanged text.
         """
         if not self.is_initialized:
             return None
@@ -432,17 +435,24 @@ class VectorStoreManager:
             try:
                 results = self._collection.get(
                     ids=[chunk_id],
-                    include=["documents", "metadatas"],  # type: ignore[list-item]
+                    include=["documents", "metadatas", "embeddings"],  # type: ignore[list-item]
                 )
 
                 if results["ids"] and results["ids"]:
                     documents = results.get("documents", [[]])
                     metadatas = results.get("metadatas", [[]])
+                    embeddings = results.get("embeddings", [[]])
                     text = documents[0] if documents else ""
                     metadata = metadatas[0] if metadatas else {}
+                    embedding = (
+                        embeddings[0]
+                        if embeddings is not None and len(embeddings) > 0
+                        else None
+                    )
                     return {
                         "text": text,
                         "metadata": metadata if metadata else {},
+                        "embedding": embedding,
                     }
             except Exception as e:
                 logger.warning(f"Failed to get document by ID {chunk_id}: {e}")

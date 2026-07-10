@@ -89,15 +89,61 @@ def records_to_store(extraction: Any, *, ingested_at: str) -> list[Any]:
     return out
 
 
-def persist_records(store: Any, extraction: Any, *, ingested_at: str) -> int:
+def _emit_from_record(rec: Any) -> Any:
+    from brainpalace_server.ingestion.adapter import EmittedRecord
+    from brainpalace_server.models.record import RecordCandidate
+
+    return EmittedRecord(
+        candidate=RecordCandidate(
+            subject=rec.subject,
+            metric=rec.metric,
+            value=rec.value,
+            unit=rec.unit,
+            ts=rec.ts,
+        ),
+        id=rec.id,
+        domain=rec.domain,
+        source=rec.source,
+        source_id=rec.source_id,
+        confidence=rec.confidence,
+        properties=rec.properties,
+    )
+
+
+class SessionRecordAdapter:
+    """Eager adapter — the first real consumer of the ingestion contract.
+    Reuses the existing record builders so the sink produces byte-for-byte
+    identical rows (see tests/services/test_session_record_adapter.py)."""
+
+    domain = "chat-life"
+    source = "session"
+
+    def emit(self, extraction: Any) -> list[Any]:
+        # ingested_at is re-stamped by the sink; use a placeholder here since
+        # the builders require it but the value is overwritten downstream.
+        built = derived_count_records(extraction, ingested_at="") + records_to_store(
+            extraction, ingested_at=""
+        )
+        return [_emit_from_record(r) for r in built]
+
+
+def persist_records(
+    store: Any, extraction: Any, *, ingested_at: str, sensitivity: str = "normal"
+) -> int:
     # Records are persisted whenever session extraction reaches this sink —
     # there is no separate record-extraction switch. Whether extraction runs
-    # at all is gated upstream by extraction.mode.
+    # at all is gated upstream by extraction.mode. Now routed through the
+    # ingestion sink (provenance/domain enforced there); zero behavior change.
+    # ``sensitivity`` inherits the source session's mark (propagation).
     if store is None:
         return 0
-    recs = derived_count_records(
-        extraction, ingested_at=ingested_at
-    ) + records_to_store(extraction, ingested_at=ingested_at)
-    # atomic delete+insert (idempotent re-persist)
-    result: int = store.replace_source(extraction.session_id, recs)
-    return result
+    from brainpalace_server.ingestion.sink import ingest
+
+    counts = ingest(
+        SessionRecordAdapter(),
+        extraction,
+        record_store=store,
+        ingested_at=ingested_at,
+        sensitivity=sensitivity,
+    )
+    return counts["records"]

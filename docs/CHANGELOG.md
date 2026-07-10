@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-05
+last_validated: 2026-07-10
 ---
 
 # Changelog
@@ -20,6 +20,99 @@ Entries are kept short (≤ 3 sentences and ≤ 320 characters); see
 _Entries accumulate here between releases. The release step renames this to
 `## [YY.M.N] - DATE` and adds a fresh empty `## [Unreleased]` above it — never
 hand-number an unreleased section._
+
+## [26.7.4] - 2026-07-10
+
+### Added
+- **Enumerate ingested sources.** `GET /ingest/sources` (`brainpalace ingest
+  sources`) lists distinct ingested source_ids with domain, source, chunk count
+  and ingested_at; `GET /ingest/text/{source_id}` (`brainpalace ingest show`)
+  pages through one source's chunks. Both honour sensitivity default-deny and
+  return an empty list (not 404) for an empty index or unknown source_id.
+- **HTTP writes for records and references.** `POST /ingest/records` and `POST
+  /ingest/references` (and `brainpalace ingest record` / `ingest reference`)
+  write the eager and lazy tiers over HTTP, routing through the same sink choke
+  point as in-process adapters (replace-by-`source_id`, salience and provenance
+  checks inherited). Both work without an embedding provider — references land
+  unembedded and `references embed-missing` backfills them.
+- **Full-forget cascade delete.** `DELETE /ingest/source/{source_id}` (and
+  `brainpalace ingest --forget`) drops a source_id's document chunks, typed
+  records and references in one call, reporting per-tier counts and bumping
+  the query cache so a forgotten source stops appearing in cached results.
+  `DELETE /ingest/text/{source_id}` keeps its narrower, published
+  chunks-only meaning.
+- **Query domain/metadata filters.** `QueryRequest` gains `domains` and
+  `metadata_filter` (exact-match, AND across keys); `brainpalace query --domain
+  D` (repeatable, OR) and `--meta k=v` (repeatable, AND) scope results to
+  `/ingest`-tagged chunks. Both filters over-fetch Stage 1 candidates to
+  preserve recall and are part of the query cache key, so different filters
+  never share cached results.
+- **Per-item sensitivity in `POST /ingest/text` batches.** Each item can now
+  carry its own `sensitivity`, overriding the request-level default — a mixed
+  batch (e.g. one private page among normal ones) no longer needs N separate
+  calls. Omitting it falls back to the batch default, unchanged for existing
+  callers.
+- **Private memories.** Anything — records, graph nodes, sessions, curated
+  memories — can now be marked sensitive and stays hidden from every search,
+  recall, session-start injection, MCP client and the dashboard unless you pass
+  `brainpalace query --include-sensitive`. Marking a session private also hides
+  everything derived from it.
+- **Memory that keeps itself tidy.** Curated memory no longer silently drops new
+  facts when full — stale/superseded auto-saved entries are evicted, `remember`
+  facts are never evicted, re-saying a fact replaces it instead of duplicating,
+  and `brainpalace status` warns you rather than losing anything when it's full
+  of your own facts. Automatic curation now follows your extraction setting and
+  runs on a cadence (weekly by default), in-session or server-side.
+- **BrainPalace knows who people are.** A new identity store keeps persons,
+  their aliases and their links to accounts or repos, managed with
+  `brainpalace entities`. Searches can be filtered and grouped by person, and
+  ambiguous names come back as ranked candidates for you to confirm rather than
+  being guessed at.
+- **Search across other BrainPalace instances.** `brainpalace query --also
+  <path-or-url>` (repeatable) fans a search out to sibling instances — e.g. a
+  shared household or team instance — and merges the results, tagging each with
+  the instance it came from. A sibling that is offline is skipped instead of
+  failing the query.
+- **Ingest any text, not just files.** `brainpalace ingest` (and `POST
+  /ingest/text`) puts arbitrary text into the index with your own source labels;
+  re-ingesting the same source replaces it, `--delete` removes it, and
+  `brainpalace status` counts it. Unchanged text is never re-embedded, so
+  re-ingesting costs nothing.
+- **Reference search.** Lightweight reference summaries are now searchable with
+  `brainpalace references search`, and the best ones surface directly in normal
+  hybrid results. `references embed-missing` backfills older entries.
+- **Docs rank below code by default.** A new `doc_weight` setting (default 0.5,
+  editable in `init`, `brainpalace config` or the dashboard) makes source code
+  outrank documentation in search results. **This applies to existing projects
+  too** — set `doc_weight: 1.0` to keep the old behavior.
+- **Folders can be marked as trusted or merely referenced.** `folders add` takes
+  a domain and an authority (`authoritative` or `reference`); folders outside the
+  project default to `reference` and rank below your own code unless you force
+  otherwise. Existing projects are unaffected.
+- **Faster, friendlier `init`.** `init -F/--folder <path>` (repeatable) indexes
+  only the folders you name — including ones outside the project — instead of the
+  whole project root, and `--no-start` just prints the commands. `init --start`
+  no longer demands API keys for providers your configuration will never use.
+- **`docs/BUILDING_ON_BRAINPALACE.md`** — a guide for building on top of
+  BrainPalace: which interfaces are supported, how provenance works, connection
+  modes, testing and versioning.
+
+### Changed
+- **New tagline.** BrainPalace now describes itself as a typed-memory and
+  retrieval engine for AI agents — code and docs today, more domains coming —
+  rather than "Vector Graph RAG for code & docs". Wording only, nothing behaves
+  differently.
+
+### Fixed
+- Misleading error message when ingesting documents through the synchronous API,
+  and a documentation hook that fired on unrelated files outside the project.
+- **Stale cached queries after a POST ingest write.** `POST /ingest/text`,
+  `/ingest/records` and `/ingest/references` now bump the query cache on
+  success, matching the DELETE routes, so a write is visible to the next
+  query immediately instead of waiting out the cache TTL.
+- **Doc-sync `--fix` couldn't repair a command that lost all its flags** —
+  the generator now normalizes a stale flags block to an explicit no-flags
+  line instead of leaving it stale forever (dev-only tooling).
 
 ## [26.7.3] - 2026-07-05
 

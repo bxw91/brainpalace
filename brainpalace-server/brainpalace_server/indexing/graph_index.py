@@ -479,6 +479,7 @@ class GraphIndexManager:
         query_text: str,
         top_k: int = 10,
         traversal_depth: int = 2,
+        include_sensitive: bool = False,
     ) -> list[dict[str, Any]]:
         """Query the graph for related entities and documents.
 
@@ -533,7 +534,7 @@ class GraphIndexManager:
         # Find matching entities and their relationships
         for entity in query_entities:
             entity_results = self._find_entity_relationships(
-                entity, traversal_depth, top_k
+                entity, traversal_depth, top_k, include_sensitive=include_sensitive
             )
             results.extend(entity_results)
 
@@ -579,6 +580,7 @@ class GraphIndexManager:
         relationship_types: list[str] | None = None,
         top_k: int = 10,
         traversal_depth: int = 2,
+        include_sensitive: bool = False,
     ) -> list[dict[str, Any]]:
         """Query graph filtered by entity and/or relationship types.
 
@@ -598,12 +600,20 @@ class GraphIndexManager:
         """
         # No filters: delegate directly to base query (no overhead)
         if not entity_types and not relationship_types:
-            return self.query(query_text, top_k=top_k, traversal_depth=traversal_depth)
+            return self.query(
+                query_text,
+                top_k=top_k,
+                traversal_depth=traversal_depth,
+                include_sensitive=include_sensitive,
+            )
 
         # Over-fetch to ensure enough results after filtering
         fetch_k = top_k * 3
         candidate_results = self.query(
-            query_text, top_k=fetch_k, traversal_depth=traversal_depth
+            query_text,
+            top_k=fetch_k,
+            traversal_depth=traversal_depth,
+            include_sensitive=include_sensitive,
         )
 
         if not candidate_results:
@@ -728,6 +738,7 @@ class GraphIndexManager:
         entity: str,
         depth: int,
         max_results: int,
+        include_sensitive: bool = False,
     ) -> list[dict[str, Any]]:
         """Find entity relationships in the graph.
 
@@ -752,11 +763,18 @@ class GraphIndexManager:
                 # SQLite backend: push the substring match into SQL (indexed,
                 # degree-ranked) instead of scanning every node in Python.
                 matched_names = list(
-                    {m["name"] for m in graph_store.search_nodes(entity, limit=25)}
+                    {
+                        m["name"]
+                        for m in graph_store.search_nodes(
+                            entity, limit=25, include_sensitive=include_sensitive
+                        )
+                    }
                 )
                 if not matched_names:
                     return results
-                triplets = graph_store.get_triplets(entity_names=matched_names)
+                triplets = graph_store.get_triplets(
+                    entity_names=matched_names, include_sensitive=include_sensitive
+                )
             elif hasattr(graph_store, "get_triplets") and hasattr(graph_store, "get"):
                 # Property-graph store without browse reads (simple backend).
                 all_nodes = graph_store.get()

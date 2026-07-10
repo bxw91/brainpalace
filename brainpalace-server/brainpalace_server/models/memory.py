@@ -32,6 +32,7 @@ class Memory(BaseModel):
     last_referenced_at: str | None = Field(default=None)
     obsoleted_at: str | None = Field(default=None)
     superseded_by: str | None = Field(default=None)
+    sensitivity: str = Field(default="normal")
 
     @property
     def is_active(self) -> bool:
@@ -47,6 +48,7 @@ class Memory(BaseModel):
             "confidence": self.confidence,
             "created_at": self.created_at,
             "source_type": "memory",
+            "sensitivity": self.sensitivity,
         }
 
 
@@ -58,6 +60,7 @@ class MemoryCreate(BaseModel):
     tags: list[str] = Field(default_factory=list)
     origin: str = Field(default="user")
     confidence: float = Field(default=1.0, ge=0.0, le=1.0)
+    sensitivity: str = Field(default="normal")
 
 
 class MemoryResponse(BaseModel):
@@ -90,6 +93,7 @@ class MemoryHit(BaseModel):
     score: float
     section: str = DEFAULT_SECTION
     tags: list[str] = Field(default_factory=list)
+    sensitivity: str = Field(default="normal")
 
 
 class MemoryRecallResponse(BaseModel):

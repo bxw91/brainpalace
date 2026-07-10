@@ -66,6 +66,13 @@ _BLOCKED_JOB_DIRECTIVE = (
 )
 
 
+_CURATE_DIRECTIVE = (
+    "Memory upkeep (best-effort, don't block the user): run the memory-curator "
+    "subagent in curate mode — list curated memories, obsolete superseded ones, "
+    "delete duplicates, consolidate verbose entries. Keep it under the char cap."
+)
+
+
 @click.group("hook", hidden=True)
 def hook_group() -> None:
     """Internal dispatcher for BrainPalace's Claude Code hooks (not a user command)."""
@@ -695,6 +702,16 @@ def _emit_sessionstart() -> None:
         blocked = context_data.get("blocked_job")
         if isinstance(blocked, dict) and blocked.get("job_id"):
             msg += "\n\n" + _BLOCKED_JOB_DIRECTIVE.format(job_id=blocked["job_id"])
+        if context_data.get("curate_due"):
+            msg += "\n\n" + _CURATE_DIRECTIVE
+            try:
+                # Cadence stamps live under the grouped state/ subfolder (mirrors
+                # last-drain; the server reads it from the same place).
+                stamp = state_dir / "state" / "last-curate"
+                stamp.parent.mkdir(parents=True, exist_ok=True)
+                stamp.touch()
+            except OSError:
+                pass  # stamp is best-effort; a missed stamp just re-nudges later
 
     click.echo(
         json.dumps(

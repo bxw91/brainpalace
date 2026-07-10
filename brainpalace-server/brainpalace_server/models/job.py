@@ -133,6 +133,19 @@ class JobRecord(BaseModel):
         description="Per-folder debounce in seconds (None = use global default)",
     )
 
+    # Provenance/authority (Phase 6.5): resolved at enqueue time by
+    # JobQueueService.enqueue_job — always a concrete value ('authoritative'
+    # or 'reference') for document jobs by the time the job is persisted.
+    domain: str | None = Field(
+        default=None,
+        description="Folder domain label to stamp on the FolderRecord (6.5).",
+    )
+    authority: str | None = Field(
+        default=None,
+        description="Resolved folder authority: 'authoritative' or "
+        "'reference' (6.5). None for legacy/non-index jobs.",
+    )
+
     # Job state
     status: JobStatus = Field(
         default=JobStatus.PENDING, description="Current job status"

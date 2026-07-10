@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-05
+last_validated: 2026-07-10
 ---
 
 # API Reference
@@ -274,8 +274,17 @@ Execute a search query.
 | `source_types` | array | `null` | Filter by `["doc", "code", "test"]` |
 | `languages` | array | `null` | Filter by programming languages |
 | `file_paths` | array | `null` | Filter by file patterns (supports wildcards) |
+| `domains` | array | `null` | Filter to chunks ingested under one of these `domain` values (OR, exact match) — the reserved `domain` metadata key `/ingest` writes |
+| `metadata_filter` | object | `null` | Filter to chunks whose metadata exact-matches every given key/value pair (AND across keys); works against any chunk metadata key, including `source`/`source_id` |
 | `entity_types` | array | `null` | Filter graph results by entity types (graph/multi modes only) |
 | `relationship_types` | array | `null` | Filter graph results by relationship types (graph/multi modes only) |
+
+`domains` and `metadata_filter` are post-retrieval filters (applied after
+BM25/vector/graph retrieval, like `source_types`/`languages`/`file_paths`) and
+both join the query cache key, so different filter values never share a
+cached result set. When either is set, the server over-fetches candidates
+before filtering (`FILTER_TOP_K_MULTIPLIER` / `FILTER_MAX_CANDIDATES`
+settings) to reduce top-k recall loss.
 
 **Mode Values**:
 
@@ -398,6 +407,183 @@ Get the number of indexed chunks.
 {
   "total_chunks": 1200,
   "ready": true
+}
+```
+
+---
+
+### Ingest Endpoints
+
+Programmatic writes with caller-supplied provenance (`domain`/`source`/
+`source_id`, enforced). All three emit tiers — documents, typed records, lazy
+references — share one write choke point (`aingest`) whether reached
+in-process or over HTTP, so provenance validation, salience scoring and
+`ingested_at` stamping are identical either way. See
+[BUILDING_ON_BRAINPALACE.md](BUILDING_ON_BRAINPALACE.md) for the full
+consumer contract.
+
+#### POST /ingest/text
+
+Chunks, embeds and indexes each item under its `domain`/`source`/`source_id`
+provenance. Re-ingesting a `source_id` replaces its chunks (unchanged text is
+not re-embedded). `sensitivity` is a body-level default; each item may
+override it (`items[].sensitivity`) for a mixed-sensitivity batch.
+
+**Request Body**:
+
+```json
+{
+  "items": [
+    {"text": "...", "domain": "home", "source": "scanner", "source_id": "doc-1", "sensitivity": "private"}
+  ],
+  "sensitivity": "normal",
+  "language": null
+}
+```
+
+**Errors**:
+
+| Code | Description |
+|------|-------------|
+| `422` | Reserved-metadata collision or other validation failure |
+| `413` | Batch exceeds the token budget |
+| `503` | No embedding provider configured |
+
+---
+
+#### POST /ingest/records
+
+Persists each item as a typed `Record` under its provenance, replacing any
+existing records for that `source_id`. Works without an embedding provider
+(records are keyless). The record id is derived server-side from provenance +
+the measurement, so a re-ingest by the same `source_id` replaces cleanly.
+
+**Request Body**:
+
+```json
+{
+  "items": [
+    {
+      "subject": "kitchen",
+      "metric": "temperature",
+      "value": 21.5,
+      "unit": "C",
+      "ts": "2026-07-10T12:00:00Z",
+      "domain": "home",
+      "source": "sensor-hub",
+      "source_id": "kitchen-temp-001",
+      "confidence": 1.0,
+      "properties": {}
+    }
+  ],
+  "sensitivity": "normal"
+}
+```
+
+`confidence` defaults to `1.0` (a first-party HTTP assertion is treated as
+authoritative, like ingested documents).
+
+**Response** `200 OK`: `{"records": 1}` — the count of records persisted
+(the batch's `replace_source` insert count), not the row payloads.
+
+**Errors**:
+
+| Code | Description |
+|------|-------------|
+| `422` | Provenance validation failure |
+| `503` | RecordStore not available on this server |
+
+---
+
+#### POST /ingest/references
+
+Persists each pointer + summary under its provenance, replacing any existing
+references for that `source_id`. Summaries are embedded at write time when an
+embedding provider is configured; on a keyless server they land **unembedded**
+and `POST /references/embed-missing` backfills them later.
+
+**Request Body**:
+
+```json
+{
+  "items": [
+    {"pointer": "gdrive://file/abc", "summary": "Q3 budget spreadsheet", "domain": "home", "source": "drive-sync", "source_id": "drive-abc"}
+  ],
+  "sensitivity": "normal"
+}
+```
+
+**Response** `200 OK`: `{"references": 1}` — the count of references
+persisted, not the row payloads.
+
+**Errors**:
+
+| Code | Description |
+|------|-------------|
+| `422` | Provenance validation failure |
+| `503` | Reference catalog not available on this server |
+
+---
+
+#### GET /ingest/sources
+
+Enumerates distinct ingested document `source_id`s. Query params: `domain`,
+`source` (both optional filters), `include_sensitive` (default `false`).
+Scope is ingested **documents** only — records and references have their own
+list surfaces (`GET /records/stats`, `GET /references`).
+
+**Response** `200 OK`:
+
+```json
+{
+  "sources": [
+    {"source_id": "doc-1", "domain": "home", "source": "scanner", "chunk_count": 3, "ingested_at": "2026-07-10T12:00:00Z"}
+  ],
+  "total": 1
+}
+```
+
+Non-`normal`-sensitivity chunks are excluded unless `include_sensitive=true`
+— a source whose only chunks are sensitive disappears from the default
+listing entirely. An empty index returns `{"sources": [], "total": 0}`, not a
+`404`.
+
+---
+
+#### GET /ingest/text/{source_id}
+
+Returns one source's ingested chunks (`chunk_id`, `text`, `metadata`), ordered
+by chunk index, paginated via `offset`/`limit` (default `limit=50`). Same
+`include_sensitive` default-deny as above. An unknown `source_id` returns an
+empty chunk list (`total: 0`), not a `404`.
+
+---
+
+#### DELETE /ingest/text/{source_id}
+
+Deletes all ingested chunks for `source_id` (document tier only — the
+narrower, published "un-ingest" contract). Invalidates the query cache.
+
+---
+
+#### DELETE /ingest/source/{source_id}
+
+Full forget: cascades a delete for `source_id` across **all three** ingest
+tiers — document chunks (including identity links, via
+`DocumentIngestService.delete_source`), typed records and references — and
+invalidates the query cache. Each tier is best-effort independently, so a
+keyless server or a caller with only some stores wired still gets a
+whole-cascade forget over whichever tiers are present. **Persons and aliases
+are never deleted** by this endpoint — identity is user-asserted ground
+truth, not derived from the deleted text.
+
+**Response** `200 OK`:
+
+```json
+{
+  "chunks_deleted": 3,
+  "records_deleted": 1,
+  "references_deleted": 1
 }
 ```
 

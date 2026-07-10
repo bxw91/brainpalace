@@ -1,5 +1,6 @@
 """Health check endpoints with non-blocking queue status."""
 
+import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
@@ -308,6 +309,38 @@ async def indexing_status(request: Request) -> dict[str, Any]:
     except Exception:  # noqa: BLE001 — never fail /status on the optional count
         pass
 
+    # Programmatic text-ingest chunk count (spec Item 3). Kept OUT of
+    # total_documents (which stays folder-manifest-derived). Best-effort:
+    # defaults to 0 if the backend can't filter by metadata.
+    text_ingest_chunks = 0
+    try:
+        backend = getattr(request.app.state, "storage_backend", None)
+        if backend is not None and backend.is_initialized:
+            text_ingest_chunks = await backend.get_count(
+                where={"source_type": "ingest"}
+            )
+    except Exception:  # noqa: BLE001 — never fail /status on the optional count
+        text_ingest_chunks = 0
+    data["text_ingest"] = {"chunks": int(text_ingest_chunks or 0)}
+
+    # Reference catalog (Round 2 Plan C) — total + unembedded count. Feeds
+    # `brainpalace status` and the dashboard "References" row. Best-effort:
+    # 0/0 when the catalog is absent (older projects, pre-6-Option-A1).
+    ref_store = getattr(request.app.state, "reference_catalog_store", None)
+    ref_total = 0
+    ref_unembedded = 0
+    if ref_store is not None:
+        try:
+            ref_total = ref_store.count()
+            ref_unembedded = ref_store.count_unembedded()
+        except Exception:  # noqa: BLE001 — never fail /status on the optional count
+            ref_total = 0
+            ref_unembedded = 0
+    data["references"] = {
+        "total": int(ref_total or 0),
+        "unembedded": int(ref_unembedded or 0),
+    }
+
     # Index-drift warnings (embedding provider/model + storage backend). Surfaced
     # in `brainpalace status` and the dashboard so a config change that strands the
     # existing index is visible, not buried in the server log.
@@ -325,11 +358,22 @@ async def indexing_status(request: Request) -> dict[str, Any]:
     index_enabled = bool(getattr(request.app.state, "session_index_enabled", False))
     memory_service = getattr(request.app.state, "memory_service", None)
     curated_count = 0
+    memory_char_count = 0
+    memory_char_cap = 0
+    memory_cap_pressure = None
     if memory_service is not None:
         try:
             curated_count = len(memory_service.load())
         except Exception:  # noqa: BLE001
             curated_count = 0
+        try:
+            memory_char_count = memory_service.char_count()
+            memory_char_cap = memory_service.char_cap
+            marker = Path(memory_service.path).parent / "memory_cap_pressure.json"
+            if marker.exists():
+                memory_cap_pressure = json.loads(marker.read_text())
+        except Exception:  # noqa: BLE001 — status must never fail hard
+            pass
 
     archive_service = getattr(request.app.state, "session_archive_service", None)
     archive_stats = {
@@ -388,6 +432,9 @@ async def indexing_status(request: Request) -> dict[str, Any]:
             "watcher_running": bool(getattr(session_watcher, "is_running", False)),
             "session_chunks": int(data.get("session_chunks", 0) or 0),
             "curated_memories": curated_count,
+            "memory_char_count": memory_char_count,
+            "memory_char_cap": memory_char_cap,
+            "memory_cap_pressure": memory_cap_pressure,
             "archived_sessions": int(archive_stats["archived_sessions"]),
             "archived_files": int(
                 archive_stats.get("archived_files", archive_stats["archived_sessions"])
@@ -415,6 +462,11 @@ async def indexing_status(request: Request) -> dict[str, Any]:
         "git_index": {
             "enabled": bool(_git_cfg_enabled),
             "commit_count": int(data.get("git_commits", 0) or 0),
+        },
+        "references": {
+            "enabled": ref_store is not None,
+            "total": int(ref_total or 0),
+            "unembedded": int(ref_unembedded or 0),
         },
     }
 
@@ -502,6 +554,14 @@ async def indexing_status(request: Request) -> dict[str, Any]:
     # Doc-graph extraction feature block (Plan 4 §12, C2, M1).
     # Reads the lifespan-stashed values — never re-reads config per request.
     data["features"]["doc_graph_extraction"] = _doc_graph_extraction_feature(request)
+
+    # Doc-trust ranking weight (Phase 6.5a). Lifespan-stashed (app.state.ranking_config,
+    # Task 2); a config change takes effect on the next server start. Default 0.5
+    # when the state is absent (e.g. an older/minimal test client).
+    _ranking_cfg = getattr(request.app.state, "ranking_config", None)
+    data["features"]["ranking"] = {
+        "doc_weight": getattr(_ranking_cfg, "doc_weight", 0.5),
+    }
 
     # Read-only mode flag (master provider kill switch).
     data["features"]["read_only"] = is_read_only()

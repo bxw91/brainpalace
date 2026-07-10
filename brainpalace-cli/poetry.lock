@@ -495,19 +495,19 @@ stem = ["PyStemmer"]
 
 [[package]]
 name = "brainpalace-dashboard"
-version = "26.7.2"
+version = "26.7.3"
 description = "BrainPalace control-plane web dashboard"
 optional = false
 python-versions = "<4.0,>=3.12"
 groups = ["main"]
 markers = "python_version >= \"3.12\""
 files = [
-    {file = "brainpalace_dashboard-26.7.2-py3-none-any.whl", hash = "sha256:3c6793314cb36e8d08b13116c2f64b8daabc6e48b2cc2aa2997bda3b70c81844"},
-    {file = "brainpalace_dashboard-26.7.2.tar.gz", hash = "sha256:e2ba12ee76cfb4107f6b18b3ed1a70678e2c4bf7d6b0367b908883178cbae7c2"},
+    {file = "brainpalace_dashboard-26.7.3-py3-none-any.whl", hash = "sha256:61fc3b659d8550e8cde772932ac5a2e647eaeb011279643866049d79a648162d"},
+    {file = "brainpalace_dashboard-26.7.3.tar.gz", hash = "sha256:b0b0305c9189502b50fb375a9f691e2efc2a27b9f8806752f814273b83711e52"},
 ]
 
 [package.dependencies]
-brainpalace-cli = ">=26.7.2,<27.0.0"
+brainpalace-cli = ">=26.7.3,<27.0.0"
 fastapi = ">=0.115,<0.116"
 httpx = ">=0.28.0,<0.29.0"
 sse-starlette = ">=2.1,<3.0"
@@ -515,14 +515,14 @@ uvicorn = ">=0.32.0,<0.33.0"
 
 [[package]]
 name = "brainpalace-rag"
-version = "26.7.2"
+version = "26.7.3"
 description = "BrainPalace RAG - Intelligent document indexing and semantic search server that gives AI agents long-term memory"
 optional = false
 python-versions = "<4.0,>=3.10"
 groups = ["main"]
 files = [
-    {file = "brainpalace_rag-26.7.2-py3-none-any.whl", hash = "sha256:ac81b5f13ea50e78eba2277daff7b889bb323167f6b3de498258c97a95a82e0c"},
-    {file = "brainpalace_rag-26.7.2.tar.gz", hash = "sha256:97e4e1665ec0230d32b008a978b50bd3037be12cf813ff74db2c45a2de586434"},
+    {file = "brainpalace_rag-26.7.3-py3-none-any.whl", hash = "sha256:d09587b8717286e789f454d74e3841876e4a1b8b38579aa425bb96fdf65a48ed"},
+    {file = "brainpalace_rag-26.7.3.tar.gz", hash = "sha256:3e1a02823045f90efd16d9ca2eadedb84176bb555d1664587fc43cf081d95517"},
 ]
 
 [package.dependencies]

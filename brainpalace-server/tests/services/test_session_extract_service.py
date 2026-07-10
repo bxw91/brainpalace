@@ -52,9 +52,12 @@ class FakeGraph:
         source_chunk_id=None,
         source_file=None,
         domain="code",
+        sensitivity="normal",
+        **kwargs,
     ):
         self.triplets.append((subject, predicate, obj))
         self.typed.append((subject_type, predicate, object_type))
+        self.sensitivity = sensitivity
         return True
 
     def invalidate_by_source_file(

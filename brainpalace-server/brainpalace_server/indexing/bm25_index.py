@@ -279,6 +279,50 @@ class BM25IndexManager:
         self._bm25.index(toks)
         self.persist()
 
+    def add_chunks(self, entries: list[dict[str, Any]]) -> None:
+        """Add/replace corpus entries by node_id, then re-tokenize + persist.
+
+        Text-ingest path (spec Item 3): bm25s has no incremental index, so
+        this is corpus mutation + rebuild_from_corpus (re-tokenize only —
+        never re-embeds). Batched per ingest request by the caller."""
+        if not entries:
+            return
+        incoming = {e["node_id"] for e in entries}
+        corpus = self._corpus or []
+        self._corpus = [
+            e for e in corpus if self._entry_to_fields(e)[0] not in incoming
+        ]
+        self._corpus.extend(
+            {
+                "node_id": e["node_id"],
+                "text": e["text"],
+                "metadata": dict(e.get("metadata") or {}),
+            }
+            for e in entries
+        )
+        self.rebuild_from_corpus()
+
+    def remove_chunks(self, node_ids: list[str]) -> None:
+        """Remove corpus entries by node_id, then re-tokenize + persist."""
+        if not self._corpus:
+            return
+        drop = set(node_ids)
+        before = len(self._corpus)
+        self._corpus = [
+            e for e in self._corpus if self._entry_to_fields(e)[0] not in drop
+        ]
+        if len(self._corpus) == before:
+            return
+        if self._corpus:
+            self.rebuild_from_corpus()
+        else:
+            # rebuild_from_corpus early-returns on an empty corpus (no
+            # re-index to do) and persist() is a no-op once self._bm25 is
+            # None, so neither makes the removal stick on disk. reset()
+            # clears both in-memory state and the persisted index files,
+            # which is exactly what an emptied corpus needs.
+            self.reset()
+
     async def search_with_filters(
         self,
         query: str,

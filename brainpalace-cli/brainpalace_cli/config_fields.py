@@ -23,6 +23,7 @@ from brainpalace_server.config.graph_indexing_config import (
     GraphLspConfig,
 )
 from brainpalace_server.config.indexing_config import IndexingConfig
+from brainpalace_server.config.project_config import ProjectConfig
 from brainpalace_server.config.provider_config import (
     ComputeConfig,
     EmbeddingConfig,
@@ -33,6 +34,7 @@ from brainpalace_server.config.provider_config import (
     load_merged_config_dict,
 )
 from brainpalace_server.config.query_log_config import QueryLogConfig
+from brainpalace_server.config.ranking_config import RankingConfig
 from brainpalace_server.config.server_config import ServerConfig
 from brainpalace_server.config.session_config import (
     SessionArchiveConfig,
@@ -80,6 +82,8 @@ SECTION_MODELS: dict[str, type[BaseModel]] = {
     "bind": BindConfig,
     "server": ServerConfig,
     "graph_indexing": GraphIndexingConfig,
+    "ranking": RankingConfig,
+    "project": ProjectConfig,
 }
 NESTED_MODELS: dict[str, type[BaseModel]] = {
     "session_indexing.archive": SessionArchiveConfig,
@@ -110,7 +114,11 @@ GROUP_ORDER: list[tuple[str, str]] = [
     ("bind", "Server"),
     ("server", "Server Mode"),
     ("query_log", "Query Log"),
+    ("ranking", "Retrieval Ranking"),
     ("usage_metrics", "Usage Metrics"),
+    # Appended LAST (not alongside "ranking") so it never shifts the numbered
+    # division index other sections/tests rely on (Task 5, 6.5).
+    ("project", "Project Identity"),
 ]
 
 # Section "what this does" intros. Single source — the dashboard's
@@ -149,6 +157,12 @@ GROUP_DESCRIPTIONS: dict[str, str] = {
     "graph — exact cross-file `calls` edges. auto = enable a language when its "
     "server binary (e.g. pyright) is detected; on = force; off = disable. "
     "AST-only intra-file calls work regardless.",
+    "ranking": "How search ranks results. doc_weight down-ranks documentation "
+    "relative to code (0.0 excludes docs, 0.5 default, 1.0 treats them equally).",
+    "project": "This project's own identity. domain (default 'code') is what "
+    "new folders inherit when --domain is omitted, and what an external "
+    "folder must explicitly match to be treated as an authoritative claim "
+    "over the project (requires --force).",
 }
 
 

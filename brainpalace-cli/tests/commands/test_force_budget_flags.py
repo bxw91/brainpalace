@@ -40,3 +40,39 @@ def test_folders_add_passes_force_budget(tmp_path, monkeypatch) -> None:
     )
     assert result.exit_code == 0, result.output
     assert _FakeClient.last_kwargs["force_budget"] is True
+
+
+def test_folders_add_passes_domain_authority_force(tmp_path, monkeypatch) -> None:
+    """folders add --domain/--authority/--force thread through to client.index()."""
+    monkeypatch.setattr(folders_mod, "DocServeClient", _FakeClient)
+    result = CliRunner().invoke(
+        folders_mod.folders_group,
+        [
+            "add",
+            str(tmp_path),
+            "--domain",
+            "home",
+            "--authority",
+            "reference",
+            "--force",
+            "--allow-external",
+            "--json",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert _FakeClient.last_kwargs["domain"] == "home"
+    assert _FakeClient.last_kwargs["authority"] == "reference"
+    assert _FakeClient.last_kwargs["force_authority"] is True
+
+
+def test_folders_add_domain_authority_default_none(tmp_path, monkeypatch) -> None:
+    """Without the new flags, domain/authority/force_authority stay unset/False."""
+    monkeypatch.setattr(folders_mod, "DocServeClient", _FakeClient)
+    result = CliRunner().invoke(
+        folders_mod.folders_group,
+        ["add", str(tmp_path), "--json"],
+    )
+    assert result.exit_code == 0, result.output
+    assert _FakeClient.last_kwargs["domain"] is None
+    assert _FakeClient.last_kwargs["authority"] is None
+    assert _FakeClient.last_kwargs["force_authority"] is False

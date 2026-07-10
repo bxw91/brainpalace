@@ -277,6 +277,7 @@ def test_apply_to_chunks_updates_extra_for_new_keys(tmp_path: Path) -> None:
         "chunk_index",
         "total_chunks",
         "source_type",
+        "sensitivity",
         "created_at",
     }
 
@@ -301,6 +302,7 @@ def test_apply_to_chunks_does_not_overwrite_known_keys(tmp_path: Path) -> None:
         "chunk_index",
         "total_chunks",
         "source_type",
+        "sensitivity",
         "created_at",
     }
 
@@ -326,6 +328,7 @@ def test_apply_to_chunks_returns_zero_when_no_new_keys() -> None:
         "chunk_index",
         "total_chunks",
         "source_type",
+        "sensitivity",
         "created_at",
     }
     count = injector.apply_to_chunks([chunk], known_keys)

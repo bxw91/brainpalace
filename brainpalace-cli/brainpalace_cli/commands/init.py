@@ -18,6 +18,7 @@ from rich.console import Console
 from rich.panel import Panel
 
 from brainpalace_cli.commands.init_plan import (
+    InitPlan,
     downgrade_to_config_only,
     format_init_plan,
     resolve_init_plan,
@@ -214,6 +215,26 @@ def _write_reranker_config(state_dir: Path, enabled: bool) -> None:
         yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
 
 
+def _write_ranking_config(state_dir: Path, doc_weight: float) -> None:
+    """Idempotently set ``ranking.doc_weight`` in the project config.yaml
+    (Phase 6.5a). Preserves all other keys.
+    """
+    config_path = state_dir / "config.yaml"
+    data: dict[str, object] = {}
+    if config_path.exists():
+        try:
+            data = yaml.safe_load(config_path.read_text()) or {}
+        except (OSError, ValueError):
+            data = {}
+    block = data.get("ranking")
+    if not isinstance(block, dict):
+        block = {}
+    block["doc_weight"] = doc_weight
+    data["ranking"] = block
+    with open(config_path, "w", encoding="utf-8") as f:
+        yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
+
+
 def write_default_provider_config(
     state_dir: Path,
     force: bool = False,
@@ -400,7 +421,42 @@ def _preflight_lsp(state_dir: Path, *, interactive: bool, json_output: bool) -> 
             click.echo(f"LSP: {lang} server install failed (continuing).")
 
 
-def _preflight_providers(state_dir: Path, json_output: bool) -> None:
+def _provider_needs(
+    plan: "InitPlan",
+    folders: tuple[str, ...] = (),
+    *,
+    server_distill: bool = False,
+) -> tuple[bool, bool]:
+    """(needs_embedding, needs_summarization) for this init run.
+
+    Embedding is exercised by an initial index (watch=auto project root or any
+    --folder), session embedding, or git-history indexing. Summarization is
+    exercised by document/code indexing.
+
+    Session summarize/extract that init CONFIGURES runs plugin-side on the Claude
+    subscription (init's ``apply_extract_engine`` only ever writes
+    ``extraction.mode`` = ``subagent``/``off`` — verified init.py:1044-1045), so
+    it needs neither server provider. BUT if the resolved config already has
+    ``extraction.mode`` in {``auto``, ``provider``}, the SERVER-SIDE distiller
+    (``services/session_distill_service.py`` → ``get_summarization_provider`` +
+    embedder) is live and will fire on the next session — so ``server_distill``
+    forces BOTH needs on regardless of watch/folders (hardening #1).
+    """
+    will_index = plan.watch != "off" or bool(folders)
+    needs_embedding = (
+        will_index or bool(plan.sessions) or plan.git_history or server_distill
+    )
+    needs_summarization = will_index or server_distill
+    return needs_embedding, needs_summarization
+
+
+def _preflight_providers(
+    state_dir: Path,
+    json_output: bool,
+    *,
+    needs_embedding: bool = True,
+    needs_summarization: bool = True,
+) -> None:
     """Validate embedding/summarization providers before starting the server.
 
     Reuses the server's own validation rules (the CLI bundles the server) so
@@ -408,11 +464,17 @@ def _preflight_providers(state_dir: Path, json_output: bool) -> None:
     is missing) prints the provider, the missing env var, and exits non-zero
     *before* any server start or index job — preventing the mid-init crash
     class. Non-critical warnings are surfaced but do not block.
+
+    Criticals for a provider this run will not actually exercise
+    (``needs_embedding``/``needs_summarization`` False) are downgraded to info
+    notes instead of blocking (spec Item 1 / G4) — the first operation that
+    really embeds/summarizes still fails fast with the same message.
     """
     import os
 
     try:
         from brainpalace_server.config.provider_config import (
+            ValidationSeverity,
             clear_settings_cache,
             has_critical_errors,
             load_provider_settings,
@@ -428,7 +490,6 @@ def _preflight_providers(state_dir: Path, json_output: bool) -> None:
         with _quiet_server_logs():
             clear_settings_cache()
             errors = validate_provider_config(load_provider_settings())
-            critical = has_critical_errors(errors)
     except Exception:  # noqa: BLE001 — never block init on the check itself
         return
     finally:
@@ -438,10 +499,49 @@ def _preflight_providers(state_dir: Path, json_output: bool) -> None:
             os.environ["BRAINPALACE_CONFIG"] = prev
         clear_settings_cache()
 
-    if not critical:
+    needed = {"embedding": needs_embedding, "summarization": needs_summarization}
+    blocking = [e for e in errors if needed.get(getattr(e, "provider_type", ""), True)]
+    deferred = [
+        e for e in errors if not needed.get(getattr(e, "provider_type", ""), True)
+    ]
+
+    try:
+        blocking_critical = has_critical_errors(blocking)
+        deferred_critical = has_critical_errors(deferred)
+    except Exception:  # noqa: BLE001 — never block init on the check itself
         return
 
-    messages = [str(e) for e in errors]
+    if deferred_critical:
+        if json_output:
+            # JSON parity (hardening #4): agents run `init --json` and would
+            # otherwise get zero signal a provider was deferred-but-unconfigured.
+            print(
+                json.dumps(
+                    {
+                        "deferred_providers": [
+                            {
+                                "provider_type": getattr(e, "provider_type", ""),
+                                "message": str(e),
+                            }
+                            for e in deferred
+                            if getattr(e, "severity", None)
+                            == ValidationSeverity.CRITICAL
+                        ]
+                    }
+                )
+            )
+        else:
+            for e in deferred:
+                console.print(
+                    f"[dim]Provider not needed yet — {e}. "
+                    "The first indexing / session-embed / text-ingest run will "
+                    "need it.[/]"
+                )
+
+    if not blocking_critical:
+        return
+
+    messages = [str(e) for e in blocking]
     if json_output:
         click.echo(
             json.dumps(
@@ -1195,6 +1295,7 @@ def _emit_init_result(
     sessions_on: bool = False,
     embedding: tuple[str, str] | None = None,
     await_first_start: bool = False,
+    folders: tuple[str, ...] = (),
 ) -> None:
     """Print the init result, including any post-init step outcomes."""
     # Register the project in the durable fleet store so the dashboard can list
@@ -1219,6 +1320,7 @@ def _emit_init_result(
                     "gitignore_updated": gitignore_added,
                     "config": config,
                     "post_init_steps": post_init_steps,
+                    "folders": list(folders),
                     "dashboard": _dashboard_from_steps(post_init_steps),
                     "await_first_start": await_first_start,
                 },
@@ -1268,9 +1370,14 @@ def _emit_init_result(
     elif started_ok:
         done.append("Server started.")
     if watch == "off":
-        todo.append("Run [bold]brainpalace folders add <path>[/] to index a folder")
+        if folders:
+            for f in folders:
+                todo.append(f"Run [bold]brainpalace folders add {f}[/] to index it")
+        else:
+            todo.append("Run [bold]brainpalace folders add <path>[/] to index a folder")
     elif watched_ok:
-        done.append(f"Folder watched + initial indexing enqueued: {project_root}")
+        _targets = ", ".join(folders) if folders else str(project_root)
+        done.append(f"Folder watched + initial indexing enqueued: {_targets}")
 
     # Surface the real (billable) session-embedding cost — it runs on the started
     # server via the embedding provider, independent of summarization.
@@ -1330,7 +1437,7 @@ def _emit_init_result(
 
 
 def _estimate_and_confirm_local(
-    project_root: Path, config_yaml: Path, include_code: bool
+    targets: list[Path], config_yaml: Path, include_code: bool
 ) -> bool | None:
     """Server-less pre-index token-estimate loop, shown BEFORE any data write.
 
@@ -1338,6 +1445,10 @@ def _estimate_and_confirm_local(
     project config, prints the breakdown, then lets the user proceed, toggle the
     code/docs scope and re-estimate, or cancel. Returns the final ``include_code``
     to index with, or ``None`` to cancel the whole init (caller rolls back).
+
+    ``targets`` is the list of folders that will actually be indexed at start —
+    the project root for a plain init, or the ``-F/--folder`` folders when given.
+    Each is estimated and printed in turn.
 
     Only the code/docs scope is adjustable here — it's the one init answer that
     actually moves the *embedding* estimate. Provider/session/git answers are
@@ -1349,15 +1460,16 @@ def _estimate_and_confirm_local(
 
     while True:
         try:
-            with _quiet_server_logs():
-                est = asyncio.run(
-                    estimate_tokens_local(
-                        str(project_root),
-                        include_code=include_code,
-                        config_path=str(config_yaml),
+            for target in targets:
+                with _quiet_server_logs():
+                    est = asyncio.run(
+                        estimate_tokens_local(
+                            str(target),
+                            include_code=include_code,
+                            config_path=str(config_yaml),
+                        )
                     )
-                )
-            print_token_estimate(console, est)
+                print_token_estimate(console, est)
         except Exception as exc:  # noqa: BLE001 - advisory only, never block init
             console.print(f"[yellow]Estimate unavailable ({exc}); continuing.[/]")
             return include_code
@@ -1390,6 +1502,9 @@ def _start_and_watch(
     bm25_engine: str | None = "stem",
     include_code: bool = True,
     force_budget: bool = False,
+    needs_embedding: bool = True,
+    needs_summarization: bool = True,
+    folders: tuple[str, ...] = (),
 ) -> list[dict[str, object]]:
     """Run the --start pipeline: provider preflight, server start, optional watch.
 
@@ -1407,7 +1522,12 @@ def _start_and_watch(
     # Provider pre-flight: fail fast with an actionable message before
     # launching the server / queueing any index, so a misconfigured provider
     # (e.g. summarization=anthropic with no key) can't crash the server.
-    _preflight_providers(resolved_state_dir, json_output)
+    _preflight_providers(
+        resolved_state_dir,
+        json_output,
+        needs_embedding=needs_embedding,
+        needs_summarization=needs_summarization,
+    )
 
     # LSP pre-flight: if graph indexing / LSP is enabled but the language server
     # is missing, offer to install it (interactive) or nudge (non-interactive).
@@ -1439,6 +1559,7 @@ def _start_and_watch(
             start_used=True,
             watch=watch,
             json_output=json_output,
+            folders=folders,
         )
         raise SystemExit(1)
 
@@ -1446,38 +1567,44 @@ def _start_and_watch(
         # The pre-index token estimate now runs once, up front in `init_command`
         # (before any data is written), so the scope is already settled here.
         chosen_include_code = include_code
-        if not json_output:
-            console.print("[dim]Registering folder + enqueuing initial indexing…[/]")
-        watch_argv = [
-            *_brainpalace_argv(),
-            "folders",
-            "add",
-            str(project_root),
-            "--watch",
-            watch,
-            "--include-code" if chosen_include_code else "--no-code",
-        ]
-        if force_budget:
-            watch_argv.append("--force-budget")
-        watch_result = _run_subcommand(
-            watch_argv,
-            step="watch",
-            json_output=json_output,
-        )
-        post_init_steps.append(watch_result)
-        if watch_result["status"] != "ok":
-            _emit_init_result(
-                project_root=project_root,
-                resolved_state_dir=resolved_state_dir,
-                config_path=config_path,
-                config=config,
-                gitignore_added=gitignore_added,
-                post_init_steps=post_init_steps,
-                start_used=True,
-                watch=watch,
-                json_output=json_output,
+        targets = list(folders) if folders else [str(project_root)]
+        for target in targets:
+            if not json_output:
+                console.print(
+                    f"[dim]Registering folder + enqueuing initial indexing… "
+                    f"({target})[/]"
+                )
+            watch_argv = [
+                *_brainpalace_argv(),
+                "folders",
+                "add",
+                target,
+                "--watch",
+                watch,
+                "--include-code" if chosen_include_code else "--no-code",
+            ]
+            if force_budget:
+                watch_argv.append("--force-budget")
+            if folders:
+                watch_argv.append("--allow-external")
+            watch_result = _run_subcommand(
+                watch_argv, step="watch", json_output=json_output
             )
-            raise SystemExit(1)
+            post_init_steps.append(watch_result)
+            if watch_result["status"] != "ok":
+                _emit_init_result(
+                    project_root=project_root,
+                    resolved_state_dir=resolved_state_dir,
+                    config_path=config_path,
+                    config=config,
+                    gitignore_added=gitignore_added,
+                    post_init_steps=post_init_steps,
+                    start_used=True,
+                    watch=watch,
+                    json_output=json_output,
+                    folders=folders,
+                )
+                raise SystemExit(1)
 
     return post_init_steps
 
@@ -1666,6 +1793,17 @@ def _start_and_watch(
     ),
 )
 @click.option(
+    "--doc-weight",
+    type=click.FloatRange(0.0, 1.0),
+    default=None,
+    help=(
+        "Trust of docs vs code in search (0.0=exclude … 0.5=default … "
+        "1.0=equal). Writes ranking.doc_weight to config.yaml non-interactively "
+        "(the field is also editable in the review grid's Retrieval Ranking "
+        "division)."
+    ),
+)
+@click.option(
     "--bm25-engine",
     "bm25_engine",
     default=None,
@@ -1689,6 +1827,19 @@ def _start_and_watch(
         "pre-index token estimate."
     ),
 )
+@click.option(
+    "--folder",
+    "-F",
+    "folders",
+    multiple=True,
+    type=click.Path(exists=True, file_okay=False, resolve_path=True),
+    help=(
+        "Register + index ONLY this folder at start (repeatable), instead of "
+        "the whole project root. Paths outside the project tree are allowed. "
+        "Implies watching the given folders; incompatible with --no-watch/"
+        "--watch off."
+    ),
+)
 def init_command(
     path: str | None,
     host: str | None,
@@ -1710,9 +1861,11 @@ def init_command(
     enable_graphrag_extract: bool | None,
     enable_graph_migrate: bool | None,
     enable_reranking: bool | None,
+    doc_weight: float | None,
     bm25_language: str | None,
     bm25_engine: str | None,
     include_code: bool,
+    folders: tuple[str, ...],
 ) -> None:
     """Initialize a new BrainPalace project.
 
@@ -1771,6 +1924,12 @@ def init_command(
         if defer_activation_effective:
             start = False
             no_watch = True
+
+        if folders and (no_watch or watch == "off"):
+            raise click.UsageError(
+                "--folder/-F implies watching the given folders; drop "
+                "--no-watch/--watch off, or drop -F."
+            )
 
         plan = resolve_init_plan(
             start=start,
@@ -2154,6 +2313,15 @@ def init_command(
                             plan.extract,
                             graphrag_extract=bool(_reinit_graphrag_ans),
                         )
+                # extraction.mode auto/provider => the server distiller (not the
+                # plugin subagent) will summarize+embed; those keys are
+                # genuinely needed. Read AFTER the config writes above so this
+                # run's just-persisted mode is seen.
+                _extract_mode, _ = read_session_state(resolved_state_dir)
+                _server_distill = _extract_mode not in ("off", "subagent")
+                needs_embedding, needs_summarization = _provider_needs(
+                    plan, folders, server_distill=_server_distill
+                )
                 post_init_steps: list[dict[str, object]] = _start_and_watch(
                     project_root=project_root,
                     resolved_state_dir=resolved_state_dir,
@@ -2164,6 +2332,9 @@ def init_command(
                     json_output=json_output,
                     bm25_engine=bm25_engine,
                     include_code=include_code,
+                    needs_embedding=needs_embedding,
+                    needs_summarization=needs_summarization,
+                    folders=folders,
                 )
                 # Report the TRUE persisted state (session blocks live in
                 # config.yaml, not config.json), so the banner reflects the
@@ -2183,6 +2354,7 @@ def init_command(
                     plugin_present=claude_plugin_installed(project=project_root),
                     sessions_on=_si_enabled,
                     embedding=_preview_embedding(project_root),
+                    folders=folders,
                 )
                 return
             # --no-start re-init: apply_extract_engine not called above, so
@@ -2241,6 +2413,15 @@ def init_command(
         # honor an explicit --reranking/--no-reranking by merging just that flag.
         if not provider_config_written and enable_reranking is not None:
             _write_reranker_config(resolved_state_dir, enable_reranking)
+
+        # Phase 6.5a — doc-trust weight (source_type ranking). The field is an
+        # ordinary review-grid field (Retrieval Ranking division, Task 1) —
+        # interactive edits flow through the generic grid_edits/
+        # _apply_review_edits path below, like every other config field. Only
+        # an explicit --doc-weight flag bypasses the grid with a direct sparse
+        # write (mirrors --reranking/--no-reranking above).
+        if doc_weight is not None:
+            _write_ranking_config(resolved_state_dir, doc_weight)
 
         # Write bind overrides into the config.yaml bind: section when the user
         # passed --host or --port. Absent these flags, the code defaults apply
@@ -2427,7 +2608,9 @@ def init_command(
                 do_estimate = click.confirm("Estimate token usage first?", default=True)
             if do_estimate:
                 chosen = _estimate_and_confirm_local(
-                    project_root, resolved_state_dir / "config.yaml", include_code
+                    [Path(f) for f in folders] if folders else [project_root],
+                    resolved_state_dir / "config.yaml",
+                    include_code,
                 )
                 if chosen is None:
                     if created_brainpalace:
@@ -2494,6 +2677,15 @@ def init_command(
                 pass
 
         if plan.start:
+            # extraction.mode auto/provider => the server distiller (not the
+            # plugin subagent) will summarize+embed; those keys are genuinely
+            # needed. Read AFTER the config writes above so this run's
+            # just-persisted mode is seen.
+            _extract_mode, _ = read_session_state(resolved_state_dir)
+            _server_distill = _extract_mode not in ("off", "subagent")
+            needs_embedding, needs_summarization = _provider_needs(
+                plan, folders, server_distill=_server_distill
+            )
             post_init_steps = _start_and_watch(
                 project_root=project_root,
                 resolved_state_dir=resolved_state_dir,
@@ -2505,6 +2697,9 @@ def init_command(
                 bm25_engine=bm25_engine,
                 include_code=include_code,
                 force_budget=estimate_accepted,
+                needs_embedding=needs_embedding,
+                needs_summarization=needs_summarization,
+                folders=folders,
             )
 
         _emit_init_result(
@@ -2522,6 +2717,7 @@ def init_command(
             plugin_present=claude_plugin_installed(project=project_root),
             sessions_on=bool(plan.sessions),
             embedding=_preview_embedding(project_root),
+            folders=folders,
         )
 
     except PermissionError as e:

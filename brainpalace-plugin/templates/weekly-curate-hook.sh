@@ -1,4 +1,10 @@
 #!/bin/bash
+# DEPRECATED (retained for non-Claude runtimes / manual use). Weekly curation is
+# now folded into the auto-wired `brainpalace hook sessionstart`, gated by
+# `extraction.mode` (session): subagent/auto fire the memory-curator subagent at
+# most once per `MEMORY_CURATE_INTERVAL_DAYS`. This standalone template is no
+# longer the recommended path for Claude Code.
+#
 # OPT-IN weekly memory-curate hook for Claude Code (BrainPalace, Phase 080).
 #
 # At most once per ISO week, asks the in-session (subscription-tier) model to

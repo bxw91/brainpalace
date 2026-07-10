@@ -62,6 +62,8 @@ def scan_archive(
     plan: ScanPlan,
     language: str = "en",
     engine: str = "stem",
+    private_session_ids: set[str] | None = None,
+    include_sensitive: bool = False,
 ) -> list[tuple[str | None, int]]:
     """(bucket, count) rows for ``plan`` over the archive; [] when nothing hits."""
     if not archive_dir.is_dir():
@@ -89,6 +91,16 @@ def scan_archive(
         except ValueError:  # malformed date in a hand-made folder name
             continue
         for f in sorted(folder.glob("*.jsonl")):
+            # Default-deny: skip a session whose archive file (named
+            # ``<session_id>.jsonl``) is marked private, unless the caller opted
+            # in. The archive writer names files by session_id, so the stem is
+            # the session-id key.
+            if (
+                not include_sensitive
+                and private_session_ids
+                and f.stem in private_session_ids
+            ):
+                continue
             _, turns = load_session(f, text_trunc=0)
             for t in turns:
                 if t.kind != "text" or not t.text:

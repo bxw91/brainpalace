@@ -6,7 +6,7 @@ context: brainpalace
 agent: setup-assistant
 skills:
   - configuring-brainpalace
-last_validated: 2026-06-28
+last_validated: 2026-07-05
 ---
 
 # Configure BrainPalace
@@ -40,8 +40,8 @@ has been replaced by the unified review editor.
 
 > **Review grid UX — expand-on-ON.** An interactive `init` opens **directly on the
 > grid** over every config division (Embedding, Summarization, Reranker, Storage,
-> GraphRAG, Query Log, BM25, Git Indexing, Session Vector Indexing, Session
-> Summarization, Extraction Engine, Compute, Usage Metrics), values resolved from
+> GraphRAG, Query Log, Retrieval Ranking, BM25, Git Indexing, Session Vector Indexing,
+> Session Summarization, Extraction Engine, Compute, Usage Metrics), values resolved from
 > `global < code` plus the detected provider. Each division is a single line
 > (`N. Label : field = value | …`): an **ON** or pure-config division lists
 > **every** visible field (secrets shown in full — terminal-trusted; empty renders

@@ -1,0 +1,44 @@
+[tool.poetry]
+name = "brainpalace-life"
+version = "26.7.3"
+description = "BrainPalace life-memory product (monorepo subpackage; builds on engine seams)"
+authors = ["BrainPalace"]
+readme = "README.md"
+packages = [{ include = "brainpalace_life" }]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+# Engine dependency as an editable sibling (dist name: brainpalace-rag). The
+# Taskfile `install` also force-installs the worktree server so tests never run
+# against the stale published wheel (local version == published; see D4).
+brainpalace-rag = { path = "../brainpalace-server", develop = true }
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0"
+pytest-asyncio = "^0.23"
+black = "^24.10.0"
+ruff = "^0.8.0"
+mypy = "^1.13.0"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 88
+target-version = ['py312']
+
+[tool.ruff]
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "C4"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+ignore_missing_imports = true
