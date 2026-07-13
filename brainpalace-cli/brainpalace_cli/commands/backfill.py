@@ -147,8 +147,8 @@ def backfill_command(
         else:
             console.print(
                 f"[green]Archive-driven summarization is on[/] — {found} transcript(s) "
-                "present; the drain loop summarizes archived sessions automatically "
-                "(run `brainpalace drain-tick`)."
+                "present; the per-prompt drain summarizes archived sessions "
+                "automatically once they are quiescent."
             )
         return
 

@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-24
+last_validated: 2026-07-13
 ---
 
 # BM25 Keyword Search Guide

@@ -4,7 +4,7 @@ description: Manage identity — person / alias / link, plus deterministic candi
 parameters:
 skills:
   - using-brainpalace
-last_validated: 2026-07-10
+last_validated: 2026-07-11
 ---
 
 # BrainPalace Entities

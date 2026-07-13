@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-10
+last_validated: 2026-07-13
 ---
 
 <div align="center">
@@ -32,18 +32,24 @@ last_validated: 2026-07-10
 
 **Universal Vector + Graph RAG with a memory store.**
 
-Built for code & docs repos with permanent chat-session memory (default install) — but it indexes any text project, like personal life-work memory recording projects.
+Talk to your code, docs, chat history, or any text files. Your LLM will all your write - not just current session.
+Explore it with Vector, BM25, Hybrid, Temporal Graph, Multi, Compute, Scan, Absence, Timeline, and Salience modes.
 
-Talk to your code, docs, chat history, or any text. Explore it with Vector, BM25, Hybrid, Temporal Graph, Multi, Compute, Scan, Absence, Timeline, and Salience modes.
+Built for :
+- code & docs repos with permanent chat-session memory,
+- and for any text project like personal life-work memory projects with option to also add external sources.
 
-Never track which chat session you're in. Stop today, come back in days — the memory is still there. Curate it hourly, daily, monthly, or just ask "what did we talk about last time?"
+For text memory like projects - you are free to organize folders and files as you like. Write details into any file, explain details and that data will be indexed and re-indexed on changes. All you write in any file your LLM model will know when asked. 
 
-Bring your own sources. Build adapters for cloud drives, email, or the web. Keep files in folders, or ingest data straight into BrainPalace so the source can go away.
+For code repos - never track which chat session you're in. Stop today, come back in days — the memory is still there. Curate it hourly, daily, monthly, or just ask "what did we talk about last time?"
 
-Any project works, not just code. Tell your LLM to read the BrainPalace instructions and push the folder in.
+If some of your sources are online, tell your LLM to build input source adapter for that specific source and explain how to handle data, what to index and it will use BrainPalace instructions how to create (code) adapter. Build adapters for cloud drives, email, or the web. Keep files in folders, or ingest data straight into BrainPalace so the source can go away.
 
-Push anything text — source, image descriptions, sensor data, YouTube or meeting transcripts, thoughts, ideas. Indexed forever. Recalled instantly, with high accuracy and low or free local token cost.
+Any project works, not just code. Tell your LLM to read the BrainPalace instructions and push any folder in.
 
+Push any text — source, image description, sensor data, YouTube or meeting transcripts, thoughts, ideas, your personal history.
+
+All will be indexed - re-indexed on file update - recalled instantly - with high accuracy and low or free local token cost.
 Keep your memory always ready. Never forgotten. Upgrade your own personal memory from BrainPalace.
 
 Make The Context Window Unlimited.
@@ -80,7 +86,7 @@ same prerequisites and end with the same `brainpalace` CLI on your `PATH`.
 
 > **Recommended if you use Claude Code.** Richest UX and it summarises your chat
 > sessions for through your Claude Code subscription (subagent calls to Haiku).
-> 38 slash commands, 6 agents, 2 skills.
+> 42 slash commands, 6 agents, 2 skills.
 
 **Install the plugin:**
 
@@ -152,7 +158,7 @@ with optional cloud providers for embeddings and summarisation.
 | **Server** (`brainpalace-rag`) | FastAPI backend — indexing pipeline, BM25 + vector + GraphRAG stores, REST API |
 | **CLI** (`brainpalace-cli`) | Click-based command-line client; primary interface for automation, mono-repos, and standalone use |
 | **MCP server** (`brainpalace mcp`) | Opt-in stdio shim for non-Claude-Code AI clients (VS Code / Copilot, Cursor, Kilo Code, Cline, Continue, Zed) |
-| **Claude Code plugin** | 38 slash commands, 6 agents, 2 skills for Claude Code users |
+| **Claude Code plugin** | 42 slash commands, 6 agents, 2 skills for Claude Code users |
 | **Web dashboard** (`brainpalace dashboard`) | Standalone browser control plane — manage every project server from one tab (instances, config, stats, jobs, cache, graph, sessions, logs, query history). Included with the CLI on Python 3.12+. See [DASHBOARD](docs/DASHBOARD.md) |
 
 ## Features
@@ -207,7 +213,7 @@ with optional cloud providers for embeddings and summarisation.
   source, bridging *why* ↔ *what*. See [GIT_HISTORY](docs/GIT_HISTORY.md).
 
 - **AST-aware code chunking** — tree-sitter for Python, TypeScript,
-  JavaScript, Java, Kotlin, C, C++, C#, Go, Rust, Swift.
+  JavaScript, Java, Go, Rust, C, C++, C#, Pascal.
   See [CODE_INDEXING](docs/CODE_INDEXING.md).
 
 - **Time-decay ranking** — newer chunks rank higher (configurable half-life).
@@ -414,7 +420,7 @@ Or via the CLI: [docs/PROVIDER_CONFIGURATION.md](docs/PROVIDER_CONFIGURATION.md)
 
 ## Claude Code Plugin
 
-The plugin ships **38 slash commands**, **6 agents**, and **2 skills**.
+The plugin ships **42 slash commands**, **6 agents**, and **2 skills**.
 Full reference: [docs/PLUGIN_GUIDE.md](docs/PLUGIN_GUIDE.md).
 
 | Category | Commands |
@@ -444,7 +450,7 @@ Full reference: [docs/PLUGIN_GUIDE.md](docs/PLUGIN_GUIDE.md).
 ```
 brainpalace/
 ├── brainpalace-plugin/                     # Claude Code plugin
-│   ├── commands/                            # 38 slash commands
+│   ├── commands/                            # 42 slash commands
 │   ├── agents/                              # 6 agents
 │   ├── skills/                              # 2 context skills
 │   └── templates/                           # mcp-config-claude-code.json + sessionstart hook

@@ -3,6 +3,11 @@
 A scan plan names ONE term (word or quoted phrase) to count over the session
 archive, optionally bucketed by week/month/day/source. No term resolves ->
 None -> the caller falls back to normal retrieval (never guess a term).
+
+The auto-router calls with ``explicit=False`` and keeps the strict "never
+guess" contract. Explicit ``--mode scan`` calls with ``explicit=True``, which
+adds one forgiving fallback: a bare single-token query (no quotes, no tell) is
+taken as the term, so ``scan "profile"`` and ``scan profile`` behave the same.
 """
 
 from __future__ import annotations
@@ -53,19 +58,27 @@ _GROUPS = ("week", "month", "day", "source")
 _ASC = ("least", "fewest", "lowest")
 
 
-def _extract_term(query: str, q: str) -> str | None:
+def _extract_term(query: str, q: str, explicit: bool) -> str | None:
     m = _QUOTED.search(query)  # original casing irrelevant; analyzer lowercases
     if m:
         return m.group(1).strip()
     m = _TERM_AFTER.search(q)
     if m and m.group(1) not in _STOP_TERMS:
         return m.group(1)
+    # Explicit `--mode scan`: a bare SINGLE-token query is unambiguous intent, so
+    # count it as the term (as if quoted). Multi-word stays strict — with no
+    # quotes/tell there is no way to tell which word to count. The auto-router
+    # (explicit=False) never reaches here, so plain hybrid queries are unaffected.
+    if explicit:
+        stripped = (query or "").strip()
+        if 2 <= len(stripped) <= 80 and not re.search(r"\s", stripped):
+            return stripped
     return None
 
 
-def compile_scan(query: str) -> ScanPlan | None:
+def compile_scan(query: str, *, explicit: bool = False) -> ScanPlan | None:
     q = (query or "").lower()
-    term = _extract_term(query or "", q)
+    term = _extract_term(query or "", q, explicit)
     if not term:
         return None
     group_by = next(

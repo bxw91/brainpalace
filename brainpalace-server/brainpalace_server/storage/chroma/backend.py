@@ -257,6 +257,29 @@ class ChromaBackend:
                 backend="chroma",
             ) from e
 
+    async def update_metadata(
+        self, ids: list[str], metadatas: list[dict[str, Any]]
+    ) -> None:
+        try:
+            await self.vector_store.update_metadata(ids=ids, metadatas=metadatas)
+        except Exception as e:
+            raise StorageError(
+                f"Metadata update failed: {e}",
+                backend="chroma",
+            ) from e
+
+    async def get_all_ids(self) -> list[str]:
+        try:
+            return await self.vector_store.get_all_ids()
+        except Exception as e:
+            raise StorageError(f"get_all_ids failed: {e}", backend="chroma") from e
+
+    async def get_metadatas(self, ids: list[str]) -> list[dict[str, Any]]:
+        try:
+            return await self.vector_store.get_metadatas(ids)
+        except Exception as e:
+            raise StorageError(f"get_metadatas failed: {e}", backend="chroma") from e
+
     async def reset(self) -> None:
         """Reset storage backend by clearing all data.
 

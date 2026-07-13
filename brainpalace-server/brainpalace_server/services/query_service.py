@@ -1387,7 +1387,9 @@ class QueryService:
         root = Path(adir)
         if not root.is_dir():
             return []
-        plan = compile_scan(request.query)
+        # Explicit `mode=scan` (vs the hybrid auto-router, which passes mode
+        # HYBRID here) unlocks the single-token term fallback in the compiler.
+        plan = compile_scan(request.query, explicit=request.mode == QueryMode.SCAN)
         if plan is None:
             return []
         rows = await asyncio.to_thread(

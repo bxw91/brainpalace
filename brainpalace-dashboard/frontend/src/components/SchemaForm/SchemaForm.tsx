@@ -9,6 +9,33 @@ import type {
 import { Field } from "./Field";
 import { useFormState } from "./useFormState";
 
+/** Cost-class badge on a section header — mirrors the CLI review-grid suffix.
+ *  free = safe; LLM = billable on a cloud provider; LLM/subagent = always uses
+ *  an LLM once on (free-tier subagent quota or a billable provider). */
+function CostBadge({ cost, sectionKey }: { cost: string; sectionKey: string }) {
+  const tone =
+    cost === "free"
+      ? "bg-run/15 text-run"
+      : cost === "LLM"
+        ? "bg-warn/15 text-warn"
+        : "bg-accent/15 text-accent"; // LLM/subagent and any future mixed class
+  const title =
+    cost === "free"
+      ? "No model — always safe to enable."
+      : cost === "LLM"
+        ? "Invokes an embedding/LLM model (billable on a cloud provider)."
+        : "Once on, always uses an LLM: free-tier subagent (Haiku quota) or a billable provider.";
+  return (
+    <span
+      data-testid={`section-cost-${sectionKey}`}
+      title={title}
+      className={`rounded-md px-2 py-0.5 font-mono text-[0.6rem] uppercase tracking-wider ${tone}`}
+    >
+      {cost}
+    </span>
+  );
+}
+
 /** Flatten a schema to the set of leaf (savable) dotpaths. */
 function leafPaths(fields: SchemaField[]): string[] {
   const out: string[] = [];
@@ -67,9 +94,12 @@ export function SchemaForm({
           data-testid={`section-${section.key}`}
           className="panel p-6"
         >
-          <h2 className="mb-4 font-display text-base font-semibold tracking-tight">
-            {section.label}
-          </h2>
+          <div className="mb-4 flex items-center gap-2">
+            <h2 className="font-display text-base font-semibold tracking-tight">
+              {section.label}
+            </h2>
+            {section.cost && <CostBadge cost={section.cost} sectionKey={section.key} />}
+          </div>
           {section.description && (
             <p
               data-testid={`section-desc-${section.key}`}

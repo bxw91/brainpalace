@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-07
+last_validated: 2026-07-13
 ---
 
 # BrainPalace Developer Guide
@@ -349,10 +349,10 @@ Each project stores its state in `.brainpalace/`:
 ```
 <project-root>/
 └── .brainpalace/
-    ├── config.json      # Project configuration (optional, can be committed)
+    ├── config.yaml      # Project configuration (optional, can be committed)
     ├── runtime.json     # Runtime state (DO NOT commit - add to .gitignore)
-    ├── doc-serve.lock   # Lock file for preventing double-start
-    ├── doc-serve.pid    # Process ID file
+    ├── brainpalace.lock # Lock file for preventing double-start
+    ├── brainpalace.pid  # Process ID file
     ├── data/            # ChromaDB and index data
     └── logs/            # Server logs
 ```
@@ -377,7 +377,7 @@ The `runtime.json` file contains:
 
 The lock file prevents concurrent startup:
 
-1. Server attempts exclusive lock on `doc-serve.lock`
+1. Server attempts exclusive lock on `brainpalace.lock`
 2. If lock fails, another instance is starting/running
 3. Lock released on graceful shutdown
 4. Stale locks detected via PID validation
@@ -397,7 +397,7 @@ Symlinks are resolved to canonical paths to ensure consistent state directories.
 Settings are resolved in order (first wins):
 
 1. Command-line flags (`--port 8080`)
-2. Environment variables (`DOC_SERVE_STATE_DIR`, `DOC_SERVE_MODE`, kill-switches)
+2. Environment variables (`BRAINPALACE_STATE_DIR`, `BRAINPALACE_MODE`, kill-switches)
 3. Project config (`.brainpalace/config.yaml`)
 4. Global config (`~/.config/brainpalace/config.yaml`, XDG)
 5. Built-in (pydantic) defaults
@@ -569,9 +569,9 @@ nested, marker-delimited tiers — **NUDGE ⊂ CORE ⊂ FULL**:
 
 | Tier | Bytes (approx) | Consumer | Why this size |
 |------|----------------|----------|---------------|
-| **NUDGE** | ~580 | SessionStart hook `additionalContext` | Plugin users already load FULL via the skill; the hook only nudges. |
-| **CORE** | ~4.2 K | MCP `Server(instructions=...)` | MCP clients have no skill/hook — they need the whole decision contract at connect. |
-| **FULL** | ~14.7 K | generated SKILL.md, `ai-guide --tier full`, `ai_guide` MCP tool | The complete guide; pulled on demand. |
+| **NUDGE** | ~710 | SessionStart hook `additionalContext` | Plugin users already load FULL via the skill; the hook only nudges. |
+| **CORE** | ~4.5 K | MCP `Server(instructions=...)` | MCP clients have no skill/hook — they need the whole decision contract at connect. |
+| **FULL** | ~16 K | generated SKILL.md, `ai-guide --tier full`, `ai_guide` MCP tool | The complete guide; pulled on demand. |
 
 CORE is a literal slice of FULL; NUDGE a literal slice of CORE — never
 hand-maintained copies. The loader/renderer is `brainpalace_cli/ai_guidance.py`;

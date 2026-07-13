@@ -351,3 +351,20 @@ class StorageBackendProtocol(Protocol):
             Set of matching chunk ids (empty when nothing matches).
         """
         ...
+
+    async def update_metadata(
+        self, ids: list[str], metadatas: list[dict[str, Any]]
+    ) -> None:
+        """Replace the metadata of existing chunks by id — embeddings and
+        document text are preserved. ``ids`` and ``metadatas`` are positionally
+        paired. Used by rehome to prefix-swap path metadata without re-embedding.
+        """
+        ...
+
+    async def get_all_ids(self) -> list[str]:
+        """Every chunk id in the store, stably sorted (rehome D10 batches)."""
+        ...
+
+    async def get_metadatas(self, ids: list[str]) -> list[dict[str, Any]]:
+        """Metadata dicts positionally paired with ``ids`` (missing id -> {})."""
+        ...

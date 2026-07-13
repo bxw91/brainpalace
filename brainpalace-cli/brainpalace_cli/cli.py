@@ -37,6 +37,7 @@ from .commands import (
     recall_command,
     records_group,
     references_group,
+    rehome_command,
     remember_command,
     reset_command,
     rules_group,
@@ -131,6 +132,7 @@ cli.add_command(whoami_command, name="whoami")
 cli.add_command(doctor_command, name="doctor")
 cli.add_command(lsp_group, name="lsp")
 cli.add_command(status_command, name="status")
+cli.add_command(rehome_command, name="rehome")
 cli.add_command(query_command, name="query")
 cli.add_command(ai_guide_command, name="ai-guide")
 cli.add_command(hook_group, name="hook")

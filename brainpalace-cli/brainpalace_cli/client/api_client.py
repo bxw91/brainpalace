@@ -266,6 +266,17 @@ class DocServeClient:
             timestamp=data.get("timestamp", ""),
         )
 
+    def rehome_status(self) -> dict[str, Any]:
+        """GET /rehome/ — rehome/quarantine status (served even when quarantined)."""
+        return self._request("GET", "/rehome/")
+
+    def rehome_resume(self) -> dict[str, Any]:
+        """POST /rehome/resume — resume a pending/failed rehome from its checkpoint.
+
+        Raises ``ServerError`` (409) when there is nothing to resume.
+        """
+        return self._request("POST", "/rehome/resume")
+
     def status(self) -> IndexingStatus:
         """
         Get detailed indexing status.

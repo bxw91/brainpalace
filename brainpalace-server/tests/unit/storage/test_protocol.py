@@ -226,6 +226,17 @@ class MockCompleteBackend:
     async def get_ids_by_where(self, where: dict[str, any]) -> set[str]:
         return set()
 
+    async def update_metadata(
+        self, ids: list[str], metadatas: list[dict[str, any]]
+    ) -> None:
+        return None
+
+    async def get_all_ids(self) -> list[str]:
+        return []
+
+    async def get_metadatas(self, ids: list[str]) -> list[dict[str, any]]:
+        return [{} for _ in ids]
+
 
 def test_protocol_complete_implementation() -> None:
     """Test that mock class with all methods satisfies protocol."""

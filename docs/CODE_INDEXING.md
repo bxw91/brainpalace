@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-24
+last_validated: 2026-07-11
 ---
 
 # Code Indexing Deep Dive
@@ -70,7 +70,7 @@ def authenticate_user(username: str, password: str) -> User:
 
 ## Supported Languages
 
-BrainPalace supports AST-aware chunking for 11 programming languages:
+BrainPalace supports AST-aware chunking for 10 programming languages:
 
 | Language | Extensions | Symbol Types Extracted |
 |----------|------------|------------------------|
@@ -83,8 +83,7 @@ BrainPalace supports AST-aware chunking for 11 programming languages:
 | C | .c, .h | functions |
 | C++ | .cpp, .cc, .hpp | functions, classes, methods |
 | C# | .cs, .csx | classes, methods, interfaces, properties, records |
-| Kotlin | .kt, .kts | functions, classes |
-| Swift | .swift | functions, classes |
+| Pascal | .pas, .pp, .lpr, .dpr, .dpk | procedures, functions, classes, records |
 
 ### Language Detection
 
@@ -392,10 +391,10 @@ Adjust chunk parameters for different code styles:
 
 ```bash
 # Larger chunks for verbose languages (Java, C#)
-brainpalace index /project --chunk-size 800 --overlap 100
+brainpalace index /project --chunk-size 800 --chunk-overlap 100
 
 # Smaller chunks for concise languages (Python, Go)
-brainpalace index /project --chunk-size 400 --overlap 50
+brainpalace index /project --chunk-size 400 --chunk-overlap 50
 ```
 
 ---

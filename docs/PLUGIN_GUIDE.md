@@ -1,10 +1,10 @@
 ---
-last_validated: 2026-06-28
+last_validated: 2026-07-13
 ---
 
 # BrainPalace Plugin Guide
 
-Complete reference for the BrainPalace Claude Code plugin - 33 commands, 5 agents, and 2 skills for intelligent document and code search.
+Complete reference for the BrainPalace Claude Code plugin - 42 commands, 6 agents, and 2 skills for intelligent document and code search.
 
 ## Table of Contents
 
@@ -34,8 +34,8 @@ claude plugins install github:bxw91/brainpalace
 ```
 
 This provides:
-- **33 slash commands** for all operations
-- **5 intelligent agents** for complex tasks
+- **42 slash commands** for all operations
+- **6 intelligent agents** for complex tasks
 - **2 skills** for context-aware assistance
 
 ### SessionStart hook
@@ -426,10 +426,11 @@ Install BrainPalace's Claude Code SessionStart reminder hook.
 
 ## Intelligent Agents
 
-The plugin includes five agents that handle complex, multi-step tasks
-autonomously. Three are interactive (below); the other two —
-**Chat Session Extractor** and **Memory Curator** — drive session capture and
-curated memory and are documented under [Session Memory](#session-memory-phases-070--080).
+The plugin includes six agents that handle complex, multi-step tasks
+autonomously. Three are interactive (below); the other three —
+**Chat Session Extractor**, **Memory Curator**, and **Graph Triplet Extractor** —
+drive session capture, curated memory, and knowledge-graph extraction and are
+documented under [Session Memory](#session-memory-phases-070--080).
 
 ### Search Assistant
 

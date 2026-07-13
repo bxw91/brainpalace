@@ -106,7 +106,7 @@ context: brainpalace
 agent: setup-assistant
 skills:
   - configuring-brainpalace
-last_validated: 2026-07-05
+last_validated: 2026-07-13
 ---
 
 # Initialize BrainPalace Project
@@ -143,6 +143,16 @@ Initializes the current project for BrainPalace by creating the necessary config
 > you accept without touching them — no silent spend. Section names/descriptions
 > are single-sourced with the web dashboard.
 > `--yes` / `--json` / non-TTY runs skip the grid and apply the resolved defaults.
+
+> **Index-target picker (asked first).** On a fresh interactive run that will index
+> (starts + watches), `init` asks **before** the review grid: which folder to index
+> — type a path relative to the project root, or press Enter to keep the **whole
+> project** (today's default) — and its index type (**code + docs**, or **docs
+> only**). These populate the same targets the `-F/--folder` and
+> `--include-code/--no-code` flags feed, so the token estimate, provider preflight,
+> and first index all target your choice. Passing `-F` or `--include-code/--no-code`
+> explicitly suppresses the matching prompt; `--yes`/`--json`/`--no-start` skip the
+> picker entirely.
 
 ## Usage
 
@@ -206,15 +216,22 @@ Initializes the current project for BrainPalace by creating the necessary config
 > `--no-migrate-graph-store`. The server replays the existing `simple` JSON graph
 > into sqlite on the next start (JSON kept for rollback); no re-indexing needed.
 
-> **Pre-index token estimate (opt-in).** On an interactive run, before the first
-> index `init` asks whether to estimate approximate embedding-token usage
-> (default **no**, never shown under `--json`/CI). The estimate uses the same
-> file-selection rules **and the same `--include-code`/`--no-code` scope** as the
-> real index, and reflects your chosen embedding provider's tokenizer. After it
-> prints you can **proceed**, **toggle code/docs scope and re-estimate**, or
-> **skip** indexing. (Only the code/docs scope is re-asked here — provider /
-> session / graph answers are already written and affect separate budgets.) Run
-> it anytime with `brainpalace index <path> --estimate`.
+> **Pre-index token estimate + ignore-loop (opt-in).** On an interactive run,
+> before the first index `init` asks whether to estimate approximate
+> embedding-token usage (default **yes**, never shown under `--json`/CI). The
+> estimate uses the same file-selection rules **and the same
+> `--include-code`/`--no-code` scope** as the real index, and reflects your
+> chosen embedding provider's tokenizer. It prints a per-top-level-folder
+> breakdown (files · code tokens · doc tokens, alphabetical, `(root files)`
+> pinned last), then a menu: **add** or **remove** a file/folder/glob from
+> what gets indexed — saved to BrainPalace config (`indexing.exclude_patterns`,
+> sparse, extends the built-in defaults) or to `.gitignore` (written
+> immediately, **permanent** — undo only by hand-editing `.gitignore` later);
+> **reset** the BrainPalace ignore list back to its pre-init state;
+> **re-estimate** to refresh the numbers after an edit; **proceed**; or
+> **cancel** (rolls back a config this `init` created). Proceeding with an
+> empty resulting index is blocked. Run the estimate anytime with
+> `brainpalace index <path> --estimate`.
 
 ## Execution
 
@@ -465,7 +482,7 @@ This allows running multiple BrainPalace instances for different projects simult
 | --archive | bool | "" | ARCHIVE raw transcripts under .brainpalace/ as a durable backup (no embeddings, independent of indexing). ON by default. Pass --no-archive to opt out. |
 | --extract | bool | "" | SUMMARIZE each session into durable knowledge (summary, decisions, triplets). ON by default, summarized ONLY inside Claude Code (the plugin, free on your Claude Code subscription — no separate API bill). The server does not summarize on its own. Pass --no-extract to opt out. |
 | --git-history | bool | "" | INDEX this repo's git commit history (message + diff stat) as searchable chunks. OFF by default — commits can contain secrets, so this is a deliberate opt-in. Interactive runs ask (default no). |
-| --graphrag-extract | bool | "" | Extract a knowledge graph from document text (installs the optional langextract dep on enable). |
+| --graphrag-extract | bool | "" | Extract a knowledge graph from document text (LLM triplet extraction via extraction.mode). |
 | --migrate-graph-store | bool | "" | On an already-initialized project whose graph store is the legacy in-memory 'simple' backend, upgrade graphrag.store_type to 'sqlite' (persistent + temporal; the existing graph is replayed into sqlite on next start, with the JSON kept for rollback). Interactive runs ask (default yes). No effect on fresh inits or projects already on sqlite. |
 | --language | text | "" | Project default natural language for BM25 indexing (ISO 639-1, e.g. en, de, hr). Passed → written to bm25.language; omitted → inherit from global config / code default (en). |
 | --reranking | bool | "" | Two-stage reranking: a local cross-encoder re-scores the top candidates for finer relevance ordering. OFF by default — the local model needs the heavy reranker-local extra (~2.8 GB PyTorch). --reranking installs that extra and enables it; or set reranker.provider=ollama for a torch-free reranker. Writes reranker.enabled to config.yaml. |

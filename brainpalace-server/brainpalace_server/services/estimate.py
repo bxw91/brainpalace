@@ -43,8 +43,11 @@ async def estimate_tokens_local(
     Returns:
         The same dict shape as ``IndexingService.estimate_tokens``.
     """
+    from pathlib import Path
+
     from brainpalace_server.config.provider_config import clear_settings_cache
     from brainpalace_server.indexing.document_loader import DocumentLoader
+    from brainpalace_server.indexing.gitignore_matcher import GitignoreMatcher
     from brainpalace_server.models.index import IndexRequest
     from brainpalace_server.services.indexing_service import IndexingService
 
@@ -57,13 +60,21 @@ async def estimate_tokens_local(
         os.environ["BRAINPALACE_CONFIG"] = config_path
     clear_settings_cache()
     try:
+        # Honour .gitignore exactly as the real index / file watcher do: they
+        # build the matcher via GitignoreMatcher.from_project_root and inject it
+        # into DocumentLoader (api/main.py, file_watcher_service.py). Building it
+        # the same way here keeps the estimate's file set identical to what gets
+        # indexed — without a matcher, project-local ignores (e.g. `.planning/`)
+        # would be counted even though the real index skips them.
+        gitignore_matcher = GitignoreMatcher.from_project_root(Path(folder_path))
+
         # estimate_tokens only reads self.document_loader + config; the noop
         # collaborators keep storage/embedding/graph factories from running.
         # The noop stand-ins are deliberately the wrong type — estimate_tokens
         # never calls them; they only exist to short-circuit __init__'s factory
         # calls. Suppress the arg-type mismatch rather than widen the real API.
         service = IndexingService(
-            document_loader=DocumentLoader(),
+            document_loader=DocumentLoader(gitignore_matcher=gitignore_matcher),
             storage_backend=_NoopCollaborator(),  # type: ignore[arg-type]
             embedding_generator=_NoopCollaborator(),  # type: ignore[arg-type]
             graph_index_manager=_NoopCollaborator(),  # type: ignore[arg-type]

@@ -498,8 +498,10 @@ async def test_git_purge_empty_repo_purges_all(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# _indexable_git_shas — the self-heal WANTED scope must mirror the git indexer
-# (git log from HEAD, monorepo path scope), never `rev-list --all`.
+# _indexable_git_shas — the self-heal WANTED scope must mirror the git
+# indexer's own recorded progress: bounded by its persisted `last_sha` (never
+# HEAD, never `rev-list --all`). No `last_sha` recorded => want nothing — a
+# commit the async git-history job hasn't reached yet was never lost.
 # ---------------------------------------------------------------------------
 
 
@@ -537,7 +539,19 @@ def _git_cfg(**kw):
     return GitIndexingConfig(enabled=True, **kw)
 
 
-def test_indexable_git_shas_follow_head_not_all_refs(tmp_path):
+def _seed_git_state(state_dir, repo_key: str, sha: str) -> None:
+    """Write a git_index_state.json as GitHistoryIndexService would, so
+    `_indexable_git_shas` reads the exact same last_sha via the shared
+    `load_git_last_sha` helper."""
+    import json
+
+    from brainpalace_server.storage_paths import state_file_path
+
+    path = state_file_path(state_dir, "git_index_state.json")
+    path.write_text(json.dumps({repo_key: sha}))
+
+
+def test_indexable_git_shas_follow_last_sha_not_all_refs(tmp_path):
     """Commits reachable only from other branches are NOT indexable — wanting
     them (rev-list --all) reported phantom 'need re-embed' residue forever."""
     import brainpalace_server.services.startup_reconcile as sr
@@ -547,8 +561,10 @@ def test_indexable_git_shas_follow_head_not_all_refs(tmp_path):
     _git(repo, "checkout", "-q", "-b", "side")
     sha_side = _commit(repo, "b.txt", "on side")
     _git(repo, "checkout", "-q", "main")
+    state_dir = tmp_path / "state"
+    _seed_git_state(state_dir, str(repo), sha_main)
 
-    shas = sr._indexable_git_shas(str(repo), config=_git_cfg())
+    shas = sr._indexable_git_shas(str(repo), config=_git_cfg(), git_state_dir=state_dir)
     assert sha_main in shas
     assert sha_side not in shas
 
@@ -561,8 +577,11 @@ def test_indexable_git_shas_scope_to_project_subdir_in_monorepo(tmp_path):
     repo = _init_repo(tmp_path / "mono")
     sha_sub = _commit(repo, "proj/code.py", "touches project")
     sha_other = _commit(repo, "elsewhere/other.txt", "outside project")
+    sub = str(repo / "proj")
+    state_dir = tmp_path / "state"
+    _seed_git_state(state_dir, sub, sha_other)  # indexer's last_sha is HEAD
 
-    shas = sr._indexable_git_shas(str(repo / "proj"), config=_git_cfg())
+    shas = sr._indexable_git_shas(sub, config=_git_cfg(), git_state_dir=state_dir)
     assert sha_sub in shas
     assert sha_other not in shas
 
@@ -572,9 +591,13 @@ def test_indexable_git_shas_disabled_wants_nothing(tmp_path):
     from brainpalace_server.config.git_config import GitIndexingConfig
 
     repo = _init_repo(tmp_path / "repo")
-    _commit(repo, "a.txt", "x")
+    sha = _commit(repo, "a.txt", "x")
+    state_dir = tmp_path / "state"
+    _seed_git_state(state_dir, str(repo), sha)  # even with a recorded last_sha
 
-    shas = sr._indexable_git_shas(str(repo), config=GitIndexingConfig(enabled=False))
+    shas = sr._indexable_git_shas(
+        str(repo), config=GitIndexingConfig(enabled=False), git_state_dir=state_dir
+    )
     assert shas == set()
 
 
@@ -584,12 +607,175 @@ def test_indexable_git_shas_respects_depth_cap(tmp_path):
     repo = _init_repo(tmp_path / "repo")
     _commit(repo, "a.txt", "first")
     sha_new = _commit(repo, "b.txt", "second")
+    state_dir = tmp_path / "state"
+    _seed_git_state(state_dir, str(repo), sha_new)
 
-    shas = sr._indexable_git_shas(str(repo), config=_git_cfg(depth=1))
+    shas = sr._indexable_git_shas(
+        str(repo), config=_git_cfg(depth=1), git_state_dir=state_dir
+    )
     assert shas == {sha_new}
 
 
-def test_indexable_git_shas_not_a_repo_returns_none(tmp_path):
+def test_indexable_git_shas_no_last_sha_wants_nothing(tmp_path):
+    """D2: git indexing has never run for this repo (no state dir / no
+    recorded last_sha) => want zero git chunks, matching the empty-manifest
+    folder case. This is the core fix: self-heal must not count commits the
+    async git-history job hasn't reached yet as lost."""
     import brainpalace_server.services.startup_reconcile as sr
 
-    assert sr._indexable_git_shas(str(tmp_path / "void"), config=_git_cfg()) is None
+    repo = _init_repo(tmp_path / "repo")
+    _commit(repo, "a.txt", "x")
+
+    # No git_state_dir at all.
+    assert sr._indexable_git_shas(str(repo), config=_git_cfg()) == set()
+
+    # A state dir that exists but has no entry for this repo.
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    assert (
+        sr._indexable_git_shas(str(repo), config=_git_cfg(), git_state_dir=state_dir)
+        == set()
+    )
+
+
+def test_indexable_git_shas_partial_progress_excludes_unindexed_tip(tmp_path):
+    """The exact bug scenario: git indexing has recorded progress only up to
+    an older commit; a newer commit lands before the async job catches up.
+    Self-heal must want only what was indexed, not the live HEAD."""
+    import brainpalace_server.services.startup_reconcile as sr
+
+    repo = _init_repo(tmp_path / "repo")
+    sha_indexed = _commit(repo, "a.txt", "indexed")
+    state_dir = tmp_path / "state"
+    _seed_git_state(state_dir, str(repo), sha_indexed)
+    sha_pending = _commit(repo, "b.txt", "not yet indexed")  # async job hasn't run
+
+    shas = sr._indexable_git_shas(str(repo), config=_git_cfg(), git_state_dir=state_dir)
+
+    assert shas == {sha_indexed}
+    assert sha_pending not in shas
+
+
+def test_indexable_git_shas_unreachable_last_sha_returns_none(tmp_path):
+    """D4: a recorded last_sha that's no longer reachable (e.g. GC'd after a
+    history rewrite) makes the underlying git log fail => None (couldn't
+    determine), not an empty set."""
+    import brainpalace_server.services.startup_reconcile as sr
+
+    repo = _init_repo(tmp_path / "repo")
+    _commit(repo, "a.txt", "x")
+    state_dir = tmp_path / "state"
+    _seed_git_state(state_dir, str(repo), "0" * 40)  # never-existed sha
+
+    shas = sr._indexable_git_shas(str(repo), config=_git_cfg(), git_state_dir=state_dir)
+    assert shas is None
+
+
+def test_indexable_git_shas_not_a_repo_returns_none(tmp_path):
+    """Not a repo at all, but a last_sha IS recorded (e.g. the repo dir was
+    removed after indexing) — list_indexable_shas' git log fails => None."""
+    import brainpalace_server.services.startup_reconcile as sr
+
+    void = str(tmp_path / "void")
+    state_dir = tmp_path / "state"
+    _seed_git_state(state_dir, void, "a" * 40)
+
+    assert (
+        sr._indexable_git_shas(void, config=_git_cfg(), git_state_dir=state_dir) is None
+    )
+
+
+# ---------------------------------------------------------------------------
+# self_heal_on_startup — end-to-end: the git-bounded wanted-set must reach
+# chunk_recovery unchanged, so residue is never reported for not-yet-indexed
+# commits (the false-positive this fix closes).
+# ---------------------------------------------------------------------------
+
+
+class _MockVectorStore:
+    persist_dir = "/tmp"
+
+
+@pytest.mark.asyncio
+async def test_self_heal_wants_zero_git_ids_on_fresh_repo(tmp_path, monkeypatch):
+    """No folders indexed (empty manifest union) and git never indexed (no
+    last_sha) => wanted is empty => recover_lost_chunks is never even called,
+    so residue is correctly 0 rather than every HEAD commit."""
+    from unittest.mock import MagicMock
+
+    import brainpalace_server.config.git_config as git_config
+    import brainpalace_server.services.startup_reconcile as sr
+
+    repo = _init_repo(tmp_path / "repo")
+    _commit(repo, "a.txt", "first")
+    _commit(repo, "b.txt", "second")
+
+    monkeypatch.setattr(
+        git_config, "load_git_indexing_config", lambda *a, **kw: _git_cfg()
+    )
+    recover = AsyncMock()
+    monkeypatch.setattr(sr.chunk_recovery, "recover_lost_chunks", recover)
+
+    folder_manager = MagicMock()
+    folder_manager.list_folders = AsyncMock(return_value=[])
+    manifest_tracker = MagicMock()
+
+    report = await sr.self_heal_on_startup(
+        folder_manager=folder_manager,
+        manifest_tracker=manifest_tracker,
+        storage_backend=MagicMock(),
+        vector_store=_MockVectorStore(),
+        cache_db_path=None,
+        target_dimensions=0,
+        repo_path=str(repo),
+        git_state_dir=tmp_path / "state",  # no state file written — never indexed
+    )
+
+    recover.assert_not_called()
+    assert report["recovery"] is None
+
+
+@pytest.mark.asyncio
+async def test_self_heal_bounds_git_wanted_set_by_last_sha(tmp_path, monkeypatch):
+    """Git indexing recorded progress up to an older commit; a newer commit
+    landed since (async job hasn't caught up). The wanted-set reaching
+    chunk_recovery must include the indexed commit's chunk and exclude the
+    pending one — the exact false-positive scenario from the bug report."""
+    from unittest.mock import MagicMock
+
+    import brainpalace_server.config.git_config as git_config
+    import brainpalace_server.services.startup_reconcile as sr
+
+    repo = _init_repo(tmp_path / "repo")
+    sha_indexed = _commit(repo, "a.txt", "indexed")
+    state_dir = tmp_path / "state"
+    _seed_git_state(state_dir, str(repo), sha_indexed)
+    _commit(repo, "b.txt", "not yet indexed")  # created after last_sha recorded
+
+    monkeypatch.setattr(
+        git_config, "load_git_indexing_config", lambda *a, **kw: _git_cfg()
+    )
+    captured: dict = {}
+
+    async def _fake_recover(*, wanted_ids, **kwargs):
+        captured["wanted_ids"] = set(wanted_ids)
+        return sr.chunk_recovery.RecoverySummary()
+
+    monkeypatch.setattr(sr.chunk_recovery, "recover_lost_chunks", _fake_recover)
+
+    folder_manager = MagicMock()
+    folder_manager.list_folders = AsyncMock(return_value=[])
+    manifest_tracker = MagicMock()
+
+    await sr.self_heal_on_startup(
+        folder_manager=folder_manager,
+        manifest_tracker=manifest_tracker,
+        storage_backend=MagicMock(),
+        vector_store=_MockVectorStore(),
+        cache_db_path=None,
+        target_dimensions=0,
+        repo_path=str(repo),
+        git_state_dir=state_dir,
+    )
+
+    assert captured["wanted_ids"] == {f"git_commit:{sha_indexed}"}

@@ -58,9 +58,10 @@ def test_init_cancel_after_estimate_removes_created_brainpalace(tmp_path, monkey
     proj.mkdir()
     (proj / "a.py").write_text("x = 1\n")
     monkeypatch.setattr("brainpalace_cli.commands.init._stdin_is_tty", lambda: True)
-    # Per-capability prompts suppressed by flags ⇒ reranker gate (n = keep
-    # inherited), lemma (n), compute (y), then the estimate gate (y = run it),
-    # then the estimate prompt (cancel). Estimate cancel ⇒ rollback before Proceed.
+    # Index-target picker first (folder=., type=both), then per-capability prompts
+    # suppressed by flags ⇒ reranker gate (n = keep inherited), lemma (n), compute
+    # (y), then the estimate gate (y = run it), then the estimate menu (6 = cancel).
+    # Estimate cancel ⇒ rollback before Proceed.
     result = CliRunner().invoke(
         init_command,
         [
@@ -72,7 +73,7 @@ def test_init_cancel_after_estimate_removes_created_brainpalace(tmp_path, monkey
             "--no-graphrag-extract",
             "--no-archive",
         ],
-        input="n\nn\nc\ny\ncancel\n",
+        input=".\nboth\nn\nn\nc\ny\n6\n",
     )
     assert result.exit_code == 0, result.output
     assert not (proj / ".brainpalace").exists()

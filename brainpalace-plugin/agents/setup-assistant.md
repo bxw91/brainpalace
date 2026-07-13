@@ -26,7 +26,7 @@ triggers:
 skills:
   - configuring-brainpalace
 tools: Read, Glob, Bash, Write, Edit
-last_validated: 2026-07-05
+last_validated: 2026-07-13
 ---
 
 # Setup Assistant Agent
@@ -104,9 +104,9 @@ echo "${OPENAI_API_KEY:+SET}"
 ### 3. Check Project Initialization
 
 ```bash
-# config.yaml is what the server resolves as authoritative; config.json is the
-# CLI init marker. Check the dir so neither file's absence false-negatives.
-ls .brainpalace/config.yaml .brainpalace/config.json 2>/dev/null
+# The init marker is the .brainpalace/ directory itself (init writes config.yaml
+# there). Check the dir so a differently-named config file never false-negatives.
+ls -d .brainpalace 2>/dev/null && ls .brainpalace/config.yaml 2>/dev/null
 ```
 
 **If not initialized:**
@@ -423,7 +423,18 @@ provider) — type a division number to edit, `[A]ll`, `[C]ontinue`, or `[E]xit`
 Billable/secret (consent) fields are never plain-prompted — they prompt with
 their warning **only when you edit their division**, and opt-in billable fields
 stay **OFF** if you accept the grid without touching them (the previous linear
-question wall is removed). The questions are:
+question wall is removed). On a fresh interactive run that will index, `init`
+also asks — **before** the grid — an **index-target picker**: which folder to
+index (type a path relative to the project root, or Enter to keep the whole
+project) and its type (**code + docs** or **docs only**); these feed the same
+targets as `-F/--folder` and `--include-code/--no-code`, and passing either flag
+suppresses the matching prompt. After the grid, an interactive run that will
+index shows a **pre-index token estimate** with a per-top-level-folder
+breakdown and a menu to trim what gets indexed — add or remove a
+file/folder/glob via BrainPalace config (`indexing.exclude_patterns`, sparse,
+cleared by a reset option) or `.gitignore` (written immediately, permanent),
+re-estimate, proceed, or cancel; an empty resulting index is blocked. The
+questions are:
 
 - **Embedding** provider + model
 - **Summarizer** provider + model

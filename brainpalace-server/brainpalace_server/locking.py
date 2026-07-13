@@ -278,3 +278,22 @@ def file_lock(lock_path: Path) -> Iterator[None]:
             _unlock(fd)
         finally:
             os.close(fd)
+
+
+@contextmanager
+def try_file_lock(lock_path: Path) -> Iterator[bool]:
+    """Non-blocking exclusive lock. Yields ``True`` if acquired (released on
+    exit), ``False`` if another process holds it — the body runs either way so
+    the caller can branch (rehome's D9: a second runner sees ``False`` and stays
+    out). Best-effort: a no-op lock platform always yields ``True``."""
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR, 0o644)
+    got = _try_lock_exclusive(fd)
+    try:
+        yield got
+    finally:
+        try:
+            if got:
+                _unlock(fd)
+        finally:
+            os.close(fd)

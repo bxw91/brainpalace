@@ -11,7 +11,7 @@ skills:
   - using-brainpalace
 model: haiku
 tools: Read, Glob, Bash, extraction_submit
-last_validated: 2026-07-04
+last_validated: 2026-07-11
 ---
 
 # Chat Session Extractor Agent

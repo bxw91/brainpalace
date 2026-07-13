@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-24
+last_validated: 2026-07-13
 ---
 
 # Integration Guide
@@ -195,6 +195,5 @@ See `references/api_reference.md` for the `GET /index/cache` and
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `BRAINPALACE_URL` | Override server URL | Auto-discovered |
-| `DOC_SERVE_URL` | Legacy override (still supported) | Auto-discovered |
 | `OPENAI_API_KEY` | Required for vector/hybrid modes | - |
 | `ANTHROPIC_API_KEY` | Optional for summarization | - |

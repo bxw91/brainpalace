@@ -323,4 +323,25 @@ describe("retrieval explorer", () => {
     fireEvent.click(screen.getByTestId("btn-run-query"));
     expect(await screen.findByText("2026-W03: 3")).toBeInTheDocument();
   });
+
+  it("shows a term-extraction hint when scan returns no rows", async () => {
+    vi.mocked(client.replayQuery).mockResolvedValue({
+      results: [],
+      query_time_ms: 2,
+      total_results: 0,
+      scan: [],
+    });
+    wrap(<Queries instanceId="a" />);
+    fireEvent.click(await screen.findByTestId("btn-new-query"));
+    fireEvent.change(screen.getByTestId("select-run-mode"), {
+      target: { value: "scan" },
+    });
+    fireEvent.change(screen.getByTestId("input-run-query"), {
+      target: { value: "--profile" },
+    });
+    fireEvent.click(screen.getByTestId("btn-run-query"));
+    const hint = await screen.findByTestId("scan-empty-hint");
+    expect(hint).toHaveTextContent("single word");
+    expect(hint).toHaveTextContent("bm25");
+  });
 });

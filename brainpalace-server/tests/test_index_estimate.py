@@ -130,6 +130,42 @@ def test_index_request_has_no_generate_summaries():
 
 
 @pytest.mark.asyncio
+async def test_estimate_local_honours_gitignore(tmp_path: Path) -> None:
+    """Serverless estimate (brainpalace init path) must skip .gitignore'd files.
+
+    Regression: estimate_tokens_local built a bare DocumentLoader with no
+    GitignoreMatcher, so project-local ignores (e.g. `.planning/`) were counted
+    even though the real index / file watcher skip them. It must build the same
+    matcher via GitignoreMatcher.from_project_root — parity with api/main.py and
+    file_watcher_service.py. This drives the REAL DocumentLoader (no load_files
+    mock) so the wiring is what's under test.
+    """
+    from brainpalace_server.services.estimate import estimate_tokens_local
+
+    (tmp_path / ".gitignore").write_text("ignored/\n")
+    (tmp_path / "keep.md").write_text("kept documentation\n")
+    (tmp_path / "app.py").write_text("print('hi')\n")
+    ignored = tmp_path / "ignored"
+    ignored.mkdir()
+    (ignored / "leak.md").write_text("secret planning notes\n")
+
+    with (
+        patch(
+            "brainpalace_server.services.indexing_service.load_provider_settings",
+            return_value=_provider("ollama", "nomic-embed-text"),
+        ),
+        _no_git(),
+        _no_sessions(),
+    ):
+        est = await estimate_tokens_local(str(tmp_path))
+
+    # Only keep.md (doc) + app.py (code); the ignored/ subtree is pruned.
+    assert est["files"] == 2
+    assert est["code_files"] == 1
+    assert est["doc_files"] == 1
+
+
+@pytest.mark.asyncio
 async def test_estimate_uses_tiktoken_for_openai() -> None:
     svc = _service([_doc("hello world from brainpalace", "doc")])
     req = IndexRequest(folder_path=".", chunk_size=512, chunk_overlap=0)

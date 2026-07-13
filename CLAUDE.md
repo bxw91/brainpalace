@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-05
+last_validated: 2026-07-13
 ---
 
 # BrainPalace — repo guide for Claude
@@ -199,7 +199,9 @@ Server auto-discovers config by walking up to `.brainpalace/`. If the server is 
 config uses (`OPENAI_API_KEY` / `ANTHROPIC_API_KEY`). Change providers with `brainpalace config`.
 
 Modes: `bm25` (exact terms), `vector` (semantic/concepts), `hybrid` (default), `graph`
-(dependencies/relationships), `multi` (fusion), `compute` (set-level aggregates over sessions).
+(dependencies/relationships), `multi` (fusion), `compute` (set-level aggregates over sessions),
+`scan` (map-reduce over the session archive), `absence` (anti-join over records), `timeline`
+(edge-validity/supersession history walk).
 
 ## Live watch, session memory, status
 

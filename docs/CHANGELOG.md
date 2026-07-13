@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-10
+last_validated: 2026-07-13
 ---
 
 # Changelog
@@ -20,6 +20,73 @@ Entries are kept short (≤ 3 sentences and ≤ 320 characters); see
 _Entries accumulate here between releases. The release step renames this to
 `## [YY.M.N] - DATE` and adds a fresh empty `## [Unreleased]` above it — never
 hand-number an unreleased section._
+
+## [26.7.5] - 2026-07-13
+
+### Added
+- **Project auto-rehome: move an indexed project, no re-embedding.** When the server
+  detects its project moved on disk, startup prefix-swaps `old_root → new_root` across
+  every path-addressed store (folder/manifest/chunk/graph/reference) before any
+  destructive mutator; if it can't finish in-boot the instance enters QUARANTINE — a
+  `503` gate serves only health/runtime/rehome and freezes
+  prune/self-heal/watcher/job-worker. New `GET /rehome/` (status) + `POST
+  /rehome/resume` (retry from checkpoint), surfaced by `brainpalace rehome`
+  (status) / `--resume` / `--json`.
+- **Per-section cost class (free / LLM / LLM/subagent).** Every config section
+  now carries a cost badge so you can see at a glance whether enabling it invokes
+  a model: `free` (no model), `LLM` (billable on a cloud provider), or
+  `LLM/subagent` (always uses an LLM once on — free-tier Claude Code subagent
+  quota or a billable provider). Single-sourced from `config_fields.GROUP_COST`,
+  rendered as a header suffix in the `init` review grid (overview + drill) and as
+  a badge on each dashboard Config section (`ui_schema` `SECTION_COST`).
+- **`init` review grid: per-section description line.** Each config section in
+  the interactive `init` overview now prints a one-line, width-truncated
+  description under its header (dim, ellipsis-cut), sourced from the existing
+  single-source `GROUP_DESCRIPTIONS`; the full text still shows when drilling in
+  to edit. Sections without a description (embedding/reranker/…) are unchanged.
+- **`scan`: bare single-word term under explicit `--mode scan`.** A one-word
+  query now counts that word without needing quotes or a "mention" tell
+  (`scan profile` == `scan "profile"`); multi-word stays strict, and the hybrid
+  auto-router is unchanged (never guesses a term). Dashboard empty-scan hint +
+  `docs/SCAN.md` updated to match.
+- **`init` index-target picker.** A fresh interactive `init` that will index now
+  asks — before the review grid — which folder to index (a path, or Enter for the
+  whole project) and its type (code + docs / docs only), feeding the same targets
+  as `-F/--folder` and `--include-code/--no-code`; either flag suppresses its prompt.
+- **`brainpalace init`: interactive token-estimate ignore-loop.** After config, an
+  interactive init shows a per-top-level-folder token breakdown of the index target
+  and a menu to add/remove excludes (`indexing.exclude_patterns` or `.gitignore`),
+  re-estimate, proceed, or cancel. `.gitignore` edits are immediate and permanent,
+  an empty index is blocked, and `--yes`/non-interactive/CI print the estimate once
+  and proceed (no menu).
+
+### Fixed
+- **Initial index no longer blocked by the embed-token budget cap.** A folder's
+  FIRST index (no prior manifest) is now exempt from
+  `indexing.max_embed_tokens_per_job` server-side, so a large project's initial
+  index can exceed 100k tokens without pausing as `blocked`. The cap still guards
+  every re-index, and each folder's first index is exempt independently across the
+  multi-job init burst.
+- **Self-heal no longer reports not-yet-indexed git commits as "need
+  re-embed" residue** — the git wanted-set is now bounded by the git
+  indexer's recorded `last_sha`, matching the manifest contract.
+- **Dashboard Queries tab polish.** Compare-mode results now stack vertically
+  (one full-width column per mode) instead of a 4-up grid; live "New query"
+  results render the same path · score · snippet detail as the history drawer
+  (was a bare file list); result snippet boxes get a higher-contrast scrollbar.
+  An empty `scan` run now shows a term-extraction hint (quote the phrase / use a
+  "mention" tell; `bm25` to locate rather than count) instead of the opaque
+  "No aggregation rows."
+- **Docs re-grounded to live code (4 files).** CONFIGURATION / SESSION_INDEXING /
+  MCP_SETUP + `brainpalace-config`: dropped the removed `GRAPH_USE_LLM_EXTRACTION`,
+  `session_extraction` drain knobs, `drain-tick`/babysitter, `extract-queue.txt`,
+  the fictional `cache:` config block, LangExtract, and phantom
+  `/brainpalace-providers`/`-embeddings`; MCP tool surface 9 → 12.
+- **`init` token estimate now honours `.gitignore`.** The serverless pre-index
+  estimate built a bare `DocumentLoader` with no `GitignoreMatcher`, so
+  project-local ignores (e.g. `.planning/`) were counted even though the real
+  index and file watcher skip them — inflating the file/token figure. It now
+  builds the matcher via `GitignoreMatcher.from_project_root`, matching them.
 
 ## [26.7.4] - 2026-07-10
 

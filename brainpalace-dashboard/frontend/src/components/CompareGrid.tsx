@@ -52,10 +52,7 @@ export function CompareGrid({ runs }: { runs: CompareRun[] }) {
   );
 
   return (
-    <div
-      data-testid="compare-grid"
-      className="grid gap-3 md:grid-cols-2 xl:grid-cols-4"
-    >
+    <div data-testid="compare-grid" className="flex flex-col gap-3">
       {runs.map((run) => (
         <div
           key={run.mode}

@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-09
+last_validated: 2026-07-13
 ---
 
 # Ingestion Contract (Phase 6)

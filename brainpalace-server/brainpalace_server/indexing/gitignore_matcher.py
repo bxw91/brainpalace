@@ -18,6 +18,36 @@ import pathspec
 
 logger = logging.getLogger(__name__)
 
+# Directory names never indexed (VCS internals, virtualenvs, dep trees, build
+# artefacts, tool caches). The construction-time scan prunes them so it never
+# descends into a huge `.venv`/`.git`/`node_modules` just to look for a
+# `.gitignore` — a `.gitignore` inside one of these only governs content we
+# never index anyway, so skipping it changes no indexed-file verdict while
+# turning an O(all-files) cold walk into O(indexed-tree). (Mirrors
+# DocumentLoader.DEFAULT_EXCLUDE_PATTERNS' directory names.)
+_SCAN_PRUNE_DIRS = frozenset(
+    {
+        ".git",
+        ".venv",
+        "venv",
+        "node_modules",
+        "__pycache__",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".tox",
+        "dist",
+        "build",
+        "target",
+        ".next",
+        ".nuxt",
+        "coverage",
+        ".brainpalace",
+        ".claude",
+        ".claude-plugin",
+    }
+)
+
 
 class GitignoreMatcher:
     """Per-project `.gitignore` matcher with nested + negation support.
@@ -43,7 +73,13 @@ class GitignoreMatcher:
         """Scan project_root for `.gitignore` files and build the matcher."""
         root = project_root.resolve()
         specs: dict[Path, pathspec.PathSpec] = {}
-        for gitignore in root.rglob(".gitignore"):
+        # Pruned walk (not rglob): skip never-indexed megadirs so cold-cache
+        # construction scales with the indexed tree, not the whole checkout.
+        for dirpath, dirnames, filenames in os.walk(root):
+            dirnames[:] = [d for d in dirnames if d not in _SCAN_PRUNE_DIRS]
+            if ".gitignore" not in filenames:
+                continue
+            gitignore = Path(dirpath) / ".gitignore"
             if not gitignore.is_file():
                 continue
             try:

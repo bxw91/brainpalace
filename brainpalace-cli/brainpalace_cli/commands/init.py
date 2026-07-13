@@ -118,7 +118,7 @@ def build_default_provider_config(
     docs, no extra dependencies. The store defaults to ``sqlite`` (persistent,
     incrementally-writable, temporal-validity) rather than the in-memory
     ``simple`` store. Users can run `brainpalace config wizard` to override
-    (e.g. switch to LangExtract on docs).
+    (e.g. enable doc-graph extraction via ``extraction.mode``).
 
     Task 4e: ``extraction.provider_context_tokens`` is prefilled from the
     model→window map when the picked summarization model is known; left absent
@@ -1162,6 +1162,80 @@ def ensure_gitignore_entry(project_root: Path, entry: str = ".brainpalace/") -> 
     return True
 
 
+_GLOB_METACHARS = set("*?[")
+
+
+def _normalize_exclude_input(raw: str, target: Path) -> str:
+    """Turn a typed value into an ``indexing.exclude_patterns`` glob.
+
+    A value containing a glob metachar is stored verbatim; a plain name is
+    anchored so ``fnmatch`` (``**``→``*`` on the absolute path) actually matches
+    it: an existing dir → ``**/<name>/**``, an existing file → ``**/<name>``,
+    otherwise a dotted leaf is treated as a file, else a folder."""
+    raw = raw.strip()
+    if any(c in raw for c in _GLOB_METACHARS):
+        return raw
+    name = raw.strip("/")
+    p = target / name
+    if p.is_dir():
+        return f"**/{name}/**"
+    if p.is_file():
+        return f"**/{name}"
+    return f"**/{name}" if "." in Path(name).name else f"**/{name}/**"
+
+
+def _read_project_excludes(state_dir: Path) -> list[str]:
+    """Raw project-file ``indexing.exclude_patterns`` (extras only; [] if absent)."""
+    cfg = state_dir / "config.yaml"
+    try:
+        data = yaml.safe_load(cfg.read_text()) or {}
+    except (OSError, yaml.YAMLError):
+        return []
+    block = data.get("indexing") if isinstance(data, dict) else None
+    pats = block.get("exclude_patterns") if isinstance(block, dict) else None
+    return list(pats) if isinstance(pats, list) else []
+
+
+def _write_project_excludes(state_dir: Path, patterns: list[str] | None) -> None:
+    """Sparsely set ``indexing.exclude_patterns``; remove the key (and an empty
+    ``indexing`` block) when ``patterns`` is falsy. Preserves all other keys."""
+    cfg = state_dir / "config.yaml"
+    data: dict[str, Any] = {}
+    if cfg.exists():
+        try:
+            loaded = yaml.safe_load(cfg.read_text()) or {}
+            if isinstance(loaded, dict):
+                data = loaded
+        except (OSError, yaml.YAMLError):
+            data = {}
+    block = data.get("indexing")
+    if not isinstance(block, dict):
+        block = {}
+    if patterns:
+        block["exclude_patterns"] = patterns
+    else:
+        block.pop("exclude_patterns", None)
+    if block:
+        data["indexing"] = block
+    else:
+        data.pop("indexing", None)
+    with open(cfg, "w", encoding="utf-8") as f:
+        yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
+
+
+def _gitignore_remove_line(target: Path, line: str) -> bool:
+    """Remove a single ``line`` from ``target/.gitignore``. Returns True if removed."""
+    gi = target / ".gitignore"
+    if not gi.exists():
+        return False
+    lines = gi.read_text().splitlines()
+    keep = [ln for ln in lines if ln.strip() != line.strip()]
+    if len(keep) == len(lines):
+        return False
+    gi.write_text("\n".join(keep) + ("\n" if keep else ""))
+    return True
+
+
 def _brainpalace_argv() -> list[str]:
     """Resolve how to invoke a nested ``brainpalace`` subcommand.
 
@@ -1436,58 +1510,220 @@ def _emit_init_result(
         console.print("\n[dim]" + hint + "[/]")
 
 
+def _prompt_index_target(
+    project_root: Path,
+    folders: tuple[str, ...],
+    include_code: bool,
+    *,
+    folders_explicit: bool,
+    code_explicit: bool,
+) -> tuple[tuple[str, ...], bool]:
+    """Interactive index-target picker, asked BEFORE the config-review grid.
+
+    Two questions: which folder to index (a path relative to the project root,
+    or ``.`` / empty to keep the whole project — today's default) and its index
+    type (code + docs, or docs only). The answers populate the SAME ``folders``
+    / ``include_code`` the ``-F`` / ``--include-code`` flags feed, so every
+    downstream consumer (token estimate, provider preflight, ``folders add``)
+    targets the choice with no new plumbing.
+
+    Explicit flags win and suppress their prompt (``folders_explicit`` /
+    ``code_explicit``). Keeping the root default leaves ``folders`` empty, so the
+    index target stays ``project_root`` via the existing empty-folders fallbacks
+    — a bare Enter reproduces plain ``init`` exactly. Type maps to the existing
+    binary: both → ``include_code=True``, docs → ``False`` (no code-only state).
+    """
+    console.print("\n[bold]What should BrainPalace index?[/]")
+    if not folders_explicit:
+        while True:
+            answer = click.prompt(
+                "Folder to index (path relative to the project root, or . for "
+                "the whole project)",
+                default=".",
+            ).strip()
+            if answer in ("", ".", "./"):
+                break  # keep root default → leave `folders` empty (today's path)
+            candidate = (project_root / answer).resolve()
+            if candidate.is_dir():
+                folders = (str(candidate),)
+                break
+            console.print(f"[yellow]Not a folder:[/] {candidate}. Try again.")
+    if not code_explicit:
+        kind = click.prompt(
+            "Index type",
+            type=click.Choice(["both", "docs"]),
+            default="both",
+        )
+        include_code = kind == "both"
+    return folders, include_code
+
+
 def _estimate_and_confirm_local(
-    targets: list[Path], config_yaml: Path, include_code: bool
+    targets: list[Path],
+    config_yaml: Path,
+    include_code: bool,
+    *,
+    interactive: bool = True,
+    state_dir: Path | None = None,
+    project_root: Path | None = None,
 ) -> bool | None:
-    """Server-less pre-index token-estimate loop, shown BEFORE any data write.
+    """Interactive pre-index token-estimate + exclude-trimming loop.
 
-    Runs the in-process estimate (no server, no enqueue) against the just-written
-    project config, prints the breakdown, then lets the user proceed, toggle the
-    code/docs scope and re-estimate, or cancel. Returns the final ``include_code``
-    to index with, or ``None`` to cancel the whole init (caller rolls back).
+    Shows a per-top-level-folder breakdown of the init target, then a menu to
+    add/remove excludes (BrainPalace config or .gitignore), reset the BP exclude
+    list, re-estimate, proceed, or cancel. Returns ``include_code`` unchanged on
+    proceed, or ``None`` to cancel the whole init (caller rolls back).
 
-    ``targets`` is the list of folders that will actually be indexed at start —
-    the project root for a plain init, or the ``-F/--folder`` folders when given.
-    Each is estimated and printed in turn.
-
-    Only the code/docs scope is adjustable here — it's the one init answer that
-    actually moves the *embedding* estimate. Provider/session/git answers are
-    already resolved into the config at this point.
+    ``interactive`` gates the menu: a non-interactive run (``--yes``/CI) prints
+    the estimate once and proceeds. Config excludes are project-global; .gitignore
+    edits write raw lines to the primary target's .gitignore and are permanent.
     """
     from brainpalace_server.services.estimate import estimate_tokens_local
 
-    from .estimate_util import print_token_estimate
+    from .estimate_util import print_folder_estimate
 
-    while True:
+    state_dir = state_dir or config_yaml.parent
+    primary = targets[0] if targets else Path.cwd()
+    project_root = project_root or primary
+    baseline_excludes = _read_project_excludes(state_dir)
+    session_gitignore: list[str] = []
+
+    def _run() -> list[dict[str, Any]] | None:
+        out: list[dict[str, Any]] = []
+        # A live spinner so the user knows the scan+tokenize is working (it can
+        # take several seconds on a first, cold-cache run of a large tree). No-op
+        # on a non-TTY (piped/CI); the numbers below are what matters.
         try:
-            for target in targets:
-                with _quiet_server_logs():
-                    est = asyncio.run(
-                        estimate_tokens_local(
-                            str(target),
-                            include_code=include_code,
-                            config_path=str(config_yaml),
+            with console.status(
+                "[dim]Scanning files & estimating tokens…[/]", spinner="dots"
+            ):
+                for target in targets:
+                    with _quiet_server_logs():
+                        est = asyncio.run(
+                            estimate_tokens_local(
+                                str(target),
+                                include_code=include_code,
+                                config_path=str(config_yaml),
+                            )
                         )
-                    )
-                print_token_estimate(console, est)
+                    out.append(est)
         except Exception as exc:  # noqa: BLE001 - advisory only, never block init
             console.print(f"[yellow]Estimate unavailable ({exc}); continuing.[/]")
+            return None
+        return out
+
+    ests = _run()
+    stale = False
+    while True:
+        if ests is not None:
+            for est in ests:
+                print_folder_estimate(
+                    console,
+                    est,
+                    stale=stale,
+                    bp_excludes=_read_project_excludes(state_dir),
+                    session_gitignore=session_gitignore,
+                )
+        if not interactive:
             return include_code
+
         console.print(
-            f"[dim]Scope: {'code + docs' if include_code else 'docs only'}.[/]"
+            "\n  1) add file/folder to ignore\n"
+            "  2) remove file/folder from ignore\n"
+            "  3) reset BrainPalace ignore list (BP config only)\n"
+            "  4) re-estimate tokens\n"
+            "  5) proceed with indexing\n"
+            "  6) cancel initialization"
         )
         action = click.prompt(
-            "Proceed with indexing, change scope (code/docs) and re-estimate, "
-            "or cancel?",
-            type=click.Choice(["proceed", "change", "cancel"]),
-            default="proceed",
+            "Choose",
+            type=click.Choice(["1", "2", "3", "4", "5", "6"]),
+            default="5",
         )
-        if action == "change":
-            include_code = not include_code
+
+        if action == "1":
+            raw = click.prompt(
+                "Type full file/folder name, or a glob to match several", default=""
+            ).strip()
+            if not raw:
+                continue
+            where = (
+                click.prompt(
+                    "Save to [B]rainPalace config or [G]itignore? (Enter = cancel)",
+                    default="",
+                )
+                .strip()
+                .lower()
+            )
+            if where in ("b", "brainpalace"):
+                pat = _normalize_exclude_input(raw, primary)
+                cur = _read_project_excludes(state_dir)
+                if pat not in cur:
+                    _write_project_excludes(state_dir, cur + [pat])
+                stale = True
+            elif where in ("g", "gitignore"):
+                console.print(
+                    "[yellow]This change will be saved now into your .gitignore "
+                    "file. It is permanent — undo only by editing .gitignore "
+                    "manually later.[/]"
+                )
+                if ensure_gitignore_entry(primary, entry=raw):
+                    session_gitignore.append(raw)
+                stale = True
             continue
-        if action == "cancel":
+
+        if action == "2":
+            raw = click.prompt(
+                "Type the file/folder name or pattern to remove", default=""
+            ).strip()
+            if not raw:
+                continue
+            where = (
+                click.prompt(
+                    "Remove from [B]rainPalace config or [G]itignore? (Enter = cancel)",
+                    default="",
+                )
+                .strip()
+                .lower()
+            )
+            if where in ("b", "brainpalace"):
+                pat = _normalize_exclude_input(raw, primary)
+                cur = _read_project_excludes(state_dir)
+                new = [p for p in cur if p not in (pat, raw)]
+                if new != cur:
+                    _write_project_excludes(state_dir, new or None)
+                stale = True
+            elif where in ("g", "gitignore"):
+                if _gitignore_remove_line(primary, raw):
+                    session_gitignore[:] = [
+                        ln for ln in session_gitignore if ln.strip() != raw.strip()
+                    ]
+                stale = True
+            continue
+
+        if action == "3":
+            if click.confirm(
+                "Reset the BrainPalace ignore list to its pre-init state?",
+                default=False,
+            ):
+                _write_project_excludes(state_dir, baseline_excludes or None)
+                stale = True
+            continue
+
+        if action == "4":
+            ests = _run()
+            stale = False
+            continue
+
+        if action == "5":
+            total_files = sum(e.get("files", 0) for e in ests) if ests else 0
+            if ests is not None and total_files == 0:
+                console.print("[yellow]Nothing left to index.[/]")
+                continue
+            return include_code
+
+        if action == "6":
             return None
-        return include_code
 
 
 def _start_and_watch(
@@ -1754,7 +1990,7 @@ def _start_and_watch(
     default=None,
     help=(
         "Extract a knowledge graph from document text "
-        "(installs the optional langextract dep on enable)."
+        "(LLM triplet extraction via extraction.mode)."
     ),
 )
 @click.option(
@@ -2067,6 +2303,29 @@ def init_command(
         # to empty so the downstream "if plan.confirm and grid_edits:" writer is
         # safe on non-interactive / --yes paths where plan.confirm is False.
         grid_edits: dict[str, Any] = {}
+
+        # Interactive index-target picker — asked FIRST, before the config grid.
+        # Fresh interactive runs that will actually index (created .brainpalace
+        # this run, will start + watch) ask which folder + which type to index,
+        # populating the same `folders` / `include_code` the -F / --include-code
+        # flags feed. Explicit flags win (no prompt). See _prompt_index_target.
+        if created_brainpalace and plan.confirm and plan.start and plan.watch != "off":
+            from click.core import ParameterSource
+
+            _ctx = click.get_current_context()
+            _folders_explicit = (
+                _ctx.get_parameter_source("folders") == ParameterSource.COMMANDLINE
+            )
+            _code_explicit = (
+                _ctx.get_parameter_source("include_code") == ParameterSource.COMMANDLINE
+            )
+            folders, include_code = _prompt_index_target(
+                project_root,
+                folders,
+                include_code,
+                folders_explicit=_folders_explicit,
+                code_explicit=_code_explicit,
+            )
 
         if plan.confirm:
             plugin_present = claude_plugin_installed(project=project_root)
@@ -2611,6 +2870,9 @@ def init_command(
                     [Path(f) for f in folders] if folders else [project_root],
                     resolved_state_dir / "config.yaml",
                     include_code,
+                    interactive=plan.confirm,
+                    state_dir=resolved_state_dir,
+                    project_root=project_root,
                 )
                 if chosen is None:
                     if created_brainpalace:

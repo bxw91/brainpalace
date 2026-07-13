@@ -4,7 +4,7 @@ description: Structural graph queries — shortest paths, impact analysis, and c
 parameters:
 skills:
   - using-brainpalace
-last_validated: 2026-07-05
+last_validated: 2026-07-10
 ---
 
 # BrainPalace Graph Queries

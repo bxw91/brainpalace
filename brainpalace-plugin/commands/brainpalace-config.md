@@ -6,7 +6,7 @@ context: brainpalace
 agent: setup-assistant
 skills:
   - configuring-brainpalace
-last_validated: 2026-07-05
+last_validated: 2026-07-13
 ---
 
 # Configure BrainPalace
@@ -300,7 +300,9 @@ export GEMINI_API_KEY="AIza..."
 
 **For Custom Mix (Option 4):**
 
-Redirect to: `/brainpalace:brainpalace-providers switch`
+Run `brainpalace init` (or `brainpalace config wizard`) and edit the **Embedding**
+and **Summarization** divisions separately in the review grid — each can point at a
+different provider.
 
 **For Ollama + Mistral (Option 5):**
 
@@ -376,7 +378,7 @@ Provider Options:
 
 4. CUSTOM MIX
    - Choose different providers for each function
-   - Run: /brainpalace:brainpalace-providers switch
+   - Run: brainpalace init  (edit Embedding + Summarization divisions separately)
 
 5. OLLAMA + MISTRAL (Local, Free)
    - Better summarization than llama3.2
@@ -582,8 +584,8 @@ else:
 
 ```bash
 echo "=== Current Exclude Patterns ==="
-if [ -f ".brainpalace/config.json" ]; then
-  cat .brainpalace/config.json | grep -A20 '"exclude_patterns"'
+if [ -f ".brainpalace/config.yaml" ]; then
+  grep -A20 'exclude_patterns:' .brainpalace/config.yaml
 else
   echo "Using defaults: node_modules, __pycache__, .venv, venv, .git, dist, build, target"
 fi
@@ -604,12 +606,15 @@ Options:
 
 **If Option 2 (Custom):**
 
-Ask the user which additional directories to exclude, then update `.brainpalace/config.json`:
+Ask the user which additional directories to exclude, then add them under
+`indexing.exclude_patterns` in `.brainpalace/config.yaml`:
 
-```bash
-# Example: Add custom exclude pattern
-# Read current config, add pattern, write back
-cat .brainpalace/config.json | jq '.exclude_patterns += ["**/my-custom-dir/**"]' > /tmp/config.json && mv /tmp/config.json .brainpalace/config.json
+```yaml
+# .brainpalace/config.yaml
+indexing:
+  exclude_patterns:
+    - "**/node_modules/**"
+    - "**/my-custom-dir/**"    # your addition
 ```
 
 ### Default Exclude Patterns
@@ -644,9 +649,9 @@ graph-based queries like "what classes depend on X?" alongside standard search.
 
 Options:
 1. Disabled (Default) - Standard vector + BM25 hybrid search only
-2. AST + LangExtract (Recommended for mixed repos) - GraphRAG with JSON persistence,
-   AST/code metadata for code chunks, and LangExtract for docs/prose chunks
-3. sqlite + AST + LangExtract - Same extractor behavior with the sqlite persistent + temporal graph store
+2. AST + doc extraction (Recommended for mixed repos) - GraphRAG with JSON persistence,
+   AST/code metadata for code chunks, and LLM triplet extraction (`extraction.mode`) for docs/prose chunks
+3. sqlite + AST + doc extraction - Same extractor behavior with the sqlite persistent + temporal graph store
 4. AST only - GraphRAG with JSON persistence and AST/code metadata only
 ```
 
@@ -654,8 +659,8 @@ Options:
 
 The CLI wizard prompt text mirrors the current command implementation:
 
-- `2) AST for code + LangExtract for docs (recommended for mixed repos)`
-- `3) sqlite + AST for code + LangExtract for docs`
+- `2) AST for code + LLM extraction for docs (recommended for mixed repos)`
+- `3) sqlite + AST for code + LLM extraction for docs`
 - `4) AST for code only`
 
 ### If Option 2 (AST + doc extraction, subagent, simple JSON persistence):
@@ -758,23 +763,17 @@ The embedding cache avoids recomputing embeddings for unchanged content.
 Healthy cache shows >80% hit rate after first full index.
 
 Options:
-1. Use defaults - 500 MB disk cache, 1000 in-memory entries
+1. Use defaults - 500 MB disk cache, 10000 in-memory entries
 2. Customize - Set disk size and memory entries manually
 3. Disable - No caching (not recommended for cloud providers)
 ```
 
-**If Option 2 (Customize):** Ask for disk limit (MB) and memory entries, then add to config.yaml:
+**If Option 2 (Customize):** Ask for disk limit (MB) and memory entries. These are
+**env-var only** (there is no `cache:` config block):
 
-```yaml
-cache:
-  embedding_max_disk_mb: <user_value>     # e.g. 1000
-  embedding_max_mem_entries: <user_value> # e.g. 2000
-```
-
-Or via environment variables:
 ```bash
 export EMBEDDING_CACHE_MAX_DISK_MB=1000
-export EMBEDDING_CACHE_MAX_MEM_ENTRIES=2000
+export EMBEDDING_CACHE_MAX_MEM_ENTRIES=20000
 ```
 
 **If Option 3 (Disable):**
@@ -795,20 +794,13 @@ Caches repeated identical queries to reduce latency.
 Note: graph and multi-mode queries are never cached.
 
 Options:
-1. Use defaults - 300s TTL, 256 max results
+1. Use defaults - 3600s TTL (1 hour), 256 max results
 2. Customize - Set TTL and max size
 3. Disable - TTL=0 (no caching)
 ```
 
-**If Option 2 (Customize):** Add to config.yaml:
+**If Option 2 (Customize):** These are **env-var only** (no `cache:` config block):
 
-```yaml
-cache:
-  query_cache_ttl: <seconds>    # e.g. 600 for stable codebases
-  query_cache_max_size: <count> # e.g. 512 for large query workloads
-```
-
-Or via environment variables:
 ```bash
 export QUERY_CACHE_TTL=600
 export QUERY_CACHE_MAX_SIZE=512
@@ -1222,6 +1214,5 @@ The `brainpalace config` group has these subcommands:
 
 ## Related Commands
 
-- `/brainpalace:brainpalace-embeddings` - Configure embedding provider only
 - `/brainpalace:brainpalace-index` - Index documents with current exclude settings
 - `/brainpalace:brainpalace-init` - Initialize project (creates .brainpalace/ directory)

@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-24
+last_validated: 2026-07-13
 ---
 
 # BrainPalace API Reference
@@ -367,7 +367,7 @@ brainpalace cache clear --yes        # Clear cache (skips confirmation)
 
 **Folder Options (folders add):**
 - `--include-code` - Index source code files alongside documents
-- `--watch MODE` - Watch mode: `auto` (enable file watching) or `off` (default)
+- `--watch MODE` - Watch mode: `auto` (enable file watching, default) or `off`
 - `--debounce N` - Debounce interval in seconds for file watching (default: 30)
 
 **Folders List Output:**
@@ -443,7 +443,7 @@ Folders configured with `watch_mode: auto` are automatically re-indexed when fil
 - After `brainpalace folders add ./src --watch auto`, the server monitors the folder for file changes
 - Per-folder debounce collapses rapid changes (e.g., git checkout, IDE save-all) into a single reindex job
 - Watcher-triggered jobs use incremental diff (`force=False`) for efficiency -- only changed files are re-processed
-- Jobs created by the watcher show `source: auto` in the jobs list
+- Jobs created by the watcher show `source: watch` in the jobs list
 
 **Excluded directories:**
 The watcher ignores changes in: `.git/`, `node_modules/`, `__pycache__/`, `dist/`, `build/`, `.next/`, `.nuxt/`, `coverage/`, `htmlcov/`

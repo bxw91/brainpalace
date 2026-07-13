@@ -25,6 +25,7 @@ from .query import query_command
 from .recall import recall_command
 from .records import records_group
 from .references import references_group
+from .rehome import rehome_command
 from .remember import remember_command
 from .reset import reset_command
 from .rules import rules_group
@@ -67,6 +68,7 @@ __all__ = [
     "records_group",
     "references_group",
     "recall_command",
+    "rehome_command",
     "remember_command",
     "reset_command",
     "rules_group",

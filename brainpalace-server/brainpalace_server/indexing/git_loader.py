@@ -46,16 +46,27 @@ def git_toplevel(repo_path: str | Path) -> Path | None:
 
 
 def list_indexable_shas(
-    repo_path: str | Path, *, depth: int = 0, paths: list[str] | None = None
+    repo_path: str | Path,
+    *,
+    depth: int = 0,
+    paths: list[str] | None = None,
+    rev: str | None = None,
 ) -> set[str] | None:
     """Shas the git indexer would walk: ``git log`` from HEAD, depth-capped,
     path-scoped — the same invocation shape as :func:`load_commits` minus the
     record payload. Returns ``None`` when they can't be determined (not a
     repo / git error / empty history), never raises.
+
+    ``rev`` walks from that commit instead of the implicit ``HEAD`` — used by
+    self-heal to bound the wanted-set by the git indexer's recorded progress
+    rather than the live branch tip. An unreachable ``rev`` (e.g. GC'd after a
+    history rewrite) makes ``git log`` fail, which correctly yields ``None``.
     """
     args = ["log", "--format=%H"]
     if depth and depth > 0:
         args.append(f"--max-count={depth}")
+    if rev:
+        args.append(rev)
     if paths:
         args.append("--")
         args.extend(paths)

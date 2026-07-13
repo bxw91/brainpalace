@@ -69,6 +69,8 @@ export const UiSchemaSection = z.object({
   key: z.string(),
   label: z.string(),
   description: z.string().optional(),
+  /** Cost class: "free" | "LLM" | "LLM/subagent" — rendered as a header badge. */
+  cost: z.string().optional(),
   fields: z.array(SchemaField),
 });
 export type UiSchemaSection = z.infer<typeof UiSchemaSection>;

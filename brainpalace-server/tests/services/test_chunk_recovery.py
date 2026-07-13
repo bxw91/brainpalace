@@ -617,7 +617,7 @@ async def test_self_heal_unions_git_ids_into_recovery(monkeypatch, tmp_path):
     monkeypatch.setattr(
         startup_reconcile,
         "_indexable_git_shas",
-        lambda _p, config=None: {"sha1", "sha2"},
+        lambda _p, config=None, git_state_dir=None: {"sha1", "sha2"},
     )
 
     await startup_reconcile.self_heal_on_startup(

@@ -37,6 +37,30 @@ logger = logging.getLogger(__name__)
 _STATE_FILE = "git_index_state.json"
 
 
+def load_git_last_sha(state_dir: str | Path | None, repo_key: str) -> str | None:
+    """Read the persisted git-index last-sha for ``repo_key``, or ``None``.
+
+    Shared by :class:`GitHistoryIndexService` (incremental indexing) and
+    startup self-heal (bounding the wanted-set) so both read the exact same
+    state file / key without diverging. ``None`` covers "no state dir",
+    "never indexed", and "state file unreadable" alike — all mean the same
+    thing to a caller: nothing recorded yet.
+    """
+    if not state_dir:
+        return None
+    path = state_file_path(Path(state_dir), _STATE_FILE)
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    sha = data.get(repo_key)
+    return sha if isinstance(sha, str) else None
+
+
 class GitHistoryIndexService:
     """Ingest git commit history into the shared index."""
 
@@ -111,8 +135,7 @@ class GitHistoryIndexService:
 
         target = config.repo_path or repo_path
         repo_name = Path(target).name or "git"
-        state = self._load_state()
-        last_sha = state.get(target)
+        last_sha = load_git_last_sha(self.state_dir, target)
 
         scope_paths = resolve_commit_scope(target, config.path_filter)
         commits = load_commits(

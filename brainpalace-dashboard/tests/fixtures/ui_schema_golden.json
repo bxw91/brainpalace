@@ -89,6 +89,7 @@
   },
   "sections": [
     {
+      "cost": "LLM",
       "fields": [
         {
           "default": "openai",
@@ -163,6 +164,7 @@
       "label": "Embedding"
     },
     {
+      "cost": "LLM",
       "fields": [
         {
           "default": "anthropic",
@@ -244,6 +246,7 @@
       "label": "Summarization"
     },
     {
+      "cost": "LLM",
       "fields": [
         {
           "default": false,
@@ -304,6 +307,7 @@
       "label": "Reranker"
     },
     {
+      "cost": "free",
       "fields": [
         {
           "default": false,
@@ -353,6 +357,7 @@
       "label": "BM25"
     },
     {
+      "cost": "LLM/subagent",
       "description": "The knowledge graph (entities + relationships) that powers graph and multi query modes.",
       "fields": [
         {
@@ -391,6 +396,7 @@
       "label": "GraphRAG"
     },
     {
+      "cost": "free",
       "description": "Language-server (LSP) cross-references for the code graph \u2014 exact cross-file `calls` edges. auto = enable a language when its server binary (e.g. pyright) is detected; on = force; off = disable. AST-only intra-file calls work regardless.",
       "fields": [
         {
@@ -430,6 +436,7 @@
       "label": "Graph Indexing : LSP"
     },
     {
+      "cost": "free",
       "description": "Aggregation query mode that sums typed numeric records extracted from sessions. Powers the compute query mode.",
       "fields": [
         {
@@ -445,6 +452,7 @@
       "label": "Compute Query"
     },
     {
+      "cost": "free",
       "description": "Where indexed vectors live. chroma is the zero-setup local default; postgres is for shared/larger deployments.",
       "fields": [
         {
@@ -561,6 +569,7 @@
       "label": "Storage"
     },
     {
+      "cost": "free",
       "description": "Large-file re-embed guards and which paths are skipped when indexing. exclude_patterns are globs never indexed.",
       "fields": [
         {
@@ -645,6 +654,7 @@
       "label": "Indexing"
     },
     {
+      "cost": "LLM",
       "description": "Index git history so past commits and decisions are searchable alongside code.",
       "fields": [
         {
@@ -698,6 +708,7 @@
       "label": "Git Indexing"
     },
     {
+      "cost": "free",
       "description": "COPIES raw chat transcripts verbatim to a local folder \u2014 a free, durable backup. Does NOT embed or summarize; just the raw store.",
       "fields": [
         {
@@ -742,6 +753,7 @@
       "label": "Chat Session : Archiving"
     },
     {
+      "cost": "LLM",
       "description": "EMBEDS raw chat transcripts into vectors for semantic recall (billable). Separate from the copy (Chat Session : Archiving) and the summary (Chat Session : Summarization).",
       "fields": [
         {
@@ -806,6 +818,7 @@
       "label": "Chat Session : Vector Indexing"
     },
     {
+      "cost": "LLM/subagent",
       "description": "DISTILLS a finished chat transcript into a structured summary, decisions, and graph triples \u2014 the curated 'memory'. Not a copy (Chat Session : Archiving) and not an embed (Chat Session : Vector Indexing).",
       "fields": [
         {
@@ -821,6 +834,7 @@
       "label": "Chat Session : Summarization"
     },
     {
+      "cost": "LLM/subagent",
       "description": "Shared LLM extraction engine \u2014 selects how doc-graph triplets AND session distillation are processed. Default off (cost-safe). subagent = free Claude Code Haiku; provider = server-side LLM (BILLABLE, requires EXTRACTION_PROVIDER_ENABLED=true); auto = subagent + paid safety-net.",
       "fields": [
         {
@@ -929,6 +943,7 @@
       "label": "Extraction Engine"
     },
     {
+      "cost": "free",
       "description": "Runtime bind settings \u2014 host/IP and port range the server uses at start. Inherited project\u2192global like every other config.yaml key. Changes take effect on the next server restart.",
       "fields": [
         {
@@ -968,6 +983,7 @@
       "label": "Server"
     },
     {
+      "cost": "free",
       "description": "Server-level switches. read_only turns the server query-only: no embedding, summarization, or index writes.",
       "fields": [
         {
@@ -983,6 +999,7 @@
       "label": "Server Mode"
     },
     {
+      "cost": "free",
       "fields": [
         {
           "default": true,
@@ -1008,6 +1025,7 @@
       "label": "Query Log"
     },
     {
+      "cost": "free",
       "description": "How search ranks results. doc_weight down-ranks documentation relative to code (0.0 excludes docs, 0.5 default, 1.0 treats them equally).",
       "fields": [
         {
@@ -1031,6 +1049,7 @@
       "label": "Retrieval Ranking"
     },
     {
+      "cost": "free",
       "fields": [
         {
           "default": true,
@@ -1053,6 +1072,7 @@
       "label": "Usage Metrics"
     },
     {
+      "cost": "free",
       "description": "This project's own identity. domain (default 'code') is what new folders inherit when --domain is omitted, and what an external folder must explicitly match to be treated as an authoritative claim over the project (requires --force).",
       "fields": [
         {

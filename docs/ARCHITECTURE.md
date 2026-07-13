@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-05
+last_validated: 2026-07-13
 ---
 
 # BrainPalace System Architecture
@@ -394,6 +394,37 @@ the BM25 layer directly via `bm25s` and a custom `TextAnalyzer` pipeline.
   index/query tokenization — not possible via the LlamaIndex BM25Retriever
   wrapper that was replaced
 - Focus on code-specific innovations, not RAG basics
+
+### 6. Path-Addressed Index & Project Rehome
+
+**Decision**: The index is **path-addressed at its edges** — a project's identity is
+a durable UUID (`.brainpalace/identity.json`), but its records key on absolute paths.
+Moving the project directory is repaired by a checkpointed **prefix-swap rehome**
+rather than a re-index.
+
+**Rationale**:
+- Absolute paths appear on the outward-facing records: folder records and job
+  records, manifest folder/file keys, chunk `source`/`file_path`/`path` metadata
+  (vector + BM25), the knowledge-graph node ids / edge keys (both the `sqlite` and
+  default `simple` backends), and the reference catalog's `pointer`/`source`/
+  `source_id` (and its recomputed `ref_id`).
+- On startup the server compares the recorded `indexed_root` against the current
+  root (realpaths, so a symlink- or case-only difference is not a move). A genuine
+  move triggers `brainpalace_server/rehome/`, which rewrites `old_root → new_root`
+  across all of the above in ordered, resumable phases under a single-runner lock —
+  **never re-embedding** (opaque `chunk_ids` and vectors are carried through).
+- The rehome is **fail-closed**: while it runs or after a failure the server 503s
+  normal routes and serves only health/runtime/rehome, so a half-migrated index is
+  never queried. It resumes from its checkpoint on the next start or via
+  `brainpalace rehome --resume`.
+
+**Scope**: The graph swap covers **both** backends — the `sqlite` store (node ids +
+edge PKs) and the default `simple` JSON store (node ids, relation keys, triplets,
+recomputed from the swapped endpoints). A **nested** move (a project moved into its
+own subtree) is refused rather than rehomed. A **copy** (old location still present)
+keeps the original registered — only a genuine move drops the old registry entry. A
+project relocated *before* rehome shipped has no known prior root, so its current
+location is adopted as the new baseline.
 
 ---
 

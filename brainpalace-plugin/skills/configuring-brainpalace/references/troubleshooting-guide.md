@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-04
+last_validated: 2026-07-10
 ---
 
 # BrainPalace Troubleshooting Guide
@@ -137,10 +137,12 @@ brainpalace index /path/to/docs
 # Let the CLI handle it — it auto-detects stale state and starts fresh
 brainpalace start
 
-# Or clean up manually
+# Or clean up manually — remove the runtime + pid files only.
+# Do NOT delete brainpalace.lock: a live server holds an flock on that
+# inode, and a dead server's flock is already released by the OS, so the
+# next start reclaims the same lock path. `brainpalace start` never unlinks it.
 rm .brainpalace/runtime.json
-rm .brainpalace/lock.json
-rm .brainpalace/pid
+rm .brainpalace/brainpalace.pid
 
 # Start fresh
 brainpalace start
@@ -166,10 +168,11 @@ brainpalace start
 
 **If locks persist incorrectly:**
 ```bash
-# Manual lock cleanup (only if the process is truly dead)
+# A truly dead process has already released its flock at the OS level, so no
+# manual unlink is needed — do NOT delete brainpalace.lock (that would break the
+# single-instance guarantee for a still-running server).
 ps aux | grep brainpalace  # Verify no process running
-rm .brainpalace/lock.json
-brainpalace start
+brainpalace start           # reclaims the lock on the same path
 ```
 
 ---

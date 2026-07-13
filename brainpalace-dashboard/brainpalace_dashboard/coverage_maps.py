@@ -192,6 +192,16 @@ ENDPOINT_SURFACES: dict[str, str] = {
         "unsurfaced: re-score unresolved links against current aliases, driven by "
         "`brainpalace entities backfill`; no dashboard panel yet"
     ),
+    # --- rehome (fail-closed move quarantine, Plan 05) ---
+    "/rehome/": (
+        "unsurfaced: rehome/quarantine status, served even under quarantine; "
+        "surfaced via `brainpalace rehome` (CLI) — a quarantined server 503s the "
+        "dashboard's proxied API, so no dashboard panel"
+    ),
+    "/rehome/resume": (
+        "unsurfaced: resume a pending/failed rehome; driven by "
+        "`brainpalace rehome --resume` (CLI); no dashboard panel"
+    ),
 }
 
 # Every CLI command -> "tab/action" it maps to, or "cli_only: <reason>".
@@ -236,6 +246,11 @@ CLI_DASHBOARD_COVERAGE: dict[str, str] = {
     "query": "Queries (replay)",
     "read-only": "Config (server.read_only toggle + Overview read-only banner)",
     "recall": "Queries (replay) / Sessions",
+    "rehome": (
+        "cli_only: fail-closed project-move recovery. A quarantined server 503s the "
+        "dashboard's own proxied API, so recovery is inherently CLI/restart-driven; "
+        "no dashboard panel."
+    ),
     "remember": "Sessions (memories)",
     "reset": "Folders (Reset index)",
     "session-path": ("cli_only: prints session-archive path, scripting helper"),

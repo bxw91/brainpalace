@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { X, Play, Loader2 } from "lucide-react";
 import { getQueryDetail, replayQuery } from "../api/client";
 import type { QueryResultRow } from "../api/types";
+import { ResultRow } from "./ResultRow";
 
 const MODE_TONE: Record<string, string> = {
   hybrid: "bg-accent/15 text-accent",
@@ -11,49 +12,6 @@ const MODE_TONE: Record<string, string> = {
   graph: "bg-fuchsia-400/15 text-fuchsia-300",
   multi: "bg-run/15 text-run",
 };
-
-function ScoreBar({ score }: { score: number | null }) {
-  const pct = score == null ? 0 : Math.max(0, Math.min(100, Math.round(score * 100)));
-  return (
-    <div className="flex items-center gap-2">
-      <div className="h-1.5 w-16 overflow-hidden rounded-full bg-ink-600">
-        <div className="h-full rounded-full bg-accent" style={{ width: `${pct}%` }} />
-      </div>
-      <span className="font-mono text-[0.68rem] tabular-nums text-fg-faint">
-        {score == null ? "—" : score.toFixed(3)}
-      </span>
-    </div>
-  );
-}
-
-function ResultRow({
-  path,
-  lines,
-  snippet,
-  score,
-}: {
-  path: string | null;
-  lines: [number, number] | null;
-  snippet: string;
-  score: number | null;
-}) {
-  const loc = path ? (lines ? `${path}:${lines[0]}-${lines[1]}` : path) : "(unknown)";
-  return (
-    <li className="rounded-lg border border-line/60 bg-ink-700/30 p-3">
-      <div className="flex items-center justify-between gap-3">
-        <span className="truncate font-mono text-xs text-fg" title={loc}>
-          {loc}
-        </span>
-        <ScoreBar score={score} />
-      </div>
-      {snippet && (
-        <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap break-words rounded bg-ink-900/60 p-2 font-mono text-[0.7rem] leading-relaxed text-fg-muted">
-          {snippet}
-        </pre>
-      )}
-    </li>
-  );
-}
 
 /**
  * Right-hand drawer showing a logged query's full text + ranked results, with

@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-25
+last_validated: 2026-07-11
 ---
 
 # BrainPalace Configuration Guide

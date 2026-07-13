@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-24
+last_validated: 2026-07-10
 ---
 
 # Session Knowledge-Graph Taxonomy
@@ -32,7 +32,7 @@ from extracted sessions.
 | `File` | A file edited / created / read |
 | `Task` | A task or phase of work |
 
-These join the existing 17 code/doc/infra types in `models/graph.py`, so
+These join the existing 20 code/doc/infra types in `models/graph.py`, so
 `brainpalace query -m graph` and type-filtered queries (`query_by_type`)
 recognise them.
 

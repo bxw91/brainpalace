@@ -28,7 +28,8 @@ def test_prompts_shown_and_decline_is_config_only(tmp_path, monkeypatch):
         tmp_path,
         monkeypatch,
         args=[],
-        stdin="12\ny\nn\n\n\n\n\n\nc\nn\nn\n",
+        # Index-target picker first (folder=., type=both), then the grid drill.
+        stdin=".\nboth\n12\ny\nn\n\n\n\n\n\nc\nn\nn\n",
     )
     assert r.exit_code == 0, r.output
     # The consent warning appears when the division is drilled.
@@ -55,8 +56,9 @@ def test_estimate_gate_precedes_final_proceed_on_fresh_start(tmp_path, monkeypat
         tmp_path,
         monkeypatch,
         args=["--no-sessions", "--no-extract", "--no-git-history", "--no-archive"],
-        # graphrag=N, reranker=N, lemma=N, review=C, estimate?=N, start=Y
-        stdin="n\nn\nn\nc\nn\ny\n",
+        # picker(folder=.,type=both), graphrag=N, reranker=N, lemma=N, review=C,
+        # estimate?=N, start=Y
+        stdin=".\nboth\nn\nn\nn\nc\nn\ny\n",
     )
     assert r.exit_code == 0, r.output
     gate = r.output.find("Estimate token usage first?")
@@ -81,7 +83,9 @@ def test_explicit_flags_skip_prompts(tmp_path, monkeypatch):
             "--no-graphrag-extract",
             "--no-archive",
         ],
-        stdin="n\nn\nc\nn\nn\n",
+        # picker(folder=.,type=both); then
+        # reranker=N, lemma=N, review=C, estimate?=N, proceed=N
+        stdin=".\nboth\nn\nn\nc\nn\nn\n",
     )
     assert r.exit_code == 0, r.output
     assert "Summarize chat sessions?" not in r.output

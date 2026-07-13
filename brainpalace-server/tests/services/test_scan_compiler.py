@@ -46,3 +46,25 @@ def test_stopword_term_never_compiles() -> None:
 
 def test_no_term_returns_none() -> None:
     assert compile_scan("what is the architecture of the indexer") is None
+
+
+def test_explicit_single_token_becomes_term() -> None:
+    # Explicit `--mode scan`: a bare one-word query is the term, no quotes needed.
+    p = compile_scan("profile", explicit=True)
+    assert p is not None and p.term == "profile" and p.group_by is None
+    # Same as if it had been quoted.
+    assert compile_scan('"profile"', explicit=True) == p
+
+
+def test_bare_single_token_is_strict_without_explicit() -> None:
+    # The auto-router (explicit=False, the default) never guesses a term.
+    assert compile_scan("profile") is None
+
+
+def test_explicit_multiword_stays_strict() -> None:
+    # Two words, no quotes/tell: which one to count is ambiguous -> None.
+    assert compile_scan("user profile", explicit=True) is None
+
+
+def test_explicit_too_short_stays_strict() -> None:
+    assert compile_scan("x", explicit=True) is None

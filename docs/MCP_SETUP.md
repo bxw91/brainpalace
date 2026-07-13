@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-05
+last_validated: 2026-07-13
 ---
 
 # MCP setup — connecting AI clients to BrainPalace
@@ -27,9 +27,12 @@ indexing, and storage live; the MCP shim just forwards calls.
 | `whoami`      | Resolve project root and server URL for a given path (or the MCP process CWD).                              |
 | `folders_list`| List registered indexed folders with last-indexed timestamps.                                               |
 | `jobs_list`   | List queued, running, and completed indexing jobs.                                                          |
+| `jobs_approve`| Approve a budget-blocked indexing job (**SPENDS embedding tokens** — needs explicit user consent).           |
 | `memorize`        | Save a durable curated fact to the project memory namespace.                    |
 | `recall`          | Recall curated facts from the project memory namespace only.                    |
 | `session_context` | Session-start context block: project facts + curated memory.                    |
+| `extraction_fetch`  | Fetch one pending chunk's text by id (read-only; `{error}` when not pending).  |
+| `extraction_submit` | Submit extracted triplets or a session extraction payload to BrainPalace.      |
 | `ai_guide`        | BrainPalace usage guide (modes, rules, gotchas); `tier=full` for the full guide. |
 
 Every tool except `whoami` and `ai_guide` accepts an optional **`path`** argument. Pass the
@@ -85,7 +88,11 @@ grid** — the resolved config by division (values from `global < code` plus the
 detected provider), edited via drill-down, `[A]ll`, `[C]ontinue`, or `[E]xit`;
 billable/secret consent fields prompt with their warning only when you edit them,
 and opt-in billable fields stay OFF on a plain accept. (The previous linear
-question wall is removed.) `init --global`'s CLI review grid omits project-scoped
+question wall is removed.) A per-project `init` that will index first asks an
+**index-target picker** — which folder to index (a path, or Enter for the whole
+project) and its type (**code + docs** / **docs only**) — feeding the same targets
+as `-F/--folder` and `--include-code/--no-code`; either flag suppresses its prompt.
+`init --global`'s CLI review grid omits project-scoped
 fields (e.g. `session_indexing.archive.dir`); project-layer fields inherited from
 the global config are shown with an **"inherited from global"** note. Without a TTY
 (MCP/CI installs) the grid never shows, every question is skipped, and the
@@ -342,7 +349,7 @@ one project.
   to the client args.
 - **"Tool calls time out"** → raise the client's per-call timeout (set
   `timeout` to `30000` ms). Cold servers and `multi`-mode queries are slow on
-  the first hit, when the graph index is loaded.
+  the first hit.
 - **"Queries return results from the wrong project"** → CWD coupling. The MCP
   process is pinned to its spawn-time directory. Pass `path` on the tool
   call, or use one editor window per project.
@@ -352,9 +359,12 @@ one project.
 ## What this MCP server does NOT do (v1)
 
 - **No indexing or destructive mutation.** `index`, `index_inject`, `reset`,
-  `folders_add`, `folders_remove` are deferred. The only write tool is
-  `memorize` (appends a curated fact to the project memory namespace);
-  everything else is read-only, so the blast radius stays bounded.
+  `folders_add`, `folders_remove` are deferred. The write tools are limited to
+  `memorize` (appends a curated fact to the project memory namespace),
+  `extraction_submit` (submits an extraction payload — triplets / session
+  distillation), and `jobs_approve` (re-queues a budget-blocked indexing job,
+  which **spends embedding tokens** — get explicit user consent first); every
+  other tool is read-only, so the blast radius stays bounded.
 - **No authentication.** Local stdio only. A future streamable-HTTP transport
   will need auth.
 - **No idle timeout.** stdio servers stay alive as long as the client keeps
@@ -365,10 +375,10 @@ one project.
 - **No session summarization / draining.** Chat-session summarization runs only
   through the Claude Code plugin path (the `UserPromptSubmit` drain hook +
   the free Haiku `chat-session-extractor` subagent), after your first prompt, in
-  throttled batches. The opt-in time-driven drain
-  (`brainpalace drain-tick` / `/brainpalace-drain`, see
-  [SESSION_INDEXING.md](SESSION_INDEXING.md#opt-in-time-driven-drain-babysitter))
-  is a CLI/plugin feature — it is **not** exposed as an MCP tool.
+  throttled batches. That drain is a CLI/plugin feature (see
+  [SESSION_INDEXING.md](SESSION_INDEXING.md)) — it is **not** exposed as an MCP
+  tool. The extraction *queue* is reachable over MCP via `extraction_fetch` /
+  `extraction_submit`, but the plugin still drives the drain.
 - **No web dashboard over MCP.** The control-plane dashboard
   (`brainpalace dashboard start`, see [DASHBOARD.md](DASHBOARD.md)) is a
   CLI-launched web surface, not an MCP server — MCP clients connect to

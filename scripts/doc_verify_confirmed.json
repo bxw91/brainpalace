@@ -1,4 +1,25 @@
 {
+  "4c8057d72bfef984d398f9a978fc0aee69aba9a4cd84937738d782c4ec7b5df8": {
+    "claim": "ollama reranker is slower (~500ms for 100 candidates)",
+    "confirmed_at": "2026-07-13",
+    "confirmed_by": "human",
+    "doc": "docs/USER_GUIDE.md",
+    "grounding": "docs/USER_GUIDE.md"
+  },
+  "4dc176929a8b7ee449ef0930eb39bc6e6b3fcd72744842a2156205eb3ad353d7": {
+    "claim": "sentence-transformers reranker downloads model on first use (~50MB)",
+    "confirmed_at": "2026-07-13",
+    "confirmed_by": "human",
+    "doc": "docs/USER_GUIDE.md",
+    "grounding": "docs/USER_GUIDE.md"
+  },
+  "9e05954f40aec6b1292dfbbdb82d3a651f653a37b8f826c303c0eef7f7e709b1": {
+    "claim": "two-stage retrieval improves search precision by 15-20%",
+    "confirmed_at": "2026-07-13",
+    "confirmed_by": "human",
+    "doc": "docs/USER_GUIDE.md",
+    "grounding": "docs/USER_GUIDE.md"
+  },
   "a2e89bcda1913e6d4150f0a01d6de9c9256ff87c5e095de1dceca35abd323556": {
     "claim": "BM25 k1=1.5 (term frequency saturation) and b=0.75 (length normalization factor)",
     "confirmed_at": "2026-06-20",
@@ -12,5 +33,12 @@
     "confirmed_by": "human",
     "doc": "brainpalace-plugin/skills/configuring-brainpalace/references/troubleshooting-guide.md",
     "grounding": "(none)"
+  },
+  "e9607f2c607e8a1f2a88118c15a55142c799f130a64401bb1a6dfb3c3c7f4294": {
+    "claim": "sentence-transformers reranker has fast inference (~50ms for 100 candidates)",
+    "confirmed_at": "2026-07-13",
+    "confirmed_by": "human",
+    "doc": "docs/USER_GUIDE.md",
+    "grounding": "docs/USER_GUIDE.md"
   }
 }

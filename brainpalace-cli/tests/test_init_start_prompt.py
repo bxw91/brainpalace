@@ -33,9 +33,12 @@ def _invoke(tmp_path: Path, monkeypatch, input_str: str):
 
 def test_bare_init_asks_start_question_and_decline_skips_start(tmp_path, monkeypatch):
     # Prompt order on a bare fresh interactive init (the session/archive/etc. flags
-    # suppress their prompts): reranker? n, lemma? n, review=C, Estimate first? n,
-    # Start server now? n. Extra trailing declines are harmless (ignored).
-    result, start_mock = _invoke(tmp_path, monkeypatch, input_str="n\nn\nc\nn\nn\n")
+    # suppress their prompts): index-target picker (folder=., type=both), reranker? n,
+    # lemma? n, review=C, Estimate first? n, Start server now? n. Extra trailing
+    # declines are harmless (ignored).
+    result, start_mock = _invoke(
+        tmp_path, monkeypatch, input_str=".\nboth\nn\nn\nc\nn\nn\n"
+    )
     assert result.exit_code == 0, result.output
     assert "Start the BrainPalace server now?" in result.output
     start_mock.assert_not_called()

@@ -456,6 +456,56 @@ class PostgresBackend:
                 backend="postgres",
             ) from e
 
+    async def update_metadata(
+        self, ids: list[str], metadatas: list[dict[str, Any]]
+    ) -> None:
+        """Replace ``documents.metadata`` for the given chunk ids. The tsvector
+        column derives from ``document_text``, not metadata, so a metadata-only
+        UPDATE leaves search + embeddings intact."""
+        engine = self.connection_manager.engine
+        try:
+            async with engine.begin() as conn:
+                for chunk_id, md in zip(ids, metadatas, strict=True):
+                    await conn.execute(
+                        text(
+                            """
+                            UPDATE documents
+                            SET metadata = CAST(:md AS jsonb),
+                                updated_at = NOW()
+                            WHERE chunk_id = :chunk_id
+                            """
+                        ),
+                        {"chunk_id": chunk_id, "md": json.dumps(md)},
+                    )
+        except Exception as e:
+            raise StorageError(
+                f"Metadata update failed: {e}",
+                backend="postgres",
+            ) from e
+
+    async def get_all_ids(self) -> list[str]:
+        engine = self.connection_manager.engine
+        async with engine.begin() as conn:
+            rows = await conn.execute(
+                text("SELECT chunk_id FROM documents ORDER BY chunk_id")
+            )
+            return [r[0] for r in rows]
+
+    async def get_metadatas(self, ids: list[str]) -> list[dict[str, Any]]:
+        if not ids:
+            return []
+        engine = self.connection_manager.engine
+        async with engine.begin() as conn:
+            rows = await conn.execute(
+                text(
+                    "SELECT chunk_id, metadata FROM documents "
+                    "WHERE chunk_id = ANY(:ids)"
+                ),
+                {"ids": ids},
+            )
+            by_id = {r[0]: (r[1] or {}) for r in rows}
+        return [dict(by_id.get(i, {})) for i in ids]
+
     async def get_existing_ids(self, ids: list[str]) -> set[str]:
         """Return the subset of ``ids`` already present in the store.
 

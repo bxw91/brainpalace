@@ -11,6 +11,7 @@ from brainpalace_server.indexing.git_loader import (
     CommitRecord,
     _build_args,
     git_toplevel,
+    list_indexable_shas,
     load_commits,
     resolve_commit_scope,
 )
@@ -82,6 +83,36 @@ def test_depth_limits_commit_count(git_repo: Path) -> None:
     commits = load_commits(git_repo, depth=2)
 
     assert len(commits) == 2
+
+
+def test_list_indexable_shas_rev_limits_walk_to_that_commit(git_repo: Path) -> None:
+    """``rev`` walks from that commit instead of HEAD — commits made after it
+    (on the live branch tip) must not appear in the wanted-set."""
+    first = _commit(git_repo, "a.txt")
+    second = _commit(git_repo, "b.txt")
+    third = _commit(git_repo, "c.txt")
+
+    shas = list_indexable_shas(git_repo, rev=second)
+
+    assert shas == {first, second}
+    assert third not in shas
+
+
+def test_list_indexable_shas_no_rev_walks_head(git_repo: Path) -> None:
+    first = _commit(git_repo, "a.txt")
+    second = _commit(git_repo, "b.txt")
+
+    shas = list_indexable_shas(git_repo)
+
+    assert shas == {first, second}
+
+
+def test_list_indexable_shas_unreachable_rev_returns_none(git_repo: Path) -> None:
+    _commit(git_repo, "a.txt")
+
+    shas = list_indexable_shas(git_repo, rev="0" * 40)
+
+    assert shas is None
 
 
 def test_since_sha_returns_only_newer_commits(git_repo: Path) -> None:

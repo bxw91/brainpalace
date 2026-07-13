@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-05
+last_validated: 2026-07-13
 ---
 
 # BrainPalace User Guide
@@ -25,6 +25,7 @@ This guide covers how to use BrainPalace for document indexing and semantic sear
 - [Query History](#query-history)
 - [Provider Configuration](#provider-configuration)
 - [Multi-Project Support](#multi-project-support)
+- [Moving a Project](#moving-a-project)
 - [Runtime Autodiscovery](#runtime-autodiscovery)
 - [Runtime Installation](#runtime-installation)
 - [CLI Reference](#cli-reference)
@@ -39,7 +40,7 @@ BrainPalace is a RAG (Retrieval-Augmented Generation) system that indexes and se
 
 | Component | Count | Description |
 |-----------|-------|-------------|
-| **Commands** | 38 | Slash commands for all operations |
+| **Commands** | 42 | Slash commands for all operations |
 | **Agents** | 6 | Intelligent assistants for complex tasks |
 | **Skills** | 2 | Context for optimal search and configuration |
 
@@ -1024,6 +1025,77 @@ cd src/deep/nested/directory
 
 ---
 
+## Moving a Project
+
+A project's identity is a durable UUID recorded in `.brainpalace/identity.json`,
+not its filesystem path — so you can move (or rename) an indexed project directory
+and BrainPalace repairs the index in place, **without re-embedding**.
+
+### Stop the server first
+
+Stop the server before moving the directory:
+
+```
+brainpalace stop
+```
+
+A running server holds the old absolute paths in memory, so move the project while
+it is stopped.
+
+### Auto-detection on next start
+
+On the next `brainpalace start`, the server compares the recorded `indexed_root`
+against the current location. If they differ, it **rehomes** the index: it swaps
+`old_root → new_root` across every path-addressed store — folder records, manifest
+keys, chunk `source`/`file_path` metadata, the knowledge graph (both the `sqlite`
+and default `simple` backends), and the reference catalog — then serves normally. No
+embeddings are recomputed, so there is no provider cost and no wait for re-indexing.
+
+### Fail-closed while rehoming
+
+While the rehome is running or after it has failed, the server is **fail-closed**:
+normal routes (queries, indexing) return `503`, and only health, runtime, and the
+rehome routes answer. Inspect and drive it with the `rehome` command:
+
+```
+brainpalace rehome            # show quarantine status (quarantined / status / reason)
+brainpalace rehome --resume   # resume a pending/failed rehome from its checkpoint
+brainpalace rehome --json     # machine-readable status
+```
+
+Resuming is also automatic: a plain `brainpalace start` re-runs the rehome from its
+last checkpoint, so restarting the server is an equally valid recovery path.
+
+### Limitations
+
+- **Nested moves are refused.** Moving a project *into its own subtree*
+  (`/a/b → /a/b/c`) is rejected rather than rehomed, because the old and new roots
+  overlap. Run `brainpalace reset` and re-index at the new location instead.
+- **Projects moved before this feature shipped cannot be repaired.** If a project
+  was relocated before rehome existed, its prior root is unknown; BrainPalace adopts
+  the current location as the new baseline (no repair of stale absolute paths).
+- **External folders keep their absolute paths.** Folders registered outside the
+  project root are not under `old_root`, so their paths are left unchanged by the
+  rehome.
+
+The knowledge graph is rehomed for **both** backends — the `sqlite` store (node ids
++ edge keys) and the default `simple` (JSON) store (node ids, relations, triplets) —
+so graph-mode results stay correct across a move with no rebuild required.
+
+### Copying a project vs moving it
+
+Rehome is designed for a **move** (the old location is gone), but a **copy** is
+handled safely too. If you copy an indexed project — duplicating its `.brainpalace/`
+— the copy shares the original's identity UUID. Starting the **copy's** server makes
+the copy adopt its own location and rehome its own data; the **original is left fully
+intact**, including its entry in the dashboard fleet list (rehome only drops the old
+registry entry when the old location no longer exists on disk, i.e. a genuine move).
+To index a duplicate as a genuinely *independent* project rather than a rehomed copy,
+run `brainpalace init` inside it instead of copying `.brainpalace/` — that mints a
+fresh identity with no shared UUID.
+
+---
+
 ## Runtime Autodiscovery
 
 The CLI automatically discovers the server URL without manual configuration.
@@ -1454,7 +1526,7 @@ brainpalace index .
 ## Next Steps
 
 - [Quick Start](QUICK_START.md) - Get running in minutes
-- [Plugin Guide](PLUGIN_GUIDE.md) - All 34 commands in detail
+- [Plugin Guide](PLUGIN_GUIDE.md) - All 42 commands in detail
 - [API Reference](API_REFERENCE.md) - REST API documentation
 - [GraphRAG Guide](GRAPHRAG_GUIDE.md) - Knowledge graph features
 - [Provider Configuration](../brainpalace-plugin/skills/using-brainpalace/references/provider-configuration.md) - Provider setup

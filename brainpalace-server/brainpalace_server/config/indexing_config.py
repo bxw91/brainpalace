@@ -62,7 +62,9 @@ class IndexingConfig(BaseModel):
         ge=0,
         description=(
             "Hard cap on embedding tokens per index job. 0 disables the guard. "
-            "Over the cap the job fails with a budget error unless force_budget."
+            "Over the cap the job fails with a budget error unless force_budget. "
+            "A folder's FIRST index is always exempt — the cap guards re-indexes, "
+            "not the deliberate initial index."
         ),
     )
     max_embed_ratio_per_job: float = Field(
@@ -73,7 +75,8 @@ class IndexingConfig(BaseModel):
             "max(max_embed_tokens_per_job, this ratio × estimated index size "
             "in tokens). 0 disables the adaptive part (pure fixed cap). Index "
             "size is approximated as total chunks × chunk_size. Ignored when "
-            "max_embed_tokens_per_job is 0 (guard fully disabled)."
+            "max_embed_tokens_per_job is 0 (guard fully disabled), and moot on a "
+            "folder's first index (always exempt — the store is still near-empty)."
         ),
     )
     exclude_patterns: list[str] = Field(

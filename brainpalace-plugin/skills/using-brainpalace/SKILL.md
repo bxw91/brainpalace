@@ -24,10 +24,10 @@ allowed-tools:
   - Bash
   - Read
 metadata:
-  version: 7.7.0
+  version: 7.8.0
   category: ai-tools
   author: bxw91
-  last_validated: 2026-07-10
+  last_validated: 2026-07-13
 ---
 
 # BrainPalace Expert Skill
@@ -44,7 +44,9 @@ own `--help` is authoritative for flags.
 Glob/Grep.** Route by query type: exact symbol/token/path → `--mode bm25`
 (keyword index, **no embedding round-trip** — ms latency, as fast as grep);
 concept → `--mode vector`/`hybrid`; relationships → `--mode graph`. Server down?
-Start it: `brainpalace start`. `brainpalace query --json` keys are
+Start it: `brainpalace start`; if it answers `503` "rehome pending" the project
+MOVED — run `brainpalace rehome --resume` (or restart; it auto-resumes) first.
+`brainpalace query --json` keys are
 `text`/`source`/`score`/`chunk_id` (no `file_path`, no line numbers); on failure
 stdout is `{"error": ...}` with no `results` key and a non-zero exit — check it,
 never append `2>/dev/null`.

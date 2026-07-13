@@ -17,7 +17,7 @@ metadata:
   category: ai-tools
   author: bxw91
   last_validated: 2026-06-13
-last_validated: 2026-07-05
+last_validated: 2026-07-13
 ---
 
 # Configuring BrainPalace
@@ -121,7 +121,11 @@ then writes a sparse `config.yaml`.
   Edit by division
   number / `[A]ll` (drilling edits all of a division's fields, gate asked first),
   then `[C]ontinue` accepts → token estimate → optional server start. (The
-  previous linear wall of consent questions is gone.)
+  previous linear wall of consent questions is gone.) A run that will index first
+  asks an **index-target picker** — which folder to index (a path, or Enter for
+  the whole project) and its type (**code + docs** / **docs only**) — feeding the
+  same targets as `-F/--folder` and `--include-code/--no-code`; either flag
+  suppresses the matching prompt.
 - **Already-initialized project** — drops directly into the review editor.
 - **`init --global`** — edits the machine-wide XDG config
   (`~/.config/brainpalace/config.yaml`) without a project root.
@@ -642,7 +646,7 @@ issues: `brainpalace doctor`.
 | `GEMINI_API_KEY` | Conditional | - | Required if using Gemini |
 | `XAI_API_KEY` | Conditional | - | Required if using Grok |
 | `COHERE_API_KEY` | Conditional | - | Required if using Cohere |
-| `EMBEDDING_CACHE_MAX_MEM_ENTRIES` | No | 1000 | Max in-memory LRU entries (~12 MB at 3072 dims per 1000 entries) |
+| `EMBEDDING_CACHE_MAX_MEM_ENTRIES` | No | 10000 | Max in-memory LRU entries (~12 MB at 3072 dims per 1000 entries) |
 | `EMBEDDING_CACHE_MAX_DISK_MB` | No | 500 | Max disk size for the SQLite embedding cache |
 
 **Note**: Environment variables override config file values. Config file values override defaults.
@@ -656,7 +660,7 @@ Both caches are **automatic — no setup required**:
   `EMBEDDING_CACHE_MAX_DISK_MB`.
 - **Query cache** — identical queries return instantly within the TTL; `graph`
   and `multi` bypass it, and it's invalidated on every completed reindex. Tune
-  with `QUERY_CACHE_TTL` (default 300s) / `QUERY_CACHE_MAX_SIZE` (default 256).
+  with `QUERY_CACHE_TTL` (default 3600s) / `QUERY_CACHE_MAX_SIZE` (default 256).
 
 Full cache tuning is in the
 [Configuration Guide](references/configuration-guide.md).

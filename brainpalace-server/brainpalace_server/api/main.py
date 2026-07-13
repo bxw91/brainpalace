@@ -486,6 +486,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.server_start_ts = time.time()
     app.state.first_request_seen = False
 
+    # Rehome quarantine (Plan 05 / D4): default OFF so any request arriving before
+    # the startup rehome decision (below) is never blocked. Flipped ON by the
+    # rehome seam if a move is detected and the swap can't complete in-boot.
+    from brainpalace_server.rehome.quarantine import QuarantineState
+
+    app.state.rehome_quarantine = QuarantineState(active=False)
+
     # Hard-disable ChromaDB telemetry (PostHog) before any client is created.
     # The config off-switch is broken in chromadb 0.5.x, so neutralize directly.
     _silence_chromadb_telemetry()
@@ -806,6 +813,61 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.graph_store_type = settings.GRAPH_STORE_TYPE
         logger.info("Storage backend initialized")
 
+        # --- Rehome seam (Plan 05 / A8): detect a move + run the swap fail-closed
+        # BEFORE the destructive folder prune (below) and before any mutator
+        # starts. vector_store/bm25_manager are already on app.state by here.
+        quarantine_active = False
+        if state_dir is not None:
+            from brainpalace_server.rehome import quarantine as _rq
+            from brainpalace_server.rehome.orchestrator import (
+                RehomeLockBusy,
+                RehomeRefused,
+                run_rehome,
+            )
+
+            app.state.state_dir_str = str(state_dir)
+            _current_root = (
+                Path(app.state.project_root) if app.state.project_root else state_dir
+            )
+            try:
+                _plan = _rq.evaluate_startup(state_dir, _current_root)
+                if _plan.stale_done:
+                    _rq.clear_stale_rehome_state(state_dir)  # 2nd move: re-run fresh
+                if _plan.needs_rehome:
+                    _stores = _rq.build_rehome_stores(app.state, state_dir)
+                    app.state.rehome_stores = _stores
+                    try:
+                        _result = await run_rehome(
+                            state_dir, _current_root, stores=_stores
+                        )
+                        if _result.status != "done":
+                            quarantine_active = True
+                            app.state.rehome_quarantine = _rq.QuarantineState(
+                                active=True,
+                                reason=_result.error,
+                                status=_result.status,
+                            )
+                        else:
+                            logger.info(
+                                "Rehome completed: %s -> %s",
+                                _result.old_root,
+                                _result.new_root,
+                            )
+                    except (RehomeRefused, RehomeLockBusy) as _exc:
+                        quarantine_active = True
+                        app.state.rehome_quarantine = _rq.QuarantineState(
+                            active=True, reason=str(_exc), status="failed"
+                        )
+            except Exception as _exc:  # noqa: BLE001 — corrupt sentinel => quarantine
+                quarantine_active = True
+                app.state.rehome_stores = getattr(app.state, "rehome_stores", None)
+                app.state.rehome_quarantine = _rq.QuarantineState(
+                    active=True,
+                    reason=f"rehome sentinel error: {_exc}",
+                    status="failed",
+                )
+        # --- end rehome seam
+
         # Index-drift warnings (visible in /health/status, `brainpalace status`,
         # and the dashboard). Embedding provider/model drift is detected above
         # (check_embedding_compatibility → app.state.embedding_warning); add a
@@ -893,7 +955,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
             folder_manager_dir = Path(tempfile.mkdtemp(prefix="brainpalace-folders-"))
         folder_manager = FolderManager(state_dir=folder_manager_dir)
-        await folder_manager.initialize()
+        # A2/D11: suppress the destructive missing-folder prune while quarantined —
+        # a moved project's folder records were just re-keyed by the rehome seam and
+        # must not be pruned as "missing" before the move is resolved.
+        await folder_manager.initialize(prune=not quarantine_active)
         app.state.folder_manager = folder_manager
         logger.info("Folder manager initialized")
 
@@ -973,51 +1038,58 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             )
         heal_report: dict[str, Any] = {}
         try:
-            from brainpalace_server.services.chunk_recovery import detect_dimensions
-            from brainpalace_server.services.startup_reconcile import (
-                self_heal_on_startup,
-            )
+            # D11: freeze self-heal (chunk recovery + destructive deep_clean +
+            # dead-row compaction are all index mutators) while quarantined — no
+            # index mutation until the rehome is resolved. heal_report stays {}.
+            if not quarantine_active:
+                from brainpalace_server.services.chunk_recovery import (
+                    detect_dimensions,
+                )
+                from brainpalace_server.services.startup_reconcile import (
+                    self_heal_on_startup,
+                )
 
-            vector_store = getattr(app.state, "vector_store", None)
-            target_dimensions = detect_dimensions(
-                cache_db_path=cache_db_path, vector_store=vector_store
-            )
-            heal_report = await self_heal_on_startup(
-                folder_manager=folder_manager,
-                manifest_tracker=manifest_tracker,
-                storage_backend=storage_backend,
-                vector_store=vector_store,
-                cache_db_path=cache_db_path,
-                target_dimensions=target_dimensions or 0,
-                bm25_manager=getattr(app.state, "bm25_manager", None),
-                repo_path=app.state.project_root or None,
-                read_only=read_only,
-            )
-            # Persist the result so `brainpalace status` can surface it, and emit
-            # a prominent startup notification when recovery actually ran.
-            _record_self_heal_result(
-                heal_report, getattr(vector_store, "persist_dir", None)
-            )
+                vector_store = getattr(app.state, "vector_store", None)
+                target_dimensions = detect_dimensions(
+                    cache_db_path=cache_db_path, vector_store=vector_store
+                )
+                heal_report = await self_heal_on_startup(
+                    folder_manager=folder_manager,
+                    manifest_tracker=manifest_tracker,
+                    storage_backend=storage_backend,
+                    vector_store=vector_store,
+                    cache_db_path=cache_db_path,
+                    target_dimensions=target_dimensions or 0,
+                    bm25_manager=getattr(app.state, "bm25_manager", None),
+                    repo_path=app.state.project_root or None,
+                    git_state_dir=state_dir,
+                    read_only=read_only,
+                )
+                # Persist the result so `brainpalace status` can surface it, and
+                # emit a prominent startup notification when recovery actually ran.
+                _record_self_heal_result(
+                    heal_report, getattr(vector_store, "persist_dir", None)
+                )
 
-            # Automatic dead-row compaction — ONLY when this start verified the
-            # index complete: nothing missing, nothing marked pending reindex,
-            # stage 2 not skipped. Dead rows are the chunk-recovery fuel, so a
-            # store with anything left to recover keeps them; a clean, heavily
-            # bloated store (several stranded index generations) gets rebuilt
-            # from live data and shrunk — no re-embed, threshold-gated so a
-            # healthy store pays nothing. Runs BEFORE the memories collection
-            # opens its handle on the same persist dir.
-            _rec = heal_report.get("recovery")
-            _index_complete = (
-                not read_only
-                and heal_report.get("deep_clean_skipped_reason") is None
-                and not heal_report.get("files_dropped")
-                and not heal_report.get("reindex_enqueued")
-                and (_rec is None or getattr(_rec, "wanted", 0) == 0)
-                and getattr(_rec, "error", None) is None
-            )
-            if _index_complete and vector_store is not None:
-                await vector_store.compact_if_bloated()
+                # Automatic dead-row compaction — ONLY when this start verified the
+                # index complete: nothing missing, nothing marked pending reindex,
+                # stage 2 not skipped. Dead rows are the chunk-recovery fuel, so a
+                # store with anything left to recover keeps them; a clean, heavily
+                # bloated store (several stranded index generations) gets rebuilt
+                # from live data and shrunk — no re-embed, threshold-gated so a
+                # healthy store pays nothing. Runs BEFORE the memories collection
+                # opens its handle on the same persist dir.
+                _rec = heal_report.get("recovery")
+                _index_complete = (
+                    not read_only
+                    and heal_report.get("deep_clean_skipped_reason") is None
+                    and not heal_report.get("files_dropped")
+                    and not heal_report.get("reindex_enqueued")
+                    and (_rec is None or getattr(_rec, "wanted", 0) == 0)
+                    and getattr(_rec, "error", None) is None
+                )
+                if _index_complete and vector_store is not None:
+                    await vector_store.compact_if_bloated()
         except Exception as exc:  # noqa: BLE001 — heal must never block startup
             logger.warning("Startup self-heal failed (non-fatal): %s", exc)
 
@@ -1497,8 +1569,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                         memory_curator=getattr(app.state, "memory_curator", None),
                         curate_state_dir=state_dir,
                     )
-                    await reconciler.start()
+                    # Expose the reconciler so POST /rehome/resume can start it
+                    # after an in-process resume (stop() is safe on an unstarted
+                    # instance). D11: don't START the periodic session sweep under
+                    # quarantine (it archives/indexes — a mutator).
                     app.state.session_reconciler = reconciler
+                    if not quarantine_active:
+                        await reconciler.start()
 
                 # Archive deletion watcher — purges chunks only when indexing.
                 if archive_service is not None:
@@ -1512,8 +1589,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                         storage_backend if caps.index_enabled else None,
                         purge_index=caps.index_enabled,
                     )
-                    await archive_watcher.start()
-                    app.state.session_archive_watcher = archive_watcher
+                    # D11: the archive watcher purges index chunks on transcript
+                    # deletion — a mutator; don't start it under quarantine.
+                    if not quarantine_active:
+                        await archive_watcher.start()
+                        app.state.session_archive_watcher = archive_watcher
                 logger.info(
                     "Session capabilities — archive=%s index=%s (%s)",
                     caps.archive_enabled,
@@ -1806,8 +1886,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 max_runtime_seconds=settings.BRAINPALACE_JOB_TIMEOUT,
                 progress_checkpoint_interval=settings.BRAINPALACE_CHECKPOINT_INTERVAL,
             )
-            await _job_worker.start()
-            logger.info("Job worker started")
+            # D11: construct the worker but do NOT start its run loop under
+            # quarantine — no job processing until the rehome is resolved.
+            if not quarantine_active:
+                await _job_worker.start()
+                logger.info("Job worker started")
 
             # Initialize and start file watcher service (Phase 15)
             from brainpalace_server.services.file_watcher_service import (
@@ -1823,9 +1906,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 ),
                 gitignore_matcher=gitignore_matcher,
             )
-            await _file_watcher.start()
             app.state.file_watcher_service = _file_watcher
-            logger.info("File watcher service started")
+            # Expose the worker so POST /rehome/resume can start it after an
+            # in-process resume (frozen, not started, under quarantine — D11).
+            app.state.job_worker = _job_worker
+            # D11: don't start watching under quarantine (re-index on change is a
+            # mutator). Constructed + exposed on app.state so health reports it.
+            if not quarantine_active:
+                await _file_watcher.start()
+                logger.info("File watcher service started")
 
             # Wire JobWorker to FileWatcherService and FolderManager (Phase 15-02)
             _job_worker.set_file_watcher_service(_file_watcher)
@@ -1883,7 +1972,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 max_runtime_seconds=settings.BRAINPALACE_JOB_TIMEOUT,
                 progress_checkpoint_interval=settings.BRAINPALACE_CHECKPOINT_INTERVAL,
             )
-            await _job_worker.start()
+            # D11: mirror the state-dir branch — no worker start under quarantine
+            # (this no-state-dir path never quarantines, but keep the guard parity).
+            if not quarantine_active:
+                await _job_worker.start()
 
             # Initialize and start file watcher service (Phase 15, no-state-dir branch)
             from brainpalace_server.services.file_watcher_service import (
@@ -1899,8 +1991,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 ),
                 gitignore_matcher=gitignore_matcher,
             )
-            await _file_watcher.start()
             app.state.file_watcher_service = _file_watcher
+            # Expose the worker so POST /rehome/resume can start it after an
+            # in-process resume (frozen, not started, under quarantine — D11).
+            app.state.job_worker = _job_worker
+            if not quarantine_active:
+                await _file_watcher.start()
 
             # Wire JobWorker to FileWatcherService and FolderManager (Phase 15-02)
             _job_worker.set_file_watcher_service(_file_watcher)
@@ -1942,8 +2038,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # incremental index only re-creates the dropped/new files; their
         # embeddings come from the cache, only the genuinely-gone residue calls
         # the provider. Never blocks startup.
+        # A9/D11: reconcile-reindex must not run while quarantined (status != done).
+        # heal_report is {} under quarantine so dropped_folders is already empty;
+        # the explicit guard makes the invariant self-documenting.
         dropped_folders = heal_report.get("dropped_folders") or []
-        if dropped_folders and job_service is not None:
+        if not quarantine_active and dropped_folders and job_service is not None:
             try:
                 from brainpalace_server.services.startup_reconcile import (
                     _enqueue_folder_reindex,
@@ -2082,6 +2181,53 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+def _install_quarantine_middleware(app: FastAPI) -> None:
+    """D4 fail-closed gate: 503 every non-allowlisted route while quarantined.
+
+    Extracted so it is unit-testable in isolation (tests/api/test_quarantine_
+    middleware.py). Reads ``app.state.rehome_quarantine`` (a QuarantineState);
+    the allowlist (/health, /runtime, /rehome, /, docs) always passes through so
+    status/resume stay reachable while a rehome is pending.
+    """
+    from collections.abc import Awaitable, Callable
+
+    from starlette.requests import Request as _Request
+    from starlette.responses import JSONResponse
+    from starlette.responses import Response as _Response
+
+    from brainpalace_server.rehome.quarantine import (
+        QuarantineState,
+        is_request_allowed,
+    )
+
+    @app.middleware("http")
+    async def _quarantine_gate(
+        request: _Request,
+        call_next: Callable[[_Request], Awaitable[_Response]],
+    ) -> _Response:
+        q = getattr(app.state, "rehome_quarantine", None)
+        if (
+            isinstance(q, QuarantineState)
+            and q.active
+            and not is_request_allowed(request.url.path)
+        ):
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "detail": (q.reason or "rehome pending")
+                    + " — GET /rehome/ for status, POST /rehome/resume to retry",
+                    "status": q.status,
+                },
+            )
+        return await call_next(request)
+
+
+# D4: register the quarantine gate right after CORS so it wraps every normal
+# route (the allowlist bypasses it in-handler) but stays inside self-heal, which
+# must keep registering the bound address even while quarantined.
+_install_quarantine_middleware(app)
+
 # In-process self-registration: learn the bound address from incoming requests
 # and write runtime.json + registry.json off the response path (self_heal.py).
 from collections.abc import Awaitable, Callable  # noqa: E402
@@ -2160,6 +2306,11 @@ from brainpalace_server.api.routers.entities import (  # noqa: E402 — late imp
 )
 
 app.include_router(entities_router, prefix="/entities", tags=["Entities"])
+from brainpalace_server.api.routers.rehome import (  # noqa: E402 — late import, registered after app setup
+    router as rehome_router,
+)
+
+app.include_router(rehome_router, prefix="/rehome", tags=["Rehome"])
 
 
 @app.get("/", include_in_schema=False)

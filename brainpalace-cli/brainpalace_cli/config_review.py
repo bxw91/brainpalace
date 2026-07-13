@@ -19,6 +19,7 @@ per-block sparse writers — preserving the "write only what diverges" invariant
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 from typing import Any, Callable
 
@@ -119,6 +120,26 @@ def _truncate_overview(s: str, limit: int = 70) -> str:
     return head + (" ... ]" if s.rstrip().endswith("]") else " ...")
 
 
+def _label_with_cost(label: str, group: str) -> str:
+    """Append the section's cost class to its display label, e.g.
+    ``Chat Session : Vector Indexing (LLM)``. Always shown on the header so the
+    billing signal survives even when the one-line description is truncated."""
+    cost = cf.GROUP_COST.get(group)
+    return f"{label} ({cost})" if cost else label
+
+
+def _one_line_desc(desc: str, indent: int = 4) -> str:
+    """Collapse a section description to a SINGLE indented line, truncated with an
+    ellipsis to the terminal width. Overview only — the full text still shows when
+    drilling into the division to edit."""
+    s = " ".join(desc.split())
+    width = shutil.get_terminal_size((80, 24)).columns
+    limit = max(24, width - indent - 1)
+    if len(s) > limit:
+        s = s[: limit - 1].rstrip() + "…"
+    return " " * indent + s
+
+
 def _is_empty(val: Any) -> bool:
     """Empty = None / blank str / empty dict|list|tuple. Booleans are never empty
     (they render on/off); numeric 0 is not empty."""
@@ -148,16 +169,20 @@ def render_overview(
     f = v | ...`` — listing the visible, non-empty fields (incl. secrets) of an ON
     or pure-config division, or just the gate value(s) of a collapsed OFF one.
     Empty fields and dependency-gated fields whose selector is inactive (e.g.
-    ``storage.postgres`` while ``backend = chroma``) are omitted. Section
-    descriptions are NOT shown here (they appear only when drilling to edit). A
-    blank line separates divisions.
+    ``storage.postgres`` while ``backend = chroma``) are omitted. A one-line,
+    width-truncated section description (when the section has one) is printed
+    under each header; the full text still shows when drilling to edit. A blank
+    line separates divisions.
     """
     for i, (group, label) in enumerate(divisions, 1):
         gates = GROUP_GATES.get(group, [])
-        head = f"[ {i:>2}. {label} ]"
+        head = f"[ {i:>2}. {_label_with_cost(label, group)} ]"
+        desc = cf.GROUP_DESCRIPTIONS.get(group)
         if gates and not any(_gate_on(g, merged, edits) for g in gates):
             vals = " | ".join(_fmt(_eff(g, merged, edits)) for g in gates)
             click.echo(f"{head} {vals}")
+            if desc:
+                click.echo(click.style(_one_line_desc(desc), dim=True))
             click.echo("")
             continue
         parts = []
@@ -182,6 +207,8 @@ def render_overview(
                 continue
             parts.append(f"{spec.prompt} = {_truncate_overview(_fmt(val))}")
         click.echo(f"{head} {' | '.join(parts)}" if parts else head)
+        if desc:
+            click.echo(click.style(_one_line_desc(desc), dim=True))
         click.echo("")
 
 
@@ -199,7 +226,7 @@ def _edit_division(
     (what the overview shows is what you can edit); ``consent`` fields route to the
     caller's warned prompt.
     """
-    label = dict(cf.GROUP_ORDER).get(group, group)
+    label = _label_with_cost(dict(cf.GROUP_ORDER).get(group, group), group)
     click.echo("")
     click.echo(f"──── {label} " + "─" * max(0, 40 - len(label)))
     desc = cf.GROUP_DESCRIPTIONS.get(group)

@@ -30,6 +30,9 @@ SECTION_ORDER: list[tuple[str, str]] = list(cf.GROUP_ORDER)
 
 # Section intros — sourced from the CLI registry (single source).
 SECTION_DESCRIPTIONS: dict[str, str] = dict(cf.GROUP_DESCRIPTIONS)
+# Per-section cost class (free / LLM / LLM/subagent) — single-sourced from the
+# CLI registry; rendered as a badge on each dashboard section header.
+SECTION_COST: dict[str, str] = dict(cf.GROUP_COST)
 
 # All config sections are now model-backed (bind/server via BindConfig/ServerConfig,
 # the rest via their pydantic models). The legacy modelless `project` identity card
@@ -315,6 +318,8 @@ def build_ui_schema() -> dict[str, Any]:
         section_obj: dict[str, Any] = {"key": key, "label": label, "fields": fields}
         if key in SECTION_DESCRIPTIONS:
             section_obj["description"] = SECTION_DESCRIPTIONS[key]
+        if key in SECTION_COST:
+            section_obj["cost"] = SECTION_COST[key]
         sections.append(section_obj)
     # `providers` is the canonical provider descriptor (kind -> provider ->
     # {models, needs_base_url, default_api_key_env}). The frontend uses it to

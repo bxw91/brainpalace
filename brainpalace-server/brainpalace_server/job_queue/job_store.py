@@ -328,6 +328,36 @@ class JobQueueStore:
         self._update_count = 0
         logger.info(f"Compaction complete: {len(self._jobs)} jobs in snapshot")
 
+    async def rehome(self, swap_path: Any) -> int:
+        """Prefix-swap path fields of non-terminal jobs, then compact (A11).
+        ``swap_path(p) -> p'`` (no-op for out-of-root). Terminal jobs (history)
+        are left untouched. Returns jobs changed."""
+        changed = 0
+        async with self._asyncio_lock:
+            for job in self._jobs.values():
+                if job.status in self._TERMINAL_STATUSES:
+                    continue
+                before = (
+                    job.folder_path,
+                    job.injector_script,
+                    job.folder_metadata_file,
+                )
+                job.folder_path = swap_path(job.folder_path)
+                if job.injector_script is not None:
+                    job.injector_script = swap_path(job.injector_script)
+                if job.folder_metadata_file is not None:
+                    job.folder_metadata_file = swap_path(job.folder_metadata_file)
+                after = (
+                    job.folder_path,
+                    job.injector_script,
+                    job.folder_metadata_file,
+                )
+                if after != before:
+                    changed += 1
+            if changed:
+                await self._compact()
+        return changed
+
     async def append_job(self, job: JobRecord) -> int:
         """Append a new job to the queue.
 

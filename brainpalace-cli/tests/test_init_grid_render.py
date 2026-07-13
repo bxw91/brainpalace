@@ -110,6 +110,48 @@ def test_session_archiving_and_vector_are_separate_divisions():
     assert "window" not in vec.lower()
 
 
+def test_section_description_shown_as_truncated_line():
+    # Each section with a GROUP_DESCRIPTIONS entry prints one indented, ellipsis-
+    # truncated line under its header (storage's description is long -> truncated).
+    from brainpalace_cli import config_fields as cf
+
+    merged = {"storage": {"backend": "chroma"}}
+    lines = _render(merged).splitlines()
+    idx = next(
+        i
+        for i, ln in enumerate(lines)
+        if ln.strip().startswith("[") and "Storage" in ln
+    )
+    desc = lines[idx + 1]
+    assert desc.startswith("    ")  # indented under the header
+    assert desc.strip().startswith("Where indexed vectors live")
+    assert desc.rstrip().endswith("…")  # truncated
+    # Full source text is longer than what was rendered on the single line.
+    assert len(desc) < len(cf.GROUP_DESCRIPTIONS["storage"])
+
+
+def test_section_header_shows_cost_class():
+    # The header carries the section's cost class in parens, always visible.
+    merged = {"bm25": {}, "embedding": {"provider": "openai", "model": "m"}}
+    out = _render(merged)
+    bm25 = next(ln for ln in out.splitlines() if "BM25" in ln)
+    assert "(free)" in bm25
+    emb = next(ln for ln in out.splitlines() if "Embedding" in ln)
+    assert "(LLM)" in emb
+
+
+def test_section_without_description_has_no_extra_line():
+    # Reranker has no GROUP_DESCRIPTIONS entry -> header is followed by a blank
+    # line, not a description.
+    from brainpalace_cli import config_fields as cf
+
+    assert "reranker" not in cf.GROUP_DESCRIPTIONS
+    merged = {"reranker": {"enabled": False}}
+    lines = _render(merged).splitlines()
+    idx = next(i for i, ln in enumerate(lines) if "Reranker" in ln)
+    assert lines[idx + 1].strip() == ""
+
+
 def test_indexing_section_exposes_fields():
     from brainpalace_cli import config_fields as cf
 

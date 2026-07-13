@@ -273,30 +273,45 @@ def _current_git_shas(repo_path: str) -> set[str] | None:
     return {line.strip() for line in out.stdout.splitlines() if line.strip()}
 
 
-def _indexable_git_shas(repo_path: str, config: Any = None) -> set[str] | None:
-    """Shas the git indexer can actually reach — the self-heal WANTED scope.
+def _indexable_git_shas(
+    repo_path: str, config: Any = None, git_state_dir: Any = None
+) -> set[str] | None:
+    """Shas the git indexer has actually recorded as indexed — the self-heal
+    WANTED scope.
 
-    Mirrors the indexer exactly (``git log`` from HEAD, depth cap, monorepo
-    path scope via ``resolve_commit_scope`` — a BrainPalace project that is a
-    subfolder of a larger repo wants only commits touching that subfolder).
-    NOT ``rev-list --all``: commits reachable only from other branches are not
-    indexable, so wanting them reports phantom "need re-embed" residue
-    forever. The deep-clean keep-set (:func:`_current_git_shas`) intentionally
+    Bounded by the git indexer's own persisted progress, not the live branch
+    tip: mirrors the indexer's depth cap + monorepo path scope (via
+    ``resolve_commit_scope``) AND walks from its recorded ``last_sha`` instead
+    of HEAD. Self-heal runs at startup, before the async git-history index job
+    has necessarily run — wanting every HEAD commit back would count
+    never-yet-indexed commits as lost. No recorded ``last_sha`` (git never
+    indexed this repo, or no state dir given) means nothing has been indexed
+    yet, so nothing can be lost: want zero, matching the empty-manifest folder
+    case. A recorded ``last_sha`` that's no longer reachable (e.g. GC'd after
+    a history rewrite) makes the underlying ``git log`` fail, which correctly
+    propagates as ``None`` (couldn't determine). Disabled git indexing wants
+    nothing. The deep-clean keep-set (:func:`_current_git_shas`) intentionally
     stays ``--all`` — never delete chunks of commits that still exist on any
-    ref. Disabled git indexing wants nothing. ``None`` = couldn't determine.
+    ref; that side is untouched by this scoping.
     """
     from brainpalace_server.config.git_config import load_git_indexing_config
     from brainpalace_server.indexing.git_loader import (
         list_indexable_shas,
         resolve_commit_scope,
     )
+    from brainpalace_server.services.git_history_index_service import (
+        load_git_last_sha,
+    )
 
     cfg = config if config is not None else load_git_indexing_config()
     if not cfg.enabled:
         return set()
     target = cfg.repo_path or repo_path
+    last_sha = load_git_last_sha(git_state_dir, target)
+    if not last_sha:
+        return set()
     scope = resolve_commit_scope(target, cfg.path_filter)
-    return list_indexable_shas(target, depth=cfg.depth, paths=scope)
+    return list_indexable_shas(target, depth=cfg.depth, paths=scope, rev=last_sha)
 
 
 async def prune_orphan_git_chunks(
@@ -640,6 +655,7 @@ async def self_heal_on_startup(
     target_dimensions: int,
     bm25_manager: Any = None,
     repo_path: str | None = None,
+    git_state_dir: Any = None,
     job_service: Any = None,
     read_only: bool = False,
 ) -> dict[str, Any]:
@@ -679,14 +695,17 @@ async def self_heal_on_startup(
             manifests.append(await manifest_tracker.load(rec.folder_path))
         manifest_ids = _manifest_union(manifests)
 
-    # Add the git plane: every commit the git indexer can reach should have a
-    # git_commit chunk. Git chunks live in the same collection + embedding cache,
-    # so a lost commit recovers from cache+dead exactly like code/doc — but git
-    # isn't manifest-tracked, so we source its wanted ids from the repo itself,
-    # scoped exactly like the indexer (HEAD + monorepo path filter, not --all).
+    # Add the git plane: every commit the git indexer has already recorded as
+    # indexed (its persisted last_sha) should have a git_commit chunk. Git
+    # chunks live in the same collection + embedding cache, so a lost commit
+    # recovers from cache+dead exactly like code/doc — but git isn't
+    # manifest-tracked, so we source its wanted ids from the repo itself,
+    # bounded by the indexer's own progress (last_sha + monorepo path filter,
+    # not HEAD, not --all): a commit the async git-history job hasn't reached
+    # yet was never lost, so it must not count as residue.
     git_ids: set[str] = set()
     if repo_path:
-        shas = _indexable_git_shas(repo_path)
+        shas = _indexable_git_shas(repo_path, git_state_dir=git_state_dir)
         if shas:
             git_ids = {f"git_commit:{sha}" for sha in shas}
 

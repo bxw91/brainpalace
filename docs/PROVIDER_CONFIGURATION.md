@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-05
+last_validated: 2026-07-11
 ---
 
 # Provider Configuration Reference
@@ -347,7 +347,7 @@ Doc-graph and session extraction are controlled by the `extraction` section:
 
 | Field | Type | Maps to env var | Description |
 |-------|------|-----------------|-------------|
-| `extraction.mode` | string | `EXTRACTION_MODE` | `off` (default) \| `subagent` (free) \| `auto` \| `provider` (BILLABLE) |
+| `extraction.mode` | string | — | `off` (default) \| `subagent` (free) \| `auto` \| `provider` (BILLABLE) |
 | `extraction.grace_hours` | int | — | Hours before `auto` mode falls back to provider |
 
 #### Precedence: env vars > YAML > defaults
@@ -426,7 +426,6 @@ graphrag:
 | Variable | Description | Status |
 |----------|-------------|--------|
 | `DOC_SERVE_STATE_DIR` | Legacy state directory variable | Deprecated (use BRAINPALACE_STATE_DIR) |
-| `DOC_SERVE_URL` | Legacy CLI URL variable | Deprecated |
 
 ## Validation
 

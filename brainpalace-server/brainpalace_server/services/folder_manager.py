@@ -13,6 +13,7 @@ import logging
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from brainpalace_server.storage_paths import state_file_path
 
@@ -73,12 +74,17 @@ class FolderManager:
         self._lock = asyncio.Lock()
         self._cache: dict[str, FolderRecord] = {}
 
-    async def initialize(self) -> None:
+    async def initialize(self, *, prune: bool = True) -> None:
         """Initialize the folder manager by loading existing records.
 
         Loads folder records from JSONL file if it exists. Handles
         missing files gracefully (starts with empty cache). Automatically
-        prunes records whose folder_path no longer exists on disk.
+        prunes records whose folder_path no longer exists on disk, unless
+        `prune=False` (used by the rehome quarantine seam to suppress the
+        destructive prune while a move is being detected/resolved).
+
+        Args:
+            prune: When False, skip `_prune_missing_unlocked()` entirely.
 
         Raises:
             OSError: If JSONL file exists but cannot be read
@@ -92,7 +98,7 @@ class FolderManager:
                 )
             else:
                 logger.info("No existing folder records found, starting fresh")
-            pruned = self._prune_missing_unlocked()
+            pruned = self._prune_missing_unlocked() if prune else []
             if pruned:
                 await self._persist()
 
@@ -193,6 +199,25 @@ class FolderManager:
         """
         async with self._lock:
             return sorted(self._cache.values(), key=lambda r: r.folder_path)
+
+    async def rehome(self, swap_record: Any) -> int:
+        """Re-key folder records old_root->new_root WITHOUT pruning (D5/A2).
+        ``swap_record(rec) -> rec'``. Loads the JSONL if the cache is empty,
+        rebuilds it under swapped ``folder_path`` keys, persists. Returns changed."""
+        async with self._lock:
+            if not self._cache and self.jsonl_path.exists():
+                self._cache = await asyncio.to_thread(self._load_jsonl)
+            changed = 0
+            new_cache: dict[str, FolderRecord] = {}
+            for rec in self._cache.values():
+                swapped = swap_record(rec)
+                if swapped.folder_path != rec.folder_path:
+                    changed += 1
+                new_cache[swapped.folder_path] = swapped
+            self._cache = new_cache
+            if changed:
+                await self._persist()
+            return changed
 
     async def get_folder(self, folder_path: str) -> FolderRecord | None:
         """Get a folder record by path.

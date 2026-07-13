@@ -120,3 +120,32 @@ class TestEdgeCases:
         matcher = GitignoreMatcher.from_project_root(project_root)
         # No spec was loaded — nothing ignored.
         assert matcher.is_ignored(project_root / "a.log") is False
+
+
+class TestScanPruning:
+    """Construction-time scan skips never-indexed megadirs (perf) without
+    changing any indexed-file verdict."""
+
+    def test_gitignore_inside_pruned_dir_is_not_loaded(self, tmp_path: Path) -> None:
+        # A .gitignore inside .venv must be ignored by the scan: it only governs
+        # .venv content (never indexed), so loading it would be wasted work.
+        venv = tmp_path / ".venv"
+        venv.mkdir()
+        (venv / ".gitignore").write_text("keep_me.py\n")
+        (tmp_path / ".gitignore").write_text("secret.txt\n")
+
+        matcher = GitignoreMatcher.from_project_root(tmp_path)
+
+        # root-level rule still applies
+        assert matcher.is_ignored(tmp_path / "secret.txt") is True
+        # the .venv/.gitignore rule was NOT loaded (its dir is pruned)
+        assert venv.resolve() not in matcher._specs_by_dir
+
+    def test_nested_gitignore_outside_pruned_dirs_still_loads(
+        self, tmp_path: Path
+    ) -> None:
+        sub = tmp_path / "src" / "pkg"
+        sub.mkdir(parents=True)
+        (sub / ".gitignore").write_text("generated.py\n")
+        matcher = GitignoreMatcher.from_project_root(tmp_path)
+        assert matcher.is_ignored(sub / "generated.py") is True

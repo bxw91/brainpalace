@@ -190,6 +190,7 @@ _DASHBOARD_ROUTE_PREFIXES = (
     "/metrics",
     "/ingest",
     "/entities",
+    "/rehome",
 )
 
 

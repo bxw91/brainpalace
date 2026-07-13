@@ -248,6 +248,39 @@ class VectorStoreManager:
         logger.debug(f"Added {len(ids)} documents to vector store")
         return len(ids)
 
+    async def update_metadata(
+        self, ids: list[str], metadatas: list[dict[str, Any]]
+    ) -> None:
+        """Update only the metadata of existing chunks (chroma preserves
+        embeddings + documents when ``update`` is called with ids+metadatas)."""
+        async with self._lock:
+            assert self._collection is not None
+            await asyncio.to_thread(
+                self._collection.update,
+                ids=ids,
+                metadatas=metadatas,  # type: ignore[arg-type]  # chroma widens metadata value types
+            )
+
+    async def get_all_ids(self) -> list[str]:
+        async with self._lock:
+            assert self._collection is not None
+            got = await asyncio.to_thread(self._collection.get, include=[])
+            return sorted(got.get("ids", []) if got else [])
+
+    async def get_metadatas(self, ids: list[str]) -> list[dict[str, Any]]:
+        if not ids:
+            return []
+        async with self._lock:
+            assert self._collection is not None
+            got = await asyncio.to_thread(
+                self._collection.get, ids=ids, include=["metadatas"]  # type: ignore[list-item]
+            )
+            by_id = {
+                i: (m or {})
+                for i, m in zip(got.get("ids", []), got.get("metadatas", []) or [])
+            }
+            return [dict(by_id.get(i, {})) for i in ids]
+
     async def upsert_documents(
         self,
         ids: list[str],

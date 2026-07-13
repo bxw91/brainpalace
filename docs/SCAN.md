@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-04
+last_validated: 2026-07-13
 ---
 
 # Scan Mode — deterministic term counts over your session history
@@ -13,7 +13,11 @@ embeddings, no network, no cost.
 
 1. The compiler extracts ONE term from the query — a quoted phrase
    (`"entity resolution"`) or the word after mention/say/discuss/talk-about
-   tells. No term → scan returns nothing (never guesses).
+   tells. Under an **explicit** `--mode scan` a bare single-word query is also
+   taken as the term (so `scan profile` == `scan "profile"`); a bare multi-word
+   query stays ambiguous. No term → scan returns nothing (never guesses). The
+   **auto-router** keeps the strict contract — it never turns a bare word into a
+   scan term, so plain hybrid queries are unaffected.
 2. The executor walks the session archive
    (`.brainpalace/session_archive/YYYY-MM-DD-<tool>/*.jsonl`), parses each
    transcript through the standard session loader, tokenizes conversational

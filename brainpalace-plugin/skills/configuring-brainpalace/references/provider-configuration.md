@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-05
+last_validated: 2026-07-13
 ---
 
 # Provider Configuration Guide

@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-04
+last_validated: 2026-07-13
 ---
 
 # Absence Mode — anti-join over your typed records

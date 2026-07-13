@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-05
+last_validated: 2026-07-13
 ---
 
 # Configuration Reference
@@ -284,22 +284,33 @@ export GRAPH_STORE_TYPE="simple"
 
 ### Entity Extraction
 
+Two independent paths feed the graph: **code-metadata** (free, AST-derived,
+env-configurable below) and the **LLM engine**. The LLM engine is selected by
+`extraction.mode` — a `config.yaml` key, **not** an env var (there is no
+`EXTRACTION_MODE` / `GRAPH_USE_LLM_EXTRACTION` variable). One `extraction.mode`
+governs BOTH doc-graph triplets and session distillation: `off` (default,
+cost-safe) | `subagent` (free) | `auto` | `provider` (BILLABLE). Set it via
+`brainpalace config`, the dashboard, or `brainpalace init`.
+
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `GRAPH_USE_CODE_METADATA` | `true` | Extract from AST metadata |
-| `EXTRACTION_MODE` | `off` | Doc-graph + session extraction engine: `off` \| `subagent` (free) \| `auto` \| `provider` (BILLABLE) |
-| `GRAPH_EXTRACTION_MODEL` | `claude-haiku-4-5` | LLM model for extraction |
+| `GRAPH_EXTRACTION_MODEL` | `claude-haiku-4-5` | LLM model when an LLM engine is active |
 | `GRAPH_MAX_TRIPLETS_PER_CHUNK` | `10` | Limit per chunk |
+
+```yaml
+# config.yaml — LLM extraction engine (doc-graph + sessions)
+extraction:
+  mode: subagent   # off (default) | subagent (free) | auto | provider (billable)
+```
 
 **Examples**:
 
 ```bash
-# Code-only extraction (no LLM costs)
+# Code-only extraction (no LLM costs): leave extraction.mode at its off default
 export GRAPH_USE_CODE_METADATA="true"
-export GRAPH_USE_LLM_EXTRACTION="false"
 
-# Full extraction with fast model
-export GRAPH_USE_LLM_EXTRACTION="true"
+# Pick the model used when an LLM engine (subagent/auto/provider) is enabled
 export GRAPH_EXTRACTION_MODEL="claude-haiku-4-5"
 ```
 
@@ -835,7 +846,8 @@ ENABLE_GRAPH_INDEX=true
 GRAPH_STORE_TYPE=sqlite
 GRAPH_INDEX_PATH=/data/brainpalace/graph
 GRAPH_USE_CODE_METADATA=true
-GRAPH_USE_LLM_EXTRACTION=true
+# LLM extraction engine is a config.yaml key, not an env var:
+#   extraction: { mode: subagent }   # off | subagent | auto | provider
 GRAPH_EXTRACTION_MODEL=claude-haiku-4-5
 GRAPH_TRAVERSAL_DEPTH=2
 
@@ -868,7 +880,7 @@ DEFAULT_CHUNK_OVERLAP=100
 # GraphRAG for code relationships
 ENABLE_GRAPH_INDEX=true
 GRAPH_USE_CODE_METADATA=true
-GRAPH_USE_LLM_EXTRACTION=false  # Code metadata is sufficient
+# extraction.mode stays off (default) — code metadata is sufficient, no LLM cost
 ```
 
 Project config (`.brainpalace/config.yaml`):
@@ -934,8 +946,7 @@ OPENAI_API_KEY=sk-proj-...
 EMBEDDING_MODEL=text-embedding-3-small
 EMBEDDING_DIMENSIONS=1536
 
-# Disable LLM extraction
-GRAPH_USE_LLM_EXTRACTION=false
+# LLM extraction stays off by default (config.yaml: extraction.mode = off)
 ```
 
 ---

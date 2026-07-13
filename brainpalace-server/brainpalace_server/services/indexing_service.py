@@ -115,6 +115,24 @@ def _folder_chunk_ids(manifest: Any) -> list[str]:
     return sorted(ids)
 
 
+def _is_initial_index(manifest_tracker: Any, prior_manifest: Any) -> bool:
+    """True when this run is a folder's FIRST index — exempt from the budget guard.
+
+    First index ⇔ manifest tracking is active AND the folder has no prior
+    authoritative chunks (no manifest on disk, or an empty one). The cap exists to
+    catch surprise re-embed cost on watch/incremental/auto re-indexes, never the
+    deliberate initial index the user explicitly asked for.
+
+    When manifest tracking is OFF the tracker is None and ``prior_manifest`` is
+    unconditionally None, which must NOT be read as "first index" — that would
+    silently disable the guard on every run. Hence the ``manifest_tracker is not
+    None`` gate is load-bearing, not defensive.
+    """
+    if manifest_tracker is None:
+        return False
+    return prior_manifest is None or not _folder_chunk_ids(prior_manifest)
+
+
 def _classify_documents(paths: set[str]) -> dict[str, int]:
     """Split a set of indexed file paths into code vs doc counts by extension.
 
@@ -125,6 +143,19 @@ def _classify_documents(paths: set[str]) -> dict[str, int]:
     code = sum(1 for p in paths if Path(p).suffix.lower() in code_exts)
     total = len(paths)
     return {"code": code, "doc": total - code, "total": total}
+
+
+def _folder_bucket(file_path: str, root: str) -> str:
+    """First path component of ``file_path`` relative to ``root``; loose files
+    directly in ``root`` bucket to ``"(root files)"``."""
+    try:
+        rel = os.path.relpath(file_path, root)
+    except ValueError:  # different drive / unrelated path
+        return "(root files)"
+    parts = rel.split(os.sep)
+    if len(parts) <= 1 or parts[0] in ("", ".", ".."):
+        return "(root files)"
+    return parts[0]
 
 
 def _resolve_watch_settings(
@@ -399,23 +430,43 @@ class IndexingService:
                 return len(encoder.encode(text, disallowed_special=()))
             return -(-len(text) // 4)  # ceil(len/4)
 
+        from collections import defaultdict
+
         raw_tokens = 0
         code_files = 0
         doc_files = 0
         total_bytes = 0
+        folder_files: dict[str, int] = defaultdict(int)
+        folder_code_raw: dict[str, int] = defaultdict(int)
+        folder_doc_raw: dict[str, int] = defaultdict(int)
         for d in documents:
-            raw_tokens += _count(d.text)
+            t = _count(d.text)
+            raw_tokens += t
             total_bytes += d.file_size
+            bucket = _folder_bucket(d.file_path, abs_folder_path)
+            folder_files[bucket] += 1
             if d.metadata.get("source_type") == "code":
                 code_files += 1
+                folder_code_raw[bucket] += t
             else:
                 doc_files += 1
+                folder_doc_raw[bucket] += t
 
         # Chunk overlap re-embeds the overlap region of each chunk, so embedded
         # tokens exceed raw tokens by roughly overlap/chunk_size.
         chunk_size = request.chunk_size or 512
         overlap_factor = 1.0 + (request.chunk_overlap or 0) / max(chunk_size, 1)
         doc_tokens = int(round(raw_tokens * overlap_factor))
+
+        by_folder = [
+            {
+                "name": name,
+                "files": folder_files[name],
+                "code_tokens": int(round(folder_code_raw[name] * overlap_factor)),
+                "doc_tokens": int(round(folder_doc_raw[name] * overlap_factor)),
+            }
+            for name in folder_files
+        ]
 
         # --- git history (same scope the real index uses; Phase 1) ---
         git_tokens = 0
@@ -498,6 +549,7 @@ class IndexingService:
             "git_commits": git_commits,
             "session_tokens": session_tokens,
             "session_files": session_files,
+            "by_folder": by_folder,
             "est_embedding_tokens": total_tokens,
             "overlap_factor": round(overlap_factor, 3),
             "tokenizer": tokenizer,
@@ -974,6 +1026,10 @@ class IndexingService:
             )
 
             _icfg = _load_indexing_config()
+            # The FIRST index of a folder is exempt from the budget guard (the
+            # adaptive ratio gives a near-empty store ~0 headroom, so the initial
+            # index would otherwise trip the bare floor). See _is_initial_index.
+            _is_first_index = _is_initial_index(self.manifest_tracker, prior_manifest)
             try:
                 _total_chunks = await self.storage_backend.get_count()
             except Exception:  # noqa: BLE001 — cold store → fall back to floor
@@ -990,16 +1046,27 @@ class IndexingService:
             _tok = enforce_token_budget(
                 [chunks[i] for i in _miss_idx],
                 limit=_budget,
-                force=request.force_budget,
+                force=request.force_budget or _is_first_index,
             )
-            logger.info(
-                "Embedding budget check ok: ~%d tokens to embed "
-                "(%d/%d chunks cached; limit %d)",
-                _tok,
-                len(chunks) - len(_miss_idx),
-                len(chunks),
-                _budget,
-            )
+            if _is_first_index and not request.force_budget and _tok > _budget > 0:
+                logger.info(
+                    "Initial index of %s — budget guard skipped "
+                    "(~%d tokens to embed; %d/%d chunks cached; cap %d)",
+                    abs_folder_path,
+                    _tok,
+                    len(chunks) - len(_miss_idx),
+                    len(chunks),
+                    _budget,
+                )
+            else:
+                logger.info(
+                    "Embedding budget check ok: ~%d tokens to embed "
+                    "(%d/%d chunks cached; limit %d)",
+                    _tok,
+                    len(chunks) - len(_miss_idx),
+                    len(chunks),
+                    _budget,
+                )
 
             async def embedding_progress(processed: int, total: int) -> None:
                 if progress_callback:

@@ -10,7 +10,7 @@ triggers:
 skills:
   - using-brainpalace
 tools: Bash, Read, Glob
-last_validated: 2026-07-04
+last_validated: 2026-07-10
 ---
 
 # Memory Curator Agent

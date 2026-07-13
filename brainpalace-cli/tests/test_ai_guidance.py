@@ -20,8 +20,8 @@ from brainpalace_cli import ai_guidance
 from brainpalace_cli.cli import cli
 
 # --- byte budgets: measured size + headroom (decision-critical content survives) ---
-NUDGE_MAX = 700  # measured ~443
-CORE_MAX = 4500  # measured ~3839
+NUDGE_MAX = 750  # measured ~709 (grew with rehome/scan guidance)
+CORE_MAX = 4700  # measured ~4558 (grew with rehome/scan guidance)
 
 
 # --------------------------------------------------------------------------- #

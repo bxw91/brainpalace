@@ -4,7 +4,7 @@ description: Manage LSP language servers used for exact cross-file graph edges
 parameters:
 skills:
   - using-brainpalace
-last_validated: 2026-07-03
+last_validated: 2026-07-13
 ---
 
 # Manage LSP Language Servers

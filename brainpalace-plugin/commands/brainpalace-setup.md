@@ -6,7 +6,7 @@ context: brainpalace
 agent: setup-assistant
 skills:
   - configuring-brainpalace
-last_validated: 2026-07-05
+last_validated: 2026-07-13
 ---
 
 # Complete BrainPalace Setup
@@ -546,7 +546,7 @@ The provider is configured globally — new projects inherit it.
 > your Claude Code subscription** (Haiku, after your first turn — no separate API
 > bill; it draws on your subscription's usage limits); the plugin owns its own
 > hooks. The server never summarizes on its own, so there is **no surprise API
-> bill**. Summaries run **after your first prompt** in batches of up to **8 sessions**
+> bill**. Summaries run **after your first prompt** in batches of up to **2 sessions**
 > (≤1 MB) with a **5-minute (300 s) cool-down** between batches — never on session start.
 > Want server-side summarization anyway? Opt in with `mode: provider`
 > (your configured AI — prefer a local Ollama summarizer for free + private) or

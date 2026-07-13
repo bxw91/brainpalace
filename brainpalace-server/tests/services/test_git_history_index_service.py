@@ -10,6 +10,7 @@ import pytest
 from brainpalace_server.config.git_config import GitIndexingConfig
 from brainpalace_server.services.git_history_index_service import (
     GitHistoryIndexService,
+    load_git_last_sha,
 )
 
 
@@ -143,6 +144,40 @@ def _init_monorepo(root: Path) -> Path:
     _run(root, "add", "-A")
     _run(root, "commit", "-qm", "sub commit")
     return sub
+
+
+# ---------------------------------------------------------------------------
+# load_git_last_sha — shared state-read helper (service + self-heal)
+# ---------------------------------------------------------------------------
+
+
+def test_load_git_last_sha_none_when_never_indexed(tmp_path: Path) -> None:
+    assert load_git_last_sha(tmp_path / "state", "/some/repo") is None
+
+
+def test_load_git_last_sha_none_when_no_state_dir() -> None:
+    assert load_git_last_sha(None, "/some/repo") is None
+
+
+@pytest.mark.asyncio
+async def test_load_git_last_sha_matches_what_the_service_persisted(
+    git_repo: Path, tmp_path: Path
+) -> None:
+    """The helper must read the exact same state file/key the service writes
+    under — the whole point is to avoid the two diverging."""
+    state_dir = tmp_path / "state"
+    svc, store, emb = _svc(state_dir)
+    await svc.index_repo(str(git_repo), GitIndexingConfig(enabled=True))
+
+    last_sha = load_git_last_sha(state_dir, str(git_repo))
+
+    head = subprocess.run(
+        ["git", "-C", str(git_repo), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    assert last_sha == head
 
 
 @pytest.mark.asyncio

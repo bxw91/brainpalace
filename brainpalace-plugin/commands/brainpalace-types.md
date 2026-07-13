@@ -4,7 +4,7 @@ description: List available file type presets for indexing
 parameters:
 skills:
   - using-brainpalace
-last_validated: 2026-06-24
+last_validated: 2026-07-10
 ---
 
 # File Type Presets

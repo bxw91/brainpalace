@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-24
+last_validated: 2026-07-10
 ---
 
 # ChromaDB vs PostgreSQL: Performance Tradeoffs

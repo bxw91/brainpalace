@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-06
+last_validated: 2026-07-13
 ---
 
 # Compute Query Mode & Records Subsystem

@@ -86,6 +86,65 @@ def test_budget_guard_allows_exactly_at_limit():
     enforce_token_budget([C()], limit=100, force=False)
 
 
+def _manifest_with_chunks(*chunk_ids):
+    """Minimal FolderManifest carrying one file record with the given chunk ids."""
+    from brainpalace_server.services.manifest_tracker import FileRecord, FolderManifest
+
+    m = FolderManifest(folder_path="/tmp/fake")
+    m.files["/tmp/fake/f.py"] = FileRecord(
+        checksum="h",
+        mtime=0.0,
+        chunk_ids=list(chunk_ids),
+    )
+    return m
+
+
+def test_initial_index_first_run_is_exempt():
+    """No prior manifest (folder never indexed) → first index → exempt."""
+    from brainpalace_server.services.indexing_service import _is_initial_index
+
+    tracker = object()  # tracking active
+    assert _is_initial_index(tracker, None) is True
+
+
+def test_initial_index_empty_manifest_is_exempt():
+    """A prior manifest with zero authoritative chunks is still a first index."""
+    from brainpalace_server.services.indexing_service import _is_initial_index
+
+    tracker = object()
+    assert _is_initial_index(tracker, _manifest_with_chunks()) is True
+
+
+def test_reindex_with_prior_chunks_is_guarded():
+    """A folder that already has chunks → re-index → NOT exempt (guard applies)."""
+    from brainpalace_server.services.indexing_service import _is_initial_index
+
+    tracker = object()
+    assert _is_initial_index(tracker, _manifest_with_chunks("c1", "c2")) is False
+
+
+def test_no_manifest_tracker_is_not_treated_as_first_index():
+    """Guard must stay active when manifest tracking is off — a None tracker
+    leaves prior_manifest unconditionally None, which must NOT read as first index."""
+    from brainpalace_server.services.indexing_service import _is_initial_index
+
+    assert _is_initial_index(None, None) is False
+
+
+def test_first_index_bypasses_enforce_via_force_or():
+    """The call-site semantics: force_budget OR first-index bypasses the guard,
+    exactly as an explicit force does — an over-limit initial index must not raise."""
+    from brainpalace_server.services.indexing_service import enforce_token_budget
+
+    class C:
+        text = "x" * 4000  # ~1000 tokens
+
+    first_index = True
+    force_budget = False
+    # mirrors indexing_service: force=request.force_budget or _is_first_index
+    enforce_token_budget([C(), C()], limit=500, force=force_budget or first_index)
+
+
 def test_job_worker_parks_budget_error_as_blocked_job():
     """BudgetExceededError flows through the worker's except and PARKS the job as
     BLOCKED (pause+approve design) instead of failing it terminally."""

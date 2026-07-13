@@ -279,6 +279,36 @@ class BM25IndexManager:
         self._bm25.index(toks)
         self.persist()
 
+    def rehome(self, swap_metadata: Any) -> int:
+        """Prefix-swap path metadata in the persisted corpus, then re-tokenize +
+        persist (A7). ``swap_metadata(md_dict) -> md_dict`` operates on a single
+        entry's metadata dict (the D12 path keys). Tokens are path-agnostic so
+        re-tokenize is safe; chunk ids are unchanged. Returns the count of
+        entries whose metadata changed. Empty corpus -> 0.
+
+        Note: each corpus entry stores its metadata nested under ``metadata``
+        (new BrainPalace shape); ``_entry_to_fields`` normalizes both shapes, so
+        the swap is applied to the extracted metadata dict and the corpus is
+        rewritten in the new shape.
+        """
+        if not self._corpus:
+            return 0
+        changed = 0
+        new_corpus: list[dict[str, Any]] = []
+        for entry in self._corpus:
+            node_id, text, metadata = self._entry_to_fields(entry)
+            swapped_md = swap_metadata(metadata)
+            if swapped_md != metadata:
+                changed += 1
+            new_corpus.append(
+                {"node_id": node_id, "text": text, "metadata": swapped_md}
+            )
+        self._corpus = new_corpus
+        if changed:
+            self.rebuild_from_corpus()
+            self.persist()
+        return changed
+
     def add_chunks(self, entries: list[dict[str, Any]]) -> None:
         """Add/replace corpus entries by node_id, then re-tokenize + persist.
 

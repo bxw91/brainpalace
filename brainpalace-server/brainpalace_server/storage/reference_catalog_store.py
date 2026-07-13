@@ -121,6 +121,17 @@ class ReferenceCatalogStore:
             )
         return cur.rowcount
 
+    def delete_by_id(self, ids: Iterable[str]) -> int:
+        id_list = list(ids)
+        if not id_list:
+            return 0
+        ph = ",".join("?" * len(id_list))
+        with self._conn:
+            cur = self._conn.execute(
+                f"DELETE FROM reference_catalog WHERE id IN ({ph})", id_list
+            )
+        return cur.rowcount
+
     def list(self, domain: str | None = None) -> list[ReferenceEntry]:
         sql = (
             "SELECT id,domain,source,source_id,pointer,summary,ingested_at,"

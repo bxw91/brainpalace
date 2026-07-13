@@ -24,11 +24,13 @@ from __future__ import annotations
 
 import hashlib
 import importlib
+import io
 import json
 import os
 import subprocess
 import sys
 import tempfile
+import tokenize
 from datetime import date
 from pathlib import Path
 from types import ModuleType
@@ -747,6 +749,17 @@ def _render_stats(stats: dict[str, int]) -> str:
     )
 
 
+def _render_packet_count(n: int) -> str:
+    """Actionable count for THIS round: docs still queued to re-judge. Distinct from
+    `_render_stats`' cache status ("N not verified" = never recorded a verdict): a
+    fully-verified doc can still be queued here because a file it grounds on changed
+    since. Printed next to the packet so a reader never reads "0 not verified" as
+    "nothing to do" and overlooks the queue below."""
+    return f"verify-docs: {n} doc(s) to re-judge this round" + (
+        " — verification converged, nothing queued." if n == 0 else "."
+    )
+
+
 def _order_by_cost(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Order the packet **smallest verifiable-prose first**. Two wins at once:
 
@@ -922,20 +935,68 @@ def _doc_audit_fresh(doc: str) -> bool:
 # --- grounding relations (file/dir content hashing) ------------------------ #
 
 
+def _semantic_py_hash(data: bytes) -> str:
+    """Token-normalized sha256 of Python source — insensitive to whitespace, blank
+    lines, indentation style, and comments (all semantic-preserving). A black/isort
+    reformat or a comment reword must NOT flip a code grounding hash and falsely
+    re-ground every claim grounded on the file; a real code-token change still does.
+    Hashes the ``(type, string)`` of each significant token (STRING/docstring tokens
+    kept — they can carry a documented default; COMMENT and the whitespace-structure
+    tokens dropped). Fail-soft: on a `TokenError`/`IndentationError`/`SyntaxError`
+    (a syntactically broken mid-edit read) fall back to the raw-byte hash, so a hash
+    is always produced — over-triggering a re-verify, never under."""
+    skip = {
+        tokenize.COMMENT,
+        tokenize.NL,
+        tokenize.NEWLINE,
+        tokenize.INDENT,
+        tokenize.DEDENT,
+        tokenize.ENCODING,
+        tokenize.ENDMARKER,
+    }
+    h = hashlib.sha256()
+    try:
+        for tok in tokenize.tokenize(io.BytesIO(data).readline):
+            if tok.type in skip:
+                continue
+            h.update(f"{tok.type}:{tok.string}\n".encode())
+    except (tokenize.TokenError, IndentationError, SyntaxError):
+        return hashlib.sha256(data).hexdigest()
+    return h.hexdigest()
+
+
+def _content_fingerprint(data: bytes, suffix: str) -> str:
+    """Per-file content fingerprint: a ``.py`` file is token-normalized
+    (`_semantic_py_hash`) so a reformat does not flip it; every other file keeps its
+    raw-byte hash. Shared by the single-file and directory-member branches below."""
+    if suffix == ".py":
+        return _semantic_py_hash(data)
+    return hashlib.sha256(data).hexdigest()
+
+
 def _path_content_hash(rel: str) -> str | None:
     """sha256 fingerprint of a grounded path at CURRENT state, or None if it no
     longer exists (deleted file/dir → relation missing → reground the claim).
 
-      * **file** → hash of its raw bytes.
-      * **directory** → hash over the sorted ``(relpath, sha256(file bytes))`` of
-        every file beneath it, so adding, removing, or editing ANY member flips the
-        hash. This is what closes the "new member added to a documented set" gap:
-        a completeness claim grounded on a registry directory re-verifies the moment
-        a file lands there."""
+      * **file** → a ``.py`` file is token-normalized (`_semantic_py_hash`) so a
+        black/isort/whitespace/comment reformat does NOT flip it; any other file is
+        hashed by its raw bytes.
+      * **directory** → hash over the sorted ``(relpath, member-hash)`` of every file
+        beneath it, so adding, removing, or editing ANY member flips the hash. This is
+        what closes the "new member added to a documented set" gap: a completeness claim
+        grounded on a registry directory re-verifies the moment a file lands there.
+        A ``.md`` member is hashed by its **authored body** (`content_hash`,
+        frontmatter-excluded) — mirroring `_grounding_path_hash` for a direct ``.md``
+        dep — so a `last_validated` re-stamp (frontmatter-only) on a member does NOT
+        flip the directory hash and falsely re-ground every doc whose completeness claim
+        grinds on this directory. A ``.py`` member is token-normalized like a ``.py``
+        file (a reformat of one member does not churn the directory hash). Add/remove of
+        a member (relpath set changes) or a real body edit still flips it; other members
+        keep raw-byte hashing."""
     full = _REPO_ROOT / rel
     if full.is_file():
         try:
-            return hashlib.sha256(full.read_bytes()).hexdigest()
+            return _content_fingerprint(full.read_bytes(), full.suffix)
         except OSError:
             return None
     if full.is_dir():
@@ -955,7 +1016,20 @@ def _path_content_hash(rel: str) -> str | None:
                 if p.suffix in {".pyc", ".pyo"} or p.name.startswith("."):
                     continue
                 h.update("/".join(rel_parts).encode("utf-8"))
-                h.update(hashlib.sha256(p.read_bytes()).digest())
+                if p.suffix == ".md":
+                    # Frontmatter-excluded so a date-only re-stamp of a member doc
+                    # can't churn the directory hash (see method docstring).
+                    h.update(
+                        str(
+                            _freshness().content_hash(p.read_text(encoding="utf-8"))
+                        ).encode("utf-8")
+                    )
+                else:
+                    # `.py` members are token-normalized (reformat-insensitive), every
+                    # other member keeps raw bytes — via the shared fingerprint.
+                    h.update(
+                        _content_fingerprint(p.read_bytes(), p.suffix).encode("utf-8")
+                    )
         except OSError:
             return None
         return h.hexdigest()
@@ -1875,4 +1949,6 @@ def verify_docs_command(
     # The packet IS the machine contract the agent consumes — always JSON on
     # resolve (`--json` is accepted for symmetry/explicitness but is the default).
     packet = _build_packet(entries, base if changed else "-")
+    # Actionable count for THIS round (stderr — stdout carries the JSON packet).
+    click.echo(_render_packet_count(len(packet.get("docs", []))), err=True)
     click.echo(json.dumps(packet, indent=2))

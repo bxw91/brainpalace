@@ -35,6 +35,44 @@ def test_path_content_hash_dir_changes_when_member_added(tmp_path, monkeypatch) 
     assert h1 and h2 and h1 != h2
 
 
+def test_path_content_hash_dir_stable_when_md_member_restamped(
+    tmp_path, monkeypatch
+) -> None:
+    # A `last_validated` re-stamp on a .md member (frontmatter-only) must NOT flip the
+    # directory hash — otherwise the doc-verify sweep re-stamping member docs would
+    # falsely re-ground every doc whose completeness claim grinds on this directory.
+    monkeypatch.setattr(vd, "_REPO_ROOT", tmp_path)
+    d = tmp_path / "commands"
+    d.mkdir()
+    (d / "one.md").write_text(
+        "---\nlast_validated: 2026-01-01\n---\n# One\nBody.\n", encoding="utf-8"
+    )
+    h1 = vd._path_content_hash("commands")
+    (d / "one.md").write_text(
+        "---\nlast_validated: 2026-07-10\n---\n# One\nBody.\n", encoding="utf-8"
+    )
+    h2 = vd._path_content_hash("commands")
+    assert h1 and h2 and h1 == h2  # frontmatter-only change → hash stable
+
+
+def test_path_content_hash_dir_changes_when_md_member_body_edited(
+    tmp_path, monkeypatch
+) -> None:
+    # An authored-body edit of a .md member MUST still flip the directory hash.
+    monkeypatch.setattr(vd, "_REPO_ROOT", tmp_path)
+    d = tmp_path / "commands"
+    d.mkdir()
+    (d / "one.md").write_text(
+        "---\nlast_validated: 2026-01-01\n---\n# One\nBody.\n", encoding="utf-8"
+    )
+    h1 = vd._path_content_hash("commands")
+    (d / "one.md").write_text(
+        "---\nlast_validated: 2026-01-01\n---\n# One\nEdited body.\n", encoding="utf-8"
+    )
+    h2 = vd._path_content_hash("commands")
+    assert h1 and h2 and h1 != h2  # body change → hash flips
+
+
 def test_relation_hash_order_independent(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(vd, "_REPO_ROOT", tmp_path)
     (tmp_path / "a.py").write_text("a\n", encoding="utf-8")
@@ -236,3 +274,66 @@ def test_packet_feeds_raw_verdict_for_doc_dep(tmp_path, monkeypatch) -> None:
     assert cv[0]["claim"] == "rests on D"
     assert cv[0]["verdict"] == "SUPPORTED"  # raw, not the settled PENDING
     assert cv[0]["fresh"] is True
+
+
+# --- .py grounds are semantic-normalized: black/whitespace/comment reformats
+#     (semantic-preserving) must NOT flip the hash and falsely re-ground claims. ---
+
+_PY_ORIG = "def f(x):\n    return x + 1\n"
+# same code, black-style reformat: blank line, extra spaces, a comment, trailing ws
+_PY_REFORMATTED = "def f(x):\n\n    # explain\n    return x + 1   \n"
+_PY_REAL_EDIT = "def f(x):\n    return x + 2\n"
+
+
+def test_path_content_hash_py_stable_under_reformat(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(vd, "_REPO_ROOT", tmp_path)
+    (tmp_path / "m.py").write_text(_PY_ORIG, encoding="utf-8")
+    h1 = vd._path_content_hash("m.py")
+    (tmp_path / "m.py").write_text(_PY_REFORMATTED, encoding="utf-8")
+    h2 = vd._path_content_hash("m.py")
+    assert h1 and h2 and h1 == h2  # whitespace + comment reformat: hash unchanged
+
+
+def test_path_content_hash_py_changes_on_real_edit(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(vd, "_REPO_ROOT", tmp_path)
+    (tmp_path / "m.py").write_text(_PY_ORIG, encoding="utf-8")
+    h1 = vd._path_content_hash("m.py")
+    (tmp_path / "m.py").write_text(_PY_REAL_EDIT, encoding="utf-8")  # 1 -> 2
+    h2 = vd._path_content_hash("m.py")
+    assert h1 and h2 and h1 != h2  # real token change still flips
+
+
+def test_path_content_hash_dir_py_member_stable_under_reformat(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setattr(vd, "_REPO_ROOT", tmp_path)
+    d = tmp_path / "pkg"
+    d.mkdir()
+    (d / "a.py").write_text(_PY_ORIG, encoding="utf-8")
+    h1 = vd._path_content_hash("pkg")
+    (d / "a.py").write_text(_PY_REFORMATTED, encoding="utf-8")  # reformat a member
+    h2 = vd._path_content_hash("pkg")
+    assert h1 and h2 and h1 == h2  # dir hash stable under member reformat
+
+
+def test_path_content_hash_dir_py_member_changes_on_real_edit(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setattr(vd, "_REPO_ROOT", tmp_path)
+    d = tmp_path / "pkg"
+    d.mkdir()
+    (d / "a.py").write_text(_PY_ORIG, encoding="utf-8")
+    h1 = vd._path_content_hash("pkg")
+    (d / "a.py").write_text(_PY_REAL_EDIT, encoding="utf-8")
+    h2 = vd._path_content_hash("pkg")
+    assert h1 and h2 and h1 != h2
+
+
+def test_semantic_py_hash_fallback_on_syntax_error(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(vd, "_REPO_ROOT", tmp_path)
+    # A syntactically broken mid-edit file must still yield a stable, non-None hash
+    # (raw-byte fallback), not crash.
+    (tmp_path / "broken.py").write_text("def f(:\n", encoding="utf-8")
+    h1 = vd._path_content_hash("broken.py")
+    h2 = vd._path_content_hash("broken.py")
+    assert h1 and h1 == h2

@@ -7,6 +7,7 @@ import { DataTable, type Column } from "../components/DataTable";
 import { QueryDrawer } from "../components/QueryDrawer";
 import { VolumeChart, LatencyChart, type TimeSeriesDatum } from "../components/Charts";
 import { CompareGrid, type CompareRun } from "../components/CompareGrid";
+import { ResultRow } from "../components/ResultRow";
 import { QueryAnalytics } from "../components/QueryAnalytics";
 import { useOptionalSelectedInstance } from "../state/selectedInstance";
 import { useToast } from "../components/Toast";
@@ -427,10 +428,35 @@ export function Queries({ instanceId }: { instanceId?: string }) {
                     </ul>
                   );
                 }
+                const isScan = runResults.scan != null;
                 const agg = runResults.compute ?? runResults.scan;
                 if (agg != null) {
                   return agg.length === 0 ? (
-                    <p className="text-sm text-fg-faint">No aggregation rows.</p>
+                    isScan ? (
+                      <div
+                        data-testid="scan-empty-hint"
+                        className="rounded-lg border border-line/60 bg-ink-700/30 px-3 py-2.5 text-sm text-fg-muted"
+                      >
+                        <p>
+                          No matches. <span className="font-mono">scan</span> counts one
+                          term over your archived sessions. A{" "}
+                          <em>single word</em> is counted as-is; for a{" "}
+                          <em>multi-word phrase</em> quote it (
+                          <span className="font-mono text-fg-muted">
+                            "entity resolution"
+                          </span>
+                          ) or use a "mention" tell.
+                        </p>
+                        <p className="mt-1.5 text-fg-faint">
+                          Otherwise the term never appears, or the session archive is
+                          off. To <em>locate</em> a session containing a term (not count
+                          it), use <span className="font-mono text-fg-muted">bm25</span>{" "}
+                          mode.
+                        </p>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-fg-faint">No aggregation rows.</p>
+                    )
                   ) : (
                     <ul className="flex flex-col gap-1.5">
                       {agg.slice(0, 10).map((r, i) => (
@@ -447,15 +473,15 @@ export function Queries({ instanceId }: { instanceId?: string }) {
                 return runResults.results.length === 0 ? (
                   <p className="text-sm text-fg-faint">No matching chunks.</p>
                 ) : (
-                  <ul className="flex flex-col gap-1.5">
-                    {runResults.results.slice(0, 5).map((r, i) => (
-                      <li
+                  <ul className="flex flex-col gap-2">
+                    {runResults.results.map((r, i) => (
+                      <ResultRow
                         key={i}
-                        className="truncate rounded-lg border border-line/60 bg-ink-700/30 px-3 py-2 font-mono text-xs text-fg-muted"
-                        title={r.source}
-                      >
-                        {r.source}
-                      </li>
+                        path={r.source}
+                        lines={null}
+                        snippet={r.text}
+                        score={r.score}
+                      />
                     ))}
                   </ul>
                 );

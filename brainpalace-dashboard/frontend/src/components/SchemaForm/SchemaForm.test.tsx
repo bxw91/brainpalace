@@ -52,6 +52,39 @@ function renderForm(props: {
   return onSave;
 }
 
+describe("SchemaForm cost badge", () => {
+  it("renders the section cost class as a header badge", () => {
+    const costSchema: UiSchema = {
+      sections: [
+        { key: "bm25", label: "BM25", cost: "free", fields: [] },
+        {
+          key: "embedding",
+          label: "Embedding",
+          cost: "LLM",
+          fields: [],
+        },
+        {
+          key: "extraction",
+          label: "Extraction Engine",
+          cost: "LLM/subagent",
+          fields: [],
+        },
+      ],
+    };
+    renderForm({ schema: costSchema, values: {} });
+    expect(screen.getByTestId("section-cost-bm25")).toHaveTextContent("free");
+    expect(screen.getByTestId("section-cost-embedding")).toHaveTextContent("LLM");
+    expect(screen.getByTestId("section-cost-extraction")).toHaveTextContent(
+      "LLM/subagent",
+    );
+  });
+
+  it("omits the badge when a section has no cost", () => {
+    renderForm({ values: {} }); // default schema: embedding, no cost field
+    expect(screen.queryByTestId("section-cost-embedding")).toBeNull();
+  });
+});
+
 describe("SchemaForm inherit-first control", () => {
   const provSchema: UiSchema = {
     sections: [

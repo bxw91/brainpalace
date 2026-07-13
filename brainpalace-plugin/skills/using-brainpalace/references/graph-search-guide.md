@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-24
+last_validated: 2026-07-10
 ---
 
 # Graph Search Guide
@@ -37,9 +37,9 @@ During indexing, BrainPalace extracts:
 | Entity Type | Description | Example |
 |-------------|-------------|---------|
 | Function | Callable functions/methods | `process_payment()` |
+| Method | Methods on a class | `PaymentService.charge()` |
 | Class | Class definitions | `PaymentService` |
 | Module | File/package modules | `auth.validators` |
-| Variable | Important variables/constants | `MAX_RETRIES` |
 
 ### Relationship Types
 
@@ -49,9 +49,10 @@ Relationships between entities are automatically detected:
 |--------------|-------------|---------|
 | CALLS | Function invocation | `main() -> process_payment()` |
 | IMPORTS | Module import | `service.py -> auth.validators` |
-| INHERITS | Class inheritance | `AdminUser -> BaseUser` |
+| EXTENDS | Class inheritance | `AdminUser -> BaseUser` |
+| IMPLEMENTS | Interface implementation | `PaymentService -> Chargeable` |
 | CONTAINS / DEFINED_IN | Containment / definition edges | `auth.py -> authenticate_user` |
-| USES | Variable/constant usage | `retry_loop -> MAX_RETRIES` |
+| REFERENCES | Non-call type use / doc → code | `README.md -> authenticate_user` |
 
 ### Graph Traversal
 
@@ -260,7 +261,7 @@ brainpalace status --json | jq '.graph_index'
       "graph_score": 0.92,
       "relationships": [
         {
-          "type": "INHERITS",
+          "type": "EXTENDS",
           "source_entity": "AuthService",
           "target": "BaseService"
         }
@@ -273,7 +274,7 @@ brainpalace status --json | jq '.graph_index'
       "graph_score": 0.91,
       "relationships": [
         {
-          "type": "INHERITS",
+          "type": "EXTENDS",
           "source_entity": "PaymentService",
           "target": "BaseService"
         }

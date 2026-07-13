@@ -30,6 +30,17 @@ def test_section_descriptions_sourced_from_cli():
     assert SECTION_DESCRIPTIONS == cf.GROUP_DESCRIPTIONS
 
 
+def test_section_cost_sourced_from_cli():
+    from brainpalace_dashboard.ui_schema import SECTION_COST
+
+    assert SECTION_COST == cf.GROUP_COST
+
+
+def test_every_rendered_section_carries_a_cost():
+    for section in build_ui_schema()["sections"]:
+        assert section.get("cost") in {"free", "LLM", "LLM/subagent"}, section["key"]
+
+
 def test_grid_hidden_fields_are_also_dashboard_hidden():
     # A field the CLI review grid suppresses must be hidden on the dashboard too
     # (parity, single-sourced from cf.GRID_HIDDEN_FIELDS).

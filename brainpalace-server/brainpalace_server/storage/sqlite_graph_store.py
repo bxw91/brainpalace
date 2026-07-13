@@ -218,6 +218,77 @@ class SQLitePropertyGraphStore:
             )
         self._conn.commit()
 
+    def rehome(self, swap_node: Any, swap_edge: Any) -> tuple[int, int]:
+        """Re-key path-encoded node ids/properties and edge PKs in one txn.
+
+        ``swap_node(id, properties_dict) -> (new_id, new_properties_dict)`` and
+        ``swap_edge(source_id, target_id, label, source_file) ->
+        (new_id, new_source_id, new_target_id, new_source_file)``. Rows whose id
+        is unchanged are left in place; changed rows are insert-new + delete-old
+        (PK moves). The store imports nothing from ``rehome`` — the caller binds
+        old/new into the callables.
+        """
+        node_rows = self._conn.execute(
+            "SELECT id, name, label, properties, domain, sensitivity FROM nodes"
+        ).fetchall()
+        edge_rows = self._conn.execute(
+            "SELECT id, source_id, target_id, label, properties, source_file, "
+            "valid_from, valid_until FROM edges"
+        ).fetchall()
+
+        n_changed = e_changed = 0
+        cur = self._conn
+        try:
+            for r in node_rows:
+                props = json.loads(r["properties"]) if r["properties"] else {}
+                new_id, new_props = swap_node(r["id"], props)
+                if new_id == r["id"] and new_props == props:
+                    continue
+                cur.execute("DELETE FROM nodes WHERE id = ?", (r["id"],))
+                cur.execute(
+                    "INSERT INTO nodes "
+                    "(id, name, label, properties, domain, sensitivity) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (
+                        new_id,
+                        r["name"],
+                        r["label"],
+                        json.dumps(new_props, default=str),
+                        r["domain"],
+                        r["sensitivity"],
+                    ),
+                )
+                n_changed += 1
+            for r in edge_rows:
+                new_id, new_src, new_tgt, new_sf = swap_edge(
+                    r["source_id"], r["target_id"], r["label"], r["source_file"]
+                )
+                if new_id == r["id"]:
+                    continue
+                cur.execute("DELETE FROM edges WHERE id = ?", (r["id"],))
+                cur.execute(
+                    "INSERT INTO edges "
+                    "(id, source_id, target_id, label, properties, "
+                    "source_file, valid_from, valid_until) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        new_id,
+                        new_src,
+                        new_tgt,
+                        r["label"],
+                        r["properties"],
+                        new_sf,
+                        r["valid_from"],
+                        r["valid_until"],
+                    ),
+                )
+                e_changed += 1
+            cur.commit()
+        except Exception:
+            cur.rollback()
+            raise
+        return n_changed, e_changed
+
     # ------------------------------------------------------------------- reads
     def get(
         self,

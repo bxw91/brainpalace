@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-06-24
+last_validated: 2026-07-13
 ---
 
 # BrainPalace Plugin
@@ -55,7 +55,9 @@ Once installed, use these slash commands in Claude Code:
 ## Commands
 
 ### Search Command
-All retrieval is one command, `/brainpalace-query`, with a `--mode` flag:
+Semantic and keyword retrieval go through one command, `/brainpalace-query`, with a `--mode` flag
+(dedicated commands `/brainpalace-recall`, `/brainpalace-references`, `/brainpalace-graph`, and
+`/brainpalace-entities` cover memory, reference-catalog, structural-graph, and identity lookups):
 
 | Mode flag | Description |
 |-----------|-------------|

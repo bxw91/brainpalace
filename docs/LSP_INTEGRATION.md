@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-03
+last_validated: 2026-07-13
 ---
 
 # LSP Cross-References (Phase 150)
@@ -87,8 +87,10 @@ triplets, never an error** — indexing always completes.
 
 - Single-symbol-per-chunk position (uses the chunk's `start_line`); whole-file
   symbol enumeration is future work.
-- `root_uri` is not yet wired from the project root into the indexing-time
-  extractor — fine for single-file resolution; cross-file resolution accuracy
-  improves once it is. (Tracked for a follow-up.)
+- `root_uri` is wired from the project root into the indexing-time extractor on
+  the main path (`indexing_service` passes the absolute folder root into
+  `graph_index`, which builds `file://<root>` for the LSP `initialize`). One
+  legacy per-chunk metadata path still builds the extractor without a root; that
+  narrower case is tracked for a follow-up.
 - Live coverage depends on installed servers; CI runs the mocked-protocol tests
   and skips the live test when no server is present.

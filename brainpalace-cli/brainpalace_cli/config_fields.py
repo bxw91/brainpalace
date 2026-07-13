@@ -165,6 +165,44 @@ GROUP_DESCRIPTIONS: dict[str, str] = {
     "over the project (requires --force).",
 }
 
+# Per-section cost class — does enabling/using the section invoke a model, and
+# how it can be billed. SINGLE SOURCE: the dashboard's ui_schema.SECTION_COST
+# derives from this, and the CLI review grid renders it as a header suffix so it
+# stays visible even when the one-line description is truncated/hidden.
+#   "free"          — no model, ever. Always safe to enable.
+#   "LLM"           — invokes an embedding/LLM model (billable on a cloud
+#                     provider; local providers still do the model work).
+#   "LLM/subagent"  — once on it ALWAYS uses an LLM: the free-tier Claude Code
+#                     subagent (Haiku, subscription quota — not zero-cost) OR a
+#                     billable provider. Off = free.
+# Keys match the dashboard section keys (incl. the `session_archiving`
+# pseudo-section the dashboard splits from session_indexing).
+COST_FREE = "free"
+COST_LLM = "LLM"
+COST_LLM_SUBAGENT = "LLM/subagent"
+GROUP_COST: dict[str, str] = {
+    "embedding": COST_LLM,
+    "summarization": COST_LLM,
+    "reranker": COST_LLM,
+    "bm25": COST_FREE,
+    "graphrag": COST_LLM_SUBAGENT,
+    "graph_indexing": COST_FREE,
+    "compute": COST_FREE,
+    "storage": COST_FREE,
+    "indexing": COST_FREE,
+    "git_indexing": COST_LLM,
+    "session_archiving": COST_FREE,
+    "session_indexing": COST_LLM,
+    "session_extraction": COST_LLM_SUBAGENT,
+    "extraction": COST_LLM_SUBAGENT,
+    "bind": COST_FREE,
+    "server": COST_FREE,
+    "query_log": COST_FREE,
+    "ranking": COST_FREE,
+    "usage_metrics": COST_FREE,
+    "project": COST_FREE,
+}
+
 
 def _unwrap_optional(annotation: Any) -> Any:
     if get_origin(annotation) in (Union, types.UnionType):
