@@ -209,6 +209,7 @@ class TestKeywordSearch:
             source_types=["doc"],
             languages=["python"],
             language=None,
+            file_paths=None,
         )
 
         # Scores pass through unchanged (no second normalization)

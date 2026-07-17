@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-13
+last_validated: 2026-07-17
 ---
 
 <div align="center">
@@ -32,25 +32,24 @@ last_validated: 2026-07-13
 
 **Universal Vector + Graph RAG with a memory store.**
 
-Talk to your code, docs, chat history, or any text files. Your LLM will all your write - not just current session.
+Talk to your code, docs, chat history, or any text files. Your LLM will index all you write - not just current session.
 Explore it with Vector, BM25, Hybrid, Temporal Graph, Multi, Compute, Scan, Absence, Timeline, and Salience modes.
 
 Built for :
 - code & docs repos with permanent chat-session memory,
-- and for any text project like personal life-work memory projects with option to also add external sources.
+- and for any text project like personal life or work memory projects with option to index content of external sources.
 
-For text memory like projects - you are free to organize folders and files as you like. Write details into any file, explain details and that data will be indexed and re-indexed on changes. All you write in any file your LLM model will know when asked. 
+For text memory like projects - you are free to organize folders and files as you like. Write facts and details into text files like you are explaning to someone. All text will be indexed and re-indexed on changes. Everything you write your LLM model will know when asked.
 
-For code repos - never track which chat session you're in. Stop today, come back in days — the memory is still there. Curate it hourly, daily, monthly, or just ask "what did we talk about last time?"
+For code repos - never track which chat session you're in or where is one function or how one item is related to another and why. Stop one session today, come back in days — the memory is still there. Curate it hourly, daily, monthly, or just ask "what did we talk about last time?"
 
-If some of your sources are online, tell your LLM to build input source adapter for that specific source and explain how to handle data, what to index and it will use BrainPalace instructions how to create (code) adapter. Build adapters for cloud drives, email, or the web. Keep files in folders, or ingest data straight into BrainPalace so the source can go away.
+You can add folders outside of your repo. Also if you want to index some of your online sources, tell your LLM to build input source adapter for that specific source and explain how to handle new data, what to index and your LLM will use BrainPalace instruction how to create (to code) adapter. Build adapters for cloud drives, email, web. Keep files in folders, or ingest data straight into BrainPalace so the source can go away.
 
-Any project works, not just code. Tell your LLM to read the BrainPalace instructions and push any folder in.
-
-Push any text — source, image description, sensor data, YouTube or meeting transcripts, thoughts, ideas, your personal history.
+Push any text — source, image description, sensor data, YouTube or meeting transcripts, thoughts, ideas, your personal history. Any project works, not just code. Tell your LLM to read the BrainPalace instructions and push any folder in.
 
 All will be indexed - re-indexed on file update - recalled instantly - with high accuracy and low or free local token cost.
-Keep your memory always ready. Never forgotten. Upgrade your own personal memory from BrainPalace.
+
+Keep your memory always ready. Never forgotten. Upgrade your own personal memory with BrainPalace.
 
 Make The Context Window Unlimited.
 
@@ -82,7 +81,7 @@ same prerequisites and end with the same `brainpalace` CLI on your `PATH`.
 
 ---
 
-### Install as a Claude Code plugin
+### Install as a Claude Code plugin (deferred MCP)
 
 > **Recommended if you use Claude Code.** Richest UX and it summarises your chat
 > sessions for through your Claude Code subscription (subagent calls to Haiku).
@@ -103,6 +102,8 @@ same prerequisites and end with the same `brainpalace` CLI on your `PATH`.
 /brainpalace-init
 ```
 
+Initializing a project this way also wires the **MCP tools** automatically for this project only. MCP is deferred and uses only 1100 tokens.
+
 Full BrainPalace plugin reference : [`docs/PLUGIN_GUIDE.md`](docs/PLUGIN_GUIDE.md).
 
 ---
@@ -119,6 +120,13 @@ curl -sSL https://raw.githubusercontent.com/bxw91/brainpalace/main/scripts/setup
 ```bash
 brainpalace init
 ```
+
+`init` also wires Claude Code's MCP by default (`--no-mcp` to skip it): it writes a
+per-project `.mcp.json` and registers the server with Claude Code's local scope, which
+needs no approval — restart Claude Code to use typed `query`/`status`/… tool calls
+instead of skill-mediated CLI. Already initialized a project before? `brainpalace
+install-mcp` adopts it without re-running `init`. Other MCP clients (VS Code, Cursor,
+…): [`docs/MCP_SETUP.md`](docs/MCP_SETUP.md).
 
 ---
 
@@ -157,7 +165,7 @@ with optional cloud providers for embeddings and summarisation.
 |-----------|--------------|
 | **Server** (`brainpalace-rag`) | FastAPI backend — indexing pipeline, BM25 + vector + GraphRAG stores, REST API |
 | **CLI** (`brainpalace-cli`) | Click-based command-line client; primary interface for automation, mono-repos, and standalone use |
-| **MCP server** (`brainpalace mcp`) | Opt-in stdio shim for non-Claude-Code AI clients (VS Code / Copilot, Cursor, Kilo Code, Cline, Continue, Zed) |
+| **MCP server** (`brainpalace mcp`) | Opt-in stdio shim exposing typed tool calls. `brainpalace init`/`install-mcp` wire it into Claude Code per-project (`.mcp.json`); other clients (VS Code / Copilot, Cursor, Kilo Code, Cline, Continue, Zed) configure it by hand — see [MCP Setup](docs/MCP_SETUP.md) |
 | **Claude Code plugin** | 42 slash commands, 6 agents, 2 skills for Claude Code users |
 | **Web dashboard** (`brainpalace dashboard`) | Standalone browser control plane — manage every project server from one tab (instances, config, stats, jobs, cache, graph, sessions, logs, query history). Included with the CLI on Python 3.12+. See [DASHBOARD](docs/DASHBOARD.md) |
 

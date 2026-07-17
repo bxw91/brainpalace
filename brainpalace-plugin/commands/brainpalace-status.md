@@ -20,7 +20,7 @@ parameters:
     default: false
 skills:
   - using-brainpalace
-last_validated: 2026-07-10
+last_validated: 2026-07-17
 ---
 
 # BrainPalace Status
@@ -129,13 +129,17 @@ BM25 Language      en (engine: stem)
 
 ### Status Indicators
 
+The server's `.health.status` is one of four values:
+
 | Status | Meaning |
 |--------|---------|
-| `healthy` | Server running and responsive |
-| `unhealthy` | Server running but issues detected |
-| `not_running` | Server not started |
-| `indexing` | Currently indexing documents |
-| `idle` | Ready for queries |
+| `healthy` | Server up and all services responsive |
+| `indexing` | Server up, currently indexing documents |
+| `degraded` | Server up but some services unavailable |
+| `unhealthy` | Server up but issues detected |
+
+When no server is running, `brainpalace status` reports that separately (server
+not started) — it is not a `.health.status` value.
 
 ## Error Handling
 

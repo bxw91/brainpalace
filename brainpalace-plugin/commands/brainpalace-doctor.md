@@ -24,7 +24,7 @@ parameters:
     default: false
 skills:
   - using-brainpalace
-last_validated: 2026-07-10
+last_validated: 2026-07-17
 ---
 
 # BrainPalace Doctor

@@ -15,9 +15,16 @@
 #     `brainpalace query` the same way. Knobs: `cli.search_guard.*` /
 #     `BRAINPALACE_SEARCH_GUARD`. (Bash is not matched — escape hatch for raw
 #     search of non-indexed files.)
-# Both ON by default in `advisory` mode, but ONLY while this project's
-# BrainPalace server is running (no live server → no-op). Opt into hard blocking
-# with the relevant `*.mode: enforce`; disable with `*.enabled: false` / `=off`.
+# Both ON by default, but with different default modes, and ONLY while this
+# project's BrainPalace server is running (no live server → no-op). The
+# subagent guard defaults to `enforce` (a search-shaped spawn missing a
+# `--mode` directive is denied — safe by default because it only fires on
+# spawns an intent gate already flags as codebase search/exploration); the
+# search guard defaults to `advisory` (a nudge, never a deny — it fires on
+# every Grep/Glob including other plugins', so denying by default would be
+# too blunt). Soften the subagent guard to `advisory`, or opt the search
+# guard into `enforce`, with the relevant `*.mode:`; disable either with
+# `*.enabled: false` / `=off`.
 #
 # Fail-soft: never block a spawn. CLI absent from PATH — or present but too old to
 # have the `hook` command (plugin newer than the installed CLI) — must no-op

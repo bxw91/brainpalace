@@ -198,6 +198,7 @@ class TestQueryCommand:
         mock_result.source = "test.md"
         mock_result.score = 0.9
         mock_result.chunk_id = "c1"
+        mock_result.metadata = {"start_line": 12, "end_line": 34}
 
         mock_response = MagicMock()
         mock_response.results = [mock_result]
@@ -220,6 +221,8 @@ class TestQueryCommand:
         output = json.loads(result.output)
         assert output["query"] == "test"
         assert output["total_results"] == 1
+        assert output["results"][0]["start_line"] == 12
+        assert output["results"][0]["end_line"] == 34
 
 
 class TestIndexCommand:

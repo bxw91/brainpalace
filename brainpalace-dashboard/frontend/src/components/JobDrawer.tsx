@@ -151,11 +151,23 @@ export function JobDrawer({
   const evictionEntries = d?.eviction_summary
     ? Object.entries(d.eviction_summary)
     : [];
-  const evictions = evictionEntries.filter(
-    ([, v]) => typeof v === "number",
-  ) as [string, number][];
+  // Added/changed/deleted are what the job DID (small, actionable) and stay
+  // as expandable file lists. Unchanged is what it SKIPPED -- a per-file
+  // list of it is low-value noise (seen: 90-911 entries burying everything
+  // below it), so it's excluded from fileLists and shown only as a count.
+  const evictions = [
+    ...(evictionEntries.filter(([, v]) => typeof v === "number") as [
+      string,
+      number,
+    ][]),
+    ...(evictionEntries.filter(
+      ([k, v]) => k === "files_unchanged" && Array.isArray(v),
+    ) as [string, string[]][]).map(
+      ([k, v]) => [k, v.length] as [string, number],
+    ),
+  ];
   const fileLists = evictionEntries.filter(
-    ([, v]) => Array.isArray(v) && v.length > 0,
+    ([k, v]) => k !== "files_unchanged" && Array.isArray(v) && v.length > 0,
   ) as [string, string[]][];
 
   return (
@@ -194,23 +206,35 @@ export function JobDrawer({
         </div>
 
         {d && (
-          <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
-            <span
-              className={`rounded-md px-2 py-0.5 font-mono uppercase tracking-wider ${STATUS_TONE[d.status] ?? "bg-ink-600 text-fg-muted"}`}
-            >
-              {d.status}
-            </span>
-            <span className="rounded-md bg-ink-600 px-2 py-0.5 text-fg-muted">
-              {d.operation}
-            </span>
-            <span className="rounded-md bg-ink-600 px-2 py-0.5 text-fg-muted">
-              {d.source}
-            </span>
-            {d.include_code && (
-              <span className="rounded-md bg-ink-600 px-2 py-0.5 text-fg-muted">
-                code
+          <div data-testid="job-drawer-header">
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <span
+                className={`rounded-md px-2 py-0.5 font-mono uppercase tracking-wider ${STATUS_TONE[d.status] ?? "bg-ink-600 text-fg-muted"}`}
+              >
+                {d.status}
               </span>
-            )}
+              <span className="rounded-md bg-ink-600 px-2 py-0.5 text-fg-muted">
+                {d.operation}
+              </span>
+              <span className="rounded-md bg-ink-600 px-2 py-0.5 text-fg-muted">
+                {d.source}
+              </span>
+              {d.include_code && (
+                <span className="rounded-md bg-ink-600 px-2 py-0.5 text-fg-muted">
+                  code
+                </span>
+              )}
+            </div>
+            {/* Folder, up top next to the status chips — a job is
+                single-folder, so surfacing it here (not only at the bottom
+                of the Details block) means it's not scrolled off-screen
+                below a large Files list. */}
+            <p
+              className="mt-2 truncate break-all font-mono text-xs text-fg-muted"
+              title={d.folder_path}
+            >
+              {d.folder_path}
+            </p>
           </div>
         )}
 
@@ -272,7 +296,6 @@ export function JobDrawer({
 
               <p className="eyebrow mb-1 mt-5">Details</p>
               <div className="rounded-lg border border-line/60 bg-ink-700/20 px-3">
-                <MetaRow label="Folder" value={d.folder_path} />
                 <MetaRow label="Enqueued" value={fmtTime(d.enqueued_at, formatDateTime)} />
                 <MetaRow label="Started" value={fmtTime(d.started_at, formatDateTime)} />
                 <MetaRow label="Finished" value={fmtTime(d.finished_at, formatDateTime)} />

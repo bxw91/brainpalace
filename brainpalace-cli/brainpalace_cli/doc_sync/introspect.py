@@ -37,6 +37,25 @@ def _normalize_default(value: object) -> object:
     return value
 
 
+def _resolve_flag_default(p: click.Option) -> object:
+    """The default a USER actually gets, not the raw Click attribute.
+
+    A ``flag_value`` pair (``--project``/``--global`` writing one ``scope``
+    dest) marks its default member with ``default=True``. Click resolves that
+    to the member's ``flag_value`` — ``scope`` defaults to ``"project"``, never
+    to literal ``True``. Reading ``p.default`` verbatim publishes a contract
+    fact no invocation can produce.
+
+    Deliberately narrow: only the non-bool ``flag_value`` case is rewritten. A
+    plain ``is_flag`` boolean keeps its ``True`` (its ``flag_value`` IS
+    ``True``), and we never call ``get_default()``, which would resolve envvars
+    and callables and make this contract vary by environment.
+    """
+    if p.default is True and not p.is_bool_flag and p.flag_value not in (True, None):
+        return p.flag_value
+    return p.default
+
+
 def _extract_modes(group: click.Group) -> list[str]:
     """Mode list = the `--mode` Choice on the `query` command (definition order)."""
     query = group.commands.get("query")
@@ -61,7 +80,7 @@ def _flag_facts(cmd: click.Command) -> list[FlagFact]:
             FlagFact(
                 name=name,
                 type=ftype,
-                default=_normalize_default(p.default),
+                default=_normalize_default(_resolve_flag_default(p)),
                 required=bool(p.required),
                 description=(p.help or ""),
             )

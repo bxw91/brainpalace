@@ -76,11 +76,17 @@ def _resolve_instance_url(value: str) -> str | None:
 
 def _result_to_dict(r: object) -> dict[str, object]:
     """Convert a ``QueryResult`` to the plain-dict shape ``rrf_merge`` wants."""
+    metadata = getattr(r, "metadata", None) or {}
     return {
         "text": r.text,  # type: ignore[attr-defined]
         "source": r.source,  # type: ignore[attr-defined]
         "score": r.score,  # type: ignore[attr-defined]
         "chunk_id": r.chunk_id,  # type: ignore[attr-defined]
+        # Nullable (A19, D6): only code chunks (~71% of the corpus) carry
+        # line numbers. doc/git_commit chunks and synthetic memory/reference
+        # results have neither — null is the common case, not an edge case.
+        "start_line": metadata.get("start_line"),
+        "end_line": metadata.get("end_line"),
     }
 
 
@@ -260,11 +266,15 @@ def query_command(
         "query_time_ms": <float>,
         "results": [
           {"text": "<chunk snippet>", "source": "<file path>",
-           "score": <float>, "chunk_id": "<id>"}
+           "score": <float>, "chunk_id": "<id>",
+           "start_line": <int|null>, "end_line": <int|null>}
         ]
       }
 
     Per-result keys are "text" and "source" (NOT "content"/"file_path").
+    "start_line"/"end_line" are null for chunks with no line data (doc,
+    git_commit, and synthetic memory/reference results) -- only code chunks
+    carry them.
 
     \b
     Optional top-level "index_blocked" key (present only when an indexing job is
@@ -426,15 +436,7 @@ def query_command(
                     "query": query_text,
                     "total_results": response.total_results,
                     "query_time_ms": response.query_time_ms,
-                    "results": [
-                        {
-                            "text": r.text,
-                            "source": r.source,
-                            "score": r.score,
-                            "chunk_id": r.chunk_id,
-                        }
-                        for r in response.results
-                    ],
+                    "results": [_result_to_dict(r) for r in response.results],
                 }
                 if response.compute is not None:
                     import dataclasses
@@ -636,9 +638,11 @@ def query_command(
                         # channel — they never run --help).
                         "hint": (
                             "On success, results use keys "
-                            "text/source/score/chunk_id (no file_path, no "
-                            "line numbers). On failure there is no 'results' "
-                            "key and the exit code is non-zero — check both."
+                            "text/source/score/chunk_id/start_line/end_line "
+                            "(no file_path; start_line/end_line are null for "
+                            "chunks with no line data). On failure there is "
+                            "no 'results' key and the exit code is "
+                            "non-zero — check both."
                         ),
                     }
                 )

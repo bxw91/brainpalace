@@ -99,6 +99,11 @@ def _query_sync(inp: QueryInput) -> dict[str, Any]:
                 source_types=inp.source_types,
                 languages=inp.languages,
                 language=inp.language,
+                file_paths=inp.file_paths,
+                alpha=inp.alpha,
+                similarity_threshold=inp.similarity_threshold,
+                entity_types=inp.entity_types,
+                relationship_types=inp.relationship_types,
             )
         return dataclasses.asdict(resp)
     except Exception as exc:  # noqa: BLE001

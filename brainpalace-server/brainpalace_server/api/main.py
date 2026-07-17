@@ -615,14 +615,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     assert state_dir is not None, "state_dir must be resolved by lifespan"
     logger.info(f"Resolved storage paths: state_dir={state_dir}")
 
-    # File logging to <state_dir>/server.log so the dashboard /health/logs tail
-    # has something to read (the base config only logs to the console). Small
-    # rotating handler (1MB x 3); attach once and remember the path on state.
+    # File logging to <state_dir>/logs/brainpalace.log so the dashboard
+    # /health/logs tail has something to read (the base config only logs to the
+    # console). Small rotating handler (1MB x 3); attach once and remember the
+    # path on state. Deliberately NOT logs/server.log (C3/DC2): the CLI already
+    # redirects the server subprocess's stdout/stderr to logs/server.log /
+    # logs/server.err (start.py) — a second writer on that path would corrupt
+    # rotation.
     app.state.log_file_path = None
     try:
         from logging.handlers import RotatingFileHandler
 
-        log_path = state_dir / "server.log"
+        log_path = state_dir / "logs" / "brainpalace.log"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
         root_logger = logging.getLogger()
         already = any(
             isinstance(h, RotatingFileHandler) and getattr(h, "_brainpalace_log", False)

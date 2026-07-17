@@ -268,6 +268,13 @@ class TestListCommand:
                 "brainpalace_cli.commands.list_cmd.is_process_alive",
                 return_value=False,
             ),
+            # Mock probe so the test is host-independent: without this it hits the
+            # real network, and a server answering on 127.0.0.1:8000 returns
+            # "other", skipping the entry entirely (never marked stale).
+            patch(
+                "brainpalace_cli.commands.list_cmd.probe",
+                return_value="down",
+            ),
             patch("brainpalace_cli.commands.list_cmd.save_registry"),
         ):
             result = runner.invoke(list_command, ["--all"])

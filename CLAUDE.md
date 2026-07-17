@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-13
+last_validated: 2026-07-17
 ---
 
 # BrainPalace — repo guide for Claude
@@ -42,10 +42,12 @@ in `brainpalace-plugin/` is a bug: fix the placement, don't allowlist around it.
 
 Install/config/setup behavior is exposed through **three independent front-ends**
 that drift apart silently: **CLI** (`scripts/setup.sh`, `scripts/install.sh`,
-`brainpalace init`/`config wizard`), **Claude plugin**
-(`brainpalace-plugin/commands/brainpalace-{setup,config,install,install-agent}.md`,
+`brainpalace init`/`config wizard`/`install-mcp`), **Claude plugin**
+(`brainpalace-plugin/commands/brainpalace-{setup,config,install,install-agent,install-mcp}.md`,
 `agents/setup-assistant.md`, `skills/configuring-brainpalace/**`), and **MCP**
-(`brainpalace mcp`, the client-config templates, `docs/MCP_SETUP.md`).
+(`brainpalace mcp`, the client-config templates, `docs/MCP_SETUP.md`). `init`
+writes a per-project `.mcp.json` by default (`--no-mcp` to opt out; existing
+projects use `install-mcp` standalone, since `init` needs `--force` to re-run).
 
 **When you change setup/install/config behavior in one surface, update the other
 two in the same change + note it in `docs/CHANGELOG.md`.** Canonical config path

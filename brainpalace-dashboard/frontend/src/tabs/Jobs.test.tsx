@@ -57,6 +57,22 @@ const jobs: JobsPayload = {
       error: "Indexing paused",
       budget_info: { estimated_tokens: 412000, limit: 100000 },
     },
+    {
+      id: "job_git",
+      status: "done",
+      folder_path: "/repo/delta",
+      operation: "index",
+      include_code: false,
+      job_type: "git_history",
+      source: "auto",
+      enqueued_at: "2026-06-06T17:00:00Z",
+      started_at: "2026-06-06T17:00:01Z",
+      finished_at: "2026-06-06T17:01:00Z",
+      progress_percent: 100,
+      chunks_added: 131,
+      chunks_removed: 0,
+      error: null,
+    },
   ],
 };
 
@@ -96,6 +112,16 @@ describe("Jobs tab", () => {
     ).toBeInTheDocument();
     expect(
       within(screen.getByTestId("job-row-job_done")).getByText("docs"),
+    ).toBeInTheDocument();
+  });
+
+  it("Type column shows 'git' for a git_history job, not 'docs'", async () => {
+    wrap(<Jobs instanceId="a" />);
+    await screen.findByText("job_git");
+    // job_git has include_code=false — a 2-way include_code render would
+    // mislabel it "docs"; job_type must win.
+    expect(
+      within(screen.getByTestId("job-row-job_git")).getByText("git"),
     ).toBeInTheDocument();
   });
 
@@ -167,5 +193,40 @@ describe("Jobs tab", () => {
     vi.mocked(client.getJobs).mockResolvedValue({ jobs: [] });
     wrap(<Jobs instanceId="a" />);
     expect(await screen.findByText(/no indexing jobs yet/i)).toBeInTheDocument();
+  });
+
+  it("hides no-op jobs by default, shows a hint, and reveals them via the toggle", async () => {
+    const noopJob = {
+      id: "job_noop",
+      status: "done",
+      folder_path: "/repo/epsilon",
+      operation: "index",
+      include_code: false,
+      source: "auto",
+      enqueued_at: "2026-06-06T16:00:00Z",
+      started_at: "2026-06-06T16:00:01Z",
+      finished_at: "2026-06-06T16:00:02Z",
+      progress_percent: 100,
+      chunks_added: 0,
+      chunks_removed: 0,
+      error: null,
+    };
+    vi.mocked(client.getJobs).mockImplementation(async (_id, showAll) =>
+      showAll
+        ? { jobs: [...jobs.jobs, noopJob], noop_hidden: 0 }
+        : { jobs: jobs.jobs, noop_hidden: 1 },
+    );
+
+    wrap(<Jobs instanceId="a" />);
+    await screen.findByText("job_run");
+
+    expect(screen.queryByText("job_noop")).not.toBeInTheDocument();
+    expect(screen.getByText(/1 no-op run.* hidden/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("toggle-show-noop"));
+
+    await screen.findByText("job_noop");
+    expect(client.getJobs).toHaveBeenCalledWith("a", true);
+    expect(screen.queryByText(/no-op run.* hidden/i)).not.toBeInTheDocument();
   });
 });

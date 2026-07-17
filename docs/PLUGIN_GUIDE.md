@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-13
+last_validated: 2026-07-17
 ---
 
 # BrainPalace Plugin Guide
@@ -86,12 +86,30 @@ Or step-by-step:
 
 ---
 
-## MCP integration (opt-in)
+## MCP integration (opt-in, automatic per project)
 
 The plugin's primary integration is the **skill + slash commands** documented
-below. Claude Code users who prefer typed MCP tool calls instead can wire the
-opt-in MCP server via the copy-paste snippet shipped at
-[`templates/mcp-config-claude-code.json`](../brainpalace-plugin/templates/mcp-config-claude-code.json).
+below. Claude Code users who prefer typed MCP tool calls instead get them
+automatically: `brainpalace init` writes a per-project `.mcp.json` by default
+(`--no-mcp` to skip it), and `/brainpalace-install-mcp` (or `brainpalace
+install-mcp`) wires an already-initialized project — `init` isn't re-runnable
+on one without `--force`. Both merge the `brainpalace` server into any
+`.mcp.json` you already have, never overwriting other servers.
+
+Both also **register** the server with Claude Code's local scope (`claude mcp
+add -s local`, stored in your own `~/.claude.json`) — without something
+granting it, Claude Code holds a `.mcp.json` server at `⏸ Pending approval` and
+never connects. Local scope needs no approval and no folder trust, since it is
+your machine's config rather than repo content, and it takes precedence over
+`.mcp.json`. Without the `claude` CLI, `install-mcp` falls back to allowlisting
+the `.mcp.json` entry, which folder trust does gate. Either way the grant never
+leaves your machine, so a clone still starts unregistered (`--no-approve` opts
+out; `--scope` forces a route).
+
+Writing `.mcp.json` configures the project — it does not populate your current
+session. Restart Claude Code to pick the tools up. `install-mcp` tells you this
+at the moment you run it.
+
 Full per-client setup (Claude Code, VS Code native / GitHub Copilot, Cursor,
 Kilo Code, Cline, Continue, Zed) lives in [`MCP_SETUP.md`](MCP_SETUP.md).
 Non-Claude-Code clients should add `--ensure-server` to the command line so

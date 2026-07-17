@@ -49,7 +49,9 @@ _PATH_DESC = "Resolve the server owning this path instead of the MCP process CWD
 class QueryInput(BaseModel):
     query: str = Field(..., description="Search query text")
     mode: QueryMode = Field(default="hybrid", description="Search mode")
-    top_k: int = Field(default=8, ge=1, le=100)
+    # le=50 (A6): the server rejects top_k>50 with a 422; the schema previously
+    # said le=100, so a value the schema accepted the server still rejected.
+    top_k: int = Field(default=8, ge=1, le=50)
     languages: list[str] = Field(
         default_factory=list,
         description="Filter by programming languages (empty = all)",
@@ -57,6 +59,42 @@ class QueryInput(BaseModel):
     source_types: list[str] = Field(
         default_factory=list,
         description="Filter by source types (empty = all)",
+    )
+    file_paths: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Filter by file path, wildcards supported e.g. '*.py' or "
+            "'src/**' (empty = all)"
+        ),
+    )
+    alpha: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Hybrid search weighting: 1.0=pure vector, 0.0=pure bm25. "
+            "hybrid mode only (hybrid is the default mode)."
+        ),
+    )
+    similarity_threshold: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=1.0,
+        description="Minimum similarity score (0-1)",
+    )
+    entity_types: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Filter graph results by entity types, e.g. ['Class', 'Function']. "
+            "graph/multi modes only (empty = all)."
+        ),
+    )
+    relationship_types: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Filter graph results by relationship types, e.g. ['calls', "
+            "'extends']. graph/multi modes only (empty = all)."
+        ),
     )
     language: str | None = Field(
         default=None,

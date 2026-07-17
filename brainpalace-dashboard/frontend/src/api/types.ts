@@ -218,6 +218,8 @@ export type JobRow = {
   folder_path: string;
   operation: string;
   include_code: boolean;
+  /** Job type discriminator: "documents" (default) or "git_history". */
+  job_type?: string;
   source: string;
   enqueued_at: string | null;
   started_at: string | null;
@@ -228,7 +230,12 @@ export type JobRow = {
   error: string | null;
   budget_info?: { estimated_tokens?: number; limit?: number } | null;
 };
-export type JobsPayload = { jobs: JobRow[] };
+export type JobsPayload = {
+  jobs: JobRow[];
+  /** No-op completed jobs (status=done, no chunk delta, no error) hidden from
+   *  `jobs` because `all` wasn't requested (Fix 4). `?all=1` reveals them. */
+  noop_hidden?: number;
+};
 
 /** Per-job progress counters (server `JobProgress`). */
 export type JobProgress = {
@@ -247,6 +254,8 @@ export type JobDetail = {
   folder_path: string;
   operation: string;
   include_code: boolean;
+  /** Job type discriminator: "documents" (default) or "git_history". */
+  job_type?: string;
   source: string;
   enqueued_at: string | null;
   started_at: string | null;
@@ -368,7 +377,14 @@ export type QueryResultRow = {
 
 /** Query-history detail (server `/query/history/{qid}`). */
 export type QueryDetail = QueryRow & {
-  filters: { source_types?: string[] | null; languages?: string[] | null };
+  // The filters the server logged for this query. Known keys are surfaced for
+  // display; the shape is open because the server logs whichever filters were
+  // set (file_paths, domains, metadata_filter, entity/relationship_types), and
+  // replay forwards them all wholesale (A18).
+  filters: {
+    source_types?: string[] | null;
+    languages?: string[] | null;
+  } & Record<string, unknown>;
   results: QueryResultRow[];
 };
 

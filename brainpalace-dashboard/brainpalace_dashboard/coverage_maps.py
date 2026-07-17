@@ -228,6 +228,7 @@ CLI_DASHBOARD_COVERAGE: dict[str, str] = {
     "init": ("cli_only: project bootstrap; dashboard manages existing projects only"),
     "inject": "cli_only: scripted enrichment, advanced",
     "install-agent": "cli_only: runtime plugin install",
+    "install-mcp": "cli_only: writes the project .mcp.json",
     "install-session-hooks": "cli_only: hook install",
     "jobs": "Jobs",
     "list": "Instances",

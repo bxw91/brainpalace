@@ -398,7 +398,7 @@ the BM25 layer directly via `bm25s` and a custom `TextAnalyzer` pipeline.
 ### 6. Path-Addressed Index & Project Rehome
 
 **Decision**: The index is **path-addressed at its edges** — a project's identity is
-a durable UUID (`.brainpalace/identity.json`), but its records key on absolute paths.
+a durable UUID (`.brainpalace/state/identity.json`), but its records key on absolute paths.
 Moving the project directory is repaired by a checkpointed **prefix-swap rehome**
 rather than a re-index.
 

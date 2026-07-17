@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "brainpalace": {
+      "command": "brainpalace",
+      "args": ["mcp"]
+    }
+  }
+}

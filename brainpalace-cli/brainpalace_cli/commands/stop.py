@@ -13,6 +13,7 @@ from rich.console import Console
 
 from brainpalace_cli.config import resolve_project_root
 from brainpalace_cli.migration import resolve_state_dir_with_fallback
+from brainpalace_cli.runtime_probe import probe
 from brainpalace_cli.xdg_paths import get_registry_path
 
 console = Console()
@@ -62,16 +63,6 @@ def is_process_alive(pid: int) -> bool:
         return False
     except PermissionError:
         return True  # Process exists but we can't signal it
-
-
-def check_health(base_url: str, timeout: float = 2.0) -> bool:
-    """Check if the server health endpoint responds."""
-    try:
-        req = Request(f"{base_url}/health/", method="GET")
-        with urlopen(req, timeout=timeout) as resp:
-            return bool(resp.status == 200)
-    except Exception:
-        return False
 
 
 def wait_for_process_exit(pid: int, timeout: float = 10.0) -> bool:
@@ -335,6 +326,40 @@ def stop_command(
                 console.print(f"[yellow]Server process (PID {pid}) already stopped.[/]")
                 console.print("[dim]Cleaned up state files.[/]")
             return
+
+        # Cross-project-kill guard (A4, HIGH severity): a copied .brainpalace/
+        # carries the ORIGINAL project's pid/base_url in its runtime.json. A
+        # live pid alone can't tell "my server" from "someone else's server
+        # that happens to be alive" — only /health/'s project_root can. Only
+        # runs when runtime came from runtime.json (has a base_url); the bare
+        # stale-PID-file fallback has no base_url to check against and is left
+        # as a last resort per the spec.
+        base_url = runtime.get("base_url", "")
+        if base_url:
+            identity = probe(base_url, project_root)
+            if identity == "other":
+                cleanup_state_files(state_dir)
+                remove_from_registry(project_root)
+                msg = (
+                    "The recorded server belongs to a different project "
+                    "(likely a copied .brainpalace/); not stopping it. "
+                    "Cleaned up local state for this project."
+                )
+                if json_output:
+                    click.echo(
+                        json.dumps(
+                            {
+                                "status": "not_running_here",
+                                "message": msg,
+                                "project_root": str(project_root),
+                                "pid": pid,
+                                "base_url": base_url,
+                            }
+                        )
+                    )
+                else:
+                    console.print(f"[yellow]{msg}[/]")
+                return
 
         if not json_output:
             console.print(f"[dim]Stopping server (PID {pid})...[/]")

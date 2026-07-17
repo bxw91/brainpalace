@@ -104,6 +104,53 @@ def test_replay_omits_rerank_when_absent(monkeypatch):
     assert "rerank" not in body
 
 
+def test_replay_forwards_logged_scope_filters(monkeypatch):
+    """A18 — a replay must carry the logged scope filters, or it silently
+    re-runs a broader query than the one being replayed."""
+    fake = FakeProxy()
+    monkeypatch.setattr(rq, "proxy", fake)
+    c = TestClient(create_app())
+    c.post(
+        "/dashboard/api/instances/abc/queries/replay",
+        json={
+            "query": "x",
+            "mode": "bm25",
+            "top_k": 5,
+            "filters": {
+                "source_types": ["code"],
+                "languages": ["python"],
+                "file_paths": ["*dashboard*"],
+                "domains": [],  # empty -> not forwarded
+            },
+        },
+    )
+    _method, _path, body, _params = fake.calls[-1]
+    assert body["source_types"] == ["code"]
+    assert body["languages"] == ["python"]
+    assert body["file_paths"] == ["*dashboard*"]
+    assert "domains" not in body  # empty filters are not forwarded
+
+
+def test_replay_never_forwards_nested_include_sensitive(monkeypatch):
+    """The scope-filter allowlist must not let a crafted body smuggle the
+    sensitivity gate back in through the nested `filters` object."""
+    fake = FakeProxy()
+    monkeypatch.setattr(rq, "proxy", fake)
+    c = TestClient(create_app())
+    c.post(
+        "/dashboard/api/instances/abc/queries/replay",
+        json={
+            "query": "x",
+            "mode": "hybrid",
+            "top_k": 5,
+            "filters": {"source_types": ["code"], "include_sensitive": True},
+        },
+    )
+    _method, _path, body, _params = fake.calls[-1]
+    assert body["source_types"] == ["code"]
+    assert "include_sensitive" not in body
+
+
 def test_stats_proxies_with_params(monkeypatch):
     fake = FakeProxy()
     monkeypatch.setattr(rq, "proxy", fake)

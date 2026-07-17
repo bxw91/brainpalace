@@ -2,7 +2,30 @@
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import pytest
+
+
+@pytest.fixture(autouse=True)
+def _no_real_claude_mcp_add():
+    """No test may shell out to the real ``claude`` CLI.
+
+    ``install-mcp`` (and therefore ``init``, which calls it) defaults to
+    ``scope="auto"``: it runs ``claude mcp add -s local`` against the developer's
+    OWN ``~/.claude.json`` when the ``claude`` binary is on PATH. Left alone, the
+    suite would register servers on the machine under test, and ``init``
+    lifecycle tests that count ``subprocess.run`` calls would see an extra one.
+
+    ``install_mcp`` binds ``which`` locally (``from shutil import which``) so it
+    is patchable in isolation from every other module's ``shutil.which``. Report
+    ``claude`` absent to force the project-scope fallback (pure file IO under the
+    temp project). A test that specifically exercises the local-scope path opts
+    back in with its own ``patch("...install_mcp.which", return_value=...)``,
+    which nests inside this one and wins.
+    """
+    with patch("brainpalace_cli.commands.install_mcp.which", return_value=None):
+        yield
 
 
 @pytest.fixture(autouse=True)

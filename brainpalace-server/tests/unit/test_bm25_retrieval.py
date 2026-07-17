@@ -64,3 +64,46 @@ class TestBM25IndexManager:
         )
         assert len(results) > 0
         assert results[0].node.node_id == "node1"
+
+    def test_file_paths_scopes_exactly_below_repo_wide_topk(self, tmp_path):
+        """A17 regression: file_paths must scope EXACTLY, not merely over-fetch.
+
+        top_k=1 means the unscoped internal retrieval window is k=top_k*3=3.
+        Five decoy nodes outscore the target on the shared term "widget" (more
+        occurrences => higher BM25 score), pushing the target's repo-wide rank
+        to 6th - below that window. A search scoped to the target's file_path
+        must still find it, proving the scope is exact (whole-corpus retrieval
+        when file_paths is set), not merely an over-fetch that happens to reach
+        far enough.
+        """
+        manager = BM25IndexManager(persist_dir=str(tmp_path))
+        nodes = [
+            TextNode(
+                text=f"widget widget widget decoy file number {i}",
+                id_=f"decoy{i}",
+                metadata={"file_path": f"/repo/decoys/decoy{i}.py"},
+            )
+            for i in range(5)
+        ]
+        target = TextNode(
+            text="widget appears exactly once here",
+            id_="target",
+            metadata={"file_path": "/repo/brainpalace-dashboard/Usage.tsx"},
+        )
+        manager.build_index([*nodes, target])
+
+        # Sanity check: unscoped, the target does NOT make the repo-wide
+        # top_k*3=3 window (decoys score higher via term frequency).
+        unscoped = asyncio.run(manager.search_with_filters("widget", top_k=1))
+        assert all(r.node.node_id != "target" for r in unscoped)
+
+        # Scoped: file_paths must recover it anyway.
+        scoped = asyncio.run(
+            manager.search_with_filters(
+                "widget",
+                top_k=1,
+                file_paths=["*brainpalace-dashboard*"],
+            )
+        )
+        assert len(scoped) == 1
+        assert scoped[0].node.node_id == "target"

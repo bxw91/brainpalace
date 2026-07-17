@@ -22,6 +22,14 @@ async def list_jobs(
         50, ge=1, le=100, description="Maximum number of jobs to return"
     ),
     offset: int = Query(0, ge=0, description="Number of jobs to skip"),
+    all_: bool = Query(
+        False,
+        alias="all",
+        description=(
+            "Include no-op completed jobs (status=done, no chunk delta, no "
+            "error) that are hidden by default (Fix 4)."
+        ),
+    ),
 ) -> JobListResponse:
     """List all jobs with pagination.
 
@@ -31,12 +39,13 @@ async def list_jobs(
         request: FastAPI request for accessing app state.
         limit: Maximum number of jobs to return (1-100, default 50).
         offset: Number of jobs to skip for pagination (default 0).
+        all_: Include no-op completed jobs, hidden by default (``?all=1``).
 
     Returns:
         JobListResponse with list of job summaries and queue statistics.
     """
     job_service: JobQueueService = request.app.state.job_service
-    return await job_service.list_jobs(limit=limit, offset=offset)
+    return await job_service.list_jobs(limit=limit, offset=offset, include_noop=all_)
 
 
 @router.get(
@@ -73,13 +82,14 @@ async def get_job(job_id: str, request: Request) -> JobDetailResponse:
 @router.delete(
     "/{job_id}",
     summary="Cancel Job",
-    description="Cancel a pending or running job.",
+    description="Cancel a pending, running, or blocked job.",
 )
 async def cancel_job(job_id: str, request: Request) -> dict[str, Any]:
     """Cancel a job.
 
     Cancellation behavior depends on job status:
     - PENDING jobs are cancelled immediately
+    - BLOCKED jobs (budget-paused) are cancelled immediately, same as PENDING
     - RUNNING jobs have cancel_requested flag set; worker will stop at next checkpoint
     - Completed/Failed/Cancelled jobs return 409 Conflict
 

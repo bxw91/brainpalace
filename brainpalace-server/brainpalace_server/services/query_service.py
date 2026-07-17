@@ -366,13 +366,17 @@ class QueryService:
                 f"Reranking enabled: Stage 1 retrieving {stage1_top_k} candidates "
                 f"for final top_k={original_top_k}"
             )
-        if request.domains or request.metadata_filter:
+        if request.domains or request.metadata_filter or request.file_paths:
             # Round 4 D4: domains/metadata_filter are applied post-retrieval
             # (below), so retrieving only top_k candidates loses recall — a
             # matching chunk can rank below top_k pre-filter and never
             # surface. Over-fetch the same way reranking does; take the max
             # so a reranking request with a filter over-fetches by whichever
-            # is larger.
+            # is larger. file_paths joins this condition (A17): Chroma's
+            # `where` clause has no wildcard operator, so a glob filter
+            # cannot be pushed down on the vector/hybrid path the way it can
+            # for bm25 (search_with_filters) and postgres (LIKE ANY) — this
+            # over-fetch is a bounded mitigation, not an exact scope.
             filter_multiplier = getattr(settings, "FILTER_TOP_K_MULTIPLIER", 5)
             filter_max_candidates = getattr(settings, "FILTER_MAX_CANDIDATES", 100)
             filter_top_k = min(request.top_k * filter_multiplier, filter_max_candidates)
@@ -924,6 +928,7 @@ class QueryService:
             source_types=request.source_types,
             languages=request.languages,
             language=request.language,
+            file_paths=request.file_paths,
         )
 
         return [

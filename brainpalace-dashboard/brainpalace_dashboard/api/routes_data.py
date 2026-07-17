@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Body
+from fastapi import APIRouter, Body, Query
 from fastapi.responses import JSONResponse
 
 from brainpalace_dashboard.services.capabilities import parse_openapi
@@ -75,8 +75,12 @@ async def folders(id_: str) -> Any:
 
 
 @router.get("/jobs")
-async def jobs(id_: str) -> Any:
-    return await _call(id_, "GET", "/index/jobs/")
+async def jobs(id_: str, all_: bool = Query(False, alias="all")) -> Any:
+    """Job queue listing. ``?all=1`` reveals no-op completed jobs
+    (status=done, no chunk delta, no error) that are hidden by default
+    (Fix 4)."""
+    params = {"all": 1} if all_ else None
+    return await _call(id_, "GET", "/index/jobs/", params=params)
 
 
 @router.get("/jobs/{job_id}")

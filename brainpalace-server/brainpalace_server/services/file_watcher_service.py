@@ -17,6 +17,7 @@ import asyncio
 import logging
 import time
 from collections.abc import Awaitable, Callable
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -194,6 +195,11 @@ class FileWatcherService:
         self._stop_event: anyio.Event | None = None
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._last_enqueue_at: dict[str, float] = {}
+        # Wall-clock (unlike _last_enqueue_at, which is monotonic and not
+        # comparable to a persisted JobRecord's wall-clock blocked_since).
+        # Used by the blocked-job reaper (Fix 2, D6) to detect "did the
+        # watcher see a change for this folder after it blocked".
+        self._last_change_at: dict[str, datetime] = {}
 
         # Task 4d: optional pending store for backpressure; injected via
         # set_doc_pending_store after startup.
@@ -212,6 +218,17 @@ class FileWatcherService:
     def watched_folder_count(self) -> int:
         """Number of folders currently being watched."""
         return len(self._tasks)
+
+    def last_change_at(self, folder_path: str) -> datetime | None:
+        """Wall-clock time of the most recent watcher-observed change for
+        ``folder_path``, or None if the watcher has never seen a change for
+        it (e.g. an unwatched folder, or watched but quiet since startup).
+
+        Used by the blocked-job reaper (Fix 2, D6): a blocked job's folder is
+        revalidated only when this timestamp is newer than the job's
+        ``blocked_since``.
+        """
+        return self._last_change_at.get(folder_path)
 
     def dead_task_count(self) -> int:
         """Number of watch tasks that have exited/raised (should be 0 when healthy)."""
@@ -449,6 +466,11 @@ class FileWatcherService:
             # this folder is currently in flight, so further events should
             # honour the cooldown window.
             self._last_enqueue_at[folder_path] = time.monotonic()
+            # Wall-clock counterpart for the blocked-job reaper (Fix 2): a
+            # dedupe_hit here still means the watcher observed a real change
+            # for this folder — exactly the signal the reaper needs to
+            # decide a blocked job's folder is worth revalidating.
+            self._last_change_at[folder_path] = datetime.now(timezone.utc)
 
             if response.dedupe_hit:
                 logger.debug(

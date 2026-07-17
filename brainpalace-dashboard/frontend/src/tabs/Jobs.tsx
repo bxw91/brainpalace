@@ -53,6 +53,16 @@ function fmtDuration(ms: number | null): string {
   return `${m}m ${Math.round(s % 60)}s`;
 }
 
+/**
+ * Type column label — 3-way, keyed on `job_type` (the authoritative
+ * discriminator), not just `include_code`. A git_history job has
+ * include_code=false, so a 2-way "code"/"docs" render mislabels it "docs".
+ */
+function jobTypeLabel(j: JobRow): string {
+  if (j.job_type === "git_history") return "git";
+  return j.include_code ? "code" : "docs";
+}
+
 export function Jobs({ instanceId }: { instanceId?: string }) {
   const ctx = useOptionalSelectedInstance();
   const id = instanceId ?? ctx?.selectedId ?? null;
@@ -61,11 +71,12 @@ export function Jobs({ instanceId }: { instanceId?: string }) {
   const [cancelTarget, setCancelTarget] = useState<string | null>(null);
   const [approveTarget, setApproveTarget] = useState<string | null>(null);
   const [openJobId, setOpenJobId] = useState<string | null>(null);
+  const [showAll, setShowAll] = useState(false);
   const { formatTime } = useDisplayFormat();
 
   const jobsQ = useQuery({
-    queryKey: ["jobs", id],
-    queryFn: () => getJobs(id!),
+    queryKey: ["jobs", id, showAll],
+    queryFn: () => getJobs(id!, showAll),
     enabled: !!id,
     retry: false,
     refetchInterval: (q) =>
@@ -119,6 +130,7 @@ export function Jobs({ instanceId }: { instanceId?: string }) {
   }
 
   const jobs = jobsQ.data?.jobs ?? [];
+  const noopHidden = jobsQ.data?.noop_hidden ?? 0;
 
   const columns: Column<JobRow>[] = [
     {
@@ -132,10 +144,10 @@ export function Jobs({ instanceId }: { instanceId?: string }) {
       header: "Type",
       cell: (j) => (
         <span className="rounded-md bg-ink-600 px-1.5 py-0.5 font-mono text-[0.66rem] text-fg-muted">
-          {j.include_code ? "code" : "docs"}
+          {jobTypeLabel(j)}
         </span>
       ),
-      sortValue: (j) => (j.include_code ? "code" : "docs"),
+      sortValue: (j) => jobTypeLabel(j),
     },
     {
       // Status + progress merged: the badge alone for finished jobs (their
@@ -244,6 +256,27 @@ export function Jobs({ instanceId }: { instanceId?: string }) {
           <span className="flex items-center gap-2 font-mono text-[0.68rem] uppercase tracking-wider text-accent">
             <span className="h-2 w-2 animate-pulse-dot rounded-full bg-accent" aria-hidden="true" />
             live
+          </span>
+        )}
+      </div>
+
+      {/* Fix 4: no-op completed jobs (status=done, no chunk delta, no error
+          -- a re-index that found nothing changed) are hidden by default so
+          they don't evict real jobs from the paginated window. */}
+      <div className="flex items-center justify-between gap-2 text-xs text-fg-faint">
+        <label className="flex cursor-pointer items-center gap-1.5 select-none">
+          <input
+            type="checkbox"
+            data-testid="toggle-show-noop"
+            checked={showAll}
+            onChange={(e) => setShowAll(e.target.checked)}
+          />
+          Show no-op runs
+        </label>
+        {!showAll && noopHidden > 0 && (
+          <span>
+            {noopHidden} no-op run{noopHidden === 1 ? "" : "s"} hidden — use the
+            toggle to show
           </span>
         )}
       </div>

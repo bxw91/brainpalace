@@ -318,8 +318,8 @@ async function actData<T>(
 // ---- reads ----
 export const getFolders = (id: string) =>
   getData<FoldersPayload>(`/instances/${id}/folders`);
-export const getJobs = (id: string) =>
-  getData<JobsPayload>(`/instances/${id}/jobs`);
+export const getJobs = (id: string, showAll = false) =>
+  getData<JobsPayload>(`/instances/${id}/jobs${showAll ? "?all=1" : ""}`);
 export const getJobDetail = (id: string, jobId: string) =>
   getData<JobDetail>(`/instances/${id}/jobs/${jobId}`);
 export const getCache = (id: string) =>
@@ -429,7 +429,17 @@ export const getLogs = async (
 // ---- actions ----
 export const replayQuery = (
   id: string,
-  body: { query: string; mode: string; top_k: number; rerank?: boolean },
+  body: {
+    query: string;
+    mode: string;
+    top_k: number;
+    rerank?: boolean;
+    // A18 — the logged filters, forwarded wholesale so a replay reproduces the
+    // original query rather than a broader unfiltered one. Open shape: the
+    // server logs whichever filters were set, and the /replay route spreads
+    // whatever is present onto the QueryRequest.
+    filters?: Record<string, unknown>;
+  },
 ) => actData<ReplayResponse>(`/instances/${id}/queries/replay`, "POST", body);
 
 export const clearCache = (id: string) =>

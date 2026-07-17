@@ -3,6 +3,7 @@
 import json
 import logging
 from collections.abc import Sequence
+from fnmatch import fnmatch
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -361,6 +362,7 @@ class BM25IndexManager:
         languages: list[str] | None = None,
         max_results: int | None = None,
         language: str | None = None,
+        file_paths: list[str] | None = None,
     ) -> list[NodeWithScore]:
         """
         Search the BM25 index with metadata filtering.
@@ -372,6 +374,10 @@ class BM25IndexManager:
             languages: Filter by programming languages.
             max_results: Override for internal retrieval count before filtering.
             language: Language hint for query tokenization (overrides default_lang).
+            file_paths: Filter by file path, supports wildcards (fnmatch against
+                the chunk's ``file_path`` metadata). When present, scoring
+                retrieves the whole corpus (see ``k`` below) so the scope is
+                exact rather than an approximation of the repo-wide top_k.
 
         Returns:
             List of NodeWithScore objects, filtered by metadata.
@@ -382,7 +388,13 @@ class BM25IndexManager:
         q_tokens = analyzer.analyze(query)
         if not q_tokens or self.corpus_size == 0:
             return []
-        k = max_results if max_results is not None else top_k * 3
+        if file_paths:
+            # file_paths is post-filtered below (fnmatch, no pre-filter
+            # support in bm25s), so k must cover the whole corpus for the
+            # scope to be exact rather than merely over-fetched.
+            k = self.corpus_size
+        else:
+            k = max_results if max_results is not None else top_k * 3
         k = min(k, self.corpus_size)
         results, scores = self._bm25.retrieve([q_tokens], k=k)
         raw = [float(s) for s in scores[0]]
@@ -408,6 +420,10 @@ class BM25IndexManager:
             if languages:
                 lg = md.get("language")
                 if not lg or lg not in languages:
+                    continue
+            if file_paths:
+                fp = md.get("file_path")
+                if not fp or not any(fnmatch(fp, pattern) for pattern in file_paths):
                     continue
             out.append(n)
         return out[:top_k]

@@ -44,6 +44,38 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
+describe("JobDrawer header", () => {
+  it("surfaces folder_path in the header, not only at the bottom of Details", async () => {
+    vi.mocked(client.getJobDetail).mockResolvedValue(baseDetail(null));
+    wrap(<JobDrawer instanceId="a" jobId="job_x" onClose={() => {}} />);
+
+    const header = await screen.findByTestId("job-drawer-header");
+    expect(within(header).getByText("/repo")).toBeInTheDocument();
+  });
+});
+
+describe("JobDrawer unchanged files", () => {
+  it("shows files_unchanged as a count stat, never a file list", async () => {
+    const unchanged = Array.from({ length: 90 }, (_, i) => `/repo/pkg/u_${i}.py`);
+    vi.mocked(client.getJobDetail).mockResolvedValue(
+      baseDetail({ files_added: 2, files_unchanged: unchanged }),
+    );
+    wrap(<JobDrawer instanceId="a" jobId="job_x" onClose={() => {}} />);
+
+    await screen.findByTestId("job-detail");
+    // No expandable file list for unchanged, however large.
+    expect(
+      screen.queryByTestId("file-list-files_unchanged"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("btn-show-all-files_unchanged"),
+    ).not.toBeInTheDocument();
+    // The count still shows up as a numeric stat.
+    expect(screen.getByText("files unchanged")).toBeInTheDocument();
+    expect(screen.getByText("90")).toBeInTheDocument();
+  });
+});
+
 describe("JobDrawer file lists", () => {
   it("lists every file inline when a list has fewer than 20 entries", async () => {
     const files = [

@@ -13,18 +13,19 @@ import brainpalace_cli.commands.start as start_mod
 
 
 def test_classify_running_when_alive_and_healthy():
-    """Alive pid + passing health check => report the running server."""
+    """Alive pid + probe says "mine" => report the running server."""
     runtime = {"pid": 100, "base_url": "http://127.0.0.1:8000"}
     action = start_mod.classify_existing_server(
         runtime,
         alive_fn=lambda pid: True,
-        health_fn=lambda url: True,
+        probe_fn=lambda url, expected_root: "mine",
+        expected_root="/some/project",
     )
     assert action == "running"
 
 
 def test_classify_unresponsive_when_alive_but_unhealthy():
-    """Alive pid + failing health check => unresponsive, NOT stale.
+    """Alive pid + probe says "down" => unresponsive, NOT stale.
 
     This is the incident trigger: a busy server that can't answer /health in
     time must never be reclassified as dead.
@@ -33,9 +34,24 @@ def test_classify_unresponsive_when_alive_but_unhealthy():
     action = start_mod.classify_existing_server(
         runtime,
         alive_fn=lambda pid: True,
-        health_fn=lambda url: False,
+        probe_fn=lambda url, expected_root: "down",
+        expected_root="/some/project",
     )
     assert action == "unresponsive"
+
+
+def test_classify_stale_when_probe_says_other():
+    """Alive pid + probe says "other" (a DIFFERENT project's server answered,
+    e.g. a copied runtime.json pointing at the original's live server) =>
+    stale, so the caller cleans up and launches its own fresh server (A1)."""
+    runtime = {"pid": 100, "base_url": "http://127.0.0.1:8000"}
+    action = start_mod.classify_existing_server(
+        runtime,
+        alive_fn=lambda pid: True,
+        probe_fn=lambda url, expected_root: "other",
+        expected_root="/some/project",
+    )
+    assert action == "stale"
 
 
 def test_classify_stale_when_pid_dead():
@@ -44,7 +60,8 @@ def test_classify_stale_when_pid_dead():
     action = start_mod.classify_existing_server(
         runtime,
         alive_fn=lambda pid: False,
-        health_fn=lambda url: False,
+        probe_fn=lambda url, expected_root: "down",
+        expected_root="/some/project",
     )
     assert action == "stale"
 
@@ -54,7 +71,8 @@ def test_classify_stale_when_no_runtime():
     action = start_mod.classify_existing_server(
         None,
         alive_fn=lambda pid: True,
-        health_fn=lambda url: True,
+        probe_fn=lambda url, expected_root: "mine",
+        expected_root="/some/project",
     )
     assert action == "stale"
 

@@ -1,3 +1,5 @@
+import json
+from pathlib import Path
 from unittest.mock import patch
 
 from brainpalace_cli import optional_deps as od
@@ -59,3 +61,72 @@ def test_manual_install_hint_no_manager_falls_back():
     assert "pipx inject" in hint
     assert "pip install" in hint
     assert "\n" not in hint
+
+
+class TestMcpConfigApproval:
+    """`doctor` used to call a registered-but-unapproved server OK. That is
+    the state a project sits in when Claude Code holds it at 'Pending
+    approval': .mcp.json is perfect and the tools never load."""
+
+    @staticmethod
+    def _project(tmp_path: Path, settings: dict | None = None) -> Path:
+        (tmp_path / ".mcp.json").write_text(
+            json.dumps({"mcpServers": {"brainpalace": {"command": "brainpalace"}}})
+        )
+        if settings is not None:
+            local = tmp_path / ".claude" / "settings.local.json"
+            local.parent.mkdir(parents=True, exist_ok=True)
+            local.write_text(json.dumps(settings))
+        return tmp_path
+
+    def test_registered_but_unapproved_warns(self, tmp_path: Path) -> None:
+        from brainpalace_cli.diagnostics import _check_mcp_config
+
+        result = _check_mcp_config(self._project(tmp_path), True)
+        assert result is not None
+        assert result.status != "ok"
+        assert "not approved" in result.message
+
+    def test_registered_and_approved_is_ok(self, tmp_path: Path) -> None:
+        from brainpalace_cli.diagnostics import _check_mcp_config
+
+        proj = self._project(tmp_path, {"enabledMcpjsonServers": ["brainpalace"]})
+        result = _check_mcp_config(proj, True)
+        assert result is not None
+        assert result.status == "ok"
+
+    def test_explicit_disable_counts_as_unapproved(self, tmp_path: Path) -> None:
+        """Denylist wins in Claude Code, so allowlisted+denylisted is denied."""
+        from brainpalace_cli.diagnostics import _check_mcp_config
+
+        proj = self._project(
+            tmp_path,
+            {
+                "enabledMcpjsonServers": ["brainpalace"],
+                "disabledMcpjsonServers": ["brainpalace"],
+            },
+        )
+        result = _check_mcp_config(proj, True)
+        assert result is not None
+        assert result.status != "ok"
+
+    def test_local_scope_registration_is_ok_without_allowlist(
+        self, tmp_path: Path
+    ) -> None:
+        """Local scope grants the connection with no approval and no allowlist
+        — doctor must call that OK, not warn about a missing approval that the
+        local-scope route never needs."""
+        from brainpalace_cli.diagnostics import _check_mcp_config
+
+        proj = tmp_path / "proj"
+        proj.mkdir()
+        self._project(proj)  # .mcp.json only, no settings.local.json
+        home = tmp_path / "home"
+        home.mkdir()
+        (home / ".claude.json").write_text(
+            json.dumps({"projects": {str(proj): {"mcpServers": {"brainpalace": {}}}}})
+        )
+        with patch("brainpalace_cli.diagnostics.Path.home", return_value=home):
+            result = _check_mcp_config(proj, True)
+        assert result is not None
+        assert result.status == "ok"

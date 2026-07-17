@@ -126,6 +126,7 @@ class KeywordOps:
         source_types: list[str] | None = None,
         languages: list[str] | None = None,
         language: str | None = None,
+        file_paths: list[str] | None = None,
     ) -> list[SearchResult]:
         """Perform full-text keyword search using tsvector.
 
@@ -144,6 +145,9 @@ class KeywordOps:
             top_k: Maximum number of results to return.
             source_types: Optional filter by ``source_type`` metadata field.
             languages: Optional filter by ``language`` metadata field.
+            file_paths: Optional filter by ``file_path`` metadata field,
+                wildcards supported (glob converted to SQL LIKE: ``*``->``%``,
+                ``?``->``_``). Applied before LIMIT, so the scope is exact.
 
         Returns:
             List of SearchResult sorted by score descending, with
@@ -172,6 +176,14 @@ class KeywordOps:
             if languages:
                 filter_clauses.append("AND metadata->>'language' = ANY(:languages)")
                 params["languages"] = languages
+
+            if file_paths:
+                filter_clauses.append(
+                    "AND metadata->>'file_path' LIKE ANY(:file_paths)"
+                )
+                params["file_paths"] = [
+                    p.replace("*", "%").replace("?", "_") for p in file_paths
+                ]
 
             filter_sql = "\n".join(filter_clauses)
 

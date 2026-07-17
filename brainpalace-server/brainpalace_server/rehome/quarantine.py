@@ -20,6 +20,9 @@ from brainpalace_server.rehome.state import (
     RehomeState,
     load_rehome_state,
 )
+from brainpalace_server.rehome.state import (
+    _path as _rehome_state_path,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -105,8 +108,13 @@ async def start_frozen_mutators(app_state: Any) -> list[str]:
 
 
 def clear_stale_rehome_state(state_dir: Path) -> None:
-    """Remove a completed rehome.json so a fresh (second) move re-runs from phase 1."""
-    p = Path(state_dir) / REHOME_STATE_FILENAME
+    """Remove a completed rehome.json so a fresh (second) move re-runs from phase 1.
+
+    Uses ``state.py``'s own ``_path`` (C2: ``state_dir/state/rehome.json``) rather
+    than hand-building the root path, so this stays correct after the C1/C2
+    relocation instead of silently missing the real file.
+    """
+    p = _rehome_state_path(state_dir)
     try:
         p.unlink()
     except FileNotFoundError:

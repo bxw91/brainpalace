@@ -26,6 +26,7 @@ from .commands import (
     init_command,
     inject_command,
     install_agent_command,
+    install_mcp_command,
     install_session_hooks_command,
     jobs_command,
     list_command,
@@ -156,6 +157,7 @@ cli.add_command(cache_group, name="cache")
 cli.add_command(uninstall_command, name="uninstall")
 cli.add_command(update_command, name="update")
 cli.add_command(install_agent_command, name="install-agent")
+cli.add_command(install_mcp_command, name="install-mcp")
 cli.add_command(install_session_hooks_command, name="install-session-hooks")
 cli.add_command(backfill_command, name="backfill-sessions")
 cli.add_command(records_group, name="records")

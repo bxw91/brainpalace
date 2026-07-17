@@ -525,16 +525,27 @@ async def indexing_status(request: Request) -> dict[str, Any]:
     # Self-heal recovery: lost chunks restored from cache+dead at startup, and
     # whether stage 2 (drop/clean/reindex) ran or was blocked by an incomplete
     # recovery. Surfaced so a recovery — or a data-protecting block — is visible.
+    #
+    # Scoped to THIS server's lifetime. The event log is an append-only audit
+    # trail, but a healthy startup self-heal records NOTHING (a no-op is silent
+    # by design — `_record_self_heal_result`). So the newest event can predate
+    # this boot by days, and surfacing it unconditionally replays a long-since
+    # healed state forever ("N chunk(s) need re-embed" that no restart clears).
+    # An event older than `started_at` was written by a PREVIOUS server; this
+    # boot's heal found nothing, which IS the healthy state → surface nothing.
     try:
         from brainpalace_server.services.chunk_recovery import read_recovery_events
 
         persist_dir = getattr(vector_store, "persist_dir", None)
         if persist_dir:
             recov = read_recovery_events(persist_dir)
-            if recov.get("count"):
+            last = recov.get("last")
+            if recov.get("count") and _heal_event_is_current(
+                last, getattr(request.app.state, "started_at", None)
+            ):
                 data["features"]["self_heal"] = {
                     "events": int(recov.get("count", 0) or 0),
-                    "last": recov.get("last"),
+                    "last": last,
                 }
     except Exception:  # noqa: BLE001 — never fail /status on the recovery log
         pass
@@ -567,6 +578,35 @@ async def indexing_status(request: Request) -> dict[str, Any]:
     data["features"]["read_only"] = is_read_only()
 
     return data
+
+
+def _heal_event_is_current(last: dict[str, Any] | None, started_at: str | None) -> bool:
+    """Was this recovery event written by the CURRENTLY-running server?
+
+    A healthy startup self-heal records no event, so the newest event in the
+    append-only log may be days old and describe a state already healed. Only an
+    event at/after this process's ``started_at`` reflects the live index.
+
+    Degrades OPEN (``True``) when either timestamp is missing or unparseable —
+    a real recovery signal must never be hidden by a clock/format problem; the
+    cost of a stale line is lower than the cost of a silenced one.
+    """
+    if not isinstance(last, dict):
+        return False
+    ts = last.get("ts")
+    if not ts or not started_at:
+        return True
+    try:
+        event_dt = datetime.fromisoformat(str(ts))
+        start_dt = datetime.fromisoformat(str(started_at))
+    except ValueError:
+        return True
+    # Naive/aware mismatch would raise on compare — normalise to UTC-aware.
+    if event_dt.tzinfo is None:
+        event_dt = event_dt.replace(tzinfo=timezone.utc)
+    if start_dt.tzinfo is None:
+        start_dt = start_dt.replace(tzinfo=timezone.utc)
+    return event_dt >= start_dt
 
 
 def _doc_graph_extraction_feature(request: Request) -> dict[str, Any]:

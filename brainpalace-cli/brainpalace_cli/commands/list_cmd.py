@@ -4,12 +4,13 @@ import json
 import os
 from pathlib import Path
 from typing import Any
-from urllib.request import Request, urlopen
 
 import click
 from rich.console import Console
 from rich.table import Table
 
+from brainpalace_cli.runtime_probe import check_health as check_health  # re-export
+from brainpalace_cli.runtime_probe import probe
 from brainpalace_cli.xdg_paths import get_registry_path, get_xdg_state_dir
 
 console = Console()
@@ -38,16 +39,6 @@ def is_process_alive(pid: int) -> bool:
         return False
     except PermissionError:
         return True  # Process exists but we can't signal it
-
-
-def check_health(base_url: str, timeout: float = 2.0) -> bool:
-    """Check if the server health endpoint responds."""
-    try:
-        req = Request(f"{base_url}/health/", method="GET")
-        with urlopen(req, timeout=timeout) as resp:
-            return bool(resp.status == 200)
-    except Exception:
-        return False
 
 
 def get_registry() -> dict[str, Any]:
@@ -99,12 +90,21 @@ def scan_instances() -> list[dict[str, Any]]:
         # Validate process
         process_alive = is_process_alive(pid) if pid else False
 
-        # Validate health
-        health_ok = check_health(base_url) if base_url else False
+        # Identity-checked health (A3): a bare 200 isn't proof this project's
+        # server answered — a copied .brainpalace/'s runtime.json can point at
+        # a DIFFERENT project's live server. probe() distinguishes "mine" from
+        # "someone else answered" from "nobody answered".
+        identity = probe(base_url, project_root) if base_url else "down"
 
         # Determine status
-        if process_alive and health_ok:
+        if identity == "mine":
             status = "running"
+        elif identity == "other":
+            # A different project's server answered here — this entry is
+            # simply not running (not "unhealthy", which would wrongly imply
+            # THIS server is sick), and its registry entry is still valid for
+            # a project that just isn't up yet — don't prune it.
+            continue
         elif process_alive:
             status = "unhealthy"
         else:

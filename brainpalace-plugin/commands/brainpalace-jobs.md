@@ -18,6 +18,10 @@ parameters:
     type: integer
     required: false
     default: 20
+  - name: all
+    type: bool
+    required: false
+    default: false
   - name: url
     type: text
     required: false
@@ -28,7 +32,7 @@ parameters:
     default: false
 skills:
   - using-brainpalace
-last_validated: 2026-07-13
+last_validated: 2026-07-17
 ---
 
 # Job Queue Management
@@ -207,6 +211,7 @@ brainpalace index <path> --force
 | --cancel | bool | false | Cancel the specified job |
 | --approve | bool | false | Approve a budget-blocked job (spends embedding tokens) |
 | --limit | integer | 20 | Max jobs to show (default: 20) |
+| --all | bool | false | Include no-op completed jobs (status=done, no chunk delta, no error) that are hidden by default |
 | --url | text | "" | BrainPalace server URL (default: from config or http://127.0.0.1:8000) |
 | --json | bool | false | Output as JSON |
 <!--/GENERATED-->

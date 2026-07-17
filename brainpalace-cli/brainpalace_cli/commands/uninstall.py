@@ -4,6 +4,7 @@ import json
 import os
 import shutil
 import signal
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -27,6 +28,13 @@ console = Console()
 # MCP client configs that may carry a `brainpalace` server entry, as
 # (relative path, format, container key). The container holds named servers.
 MCP_CONFIGS: list[tuple[str, str, str]] = [
+    (".mcp.json", "json", "mcpServers"),  # Claude Code — written by
+    # `brainpalace init`/`install-mcp` (D12); project scope only, never $HOME.
+    # The approval `install-mcp` records alongside the .mcp.json entry. Without
+    # this, uninstall strips the server but leaves it allowlisted — an orphan
+    # pointing at a server that no longer exists. Container is a list of bare
+    # server-name strings, not a dict of named servers.
+    (".claude/settings.local.json", "json", "enabledMcpjsonServers"),
     (".vscode/mcp.json", "json", "servers"),
     (".cursor/mcp.json", "json", "mcpServers"),
     (".cline/mcp.json", "json", "mcpServers"),
@@ -130,10 +138,13 @@ def remove_mcp_entry(path: Path, fmt: str, key: str) -> bool:
         del container["brainpalace"]
         changed = True
     elif isinstance(container, list):
+        # Two list shapes: named-server objects ({"name": "brainpalace", ...}),
+        # and bare name strings (Claude Code's enabledMcpjsonServers).
         kept = [
             x
             for x in container
             if not (isinstance(x, dict) and x.get("name") == "brainpalace")
+            and x != "brainpalace"
         ]
         if len(kept) != len(container):
             data[key] = kept
@@ -151,6 +162,35 @@ def remove_mcp_entry(path: Path, fmt: str, key: str) -> bool:
     else:
         path.write_text(json.dumps(data, indent=2) + "\n")
     return True
+
+
+def remove_local_scope_entry(project_root: Path) -> bool:
+    """Remove a local-scope ``brainpalace`` server for one project.
+
+    `install-mcp` registers the server in Claude Code's LOCAL scope, which
+    lives in ~/.claude.json under the project's entry — no file inside the
+    project holds it, so MCP_CONFIGS (which is project-relative by design)
+    cannot reach it. Without this, uninstall strips every visible trace and
+    leaves a working server registration behind.
+
+    Shells out to `claude mcp remove` rather than editing ~/.claude.json:
+    Claude Code rewrites that file wholesale on exit, so a direct write races
+    any running session. Returns True if an entry was removed.
+    """
+    claude_bin = shutil.which("claude")
+    if claude_bin is None:
+        return False
+    try:
+        proc = subprocess.run(
+            [claude_bin, "mcp", "remove", "brainpalace", "-s", "local"],
+            cwd=project_root,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return proc.returncode == 0
 
 
 def package_uninstall_plan(manager: str | None) -> tuple[str, list[str]]:
@@ -357,6 +397,11 @@ def _guided_uninstall() -> None:
             for path, fmt, key in mcp:
                 if remove_mcp_entry(path, fmt, key):
                     console.print(f"  [dim]cleaned {path}[/]")
+            # Claude Code's local scope lives in ~/.claude.json, not in any
+            # project file — the loop above cannot see it.
+            for project in projects:
+                if remove_local_scope_entry(project):
+                    console.print(f"  [dim]cleaned local MCP scope for {project}[/]")
 
     # 4. Per-project state (multi-select — ⚠️ archived transcripts).
     state_dirs: list[Path] = []

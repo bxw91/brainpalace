@@ -127,11 +127,14 @@ describe("Queries tab", () => {
     fireEvent.click(screen.getByTestId("query-row-q1"));
     const drawer = await screen.findByTestId("query-drawer");
     fireEvent.click(within(drawer).getByTestId("btn-rerun"));
+    // A18 — the re-run must carry the logged filters, or it silently replays a
+    // broader unfiltered query. The mocked detail has source_types/languages.
     await waitFor(() =>
       expect(client.replayQuery).toHaveBeenCalledWith("a", {
         query: "how does the proxy work",
         mode: "hybrid",
         top_k: 5,
+        filters: { source_types: ["code"], languages: ["python"] },
       }),
     );
     expect(await within(drawer).findByTestId("replay-results")).toBeInTheDocument();

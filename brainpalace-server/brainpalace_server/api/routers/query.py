@@ -28,6 +28,33 @@ def _log_query(log_service: object, **fields: object) -> None:
         logger.debug("query log write failed", exc_info=True)
 
 
+#: Filter fields recorded into the query log's ``filters_json``. A replay reads
+#: these back to reproduce the query, so the set must cover every filter that
+#: shapes the result set — logging only a subset silently makes a later replay
+#: run a different (broader) query (A18). ``include_sensitive`` is deliberately
+#: excluded: it is a sensitivity gate, not a scope filter, and must never be
+#: reconstructable from a shared surface's replay.
+_LOGGED_FILTER_FIELDS = (
+    "source_types",
+    "languages",
+    "file_paths",
+    "domains",
+    "metadata_filter",
+    "entity_types",
+    "relationship_types",
+)
+
+
+def _logged_filters(request_body: object) -> dict[str, object]:
+    """The non-empty scope filters to record for this query (see A18)."""
+    out: dict[str, object] = {}
+    for field in _LOGGED_FILTER_FIELDS:
+        value = getattr(request_body, field, None)
+        if value:
+            out[field] = value
+    return out
+
+
 @router.post(
     "/",
     response_model=QueryResponse,
@@ -120,10 +147,7 @@ async def query_documents(
             for r in getattr(response, "results", [])
         ],
         alpha=request_body.alpha,
-        filters={
-            "source_types": request_body.source_types,
-            "languages": request_body.languages,
-        },
+        filters=_logged_filters(request_body),
     )
 
     # Attach a budget-blocked-index advisory if one exists (fail-soft — a jobs

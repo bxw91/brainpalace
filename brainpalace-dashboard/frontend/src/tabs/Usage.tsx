@@ -845,7 +845,7 @@ function BreakdownTables({ totals }: { totals: UsageTotalRow[] }) {
 export function Usage({ instanceId }: { instanceId?: string }) {
   const ctx = useOptionalSelectedInstance();
   const id = instanceId ?? ctx?.selectedId ?? null;
-  const [window, setWindow] = useState<Window>("1h");
+  const [window, setWindow] = useState<Window>("24h");
 
   const usageQ = useQuery({
     queryKey: ["usage", id, window],

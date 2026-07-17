@@ -106,9 +106,11 @@ async def test_heal_once_restarts_dead_watcher_and_worker(monkeypatch):
     watcher.stop = AsyncMock()
     watcher.start = AsyncMock()
 
-    # worker: not running -> restart
+    # worker: not running -> restart. `is_running` is a bool ATTRIBUTE, not a
+    # callable — mirrors the real JobWorker.is_running @property (a MagicMock
+    # method here would be callable and hide the property-vs-method bug).
     worker = MagicMock()
-    worker.is_running.return_value = False
+    worker.is_running = False
     worker.start = AsyncMock()
 
     vector = MagicMock()
@@ -151,9 +153,42 @@ async def test_heal_index_heals_both_code_and_memory_stores():
 
 
 @pytest.mark.asyncio
+async def test_heal_once_survives_real_is_running_property():
+    """Regression: `_heal_worker` must READ `worker.is_running` (a @property on
+    the real JobWorker), never CALL it. Calling the bool raised
+    `'bool' object is not callable`, which — since the check sits before
+    `_heal_worker`'s own try/except — propagated out of `heal_once` every
+    heartbeat and aborted the whole tick (reaper, index-heal, deep-clean all
+    dead). Drive `heal_once` with an object exposing `is_running` as a genuine
+    bool @property (like JobWorker) and assert it neither raises nor spuriously
+    restarts a running worker."""
+
+    class _RealishWorker:
+        @property
+        def is_running(self) -> bool:
+            return True  # healthy -> must NOT be restarted
+
+        start = AsyncMock()
+
+    worker = _RealishWorker()
+    app = SimpleNamespace(
+        state=SimpleNamespace(
+            file_watcher_service=None,
+            job_worker=worker,
+            vector_store=None,
+            state_dir=None,
+            project_root="",
+        )
+    )
+    # Must complete without raising (the bug raised TypeError here every tick).
+    await sh.heal_once(app, sh.HealState())
+    worker.start.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_worker_restart_capped(monkeypatch):
     worker = MagicMock()
-    worker.is_running.return_value = False
+    worker.is_running = False  # bool attribute, matching the real @property
     worker.start = AsyncMock()
     app = SimpleNamespace(
         state=SimpleNamespace(

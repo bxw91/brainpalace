@@ -54,6 +54,10 @@ parameters:
     type: bool
     required: false
     default: false
+  - name: mcp
+    type: bool
+    required: false
+    default: true
   - name: sessions
     type: bool
     required: false
@@ -478,6 +482,7 @@ This allows running multiple BrainPalace instances for different projects simult
 | --watch | choice | "" | Folder watch mode when starting (auto = register + index project_root + live re-index). Default 'auto' when starting, else 'off'. |
 | --no-watch | bool | false | Do not register/watch the project folder (alias for --watch off). |
 | --yes | bool | false | Skip the confirmation prompt and apply the full resolved plan. |
+| --mcp | bool | true | Write BrainPalace's MCP server into the project's .mcp.json (merged, never clobbering other servers already declared there). ON by default — unlike session embedding, this costs no money, only ~2,360 tokens of context in a project that already runs BrainPalace. Pass --no-mcp to opt out. Written on every init path, including --defer-activation: .mcp.json is configuration, not activation, so it starts nothing. Tools appear next session, after you approve the project's MCP servers. |
 | --sessions | bool | "" | INDEX this project's AI chat transcripts into searchable session memory (embeddings, billable). ON by default for new projects: interactive runs confirm (default yes), non-interactive runs enable it. Pass --no-sessions to opt out (archive still runs). |
 | --archive | bool | "" | ARCHIVE raw transcripts under .brainpalace/ as a durable backup (no embeddings, independent of indexing). ON by default. Pass --no-archive to opt out. |
 | --extract | bool | "" | SUMMARIZE each session into durable knowledge (summary, decisions, triplets). ON by default, summarized ONLY inside Claude Code (the plugin, free on your Claude Code subscription — no separate API bill). The server does not summarize on its own. Pass --no-extract to opt out. |

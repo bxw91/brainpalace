@@ -695,6 +695,11 @@ def test_indexable_git_shas_not_a_repo_returns_none(tmp_path):
 class _MockVectorStore:
     persist_dir = "/tmp"
 
+    async def get_existing_ids(self, ids: list[str]) -> set[str]:
+        # Default: every queried id is present live (an already-materialized
+        # store). Tests that need a partial/empty git plane override this.
+        return set(ids)
+
 
 @pytest.mark.asyncio
 async def test_self_heal_wants_zero_git_ids_on_fresh_repo(tmp_path, monkeypatch):
@@ -779,3 +784,179 @@ async def test_self_heal_bounds_git_wanted_set_by_last_sha(tmp_path, monkeypatch
     )
 
     assert captured["wanted_ids"] == {f"git_commit:{sha_indexed}"}
+
+
+@pytest.mark.asyncio
+async def test_self_heal_excludes_git_when_store_has_no_git_chunks(
+    tmp_path, monkeypatch
+):
+    """git_index_state.json records a last_sha (a prior life of this repo — a
+    fresh/reset store, or a rehome that carried the state forward) but the
+    current store holds ZERO git_commit chunks (none live, none in a dead
+    segment). The git plane was never materialized here, so chunk_recovery has
+    nothing to restore from and would otherwise report every recorded commit as
+    residue ("N chunks need re-embed") — the persistent false alarm this fix
+    closes. The always-enqueued git boot-index job rebuilds the plane instead.
+    => git ids must be excluded from the wanted-set."""
+    from unittest.mock import MagicMock
+
+    import brainpalace_server.config.git_config as git_config
+    import brainpalace_server.services.startup_reconcile as sr
+
+    repo = _init_repo(tmp_path / "repo")
+    sha_indexed = _commit(repo, "a.txt", "indexed")
+    state_dir = tmp_path / "state"
+    _seed_git_state(state_dir, str(repo), sha_indexed)
+
+    monkeypatch.setattr(
+        git_config, "load_git_indexing_config", lambda *a, **kw: _git_cfg()
+    )
+    captured: dict = {}
+
+    async def _fake_recover(*, wanted_ids, **kwargs):
+        captured["wanted_ids"] = set(wanted_ids)
+        return sr.chunk_recovery.RecoverySummary()
+
+    monkeypatch.setattr(sr.chunk_recovery, "recover_lost_chunks", _fake_recover)
+    # No dead segments either — an empty store.
+    monkeypatch.setattr(
+        sr.chunk_recovery, "read_recoverable_chunks", lambda _p, _ids: {}
+    )
+
+    # Store reports NO git_commit chunk present live.
+    class _EmptyGitStore(_MockVectorStore):
+        async def get_existing_ids(self, ids):
+            return set()
+
+    folder_manager = MagicMock()
+    folder_manager.list_folders = AsyncMock(return_value=[])
+    manifest_tracker = MagicMock()
+
+    await sr.self_heal_on_startup(
+        folder_manager=folder_manager,
+        manifest_tracker=manifest_tracker,
+        storage_backend=MagicMock(),
+        vector_store=_EmptyGitStore(),
+        cache_db_path=None,
+        target_dimensions=0,
+        repo_path=str(repo),
+        git_state_dir=state_dir,
+    )
+
+    # manifest union empty + git suppressed => nothing wanted => recovery skipped.
+    assert captured == {}
+
+
+@pytest.mark.asyncio
+async def test_self_heal_keeps_dead_segment_git_id_for_recovery(tmp_path, monkeypatch):
+    """A recorded commit is absent from the live collection but present in a
+    DEAD segment (a collection rebuild stranded it). Self-heal's git role IS to
+    restore that one from dead-text + cache with no re-embed, so it must stay in
+    the wanted-set."""
+    from unittest.mock import MagicMock
+
+    import brainpalace_server.config.git_config as git_config
+    import brainpalace_server.services.startup_reconcile as sr
+
+    repo = _init_repo(tmp_path / "repo")
+    sha_indexed = _commit(repo, "a.txt", "indexed")
+    state_dir = tmp_path / "state"
+    _seed_git_state(state_dir, str(repo), sha_indexed)
+
+    monkeypatch.setattr(
+        git_config, "load_git_indexing_config", lambda *a, **kw: _git_cfg()
+    )
+    captured: dict = {}
+
+    async def _fake_recover(*, wanted_ids, **kwargs):
+        captured["wanted_ids"] = set(wanted_ids)
+        return sr.chunk_recovery.RecoverySummary()
+
+    monkeypatch.setattr(sr.chunk_recovery, "recover_lost_chunks", _fake_recover)
+    # Not live, but stranded in a dead segment => recoverable here.
+    monkeypatch.setattr(
+        sr.chunk_recovery,
+        "read_recoverable_chunks",
+        lambda _p, ids: {cid: object() for cid in ids},
+    )
+
+    class _StrandedGitStore(_MockVectorStore):
+        async def get_existing_ids(self, ids):
+            return set()  # nothing live — all stranded
+
+    folder_manager = MagicMock()
+    folder_manager.list_folders = AsyncMock(return_value=[])
+    manifest_tracker = MagicMock()
+
+    await sr.self_heal_on_startup(
+        folder_manager=folder_manager,
+        manifest_tracker=manifest_tracker,
+        storage_backend=MagicMock(),
+        vector_store=_StrandedGitStore(),
+        cache_db_path=None,
+        target_dimensions=0,
+        repo_path=str(repo),
+        git_state_dir=state_dir,
+    )
+
+    assert captured["wanted_ids"] == {f"git_commit:{sha_indexed}"}
+
+
+@pytest.mark.asyncio
+async def test_self_heal_drops_never_materialized_git_ids_when_plane_partial(
+    tmp_path, monkeypatch
+):
+    """The regression this fix targets: the git plane is PARTIAL (one commit
+    live) while last_sha wants two. The commit the async boot-index job hasn't
+    reached — neither live nor in a dead segment — must NOT enter the wanted-set
+    (else it is reported as phantom "need re-embed" residue). The binary
+    plane-materialized gate wrongly kept it because the store held >=1 chunk."""
+    from unittest.mock import MagicMock
+
+    import brainpalace_server.config.git_config as git_config
+    import brainpalace_server.services.startup_reconcile as sr
+
+    repo = _init_repo(tmp_path / "repo")
+    sha_a = _commit(repo, "a.txt", "materialized")
+    sha_b = _commit(repo, "b.txt", "not yet indexed")  # boot job hasn't reached it
+    state_dir = tmp_path / "state"
+    _seed_git_state(state_dir, str(repo), sha_b)  # last_sha wants both a and b
+
+    monkeypatch.setattr(
+        git_config, "load_git_indexing_config", lambda *a, **kw: _git_cfg()
+    )
+    captured: dict = {}
+
+    async def _fake_recover(*, wanted_ids, **kwargs):
+        captured["wanted_ids"] = set(wanted_ids)
+        return sr.chunk_recovery.RecoverySummary()
+
+    monkeypatch.setattr(sr.chunk_recovery, "recover_lost_chunks", _fake_recover)
+    # No dead segments — b was never in this store at all.
+    monkeypatch.setattr(
+        sr.chunk_recovery, "read_recoverable_chunks", lambda _p, _ids: {}
+    )
+
+    live_a = {f"git_commit:{sha_a}"}
+
+    class _PartialGitStore(_MockVectorStore):
+        async def get_existing_ids(self, ids):
+            return live_a & set(ids)  # only a is materialized
+
+    folder_manager = MagicMock()
+    folder_manager.list_folders = AsyncMock(return_value=[])
+    manifest_tracker = MagicMock()
+
+    await sr.self_heal_on_startup(
+        folder_manager=folder_manager,
+        manifest_tracker=manifest_tracker,
+        storage_backend=MagicMock(),
+        vector_store=_PartialGitStore(),
+        cache_db_path=None,
+        target_dimensions=0,
+        repo_path=str(repo),
+        git_state_dir=state_dir,
+    )
+
+    # a stays (live); b is dropped (never materialized) => no phantom residue.
+    assert captured["wanted_ids"] == live_a

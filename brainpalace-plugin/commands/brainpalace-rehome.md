@@ -16,7 +16,7 @@ parameters:
     type: bool
     required: false
     default: false
-last_validated: 2026-07-13
+last_validated: 2026-07-17
 ---
 
 # Rehome
@@ -28,7 +28,7 @@ directory is moved, the server auto-detects the move on next start and repairs
 all path-addressed stores (folder records, manifest keys, chunk metadata, the
 sqlite graph, the reference catalog) via a checkpointed prefix-swap — no
 re-embedding. While that rehome is mid-run or failed, the server is
-fail-closed: it 503s everything except health and rehome routes.
+fail-closed: it 503s everything except health, runtime, and rehome routes.
 
 Bare `rehome` reports the current quarantine state (`quarantined`, `status`,
 `reason`). `--resume` drives a pending/failed rehome to completion from its

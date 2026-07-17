@@ -6,7 +6,7 @@ Edit HERE only. Do NOT hand-edit generated copies:
   - SessionStart hook additionalContext                     (reads CORE tier, via `brainpalace hook`)
 See CLAUDE.md → "AI-guidance parity". Verified against code on the date below.
 
-meta: version=7.8.0 last_validated=2026-07-13
+meta: version=7.9.0 last_validated=2026-07-17
 
 Tiers:
   CORE = the marked slice below (between the CORE open/close HTML markers). The
@@ -37,9 +37,9 @@ concept → `--mode vector`/`hybrid`; relationships → `--mode graph`. Server d
 Start it: `brainpalace start`; if it answers `503` "rehome pending" the project
 MOVED — run `brainpalace rehome --resume` (or restart; it auto-resumes) first.
 `brainpalace query --json` keys are
-`text`/`source`/`score`/`chunk_id` (no `file_path`, no line numbers); on failure
-stdout is `{"error": ...}` with no `results` key and a non-zero exit — check it,
-never append `2>/dev/null`.
+`text`/`source`/`score`/`chunk_id`/`start_line`/`end_line` (no `file_path`;
+lines null off-code); on failure stdout is `{"error": ...}` with no `results`
+key and a non-zero exit — check it, never append `2>/dev/null`.
 <!--/NUDGE-->
 
 ## Mode Decision Table — Quick Reference
@@ -85,7 +85,7 @@ CLI not installed (command not found) → treat as exit `1`, yield.
 ### Search Rule — Non-Negotiable (when indexed)
 
 When the check passed, BrainPalace is the first entry point for codebase search.
-Never use Glob, Grep, or Bash `find`/`rg` against indexed project source — even
+Never use Glob, Grep, or Bash `find`/`grep`/`rg` against indexed project source — even
 when you think you know the path or token (see the NUDGE rationale above). Pick
 a mode, then:
 
@@ -97,8 +97,9 @@ After BrainPalace returns confirmed file paths, use `Read` to open them.
 
 ### Parsing `--json` Output
 
-Per-result keys are `text`, `source`, `score`, `chunk_id` — there is NO
-`file_path`, `content`, or line-number field. On failure, stdout is
+Per-result keys are `text`, `source`, `score`, `chunk_id`, `start_line`,
+`end_line` (`int | null`, null off-code) — there is NO `file_path` or
+`content` field. On failure, stdout is
 `{"error": ...}` (with `detail`/`hint`) and a non-zero exit, with **no**
 `results` key. Never append `2>/dev/null` — diagnostics go to stderr. A
 top-level `index_blocked` object means the index is STALE (paused over

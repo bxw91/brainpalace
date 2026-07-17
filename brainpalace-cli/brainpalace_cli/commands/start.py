@@ -17,6 +17,8 @@ from rich.panel import Panel
 
 from brainpalace_cli.config import resolve_project_root
 from brainpalace_cli.migration import resolve_state_dir_with_fallback
+from brainpalace_cli.runtime_probe import check_health as check_health  # re-export
+from brainpalace_cli.runtime_probe import probe
 from brainpalace_cli.xdg_paths import migrate_legacy_paths
 
 console = Console()
@@ -187,36 +189,37 @@ def classify_existing_server(
     runtime: dict[str, Any] | None,
     *,
     alive_fn: Any,
-    health_fn: Any,
+    probe_fn: Any,
+    expected_root: str | Path,
 ) -> str:
-    """Decide what to do about a recorded server, given liveness + health.
+    """Decide what to do about a recorded server, given liveness + identity.
+
+    ``probe_fn`` is the three-valued :func:`brainpalace_cli.runtime_probe.probe`
+    (or a test double with the same signature): ``probe_fn(base_url,
+    expected_root) -> "mine" | "other" | "down"``.
 
     Returns one of:
-        - ``"running"``    pid alive and health check passes -> report and reuse.
-        - ``"unresponsive"`` pid alive but health check fails -> a live server
+        - ``"running"``      pid alive and probe says "mine" -> report and reuse.
+        - ``"unresponsive"``  pid alive but probe says "down" -> a live server
           exists (likely busy indexing); the caller MUST NOT wipe its state and
           spawn a second server on another port. This is the duplicate-server
           incident guard.
-        - ``"stale"``      no runtime, or pid dead -> safe to clean up and start.
+        - ``"stale"``        no runtime, pid dead, OR probe says "other" (a
+          DIFFERENT project's server answered here, e.g. a copied
+          ``runtime.json`` pointing at the original's live server) -> safe (and
+          for "other", necessary) to clean up and start fresh.
     """
     if not runtime:
         return "stale"
     pid = runtime.get("pid", 0)
     if pid and alive_fn(pid):
-        if health_fn(runtime.get("base_url", "")):
+        result = probe_fn(runtime.get("base_url", ""), expected_root)
+        if result == "mine":
             return "running"
+        if result == "other":
+            return "stale"
         return "unresponsive"
     return "stale"
-
-
-def check_health(base_url: str, timeout: float = 3.0) -> bool:
-    """Check if the server health endpoint responds."""
-    try:
-        req = Request(f"{base_url}/health/", method="GET")
-        with urlopen(req, timeout=timeout) as resp:
-            return bool(resp.status == 200)
-    except Exception:
-        return False
 
 
 def find_reusable_server(project_root: Path) -> str | None:
@@ -226,15 +229,28 @@ def find_reusable_server(project_root: Path) -> str | None:
     runtime.json) by also honouring the global registry, so a server started
     from a different install surface (source venv vs pipx) is reused instead of
     duplicated on a climbed port.
+
+    NOTE (A2, defensive-only): identity-checked via ``probe`` for correctness,
+    but this path is inert today — the global registry entry carries only
+    ``{state_dir, project_name}`` (the single writer never records pid/
+    base_url), so ``entry.get("pid")``/``base_url`` are always empty and this
+    never actually returns a reuse URL. The real start-side reuse path is
+    ``classify_existing_server`` via ``runtime.json``.
     """
     from brainpalace_cli.commands.list_cmd import get_registry
 
-    entry = get_registry().get(str(Path(project_root).resolve()))
+    resolved_root = Path(project_root).resolve()
+    entry = get_registry().get(str(resolved_root))
     if not isinstance(entry, dict):
         return None
     pid = entry.get("pid", 0)
     base_url = entry.get("base_url", "")
-    if pid and is_process_alive(pid) and base_url and check_health(base_url):
+    if (
+        pid
+        and is_process_alive(pid)
+        and base_url
+        and probe(base_url, resolved_root) == "mine"
+    ):
         return str(base_url)
     return None
 
@@ -658,7 +674,10 @@ def start_command(
         runtime = read_runtime(state_dir)
         if runtime:
             action = classify_existing_server(
-                runtime, alive_fn=is_process_alive, health_fn=check_health
+                runtime,
+                alive_fn=is_process_alive,
+                probe_fn=probe,
+                expected_root=project_root,
             )
             pid = runtime.get("pid", 0)
             base_url = runtime.get("base_url", "")
@@ -669,8 +688,17 @@ def start_command(
                     if not is_process_alive(pid):
                         action = "stale"
                         break
-                    if check_health(base_url, timeout=EXISTING_SERVER_HEALTH_TIMEOUT):
+                    # Re-probe for IDENTITY, not a bare 200 — a different
+                    # project's server may have come up on this port while we
+                    # waited (rare, but "other" must not be reported "running").
+                    retry_result = probe(
+                        base_url, project_root, timeout=EXISTING_SERVER_HEALTH_TIMEOUT
+                    )
+                    if retry_result == "mine":
                         action = "running"
+                        break
+                    if retry_result == "other":
+                        action = "stale"
                         break
 
             if action == "running":

@@ -109,7 +109,7 @@ def _make_running_project(tmp_path):
 
 def test_start_prints_dashboard_url(tmp_path, monkeypatch):
     _make_running_project(tmp_path)
-    monkeypatch.setattr(start_mod, "check_health", lambda url, timeout=3.0: True)
+    monkeypatch.setattr(start_mod, "probe", lambda url, root, timeout=3.0: "mine")
     monkeypatch.setattr(start_mod, "migrate_legacy_paths", lambda: None)
     monkeypatch.setattr(
         start_mod,
@@ -127,7 +127,7 @@ def test_start_prints_dashboard_url(tmp_path, monkeypatch):
 
 def test_start_json_includes_dashboard(tmp_path, monkeypatch):
     _make_running_project(tmp_path)
-    monkeypatch.setattr(start_mod, "check_health", lambda url, timeout=3.0: True)
+    monkeypatch.setattr(start_mod, "probe", lambda url, root, timeout=3.0: "mine")
     monkeypatch.setattr(start_mod, "migrate_legacy_paths", lambda: None)
     monkeypatch.setattr(
         start_mod,
@@ -149,7 +149,7 @@ def test_start_json_includes_dashboard(tmp_path, monkeypatch):
 
 def test_start_no_dashboard_flag_omits_url(tmp_path, monkeypatch):
     _make_running_project(tmp_path)
-    monkeypatch.setattr(start_mod, "check_health", lambda url, timeout=3.0: True)
+    monkeypatch.setattr(start_mod, "probe", lambda url, root, timeout=3.0: "mine")
     monkeypatch.setattr(start_mod, "migrate_legacy_paths", lambda: None)
 
     result = CliRunner().invoke(

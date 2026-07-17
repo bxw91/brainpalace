@@ -240,6 +240,7 @@ class PostgresBackend:
         source_types: list[str] | None = None,
         languages: list[str] | None = None,
         language: str | None = None,
+        file_paths: list[str] | None = None,
     ) -> list[SearchResult]:
         """Perform full-text keyword search.
 
@@ -253,6 +254,8 @@ class PostgresBackend:
             language: BM25 tokenization-language override (ISO 639-1). Accepted
                 for StorageBackendProtocol conformity; the tsvector path has no
                 per-language BM25 analyzer, so it is currently ignored here.
+            file_paths: Optional filter by file path, wildcards supported
+                (glob converted to SQL LIKE). Pre-filtered before LIMIT.
 
         Returns:
             List of SearchResult with 0-1 normalized scores.
@@ -265,6 +268,7 @@ class PostgresBackend:
             top_k=top_k,
             source_types=source_types,
             languages=languages,
+            file_paths=file_paths,
         )
 
     async def hybrid_search_with_rrf(

@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-11
+last_validated: 2026-07-13
 ---
 
 # Web Dashboard
@@ -112,7 +112,7 @@ instance's page (and only its tabs). The two tab sets never mix.
 | **Cache** | Embedding-cache status and clear |
 | **Graph** | GraphRAG entities / relationships |
 | **Sessions** | Session archive + memory/index state and actions |
-| **Logs** | Tail of `.brainpalace/server.log` (shows a graceful "unavailable" note if the server predates the log endpoint) |
+| **Logs** | Tail of `.brainpalace/logs/brainpalace.log` (shows a graceful "unavailable" note if the server predates the log endpoint) |
 
 Per-instance data tabs (Status/Folders/Queries/Jobs/Cache/Graph/Sessions/Logs)
 proxy to a live server and show a clean "stopped — Start" state when it's down.

@@ -169,6 +169,7 @@ class ChromaBackend:
         source_types: list[str] | None = None,
         languages: list[str] | None = None,
         language: str | None = None,
+        file_paths: list[str] | None = None,
     ) -> list[SearchResult]:
         """Perform BM25 keyword search.
 
@@ -179,6 +180,9 @@ class ChromaBackend:
             languages: Optional filter by language (programming language metadata)
             language: BM25 query tokenization language override (ISO 639-1).
                 Forwarded to search_with_filters; None means use manager default.
+            file_paths: Optional filter by file path, wildcards supported.
+                Forwarded to search_with_filters, which retrieves the whole
+                corpus when this is present so the scope is exact.
 
         Returns:
             List of SearchResult with scores in 0-1 range (normalization
@@ -196,6 +200,7 @@ class ChromaBackend:
                 source_types=source_types,
                 languages=languages,
                 language=language,
+                file_paths=file_paths,
             )
 
             if not nodes_with_score:

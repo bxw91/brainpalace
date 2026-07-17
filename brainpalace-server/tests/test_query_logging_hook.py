@@ -54,3 +54,47 @@ def test_log_query_never_raises():
     # Must not propagate — logging may never break a query.
     qmod._log_query(Boom(), query="x", mode="bm25", top_k=1, latency_ms=1.0, results=[])
     qmod._log_query(None, query="x", mode="bm25", top_k=1, latency_ms=1.0, results=[])
+
+
+def test_logged_filters_records_all_set_scope_filters():
+    """A18 — every scope filter that shaped the query is logged, so a replay
+    can reproduce it. Empty filters are omitted; the sensitivity gate never
+    appears (it is not a scope filter)."""
+    from brainpalace_server.api.routers import query as qmod
+
+    class Req:
+        source_types = ["code"]
+        languages = ["python"]
+        file_paths = ["*dashboard*"]
+        domains = None
+        metadata_filter = {"owner": "alice"}
+        entity_types = []
+        relationship_types = ["calls"]
+        include_sensitive = True  # must NOT be logged
+
+    logged = qmod._logged_filters(Req())
+    assert logged == {
+        "source_types": ["code"],
+        "languages": ["python"],
+        "file_paths": ["*dashboard*"],
+        "metadata_filter": {"owner": "alice"},
+        "relationship_types": ["calls"],
+    }
+    assert "include_sensitive" not in logged
+    assert "domains" not in logged  # None -> omitted
+    assert "entity_types" not in logged  # empty -> omitted
+
+
+def test_logged_filters_empty_when_unfiltered():
+    from brainpalace_server.api.routers import query as qmod
+
+    class Req:
+        source_types = None
+        languages = None
+        file_paths = None
+        domains = None
+        metadata_filter = None
+        entity_types = None
+        relationship_types = None
+
+    assert qmod._logged_filters(Req()) == {}

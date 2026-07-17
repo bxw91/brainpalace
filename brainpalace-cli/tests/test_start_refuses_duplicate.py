@@ -44,7 +44,7 @@ def test_start_refuses_when_live_server_unresponsive(tmp_path, monkeypatch):
         launched["called"] = True
         raise AssertionError("launch_server must not be called for a live server")
 
-    monkeypatch.setattr(start_mod, "check_health", lambda url, timeout=3.0: False)
+    monkeypatch.setattr(start_mod, "probe", lambda url, root, timeout=3.0: "down")
     monkeypatch.setattr(start_mod, "launch_server", fake_launch)
     monkeypatch.setattr(start_mod, "migrate_legacy_paths", lambda: None)
     monkeypatch.setattr(start_mod, "EXISTING_SERVER_HEALTH_RETRY_DELAY", 0.0)
@@ -66,7 +66,7 @@ def test_start_reports_running_when_healthy(tmp_path, monkeypatch):
     def fake_launch(*args, **kwargs):
         raise AssertionError("launch_server must not be called when already healthy")
 
-    monkeypatch.setattr(start_mod, "check_health", lambda url, timeout=3.0: True)
+    monkeypatch.setattr(start_mod, "probe", lambda url, root, timeout=3.0: "mine")
     monkeypatch.setattr(start_mod, "launch_server", fake_launch)
     monkeypatch.setattr(start_mod, "migrate_legacy_paths", lambda: None)
 

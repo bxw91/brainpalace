@@ -1,13 +1,16 @@
 ---
-last_validated: 2026-07-13
+last_validated: 2026-07-17
 ---
 
 # MCP setup — connecting AI clients to BrainPalace
 
-> **Opt-in.** BrainPalace ships an MCP server — `brainpalace mcp` — so
-> non-Claude-Code AI clients can talk to BrainPalace with first-class typed
-> tools instead of raw shell-outs. It is off by default; the Claude Code
-> experience is unchanged.
+> **Opt-in, per project.** BrainPalace ships an MCP server — `brainpalace mcp`
+> — so AI clients can talk to BrainPalace with first-class typed tools instead
+> of raw shell-outs. Nothing loads in a project that hasn't opted in: for
+> Claude Code, `brainpalace init` writes a per-project `.mcp.json` by default
+> (`--no-mcp` to skip it; `brainpalace install-mcp` for a project that was
+> already initialized before this existed); other clients configure the
+> snippets below by hand.
 
 The MCP server is a thin **stdio shim** over the existing BrainPalace HTTP server.
 It does not replace the HTTP server — the HTTP server is still where queries,
@@ -131,32 +134,73 @@ BM25 `lemma` engine → `simplemma`; postgres backend → `asyncpg` + `sqlalchem
 
 ## Per-client setup
 
-### Claude Code (opt-in)
+### Claude Code (opt-in, automatic per project)
 
 Claude Code users typically prefer the **skill model** installed by the plugin
 (`brainpalace query …` via slash commands). MCP here is for users who want
 explicit typed tool calls instead of skill-mediated CLI.
 
-Claude Code does **not** read `mcpServers` from `~/.claude/settings.json`.
-Either save the block below as `.mcp.json` in your project root, or register
-it once with `claude mcp add brainpalace -- brainpalace mcp`:
+Claude Code does **not** read `mcpServers` from `~/.claude/settings.json` — it
+reads a per-project `.mcp.json` at the project root. `brainpalace init` writes
+it for you by default (pass `--no-mcp` to skip); an already-initialized
+project (the common case — `init` isn't re-runnable without `--force`) adopts
+it with one command:
 
-```json
-{
-  "mcpServers": {
-    "brainpalace": {
-      "command": "brainpalace",
-      "args": ["mcp"]
-    }
-  }
-}
+```bash
+brainpalace install-mcp
 ```
 
-The Claude Code plugin's start hook auto-starts the HTTP server, so
+Both merge a single `mcpServers.brainpalace` entry into any `.mcp.json` that
+already exists, preserving every other server declared there — they never
+overwrite `context7`, `supabase`, or anything else you've configured. The
+Claude Code plugin's start hook auto-starts the HTTP server, so
 `--ensure-server` is not needed here.
 
-A copy-paste-able fragment is also shipped at
-`brainpalace-plugin/templates/mcp-config-claude-code.json`.
+Declaring the server is **not enough on its own**: Claude Code holds a
+`.mcp.json` server at `⏸ Pending approval` until it is granted, because
+`.mcp.json` is committed and a clone must not silently execute what it
+declares. So both commands also grant the connection, by **registering the
+server in Claude Code's local scope** (`claude mcp add -s local`, stored in
+your own `~/.claude.json` — never in the repo).
+
+Local scope needs **no approval and no folder trust**, because the server is
+your own machine's config rather than repo content. It also takes precedence
+over `.mcp.json`, so having both is not a conflict and produces no duplicate.
+`.mcp.json` is still written: it is the shareable declaration that documents
+the project's intent and is what other tooling reads.
+
+If the `claude` CLI is not installed, `install-mcp` falls back to allowlisting
+the `.mcp.json` entry (adding `brainpalace` to `enabledMcpjsonServers` in the
+gitignored `.claude/settings.local.json`) — approving `brainpalace` only, never
+`enableAllProjectMcpServers`, which would approve every server the project
+declares now or later. **That fallback route is gated by folder trust**: an
+untrusted folder holds its MCP servers at `⏸ Pending approval` regardless of
+the allowlist. Trust is granted once per folder and no file BrainPalace writes
+can confer it.
+
+Either way the grant stays on your machine — a clone always starts unregistered
+and unapproved, so repo content can never grant itself. Force a route with
+`--scope local` / `--scope project`; skip granting entirely with `--no-approve`.
+
+**Writing `.mcp.json` is configuration, not activation — the tools do not
+appear in your current session.** The flow:
+
+1. `init` (or `install-mcp`) writes `.mcp.json` and registers the server.
+2. You restart Claude Code (start a new session in this project).
+3. The `query`, `status`, `whoami`, … tools are now available.
+
+`install-mcp` (and `init`) tell you this at the moment you run them — on a
+terminal, a plain line; when an agent runs the command for you, an
+`AskUserQuestion` prompt, since a line buried in a tool result is easy for an
+agent to compress away.
+
+Check where a project stands with `brainpalace doctor` (it warns when the
+server is declared but nothing grants it) or `claude mcp list` (`⏸ Pending
+approval` vs `✔ Connected`).
+
+Manual equivalent (what both commands write, `_comment_*` keys dropped):
+`brainpalace-plugin/templates/mcp-config-claude-code.json`, or register once
+with `claude mcp add brainpalace -- brainpalace mcp`.
 
 ### VS Code (native MCP — GitHub Copilot agent mode)
 

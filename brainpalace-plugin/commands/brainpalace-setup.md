@@ -6,7 +6,7 @@ context: brainpalace
 agent: setup-assistant
 skills:
   - configuring-brainpalace
-last_validated: 2026-07-13
+last_validated: 2026-07-17
 ---
 
 # Complete BrainPalace Setup
@@ -357,7 +357,12 @@ If the user chooses Yes, restart from Step 2. If No, continue to the next step.
 ### Step 9: Wire an MCP Client (optional)
 
 For users who ALSO use a non-Claude MCP client (Cursor, VS Code, Cline,
-Continue, Kilo, Zed). If they only use this Claude Code plugin, skip this step.
+Continue, Kilo, Zed). If they only use this Claude Code plugin, skip this
+step — Claude Code's own MCP wiring is automatic: Step 10's `brainpalace init`
+writes the project's `.mcp.json` by default (`--no-mcp` to opt out) and
+registers the server with Claude Code's local scope (no approval needed), and
+`brainpalace install-mcp` covers an already-initialized project. Those tools
+appear next session — not in this one.
 
 Use AskUserQuestion to ask which MCP client to wire:
 

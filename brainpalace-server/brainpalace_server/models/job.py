@@ -283,6 +283,16 @@ class JobListResponse(BaseModel):
     completed: int = Field(default=0, ge=0, description="Number of completed jobs")
     failed: int = Field(default=0, ge=0, description="Number of failed jobs")
     blocked: int = Field(default=0, ge=0, description="Number of budget-blocked jobs")
+    noop_hidden: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "No-op completed jobs (status=done, no chunk delta, no error) "
+            "hidden from `jobs` because include_noop was False. Counts stay "
+            "whole (see `completed`); only this row list is filtered. "
+            "?all=1 / include_noop=True reveals them."
+        ),
+    )
 
 
 class JobSummary(BaseModel):
@@ -293,6 +303,10 @@ class JobSummary(BaseModel):
     folder_path: str = Field(..., description="Folder being indexed")
     operation: str = Field(..., description="Operation type")
     include_code: bool = Field(..., description="Whether indexing code")
+    job_type: str = Field(
+        default="documents",
+        description="Job type discriminator: 'documents' or 'git_history'.",
+    )
     source: str = Field(default="manual", description="Job source: manual or auto")
     enqueued_at: datetime = Field(..., description="When queued")
     started_at: datetime | None = Field(default=None, description="When started")
@@ -314,6 +328,7 @@ class JobSummary(BaseModel):
             folder_path=record.folder_path,
             operation=record.operation,
             include_code=record.include_code,
+            job_type=record.job_type,
             source=record.source,
             enqueued_at=record.enqueued_at,
             started_at=record.started_at,
@@ -336,6 +351,10 @@ class JobDetailResponse(BaseModel):
     folder_path: str = Field(..., description="Folder being indexed")
     operation: str = Field(..., description="Operation type")
     include_code: bool = Field(..., description="Whether indexing code")
+    job_type: str = Field(
+        default="documents",
+        description="Job type discriminator: 'documents' or 'git_history'.",
+    )
     source: str = Field(default="manual", description="Job source: manual or auto")
 
     # Timestamps
@@ -385,6 +404,7 @@ class JobDetailResponse(BaseModel):
             folder_path=record.folder_path,
             operation=record.operation,
             include_code=record.include_code,
+            job_type=record.job_type,
             source=record.source,
             enqueued_at=record.enqueued_at,
             started_at=record.started_at,

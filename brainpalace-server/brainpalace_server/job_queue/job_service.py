@@ -411,18 +411,25 @@ class JobQueueService:
 
         return JobDetailResponse.from_record(job)
 
-    async def list_jobs(self, limit: int = 50, offset: int = 0) -> JobListResponse:
+    async def list_jobs(
+        self, limit: int = 50, offset: int = 0, include_noop: bool = False
+    ) -> JobListResponse:
         """List jobs with pagination.
 
         Args:
             limit: Maximum number of jobs to return.
             offset: Number of jobs to skip.
+            include_noop: Reveal no-op completed jobs (status=done, no chunk
+                delta, no error) that are hidden by default (Fix 4 / D10).
 
         Returns:
             JobListResponse with job summaries and counts.
         """
-        jobs = await self._store.get_all_jobs(limit=limit, offset=offset)
+        jobs = await self._store.get_all_jobs(
+            limit=limit, offset=offset, include_noop=include_noop
+        )
         stats = await self._store.get_queue_stats()
+        noop_hidden = 0 if include_noop else await self._store.count_noop_jobs()
 
         summaries = [JobSummary.from_record(job) for job in jobs]
 
@@ -434,6 +441,7 @@ class JobQueueService:
             completed=stats.completed,
             failed=stats.failed,
             blocked=stats.blocked,
+            noop_hidden=noop_hidden,
         )
 
     async def cancel_job(self, job_id: str) -> dict[str, str]:
@@ -498,6 +506,27 @@ class JobQueueService:
                 "message": f"Job {job_id} cancelled",
             }
 
+        if job.status == JobStatus.BLOCKED:
+            # A blocked job is idle (not running), so cancel immediately —
+            # mirrors the PENDING branch. Without this branch, a
+            # budget-blocked job was un-cancellable (fell through to
+            # "unknown" below) and, combined with dedupe matching BLOCKED,
+            # became a hard stuck state with no manual escape hatch.
+            updated_job = job.model_copy(
+                update={
+                    "status": JobStatus.CANCELLED,
+                    "cancel_requested": True,
+                    "finished_at": datetime.now(timezone.utc),
+                }
+            )
+            await self._store.update_job(updated_job)
+
+            logger.info(f"Blocked job {job_id} cancelled")
+            return {
+                "status": "cancelled",
+                "message": f"Job {job_id} cancelled",
+            }
+
         # Should not reach here, but handle gracefully
         return {
             "status": "unknown",
@@ -532,6 +561,42 @@ class JobQueueService:
             "job_id": job_id,
             "status": "pending",
             "message": f"Job {job_id} approved — indexing will continue",
+        }
+
+    async def revalidate_blocked_job(self, job_id: str) -> dict[str, str]:
+        """Revalidate a budget-BLOCKED job: re-queue it WITHOUT bypassing the
+        budget guard, so the pipeline itself re-checks current disk state.
+
+        Mirrors ``approve_job`` (same in-place flip, same id) but keeps
+        ``force_budget=False`` — this is the reaper's (Fix 2) automated
+        resume path, not a human override. If the bloat source shrank or
+        vanished, the guard passes on fresh cache-miss counts and the job
+        completes; if it's still oversized, the worker re-raises
+        BudgetExceededError and re-blocks with nothing spent (the guard runs
+        before any embedding).
+
+        Raises:
+            KeyError: Unknown job id.
+            ValueError: Job is not in BLOCKED status.
+        """
+        job = await self._store.get_job(job_id)
+        if job is None:
+            raise KeyError(f"Job {job_id} not found")
+        if job.status is not JobStatus.BLOCKED:
+            raise ValueError(
+                f"Job {job_id} is {job.status.value}, not blocked — "
+                "nothing to revalidate"
+            )
+        job.status = JobStatus.PENDING
+        job.error = None
+        job.finished_at = None
+        job.enqueued_at = datetime.now(timezone.utc)
+        await self._store.update_job(job)
+        logger.info("Job %s revalidated — re-queued without budget bypass", job_id)
+        return {
+            "job_id": job_id,
+            "status": "pending",
+            "message": f"Job {job_id} revalidated — re-queued for a fresh budget check",
         }
 
     async def get_blocked_summary(self) -> dict[str, Any] | None:

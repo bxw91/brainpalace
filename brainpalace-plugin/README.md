@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-13
+last_validated: 2026-07-17
 ---
 
 # BrainPalace Plugin
@@ -73,7 +73,8 @@ Semantic and keyword retrieval go through one command, `/brainpalace-query`, wit
 | `/brainpalace-install` | Install pip packages |
 | `/brainpalace-setup` | Complete guided setup |
 | `/brainpalace-config` | Configure API keys |
-| `/brainpalace-init` | Initialize project |
+| `/brainpalace-init` | Initialize project (also writes `.mcp.json` by default — see MCP below) |
+| `/brainpalace-install-mcp` | Wire the MCP server into an already-initialized project |
 | `/brainpalace-verify` | Verify installation |
 
 ### Server Commands
@@ -110,6 +111,17 @@ This plugin includes two skills:
 
 1. **using-brainpalace**: Search mode guidance and API reference
 2. **configuring-brainpalace**: Installation, configuration, and troubleshooting
+
+## Optional: MCP tool calls
+
+Prefer typed MCP tool calls over skill-mediated CLI? `brainpalace init` writes a
+per-project `.mcp.json` by default (`--no-mcp` to skip it); an already-initialized
+project adopts it with `brainpalace install-mcp` (or `/brainpalace-install-mcp`).
+Both also register the server with Claude Code's local scope, which needs no
+approval, so it connects instead of sitting at `⏸ Pending approval`. Writing
+`.mcp.json` does not populate your current session — restart Claude Code to pick
+the tools up. Full details, including non-Claude-Code clients:
+[`docs/MCP_SETUP.md`](../docs/MCP_SETUP.md).
 
 ## Optional: Conditional SessionStart Reminder
 

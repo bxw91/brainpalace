@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-11
+last_validated: 2026-07-17
 ---
 
 # PostgreSQL + pgvector Setup (Docker Compose)

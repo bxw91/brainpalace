@@ -729,6 +729,110 @@ def _check_gitignore(project_root: Path) -> CheckResult:
     )
 
 
+def _check_mcp_config(project_root: Path, state_dir_exists: bool) -> CheckResult | None:
+    """D13 — surface the unwired-MCP state for already-initialized projects.
+
+    Upgrading (pip/pipx/`brainpalace update`) never touches a user's repo, and
+    `init` is not re-runnable without --force, so an existing project that
+    initialized before this feature shipped needs a one-time
+    `brainpalace install-mcp`. Discovery via `doctor` (not an always-on nudge)
+    is the deliberate closing mechanism — see D13 in the search-routing spec.
+    Only meaningful once the project IS initialized; returns None otherwise
+    (that gap is already reported by `_check_project_init`).
+    """
+    if not state_dir_exists:
+        return None
+
+    def _mcp_server_approved(root: Path) -> bool:
+        """Will Claude Code actually connect to the brainpalace server?
+
+        Two independent routes grant this, so both are checked:
+
+        1. Local scope — the server registered in ~/.claude.json under this
+           project. Needs no approval and no folder trust, and takes
+           precedence over .mcp.json, so finding it here is decisive.
+        2. The .mcp.json entry being allowlisted via
+           `enabledMcpjsonServers`/`enableAllProjectMcpServers`, read from the
+           same settings scopes Claude Code honours, nearest first.
+
+        Unparseable settings are treated as "not approved" — doctor reports,
+        it does not repair.
+        """
+        try:
+            home_cfg = json.loads(
+                (Path.home() / ".claude.json").read_text(encoding="utf-8")
+            )
+            project = home_cfg.get("projects", {}).get(str(root), {})
+            if "brainpalace" in (project.get("mcpServers") or {}):
+                return True
+        except (OSError, json.JSONDecodeError, AttributeError):
+            pass
+
+        for rel in (
+            Path(".claude") / "settings.local.json",
+            Path(".claude") / "settings.json",
+            Path.home() / ".claude" / "settings.json",
+        ):
+            path = rel if rel.is_absolute() else root / rel
+            try:
+                settings = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if not isinstance(settings, dict):
+                continue
+            disabled = settings.get("disabledMcpjsonServers")
+            if isinstance(disabled, list) and "brainpalace" in disabled:
+                return False  # denylist wins in Claude Code
+            enabled = settings.get("enabledMcpjsonServers")
+            if isinstance(enabled, list) and "brainpalace" in enabled:
+                return True
+            if settings.get("enableAllProjectMcpServers") is True:
+                return True
+        return False
+
+    mcp_path = project_root / ".mcp.json"
+    if not mcp_path.exists():
+        return CheckResult(
+            "mcp_config",
+            SEVERITY_WARN,
+            "No .mcp.json — BrainPalace's MCP tools are not wired into this "
+            "project (skills + slash commands still work).",
+            fix="Run `brainpalace install-mcp`.",
+        )
+    try:
+        data = json.loads(mcp_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return CheckResult(
+            "mcp_config",
+            SEVERITY_WARN,
+            f"Could not parse {mcp_path}.",
+        )
+    if isinstance(data, dict) and "brainpalace" in data.get("mcpServers", {}):
+        # Registered != usable. Claude Code holds a .mcp.json server at
+        # "Pending approval" until it is allowlisted, so a project can sit
+        # here indefinitely with a correct .mcp.json and no working tools —
+        # the exact state this check used to call OK.
+        if not _mcp_server_approved(project_root):
+            return CheckResult(
+                "mcp_config",
+                SEVERITY_WARN,
+                "brainpalace is registered in .mcp.json but not approved, so "
+                "Claude Code will hold it at 'Pending approval'.",
+                fix="Run `brainpalace install-mcp`.",
+            )
+        return CheckResult(
+            "mcp_config",
+            SEVERITY_OK,
+            "brainpalace is registered in .mcp.json and approved.",
+        )
+    return CheckResult(
+        "mcp_config",
+        SEVERITY_WARN,
+        ".mcp.json exists but does not declare the brainpalace MCP server.",
+        fix="Run `brainpalace install-mcp`.",
+    )
+
+
 def run_doctor(server_url_override: str | None = None) -> DoctorReport:
     """Run every check and return a structured report."""
     project_root, resolved_via = resolve_project_root_with_strategy()
@@ -760,6 +864,9 @@ def run_doctor(server_url_override: str | None = None) -> DoctorReport:
         checks.append(_check_optional_dep("cohere", "cohere", "cohere"))
 
     checks.append(_check_gitignore(project_root))
+    mcp_check = _check_mcp_config(project_root, state_dir.exists())
+    if mcp_check is not None:
+        checks.append(mcp_check)
 
     server_check = _check_server(server_url, runtime_file)
     checks.append(server_check)
@@ -824,6 +931,16 @@ def apply_safe_fixes(report: DoctorReport) -> list[str]:
                     "project: {}\n"
                 )
                 actions.append(f"Created {cfg_yaml}.")
+        elif check.name == "mcp_config" and check.status != SEVERITY_OK:
+            from brainpalace_cli.commands.install_mcp import install_mcp
+
+            try:
+                install_mcp(project_root)
+                actions.append(
+                    f"Registered brainpalace in {project_root / '.mcp.json'}."
+                )
+            except ValueError:
+                pass  # malformed .mcp.json — leave it for the user, don't clobber.
     return actions
 
 

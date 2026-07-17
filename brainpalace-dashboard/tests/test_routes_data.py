@@ -132,7 +132,20 @@ def test_jobs_proxy(monkeypatch):
     client = TestClient(create_app())
     resp = client.get("/dashboard/api/instances/abc/jobs")
     assert resp.status_code == 200
-    assert any(c[:2] == ("GET", "/index/jobs/") for c in fp.calls)
+    call = next(c for c in fp.calls if c[:2] == ("GET", "/index/jobs/"))
+    assert call[3] is None  # no ?all param -> no-op jobs hidden by default
+
+
+def test_jobs_proxy_all_true_forwards_all_param(monkeypatch):
+    """Fix 4 (A7): ?all=1 on the dashboard route forwards ?all=1 to the server
+    so the "show no-op runs" toggle reveals them."""
+    fp = FakeProxy()
+    monkeypatch.setattr(rd, "proxy", fp)
+    client = TestClient(create_app())
+    resp = client.get("/dashboard/api/instances/abc/jobs?all=1")
+    assert resp.status_code == 200
+    call = next(c for c in fp.calls if c[:2] == ("GET", "/index/jobs/"))
+    assert call[3] == {"all": 1}
 
 
 def test_capabilities_proxy(monkeypatch):

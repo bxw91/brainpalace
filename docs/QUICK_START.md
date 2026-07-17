@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-13
+last_validated: 2026-07-17
 ---
 
 # BrainPalace Quick Start
@@ -132,9 +132,16 @@ Or pick a specific search mode with `--mode`:
 
 ## Step 8: Connect via MCP (optional)
 
-Non-Claude-Code AI clients — VS Code native (GitHub Copilot agent mode),
-Cursor, Kilo Code, Cline, Continue, Zed — can call BrainPalace through the
-Model Context Protocol. BrainPalace ships an opt-in stdio shim:
+**Claude Code**: `brainpalace init` already wrote a per-project `.mcp.json` and
+registered the server with Claude Code (unless you passed `--no-mcp`), so this
+is done — restart Claude Code to get typed `query`/`status`/… tool calls
+alongside the slash commands. No approval step: the registration goes in your
+own `~/.claude.json`, not the repo. Skipped it, or initialized before this
+existed? `brainpalace install-mcp` wires it up without re-running `init`.
+
+Other AI clients — VS Code native (GitHub Copilot agent mode), Cursor, Kilo
+Code, Cline, Continue, Zed — can call BrainPalace through the Model Context
+Protocol too. BrainPalace ships an opt-in stdio shim:
 
 ```bash
 brainpalace mcp --ensure-server   # auto-starts the HTTP server if not live

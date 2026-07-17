@@ -12,6 +12,7 @@ import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from brainpalace_server import registry
 from brainpalace_server.locking import try_file_lock
@@ -65,10 +66,19 @@ def _validate_sentinels(
         # caller's job in Plan 05). Treat as unmoved.
         raise RehomeRefused("no identity.json; backfill must run first (Plan 05)")
     existing = load_rehome_state(state_dir)  # RehomeStateCorruptError propagates
-    if existing is not None and existing.project_uuid != identity.project_uuid:
+    if existing is not None and existing.project_uuid not in (
+        identity.project_uuid,  # steady state
+        identity.parent_uuid,  # mid-flip / resume across the finalize mint (B1)
+    ):
+        # The finalize flip is two non-atomic writes (identity then rehome.json),
+        # so there is a crash window where rehome.json legitimately still carries
+        # the PARENT uuid while identity already carries the freshly minted one.
+        # Accept exactly that one-generation lag (parent_uuid) and let resume
+        # complete the flip; anything else is a genuinely foreign sentinel.
         raise RehomeRefused(
             f"rehome.json uuid {existing.project_uuid} != "
-            f"identity {identity.project_uuid}"
+            f"identity {identity.project_uuid} (nor its parent "
+            f"{identity.parent_uuid})"
         )
     move = detect_move(identity, current_root)
     return identity, move
@@ -270,11 +280,32 @@ async def run_rehome(
             if not Path(state.old_root).exists():
                 registry.remove_entry(Path(state.old_root))
             registry.upsert_entry(Path(state.new_root), Path(state_dir))
-            # Identity now lives at new_root — update so later boots detect NO
-            # move (else detect_move keeps firing against the stale indexed_root).
+            # Part B (DB1/DB2, hardening #5): mint a FRESH project_uuid at
+            # finalize and record lineage. Ordered so every crash point is
+            # resumable, and idempotent under re-entry:
+            #
+            #   1. Mint ONCE into state.minted_uuid + persist. A resume that
+            #      re-enters finalize reuses this value — never a second uuid,
+            #      no orphaned first mint, no spurious lineage hop.
+            if state.minted_uuid is None:
+                state.minted_uuid = uuid4().hex
+                write_rehome_state(state_dir, state)
+            #   2. Flip identity to the new uuid at new_root, recording the
+            #      SOURCE uuid/root (which state has carried since start) as the
+            #      parent. Also stops detect_move firing against a stale root.
             write_identity(
-                state_dir, ProjectIdentity(identity.project_uuid, state.new_root)
+                state_dir,
+                ProjectIdentity(
+                    project_uuid=state.minted_uuid,
+                    indexed_root=state.new_root,
+                    parent_uuid=state.project_uuid,
+                    parent_index_root=state.old_root,
+                ),
             )
+            #   3. Advance rehome.json to the new uuid + mark done. B1 covers the
+            #      window between (2) and (3) where identity carries the new uuid
+            #      but rehome.json still carries the parent.
+            state.project_uuid = state.minted_uuid
             state.status = "done"
             state.error = None
             write_rehome_state(state_dir, state)

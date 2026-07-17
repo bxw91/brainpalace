@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-10
+last_validated: 2026-07-17
 ---
 
 # BrainPalace Installation Guide
@@ -522,9 +522,10 @@ rm -rf <project>/.brainpalace             # one per initialised project
 rm -rf ~/.config/brainpalace ~/.local/state/brainpalace \
        ~/.local/share/brainpalace ~/.brainpalace
 
-# 6. Remove the `brainpalace` entry from any MCP client config (project + $HOME):
-#    .vscode/mcp.json .cursor/mcp.json .zed/settings.json
-#    .cline/mcp.json  .continue/mcp.yaml .kilo/kilo.jsonc
+# 6. Remove the `brainpalace` entry from any MCP client config:
+#    .mcp.json (Claude Code, project scope only — written by init/install-mcp)
+#    .vscode/mcp.json .cursor/mcp.json .zed/settings.json (project + $HOME)
+#    .cline/mcp.json  .continue/mcp.yaml .kilo/kilo.jsonc  (project + $HOME)
 
 # 7. Remove any `export <PROVIDER>_API_KEY=…` you added to your shell rc.
 ```

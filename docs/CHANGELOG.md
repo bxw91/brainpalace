@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-13
+last_validated: 2026-07-17
 ---
 
 # Changelog
@@ -20,6 +20,71 @@ Entries are kept short (≤ 3 sentences and ≤ 320 characters); see
 _Entries accumulate here between releases. The release step renames this to
 `## [YY.M.N] - DATE` and adds a fresh empty `## [Unreleased]` above it — never
 hand-number an unreleased section._
+
+## [26.7.6] - 2026-07-17
+
+### Fixed
+- **`install-mcp` now makes Claude Code actually connect**, instead of leaving the
+  server at "Pending approval". By default it registers in local scope
+  (`~/.claude.json`), needing no approval or folder trust, and falls back to
+  allowlisting `.mcp.json` without the `claude` CLI (`--scope` forces a route).
+
+### Added
+- **Rehome mints a fresh `project_uuid` and records lineage.** Every rehome (copy or move)
+  mints a new `project_uuid` at finalize and records `parent_uuid` + `parent_index_root`, so
+  each copy has its own chained identity (A ← B ← C) instead of inheriting the source's.
+  Idempotent across resume.
+- **Blocked-job reaper self-clears transient budget blocks.** A budget-BLOCKED job whose
+  bloat source (e.g. a swept virtualenv) later shrinks or vanishes now revalidates on the
+  heartbeat and resumes or dismisses itself instead of staying stuck until `--approve`.
+  Never bypasses a genuine over-cap block.
+- **`jobs --all` / dashboard "Show no-op runs" toggle.** No-op completed jobs (status=done,
+  no chunk delta, no error) are hidden from the default listing so they don't evict real
+  jobs from the paginated window; the reveal hatch plus a "N hidden" hint keeps it legible.
+- **`brainpalace query --json` exposes `start_line`/`end_line`.** Nullable — only code
+  chunks (~71% of the corpus) carry line numbers. AI guidance now also lists Bash `grep`
+  alongside `find`/`rg` under "never search indexed source directly".
+- **MCP `query` tool gains `file_paths`, `alpha`, `similarity_threshold`, `entity_types`,
+  `relationship_types`.** Also fixes `top_k` to reject over 50, matching the server (was
+  100, a 422 the schema should have caught first). This repo now ships `.mcp.json` too.
+- **`brainpalace install-mcp`, called by `init` by default.** Merges the MCP server into
+  any existing project `.mcp.json` without clobbering other servers (`--no-mcp` opts out).
+  Tools arrive next session after approving the servers; `install-mcp`/`init` say so.
+
+### Fixed
+- **doc-sync no longer fails a correct doc over a `flag_value` default.** Introspection read
+  `--project`'s raw `default=True` instead of Click's resolved `"project"`, so `install-agent`
+  drifted permanently against an accurate doc — and `--fix` would have written the wrong fact
+  in. Plain boolean flags are untouched.
+- **`status` no longer replays a stale self-heal from a previous boot.** A healthy startup
+  self-heal records no event, so the log's tail could be days old — surfacing a
+  "N chunk(s) need re-embed" that no restart cleared. The row is now scoped to the running
+  server's `started_at`; a real recovery still shows.
+- **Dashboard "Re-run" now replays the SAME query.** A logged query's scope filters were
+  dropped on replay, silently re-running a broader query; the server now logs every scope
+  filter and the drawer + proxy forward them. The sensitivity gate stays un-proxied.
+- **Self-heal no longer reports phantom "N chunk(s) need re-embed" for git.** The git
+  wanted-set now keeps only the commits THIS store can account for — present live, or
+  stranded in a dead segment (recoverable here, no re-embed). Never-materialized commits
+  (fresh/reset/rehomed store, or ones the async boot-index job hasn't reached yet) are
+  dropped per-id, not just when the whole git plane is empty — the always-enqueued,
+  cache-backed git boot-index job rebuilds them.
+- **Server "running" checks are identity-checked, not bare-200.** A server is a project's
+  own only if `/health/`'s `project_root` matches — fixes a copied `.brainpalace/`'s
+  `start` reporting false "already running", `list` phantom duplicates, and (highest
+  severity) `stop` killing the ORIGINAL project's server.
+- **Virtualenvs are pruned from indexing regardless of directory name.** Any subfolder
+  containing `pyvenv.cfg` (the stdlib venv marker) is now skipped, not just `.venv`/`venv`
+  — fixes a watcher-triggered reindex sweeping `.venv312`/`env`/etc. into the embed budget.
+- **`cancel_job` now handles BLOCKED jobs.** Cancelling a budget-blocked job previously
+  silently no-op'd; it now cancels immediately, same as a PENDING job — restoring the manual
+  escape hatch for a stuck block.
+- **Dashboard job "Type" column is git-aware.** A `git_history` job (which has
+  `include_code=False`) was mislabelled "docs"; the column now renders a 3-way
+  git/code/docs keyed on the authoritative `job_type` field.
+- **Job detail surfaces its folder up top.** The indexed folder is now shown in the
+  drawer header next to the status chips, not only at the bottom of the Details block below
+  a possibly huge Files list.
 
 ## [26.7.5] - 2026-07-13
 

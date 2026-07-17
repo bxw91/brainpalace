@@ -14,9 +14,47 @@ from brainpalace_cli.commands.uninstall import (
     package_uninstall_plan,
     parse_selection,
     remaining_steps_message,
+    remove_local_scope_entry,
     remove_mcp_entry,
     uninstall_command,
 )
+
+
+class TestRemoveLocalScope:
+    """`install-mcp` registers the server in Claude Code's LOCAL scope
+    (~/.claude.json), which no project file holds — MCP_CONFIGS cannot reach
+    it, so uninstall would leave a working server registration behind."""
+
+    def test_shells_out_to_claude_mcp_remove(self, tmp_path: Path) -> None:
+        with (
+            patch(
+                "brainpalace_cli.commands.uninstall.shutil.which",
+                return_value="/usr/bin/claude",
+            ),
+            patch("brainpalace_cli.commands.uninstall.subprocess.run") as run,
+        ):
+            run.return_value.returncode = 0
+            assert remove_local_scope_entry(tmp_path) is True
+        cmd = run.call_args.args[0]
+        assert cmd[1:] == ["mcp", "remove", "brainpalace", "-s", "local"]
+        assert run.call_args.kwargs["cwd"] == tmp_path
+
+    def test_missing_claude_cli_is_a_noop(self, tmp_path: Path) -> None:
+        with patch(
+            "brainpalace_cli.commands.uninstall.shutil.which", return_value=None
+        ):
+            assert remove_local_scope_entry(tmp_path) is False
+
+    def test_nonzero_exit_reports_not_removed(self, tmp_path: Path) -> None:
+        with (
+            patch(
+                "brainpalace_cli.commands.uninstall.shutil.which",
+                return_value="/usr/bin/claude",
+            ),
+            patch("brainpalace_cli.commands.uninstall.subprocess.run") as run,
+        ):
+            run.return_value.returncode = 1
+            assert remove_local_scope_entry(tmp_path) is False
 
 
 @pytest.fixture
@@ -107,6 +145,29 @@ class TestRemoveMcpEntry:
 
         assert changed is False
         assert not list(cfg.parent.glob("mcp.json.bak.*"))
+
+    def test_removes_bare_string_from_approval_allowlist(self, tmp_path: Path) -> None:
+        """`install-mcp` allowlists brainpalace in enabledMcpjsonServers — a
+        list of bare NAME STRINGS, not named-server objects. Leaving it behind
+        orphans an approval pointing at a server uninstall just deleted."""
+        cfg = tmp_path / ".claude" / "settings.local.json"
+        cfg.parent.mkdir(parents=True)
+        cfg.write_text(
+            json.dumps(
+                {
+                    "enabledMcpjsonServers": ["context7", "brainpalace"],
+                    "permissions": {"allow": ["Bash(ls:*)"]},
+                }
+            )
+        )
+
+        changed = remove_mcp_entry(cfg, "json", "enabledMcpjsonServers")
+
+        assert changed is True
+        data = json.loads(cfg.read_text())
+        assert data["enabledMcpjsonServers"] == ["context7"]
+        # unrelated user settings survive untouched
+        assert data["permissions"] == {"allow": ["Bash(ls:*)"]}
 
     def test_yaml_list_shape(self, tmp_path: Path) -> None:
         pytest.importorskip("yaml")

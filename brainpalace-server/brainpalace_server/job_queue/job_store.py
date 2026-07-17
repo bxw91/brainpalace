@@ -15,6 +15,23 @@ from brainpalace_server.models.job import JobRecord, JobStatus, QueueStats
 logger = logging.getLogger(__name__)
 
 
+def _is_noop_done(job: JobRecord) -> bool:
+    """True for a completed job that changed nothing (Fix 4 / D10).
+
+    A no-op re-index (watcher fired, or a boot git-index ran, and nothing had
+    changed) costs history without adding any: it evicts a real job from the
+    paginated listing without offering anything actionable. "The watcher ran"
+    is already visible in the watcher status; a no-op git boot-index recurs
+    on every server restart.
+    """
+    return (
+        job.status == JobStatus.DONE
+        and job.chunks_added == 0
+        and job.chunks_removed == 0
+        and job.error is None
+    )
+
+
 # Platform-safe file locking functions
 # These are defined based on platform to provide consistent API
 def _lock_file_noop(fd: int) -> None:
@@ -453,20 +470,39 @@ class JobQueueStore:
                 return job
         return None
 
-    async def get_all_jobs(self, limit: int = 50, offset: int = 0) -> list[JobRecord]:
+    async def get_all_jobs(
+        self, limit: int = 50, offset: int = 0, include_noop: bool = False
+    ) -> list[JobRecord]:
         """Get all jobs with pagination.
 
         Args:
             limit: Maximum jobs to return.
             offset: Number of jobs to skip.
+            include_noop: When False (default), no-op completed jobs
+                (status=done, chunks_added=0, chunks_removed=0, error=None --
+                a re-index that found nothing changed) are excluded BEFORE
+                pagination, so a run of them doesn't evict real jobs from the
+                visible window (Fix 4 / D10). The raw records are never
+                deleted -- set True to reveal them.
 
         Returns:
             List of jobs sorted by enqueue time (newest first).
         """
-        all_jobs = sorted(
-            self._jobs.values(), key=lambda j: j.enqueued_at, reverse=True
+        candidates = (
+            self._jobs.values()
+            if include_noop
+            else (j for j in self._jobs.values() if not _is_noop_done(j))
         )
+        all_jobs = sorted(candidates, key=lambda j: j.enqueued_at, reverse=True)
         return all_jobs[offset : offset + limit]
+
+    async def count_noop_jobs(self) -> int:
+        """Count of no-op completed jobs hidden by the default listing (Fix 4).
+
+        Used to surface a "N no-op runs hidden" hint without changing
+        ``get_all_jobs``'s return contract.
+        """
+        return sum(1 for j in self._jobs.values() if _is_noop_done(j))
 
     async def get_queue_stats(self) -> QueueStats:
         """Get statistics about the queue.

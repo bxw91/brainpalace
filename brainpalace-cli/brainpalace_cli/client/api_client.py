@@ -320,6 +320,8 @@ class DocServeClient:
         time_decay: bool = True,
         language: str | None = None,
         include_sensitive: bool = False,
+        entity_types: list[str] | None = None,
+        relationship_types: list[str] | None = None,
     ) -> QueryResponse:
         """
         Query indexed documents.
@@ -342,6 +344,10 @@ class DocServeClient:
             include_sensitive: Reveal rows marked sensitive (interactive CLI
                 only). Omitted from the request when False, so MCP/dashboard
                 callers — which never pass it — stay at default-deny.
+            entity_types: Filter graph results by entity types (e.g. ["Class",
+                "Function"]). Only applies to graph/multi modes.
+            relationship_types: Filter graph results by relationship types
+                (e.g. ["calls", "extends"]). Only applies to graph/multi modes.
 
         Returns:
             QueryResponse with matching results.
@@ -372,6 +378,10 @@ class DocServeClient:
             request_data["metadata_filter"] = metadata_filter
         if language is not None:
             request_data["language"] = language
+        if entity_types:
+            request_data["entity_types"] = entity_types
+        if relationship_types:
+            request_data["relationship_types"] = relationship_types
 
         data = self._request("POST", "/query/", json=request_data)
 
@@ -866,9 +876,30 @@ class DocServeClient:
             message=data.get("message"),
         )
 
+    def list_jobs_page(
+        self, limit: int = 20, offset: int = 0, all_: bool = False
+    ) -> dict[str, Any]:
+        """
+        Full jobs-list payload: jobs + queue counts + the no-op-hidden hint.
+
+        Args:
+            limit: Maximum number of jobs to return.
+            offset: Number of jobs to skip.
+            all_: Reveal no-op completed jobs (status=done, no chunk delta,
+                no error) that are hidden by default (Fix 4).
+
+        Returns:
+            The raw JobListResponse dict (jobs/total/.../noop_hidden).
+        """
+        params: dict[str, Any] = {"limit": limit, "offset": offset}
+        if all_:
+            params["all"] = 1
+        return self._request("GET", "/index/jobs/", params=params)
+
     def list_jobs(self, limit: int = 20) -> list[dict[str, Any]]:
         """
-        List jobs in the queue.
+        List jobs in the queue (back-compat: jobs list only, no-op hidden by
+        default). Prefer ``list_jobs_page`` when you also need counts/hints.
 
         Args:
             limit: Maximum number of jobs to return.
@@ -876,7 +907,7 @@ class DocServeClient:
         Returns:
             List of job dictionaries.
         """
-        data = self._request("GET", f"/index/jobs/?limit={limit}")
+        data = self.list_jobs_page(limit=limit)
         jobs: list[dict[str, Any]] = data.get("jobs", [])
         return jobs
 

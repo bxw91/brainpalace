@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-13
+last_validated: 2026-07-17
 ---
 
 # BrainPalace User Guide
@@ -938,7 +938,7 @@ The project server exposes:
 - `GET /query/history/{qid}` — a single logged query including its truncated
   results.
 - `GET /health/logs` — a bounded tail of the server log file
-  (`.brainpalace/server.log`), filterable by `lines` and `level`.
+  (`.brainpalace/logs/brainpalace.log`), filterable by `lines` and `level`.
 
 ---
 
@@ -1027,7 +1027,7 @@ cd src/deep/nested/directory
 
 ## Moving a Project
 
-A project's identity is a durable UUID recorded in `.brainpalace/identity.json`,
+A project's identity is a durable UUID recorded in `.brainpalace/state/identity.json`,
 not its filesystem path — so you can move (or rename) an indexed project directory
 and BrainPalace repairs the index in place, **without re-embedding**.
 
@@ -1240,10 +1240,21 @@ payloads; `jobs_approve` re-queues a budget-blocked indexing job
 (write-capable, spends embedding tokens). Most tools accept an optional `path`
 argument so the long-lived shim is not pinned to its spawn-time directory.
 
-Supported clients with copy-paste config snippets:
+Supported clients:
 
-- **Claude Code** (opt-in — the plugin's skill + slash commands remain the
-  default)
+- **Claude Code** — opt-in, but wired up automatically: `brainpalace init`
+  writes the project's `.mcp.json` by default (`--no-mcp` to skip it), and
+  `brainpalace install-mcp` adopts an already-initialized project (`init`
+  isn't re-runnable on one without `--force`). The plugin's skill + slash
+  commands remain the default integration; MCP is for typed tool calls
+  instead. Both also register the server with Claude Code's local scope
+  (`~/.claude.json`, not the repo), which needs no approval and no folder
+  trust, so Claude Code connects instead of holding it at `⏸ Pending
+  approval`. Without the `claude` CLI they fall back to allowlisting the
+  `.mcp.json` entry, which folder trust does gate. Either grant stays on your
+  machine, so a clone starts unregistered (`--no-approve` opts out, `--scope`
+  forces a route). Writing `.mcp.json` doesn't populate the *current* session —
+  restart Claude Code to pick the tools up.
 - **VS Code native** (GitHub Copilot agent mode, `.vscode/mcp.json`)
 - **Cursor**
 - **Kilo Code** v7.x

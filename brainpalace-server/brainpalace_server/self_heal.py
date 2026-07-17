@@ -13,6 +13,7 @@ import asyncio
 import logging
 import os
 from collections.abc import Awaitable, Callable, Mapping
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +22,8 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 from brainpalace_server import registry
+from brainpalace_server.config.runtime_mode import is_read_only
+from brainpalace_server.models.job import JobStatus
 from brainpalace_server.runtime import RuntimeState, write_runtime
 
 logger = logging.getLogger(__name__)
@@ -156,7 +159,7 @@ async def _heal_watcher(app: FastAPI) -> None:
 
 async def _heal_worker(app: FastAPI, healer: HealState) -> None:
     worker = getattr(app.state, "job_worker", None)
-    if worker is None or worker.is_running():
+    if worker is None or worker.is_running:
         return
     if healer.worker_restarts >= MAX_WORKER_RESTARTS:
         return  # give up; /health reflects unhealthy
@@ -170,6 +173,116 @@ async def _heal_worker(app: FastAPI, healer: HealState) -> None:
         await worker.start()
     except Exception as exc:  # noqa: BLE001
         logger.warning("worker heal failed: %s", exc)
+
+
+async def _reap_one_blocked_job(
+    job_service: Any,
+    store: Any,
+    watcher: Any,
+    job: Any,
+) -> None:
+    """Revalidate or dismiss a single BLOCKED job. Never raises (caller wraps)."""
+    # D6b(ii): a different, active job already covers this folder+params (a
+    # genuine corner -- normally dedupe would have collapsed it into `job`
+    # itself, since find_by_dedupe_key matches BLOCKED too) -> the stale
+    # blocked duplicate is dismissed, not re-queued.
+    competitor = await store.find_by_dedupe_key(job.dedupe_key)
+    if (
+        competitor is not None
+        and competitor.id != job.id
+        and competitor.status in (JobStatus.PENDING, JobStatus.RUNNING)
+    ):
+        logger.info(
+            "Blocked job %s superseded by active job %s for the same folder — "
+            "dismissing the stale duplicate",
+            job.id,
+            competitor.id,
+        )
+        await job_service.cancel_job(job.id)
+        return
+
+    # D6e: the indexed folder itself (not just its bloat source) is gone —
+    # unresumable, dismiss rather than re-queue a job that can only re-block.
+    try:
+        stat_result = os.stat(job.folder_path)
+    except FileNotFoundError:
+        logger.info(
+            "Blocked job %s: folder %s no longer exists — dismissing",
+            job.id,
+            job.folder_path,
+        )
+        await job_service.cancel_job(job.id)
+        return
+    except OSError as exc:
+        logger.warning("blocked-job reap: stat failed for %s: %s", job.folder_path, exc)
+        return
+
+    # D6/D6c: revalidate ONLY when the folder changed since it blocked.
+    # blocked_since mirrors get_blocked_summary — started_at when set (the
+    # worker stamps it on every run, so it advances on re-block), else
+    # enqueued_at. Primary signal: the recursive file watcher's wall-clock
+    # last_change_at (a blocked job's folder is always watch=auto — that's
+    # how the watcher enqueued it in the first place). Fallback for an
+    # unwatched folder: root-dir mtime (blind to a change nested below root,
+    # but a blocked job's folder is never unwatched in practice).
+    blocked_since = job.started_at or job.enqueued_at
+    last_change = (
+        watcher.last_change_at(job.folder_path) if watcher is not None else None
+    )
+    if last_change is not None:
+        changed = last_change > blocked_since
+    else:
+        changed = (
+            datetime.fromtimestamp(stat_result.st_mtime, tz=timezone.utc)
+            > blocked_since
+        )
+
+    if not changed:
+        return  # static oversized tree — don't re-walk it every heartbeat
+
+    # D4/D5/D8: revalidate in place (same id), force_budget stays False so
+    # the existing budget guard re-checks fresh disk state. The reaper only
+    # re-queues; the worker is the walker/revalidator.
+    await job_service.revalidate_blocked_job(job.id)
+
+
+async def _reap_blocked_jobs(app: FastAPI) -> None:
+    """Fix 2 — revalidate budget-BLOCKED jobs whose folder changed since
+    blocking, or dismiss them when they can no longer resume.
+
+    A budget-BLOCKED job freezes its folder (dedupe matches BLOCKED too, so
+    every later watcher-triggered reindex collapses into it, dedupe_hit=True,
+    and never runs) until a human runs --approve. This heartbeat step gives a
+    *transient* over-budget block (e.g. a swept virtualenv later deleted) a
+    way to self-clear without a human, while leaving a genuine over-cap job
+    BLOCKED (still requires --approve — D-goal, never auto-bypassed).
+
+    Guards (D6b, D6d): skipped entirely if any job is RUNNING (don't pile a
+    re-walk onto active indexing) or in read-only mode (resuming embeds —
+    writes — which read-only must never do).
+    """
+    if is_read_only():  # D6d
+        return
+    job_service = getattr(app.state, "job_service", None)
+    if job_service is None:
+        return
+    store = job_service.store
+    try:
+        if await store.get_running_job() is not None:  # D6b(i)
+            return
+        blocked = await store.get_blocked_jobs()
+    except Exception as exc:  # noqa: BLE001 — heartbeat must survive
+        logger.warning("blocked-job reaper: failed to read queue state: %s", exc)
+        return
+    if not blocked:
+        return
+
+    watcher = getattr(app.state, "file_watcher_service", None)
+    for job in blocked:
+        try:
+            await _reap_one_blocked_job(job_service, store, watcher, job)
+        except Exception as exc:  # noqa: BLE001 — one bad job must not stop the pass
+            logger.warning("blocked-job reap failed for %s: %s", job.id, exc)
 
 
 async def _heal_index(app: FastAPI) -> None:
@@ -351,6 +464,7 @@ async def heal_once(app: FastAPI, healer: HealState) -> None:
     await _reassert_registration(app)
     await _heal_watcher(app)
     await _heal_worker(app, healer)
+    await _reap_blocked_jobs(app)
     await _heal_index(app)
     await _deep_clean(app, healer)
     await asyncio.to_thread(_heal_dashboard, healer)

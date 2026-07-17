@@ -30,7 +30,11 @@ async def test_job_rehome_swaps_nonterminal_only(tmp_path):
 
     reloaded = JobQueueStore(tmp_path)
     await reloaded.initialize()  # loads snapshot+JSONL into _jobs; returns stale
-    jobs = {j.id: j for j in await reloaded.get_all_jobs()}
+    # include_noop=True: `done` above is a no-op-shaped DONE record (no chunk
+    # delta) and would otherwise be filtered by Fix 4's default listing
+    # filter — irrelevant to what this test actually verifies (rehome leaves
+    # a terminal job's folder_path untouched).
+    jobs = {j.id: j for j in await reloaded.get_all_jobs(include_noop=True)}
     assert jobs["j1"].folder_path == "/new/home/pkg"
     assert jobs["j1"].injector_script == "/new/home/inject.py"
     assert jobs["j2"].folder_path == "/old/root/other"  # terminal untouched

@@ -704,6 +704,14 @@ class DocumentLoader:
              subtree is pruned here to avoid double-indexing. Checked live on
              every walk (never written to a permanent exclude), so deleting the
              nested `.brainpalace/` lets the outer index pick the subtree back up.
+          5. Python virtualenvs: any subfolder containing `pyvenv.cfg` is
+             definitionally a stdlib venv/virtualenv, regardless of its
+             directory name (`.venv312`, `.venv-py312`, `env`, `myenv`, ...).
+             Checked live on every walk (never written to a permanent
+             exclude), so deleting the venv lets the tree re-index. Does NOT
+             catch conda/mamba envs (marker is `conda-meta/`, not
+             `pyvenv.cfg`) — that residual is handled by the blocked-job
+             reaper, not this walk.
         """
         excl = getattr(self, "exclude_patterns", None) or []
         matcher = getattr(self, "gitignore_matcher", None)
@@ -725,6 +733,7 @@ class DocumentLoader:
                 and not _matches_exclude(dp / d)
                 and not (matcher is not None and matcher.is_ignored(dp / d))
                 and not (dp / d / ".brainpalace").is_dir()
+                and not (dp / d / "pyvenv.cfg").is_file()
             ]
             for f in filenames:
                 fp = dp / f

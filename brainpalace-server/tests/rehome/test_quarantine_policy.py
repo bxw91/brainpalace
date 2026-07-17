@@ -50,3 +50,23 @@ def test_evaluate_done_and_unmoved_is_noop(tmp_path):
     plan = q.evaluate_startup(tmp_path, tmp_path)  # identity already at current root
     assert plan.needs_rehome is False
     assert plan.stale_done is False
+
+
+def test_clear_stale_rehome_state_removes_relocated_file(tmp_path):
+    """C2: rehome.json lives under state_dir/state/ now. clear_stale_rehome_state
+    must resolve that same path (via state.py's _path) rather than hand-building
+    the old root path, or a stale done-state would silently survive a second
+    move."""
+    st = new_rehome_state("u", "/old", str(tmp_path))
+    st.status = "done"
+    write_rehome_state(tmp_path, st)
+    assert (tmp_path / "state" / "rehome.json").exists()
+
+    q.clear_stale_rehome_state(tmp_path)
+
+    assert not (tmp_path / "state" / "rehome.json").exists()
+
+
+def test_clear_stale_rehome_state_is_noop_when_absent(tmp_path):
+    """No rehome.json anywhere -> no error."""
+    q.clear_stale_rehome_state(tmp_path)  # must not raise

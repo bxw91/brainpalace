@@ -15,6 +15,7 @@ from .ingest import ingest_command
 from .init import init_command
 from .inject import inject_command
 from .install_agent import install_agent_command
+from .install_mcp import install_mcp_command
 from .jobs import jobs_command
 from .list_cmd import list_command
 from .lsp import lsp_group
@@ -55,6 +56,7 @@ __all__ = [
     "inject_command",
     "init_command",
     "install_agent_command",
+    "install_mcp_command",
     "install_session_hooks_command",
     "jobs_command",
     "list_command",

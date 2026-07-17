@@ -179,6 +179,7 @@ class StorageBackendProtocol(Protocol):
         source_types: list[str] | None = None,
         languages: list[str] | None = None,
         language: str | None = None,
+        file_paths: list[str] | None = None,
     ) -> list[SearchResult]:
         """Perform keyword search (BM25 or tsvector).
 
@@ -189,6 +190,10 @@ class StorageBackendProtocol(Protocol):
             languages: Optional filter by programming-language metadata
             language: Optional BM25 tokenization-language override (ISO 639-1);
                 defaults to the project bm25.language. Distinct from ``languages``.
+            file_paths: Optional filter by file path, wildcards supported
+                (fnmatch semantics). Pre-filtered where the backend supports
+                it, so the scope is exact rather than a post-filter on an
+                already-truncated top_k.
 
         Returns:
             List of SearchResult objects sorted by score descending.

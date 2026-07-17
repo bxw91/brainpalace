@@ -11,7 +11,7 @@ skills:
   - using-brainpalace
 model: haiku
 tools: extraction_fetch, extraction_submit
-last_validated: 2026-07-10
+last_validated: 2026-07-17
 ---
 
 # Graph Triplet Extractor Agent

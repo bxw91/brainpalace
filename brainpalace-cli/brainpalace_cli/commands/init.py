@@ -23,6 +23,7 @@ from brainpalace_cli.commands.init_plan import (
     format_init_plan,
     resolve_init_plan,
 )
+from brainpalace_cli.commands.install_mcp import install_mcp, restart_notice
 from brainpalace_cli.commands.plugin_detect import (
     claude_plugin_installed,
     maybe_plugin_hint,
@@ -1370,6 +1371,8 @@ def _emit_init_result(
     embedding: tuple[str, str] | None = None,
     await_first_start: bool = False,
     folders: tuple[str, ...] = (),
+    mcp_installed: bool = False,
+    mcp_notice: str | None = None,
 ) -> None:
     """Print the init result, including any post-init step outcomes."""
     # Register the project in the durable fleet store so the dashboard can list
@@ -1397,6 +1400,11 @@ def _emit_init_result(
                     "folders": list(folders),
                     "dashboard": _dashboard_from_steps(post_init_steps),
                     "await_first_start": await_first_start,
+                    "mcp": (
+                        {"installed": mcp_installed, "notice": mcp_notice}
+                        if mcp_installed
+                        else None
+                    ),
                 },
                 indent=2,
             )
@@ -1488,6 +1496,12 @@ def _emit_init_result(
             "plugin [bold]isn't installed[/], so sessions won't be summarized yet. "
             "Install it: [bold]brainpalace install-agent[/]"
         )
+
+    # D15/D17: writing .mcp.json configures the project but does not populate
+    # this running session — the tools arrive next session, after the user
+    # approves the project's MCP servers. Surface that now, not silently.
+    if mcp_installed and mcp_notice:
+        console.print(f"\n[dim]MCP:[/] {mcp_notice}")
 
     # Only surface "Next steps" when a real action is left for the user (e.g.
     # start the server / add a folder). A fully-successful init ends on the
@@ -1943,6 +1957,21 @@ def _start_and_watch(
     help="Skip the confirmation prompt and apply the full resolved plan.",
 )
 @click.option(
+    "--mcp/--no-mcp",
+    "enable_mcp",
+    default=True,
+    help=(
+        "Write BrainPalace's MCP server into the project's .mcp.json "
+        "(merged, never clobbering other servers already declared there). ON "
+        "by default — unlike session embedding, this costs no money, only "
+        "~2,360 tokens of context in a project that already runs "
+        "BrainPalace. Pass --no-mcp to opt out. Written on every init path, "
+        "including --defer-activation: .mcp.json is configuration, not "
+        "activation, so it starts nothing. Tools appear next session, after "
+        "you approve the project's MCP servers."
+    ),
+)
+@click.option(
     "--sessions/--no-sessions",
     "enable_sessions",
     default=None,
@@ -2090,6 +2119,7 @@ def init_command(
     watch: str | None,
     no_watch: bool,
     yes: bool,
+    enable_mcp: bool,
     enable_sessions: bool | None,
     enable_archive: bool | None,
     enable_extract: bool | None,
@@ -2124,6 +2154,7 @@ def init_command(
       brainpalace init --sessions       # Also embed chat sessions (billable)
       brainpalace init --no-start       # Config only (no server, no indexing)
       brainpalace init --no-sessions    # Never embed chat sessions
+      brainpalace init --no-mcp         # Don't write .mcp.json (MCP tools)
       brainpalace init --no-watch       # Start, but do not index/watch the folder
       brainpalace init --path /my/proj  # Initialize a specific project
       brainpalace init --force          # Overwrite existing config
@@ -2841,6 +2872,29 @@ def init_command(
         # B5: ensure .brainpalace/ is git-ignored for the project.
         gitignore_added = ensure_gitignore_entry(project_root)
 
+        # D12/D16: write BrainPalace's MCP server into .mcp.json (merged,
+        # never clobbering other servers — A10). Runs on BOTH init paths,
+        # including --defer-activation: .mcp.json is configuration, not
+        # activation, so it starts no process and costs nothing until Claude
+        # Code next boots. Fail-soft: a malformed existing .mcp.json must not
+        # abort an otherwise-successful init; report it and move on.
+        mcp_installed = False
+        mcp_notice: str | None = None
+        if enable_mcp:
+            try:
+                _mcp = install_mcp(project_root)
+                mcp_installed = True
+                mcp_notice = restart_notice(
+                    changed=_mcp.changed, approved=_mcp.approved, scope=_mcp.scope
+                )
+                if _mcp.skip_reason and not json_output:
+                    console.print(
+                        f"[yellow]MCP approval skipped:[/] {_mcp.skip_reason}"
+                    )
+            except ValueError as e:
+                if not json_output:
+                    console.print(f"[yellow]MCP setup skipped:[/] {e}")
+
         # Apply the grid's sparse edit map — runs after the fresh config write so
         # any provider change is reflected in the cost shown by the estimate.
         # The grid (review_config) already ran at the top of the confirm block;
@@ -2980,6 +3034,8 @@ def init_command(
             sessions_on=bool(plan.sessions),
             embedding=_preview_embedding(project_root),
             folders=folders,
+            mcp_installed=mcp_installed,
+            mcp_notice=mcp_notice,
         )
 
     except PermissionError as e:

@@ -210,9 +210,17 @@ def _create_job_detail_panel(job: dict[str, Any]) -> Panel:
     return Panel(content, title=title, border_style=status_style)
 
 
-def _list_jobs(client: DocServeClient, limit: int, json_output: bool) -> None:
-    """List all jobs."""
-    jobs = client.list_jobs(limit=limit)
+def _list_jobs(
+    client: DocServeClient, limit: int, json_output: bool, show_all: bool
+) -> None:
+    """List all jobs.
+
+    By default, no-op completed jobs (status=done, no chunk delta, no error)
+    are hidden -- they cost history without adding any (Fix 4). ``--all``
+    reveals them; otherwise a small hint notes how many were hidden.
+    """
+    payload = client.list_jobs_page(limit=limit, all_=show_all)
+    jobs = payload.get("jobs", [])
 
     if json_output:
         import json
@@ -226,6 +234,10 @@ def _list_jobs(client: DocServeClient, limit: int, json_output: bool) -> None:
 
     table = _create_jobs_table(jobs)
     console.print(table)
+
+    noop_hidden = payload.get("noop_hidden", 0)
+    if not show_all and noop_hidden:
+        console.print(f"[dim]{noop_hidden} no-op run(s) hidden — use --all to show[/]")
 
 
 def _show_job_detail(client: DocServeClient, job_id: str, json_output: bool) -> None:
@@ -275,20 +287,26 @@ def _approve_job(client: DocServeClient, job_id: str, json_output: bool) -> None
     )
 
 
-def _watch_jobs(client: DocServeClient, limit: int) -> None:
+def _watch_jobs(client: DocServeClient, limit: int, show_all: bool) -> None:
     """Watch jobs with periodic refresh."""
     try:
         while True:
             console.clear()
             console.print("[bold]BrainPalace Job Queue[/]\n")
 
-            jobs = client.list_jobs(limit=limit)
+            payload = client.list_jobs_page(limit=limit, all_=show_all)
+            jobs = payload.get("jobs", [])
 
             if not jobs:
                 console.print("[dim]No jobs in queue[/]")
             else:
                 table = _create_jobs_table(jobs)
                 console.print(table)
+                noop_hidden = payload.get("noop_hidden", 0)
+                if not show_all and noop_hidden:
+                    console.print(
+                        f"[dim]{noop_hidden} no-op run(s) hidden — use --all to show[/]"
+                    )
 
             console.print(
                 "\n[dim]Refreshing in 3s... Press Ctrl+C to stop[/]",
@@ -311,6 +329,15 @@ def _watch_jobs(client: DocServeClient, limit: int) -> None:
 )
 @click.option("--limit", "-l", default=20, help="Max jobs to show (default: 20)")
 @click.option(
+    "--all",
+    "show_all",
+    is_flag=True,
+    help=(
+        "Include no-op completed jobs (status=done, no chunk delta, no "
+        "error) that are hidden by default"
+    ),
+)
+@click.option(
     "--url",
     envvar="BRAINPALACE_URL",
     default=None,
@@ -323,6 +350,7 @@ def jobs_command(
     cancel: bool,
     approve: bool,
     limit: int,
+    show_all: bool,
     url: str | None,
     json_output: bool,
 ) -> None:
@@ -331,9 +359,14 @@ def jobs_command(
     Without JOB_ID: List all jobs in the queue.
     With JOB_ID: Show detailed information for that job.
 
+    No-op completed jobs (status=done, no chunk delta, no error -- a
+    re-index that found nothing changed) are hidden from the listing by
+    default; pass --all to reveal them.
+
     \b
     Examples:
-      brainpalace jobs              # List all jobs
+      brainpalace jobs              # List all jobs (no-op runs hidden)
+      brainpalace jobs --all        # Also show no-op runs
       brainpalace jobs --watch      # Watch queue (refresh every 3s)
       brainpalace jobs JOB_ID       # Show job details
       brainpalace jobs JOB_ID --cancel  # Cancel a job
@@ -364,11 +397,11 @@ def jobs_command(
             elif approve and job_id:
                 _approve_job(client, job_id, json_output)
             elif watch:
-                _watch_jobs(client, limit)
+                _watch_jobs(client, limit, show_all)
             elif job_id:
                 _show_job_detail(client, job_id, json_output)
             else:
-                _list_jobs(client, limit, json_output)
+                _list_jobs(client, limit, json_output, show_all)
 
     except ConnectionError as e:
         exit_on_connection_error(e, base_url=resolved_url, json_output=json_output)

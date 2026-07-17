@@ -13,6 +13,7 @@ import asyncio
 from pathlib import Path
 from typing import Any
 
+import pydantic
 import pytest
 
 from brainpalace_cli.client.api_client import (
@@ -161,6 +162,11 @@ def test_query_happy_path(monkeypatch: pytest.MonkeyPatch) -> None:
         "source_types": [],
         "languages": [],
         "language": None,
+        "file_paths": [],
+        "alpha": 0.5,
+        "similarity_threshold": 0.3,
+        "entity_types": [],
+        "relationship_types": [],
     }
 
 
@@ -262,6 +268,66 @@ def test_query_language_none_by_default(monkeypatch: pytest.MonkeyPatch) -> None
 
     assert fake.last_query_args is not None
     assert fake.last_query_args["language"] is None
+
+
+# --- A16: file_paths / alpha / similarity_threshold / entity_types /
+# relationship_types --------------------------------------------------------
+
+
+def test_query_input_schema_has_a16_fields() -> None:
+    """QueryInput's JSON schema must expose all five A16 fields, plus the
+    top_k fix (le=50, was le=100 -- a value the schema accepted the server
+    still rejected with a 422)."""
+    schema = schemas.QueryInput.model_json_schema()
+    props = schema["properties"]
+    for name in (
+        "file_paths",
+        "alpha",
+        "similarity_threshold",
+        "entity_types",
+        "relationship_types",
+    ):
+        assert name in props, f"QueryInput JSON schema must include {name!r}"
+    assert schema["properties"]["top_k"]["maximum"] == 50
+
+
+def test_query_top_k_51_fails_schema_validation() -> None:
+    """A6: top_k=51 must fail at the pydantic schema, not reach the server
+    and get a 422 there."""
+    with pytest.raises(pydantic.ValidationError):
+        schemas.QueryInput(query="x", top_k=51)
+
+
+def test_query_a16_fields_forwarded_to_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    """file_paths/alpha/similarity_threshold/entity_types/relationship_types
+    must reach DocServeClient.query -- A5/A16. Purely additive: _query_sync
+    previously never passed these, so a caller-set value was silently
+    dropped."""
+    fake = _FakeClient()
+    fake.query_response = QueryResponse(results=[], query_time_ms=1.0, total_results=0)
+    _patch_discovery(monkeypatch)
+    _install_fake_client(monkeypatch, fake)
+
+    asyncio.run(
+        tools.query_tool(
+            schemas.QueryInput(
+                query="x",
+                mode="graph",
+                file_paths=["*.py", "src/**"],
+                alpha=0.8,
+                similarity_threshold=0.5,
+                entity_types=["Class", "Function"],
+                relationship_types=["calls"],
+            )
+        )
+    )
+
+    assert fake.last_query_args is not None
+    assert fake.last_query_args["file_paths"] == ["*.py", "src/**"]
+    assert fake.last_query_args["alpha"] == 0.8
+    assert fake.last_query_args["similarity_threshold"] == 0.5
+    assert fake.last_query_args["entity_types"] == ["Class", "Function"]
+    assert fake.last_query_args["relationship_types"] == ["calls"]
 
 
 # ---------------------------------------------------------------------------

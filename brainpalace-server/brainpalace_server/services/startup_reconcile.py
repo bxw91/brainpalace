@@ -645,6 +645,54 @@ async def _enqueue_folder_reindex(
     return enqueued
 
 
+async def _accountable_git_ids(
+    vector_store: Any, git_wanted: set[str], chroma_sqlite_path: Path
+) -> set[str]:
+    """The git ids THIS store can actually account for — the self-heal WANTED
+    subset.
+
+    self-heal restores lost chunks from dead Chroma segments + the embedding
+    cache; its git role is ONLY to bring back git chunks that WERE in this store
+    and got stranded in dead segments by a collection rebuild. A git id is worth
+    keeping in the wanted-set iff it is accountable here:
+
+      * **present live** — already in the collection (recovery no-ops it), or
+      * **present dead** — stranded in a dead segment, recoverable from
+        dead-text + cache with no re-embed.
+
+    A git id that is NEITHER was never indexed into this store (a fresh/reset
+    store, a rehome that carried ``git_index_state.json``'s ``last_sha`` forward,
+    or simply commits the async git boot-index job hasn't reached yet). Recovery
+    finds no dead row to restore it from and would report it as residue ("N
+    chunk(s) need a source re-embed") — a false alarm that clears itself the
+    moment the always-enqueued, cache-backed git boot-index job rebuilds the
+    plane. Those ids are the boot job's, not recovery's, so they must be dropped
+    from the wanted-set entirely. (The empty-plane case is just the degenerate
+    one: no live ∪ no dead ⇒ nothing wanted.)
+
+    Never raises — on any probe error, keep the whole set (prior behavior: keep
+    git in the wanted-set) rather than silently dropping a real recovery.
+    """
+    if not git_wanted or vector_store is None:
+        return set()
+    try:
+        live = set(await vector_store.get_existing_ids(list(git_wanted)))
+    except Exception as exc:  # noqa: BLE001 — probe must never crash startup
+        logger.warning("self-heal: git live-presence probe failed: %s", exc)
+        return set(git_wanted)
+    missing = git_wanted - live
+    if not missing:
+        return live
+    try:
+        dead = set(
+            chunk_recovery.read_recoverable_chunks(chroma_sqlite_path, missing).keys()
+        )
+    except Exception as exc:  # noqa: BLE001 — probe must never crash startup
+        logger.warning("self-heal: git dead-segment probe failed: %s", exc)
+        return set(git_wanted)
+    return live | dead
+
+
 async def self_heal_on_startup(
     *,
     folder_manager: Any,
@@ -703,11 +751,28 @@ async def self_heal_on_startup(
     # bounded by the indexer's own progress (last_sha + monorepo path filter,
     # not HEAD, not --all): a commit the async git-history job hasn't reached
     # yet was never lost, so it must not count as residue.
+    #
+    # …but the recorded last_sha only says the git INDEXER reached that commit,
+    # not that its chunks live in THIS store. git_index_state.json survives a
+    # fresh/reset store and rides along on a rehome, and the async git boot-index
+    # job may still be behind last_sha at startup, so wanting every recorded
+    # commit back would make recovery find no dead segment for the not-yet-
+    # materialized ones and report them all as residue ("N chunks need a source
+    # re-embed") — a false alarm that clears itself once the always-enqueued,
+    # cache-backed git boot-index job rebuilds the plane. Keep only the git ids
+    # THIS store can actually account for (present live, or stranded in a dead
+    # segment and recoverable here); the never-materialized ones are the boot
+    # job's to rebuild, not recovery's, so they're dropped from the wanted-set.
     git_ids: set[str] = set()
-    if repo_path:
+    if repo_path and vector_store is not None:
         shas = _indexable_git_shas(repo_path, git_state_dir=git_state_dir)
         if shas:
-            git_ids = {f"git_commit:{sha}" for sha in shas}
+            git_wanted = {f"git_commit:{sha}" for sha in shas}
+            git_ids = await _accountable_git_ids(
+                vector_store,
+                git_wanted,
+                Path(vector_store.persist_dir) / "chroma.sqlite3",
+            )
 
     wanted = manifest_ids | git_ids
 

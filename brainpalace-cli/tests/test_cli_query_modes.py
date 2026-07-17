@@ -73,7 +73,9 @@ class TestCLIQueryModes:
 
     @patch("brainpalace_cli.commands.query.DocServeClient")
     def test_query_json_output_schema(self, mock_client_class, runner):
-        """--json emits text/source/score/chunk_id (NOT content/file_path)."""
+        """--json emits text/source/score/chunk_id/start_line/end_line (NOT
+        content/file_path). start_line/end_line are nullable (A19, D6): only
+        code chunks carry them."""
         import json
 
         mock_client = MagicMock()
@@ -85,6 +87,7 @@ class TestCLIQueryModes:
         result_item.source = "src/foo.py"
         result_item.score = 0.42
         result_item.chunk_id = "chunk_1"
+        result_item.metadata = {"start_line": 10, "end_line": 20}
 
         mock_response = MagicMock()
         mock_response.results = [result_item]
@@ -109,10 +112,47 @@ class TestCLIQueryModes:
             "source": "src/foo.py",
             "score": 0.42,
             "chunk_id": "chunk_1",
+            "start_line": 10,
+            "end_line": 20,
         }
         # Guard the keys an AI consumer wrongly guessed (the bug under fix).
         assert "file_path" not in payload["results"][0]
         assert "content" not in payload["results"][0]
+
+    @patch("brainpalace_cli.commands.query.DocServeClient")
+    def test_query_json_start_line_null_for_non_code_chunk(
+        self, mock_client_class, runner
+    ):
+        """start_line/end_line are null, not absent, for a chunk with no line
+        data (A19: doc/git_commit chunks and synthetic memory/reference
+        results are ~29% of the corpus, not an edge case)."""
+        import json
+
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+
+        result_item = MagicMock()
+        result_item.text = "some doc prose"
+        result_item.source = "docs/GUIDE.md"
+        result_item.score = 0.7
+        result_item.chunk_id = "chunk_doc_1"
+        result_item.metadata = {}  # no start_line/end_line, as chunking.py leaves it
+
+        mock_response = MagicMock()
+        mock_response.results = [result_item]
+        mock_response.query_time_ms = 5.0
+        mock_response.total_results = 1
+        mock_response.index_blocked = None
+        mock_client.query.return_value = mock_response
+        mock_client_class.return_value = mock_client
+
+        result = runner.invoke(cli, ["query", "test", "--json"])
+
+        assert result.exit_code == 0
+        payload = json.loads(result.output)
+        assert payload["results"][0]["start_line"] is None
+        assert payload["results"][0]["end_line"] is None
 
     @patch("brainpalace_cli.commands.query.DocServeClient")
     def test_query_json_server_error_exits_nonzero(self, mock_client_class, runner):

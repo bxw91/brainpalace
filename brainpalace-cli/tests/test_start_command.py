@@ -50,10 +50,23 @@ def test_start_reuses_live_registry_server_for_same_project(monkeypatch, tmp_pat
     monkeypatch.setattr(
         "brainpalace_cli.commands.list_cmd.get_registry", lambda: registry
     )
-    monkeypatch.setattr(start_mod, "check_health", lambda *_a, **_k: True)
+    monkeypatch.setattr(start_mod, "probe", lambda *_a, **_k: "mine")
 
     reused = start_mod.find_reusable_server(project)
     assert reused == "http://127.0.0.1:8000"
+
+
+def test_find_reusable_server_none_when_probe_says_other(monkeypatch, tmp_path):
+    """A2 identity guard: pid alive + reachable but a DIFFERENT project's
+    server answered (e.g. via the global registry pointing at someone else's
+    port) => not reusable."""
+    registry = {str(tmp_path): {"pid": 4242, "base_url": "http://127.0.0.1:8000"}}
+    monkeypatch.setattr(start_mod, "is_process_alive", lambda _pid: True)
+    monkeypatch.setattr(
+        "brainpalace_cli.commands.list_cmd.get_registry", lambda: registry
+    )
+    monkeypatch.setattr(start_mod, "probe", lambda *_a, **_k: "other")
+    assert start_mod.find_reusable_server(tmp_path) is None
 
 
 def test_find_reusable_server_none_when_pid_dead(monkeypatch, tmp_path):
@@ -62,7 +75,7 @@ def test_find_reusable_server_none_when_pid_dead(monkeypatch, tmp_path):
     monkeypatch.setattr(
         "brainpalace_cli.commands.list_cmd.get_registry", lambda: registry
     )
-    monkeypatch.setattr(start_mod, "check_health", lambda *_a, **_k: True)
+    monkeypatch.setattr(start_mod, "probe", lambda *_a, **_k: "mine")
     assert start_mod.find_reusable_server(tmp_path) is None
 
 

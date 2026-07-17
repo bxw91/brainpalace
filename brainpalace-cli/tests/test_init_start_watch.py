@@ -42,6 +42,9 @@ class TestInitStartWatch:
         Also pin the nested-command resolver to a bare ``brainpalace`` binary so
         the asserted argv prefix is deterministic regardless of whether the
         console script is actually installed on PATH in the test environment.
+        (``init``'s own MCP registration cannot ride on this ``shutil.which``:
+        ``install_mcp`` binds ``which`` separately, and the conftest guard pins
+        it absent, so init's MCP step takes the no-subprocess project fallback.)
         """
         with (
             patch("brainpalace_cli.commands.init._preflight_providers"),

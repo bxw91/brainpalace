@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-11
+last_validated: 2026-07-17
 ---
 
 # Install — alternative paths
@@ -162,6 +162,13 @@ mono-repo safe.
 For AI clients that speak MCP — Cursor, VS Code (GitHub Copilot agent
 mode), Cline, Continue, Kilo Code, Zed. The MCP shim is a thin
 forwarder over the same REST endpoints the CLI uses.
+
+> **Claude Code users can skip this.** Step 2 below (`brainpalace init
+> --start`) already writes the project's `.mcp.json` by default (`--no-mcp`
+> to opt out) and registers the server with Claude Code, which needs no
+> approval; an already-initialized project adopts it with `brainpalace
+> install-mcp`. Restart Claude Code to pick the tools up. See
+> [`MCP_SETUP.md`](MCP_SETUP.md#claude-code-opt-in-automatic-per-project).
 
 1. **Install the `brainpalace` binary:**
 
@@ -412,15 +419,17 @@ rm -rf ~/.brainpalace                  # legacy pre-XDG dir (if present)
 
 #### 6. Remove MCP client config entries
 
-`setup.sh` may have written a `brainpalace` server entry (with an absolute path
-to the now-deleted binary) into any of these. Delete the entry or the file:
+`brainpalace init`/`install-mcp`, or `setup.sh`, may have written a
+`brainpalace` server entry (with an absolute path to the now-deleted binary)
+into any of these. Delete the entry or the file:
 
 ```
-.vscode/mcp.json    .cursor/mcp.json     .zed/settings.json
-.cline/mcp.json     .continue/mcp.yaml   .kilo/kilo.jsonc
+.mcp.json            .vscode/mcp.json     .cursor/mcp.json
+.zed/settings.json   .cline/mcp.json      .continue/mcp.yaml   .kilo/kilo.jsonc
 ```
 
-These can live at project scope **and** at `$HOME` (user scope) — check both.
+`.mcp.json` (Claude Code) is project scope only. The rest can live at project
+scope **and** at `$HOME` (user scope) — check both.
 
 #### 7. Revert shell rc + PATH
 

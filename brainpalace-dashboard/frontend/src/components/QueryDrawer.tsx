@@ -36,10 +36,14 @@ export function QueryDrawer({
   const replayM = useMutation({
     mutationFn: () => {
       const d = detailQ.data!;
+      // A18 — replay the SAME query: carry the logged filters (scope, source
+      // types, languages, …) so the re-run reproduces the row, not a broader
+      // unfiltered query.
       return replayQuery(instanceId, {
         query: d.query,
         mode: d.mode,
         top_k: d.top_k,
+        filters: d.filters,
       });
     },
   });

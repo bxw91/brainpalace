@@ -580,6 +580,88 @@ async def test_enqueue_for_folder_handles_job_service_exception() -> None:
 
 
 # ---------------------------------------------------------------------------
+# last_change_at tests (Fix 2 / A13 — blocked-job reaper signal)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_last_change_at_none_before_any_change() -> None:
+    """last_change_at returns None for a folder the watcher has never seen."""
+    service = FileWatcherService(
+        folder_manager=MagicMock(),
+        job_service=MagicMock(),
+    )
+    assert service.last_change_at("/tmp/never-seen") is None
+
+
+@pytest.mark.asyncio
+async def test_last_change_at_stamped_on_enqueue() -> None:
+    """A successful enqueue stamps a wall-clock last_change_at for the folder."""
+    from datetime import datetime, timezone
+
+    folder_record = make_folder_record("/tmp/code", include_code=True)
+
+    mock_folder_manager = MagicMock()
+    mock_folder_manager.get_folder = AsyncMock(return_value=folder_record)
+    mock_folder_manager.list_folders = AsyncMock(return_value=[])
+
+    mock_job_service = MagicMock()
+    mock_job_service.enqueue_job = AsyncMock(
+        return_value=make_enqueue_response(dedupe_hit=False)
+    )
+
+    service = FileWatcherService(
+        folder_manager=mock_folder_manager,
+        job_service=mock_job_service,
+        default_debounce_seconds=30,
+    )
+    await service.start()
+
+    before = datetime.now(timezone.utc)
+    await service._enqueue_for_folder("/tmp/code")
+    after = datetime.now(timezone.utc)
+
+    stamped = service.last_change_at("/tmp/code")
+    assert stamped is not None
+    assert before <= stamped <= after
+
+    await service.stop()
+
+
+@pytest.mark.asyncio
+async def test_last_change_at_stamped_even_on_dedupe_hit() -> None:
+    """A dedupe_hit=True enqueue still stamps last_change_at.
+
+    A dedupe_hit means the watcher observed a real change that collapsed
+    into an existing job — for a BLOCKED job, this is exactly the "folder
+    changed since it blocked" signal the reaper needs.
+    """
+    folder_record = make_folder_record("/tmp/docs")
+
+    mock_folder_manager = MagicMock()
+    mock_folder_manager.get_folder = AsyncMock(return_value=folder_record)
+    mock_folder_manager.list_folders = AsyncMock(return_value=[])
+
+    mock_job_service = MagicMock()
+    mock_job_service.enqueue_job = AsyncMock(
+        return_value=make_enqueue_response(dedupe_hit=True)
+    )
+
+    service = FileWatcherService(
+        folder_manager=mock_folder_manager,
+        job_service=mock_job_service,
+        default_debounce_seconds=30,
+    )
+    await service.start()
+
+    await service._enqueue_for_folder("/tmp/docs")
+
+    assert service.last_change_at("/tmp/docs") is not None
+
+    await service.stop()
+
+
+# ---------------------------------------------------------------------------
 # is_running property tests
 # ---------------------------------------------------------------------------
 
