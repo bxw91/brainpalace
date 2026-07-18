@@ -21,6 +21,28 @@ _Entries accumulate here between releases. The release step renames this to
 `## [YY.M.N] - DATE` and adds a fresh empty `## [Unreleased]` above it — never
 hand-number an unreleased section._
 
+## [26.7.8] - 2026-07-18
+
+### Added
+- **Search guard covers Bash — scope-aware.** The PreToolUse guard now also
+  reacts to recursive `grep`/`rg`/`ag`, but only when the target is content
+  BrainPalace indexes; unindexed targets, single-file greps, and BM25-hostile
+  regex pass untouched. A project shipping its own guard hook suppresses the
+  bundled one.
+
+### Changed
+- **Search guard now defaults to `enforce`.** Grep is scope-aware like Bash —
+  firing only on indexed content with a BM25-answerable pattern — and Glob is
+  no longer guarded at all. Denials name the exact `brainpalace query` to run;
+  soften with `cli.search_guard.mode: advisory`.
+
+### Fixed
+- **Orphan reaper no longer lies about "Reaped."** `reap_orphans` now
+  escalates SIGTERM→SIGKILL and reports honest `reaped_pids`/
+  `surviving_pids`; every server-side `git`/LSP spawn also routes through a
+  `posix_spawn`-safe helper, closing the deadlock that pinned the listening
+  socket forever.
+
 ## [26.7.7] - 2026-07-18
 
 ### Fixed

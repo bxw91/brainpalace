@@ -28,7 +28,7 @@ parameters:
     default: false
 skills:
   - using-brainpalace
-last_validated: 2026-07-17
+last_validated: 2026-07-18
 ---
 
 # Stop BrainPalace Server
@@ -157,7 +157,7 @@ brainpalace status
 |------|------|---------|-------------|
 | --path | directory | "" | Project path (default: auto-detect project root) |
 | --url | text | "" | Server URL — resolves project_root via GET /runtime/ (ignored when --path is given) |
-| --force | bool | false | Force stop with SIGKILL if SIGTERM fails |
+| --force | bool | false | Skip the graceful-shutdown wait — SIGKILL immediately. With --all, also skips the orphan-reaper's grace window (SIGKILL escalation runs either way). |
 | --timeout | integer | 10 | Timeout for graceful shutdown in seconds (default: 10) |
 | --all | bool | false | Also reap orphan server processes not referenced by the registry. |
 | --json | bool | false | Output as JSON |

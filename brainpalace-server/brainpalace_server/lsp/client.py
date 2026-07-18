@@ -18,6 +18,8 @@ import subprocess
 import time
 from typing import IO, Any
 
+from brainpalace_server import process_spawn
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_REQUEST_TIMEOUT = 15.0
@@ -75,12 +77,7 @@ class LspClient:
     @classmethod
     def spawn(cls, cmd: list[str]) -> LspClient:
         """Launch a language server subprocess and wrap its stdio."""
-        proc = subprocess.Popen(
-            cmd,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-        )
+        proc = process_spawn.spawn_stdio(cmd)
         assert proc.stdin is not None and proc.stdout is not None
         return cls(reader=proc.stdout, writer=proc.stdin, process=proc)
 

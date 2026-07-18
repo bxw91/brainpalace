@@ -18,6 +18,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
+from brainpalace_server import process_spawn
+
 logger = logging.getLogger(__name__)
 
 #: Sentinels — chosen to be vanishingly unlikely in real commit text.
@@ -34,11 +36,9 @@ DEFAULT_DEPTH = 0
 def git_toplevel(repo_path: str | Path) -> Path | None:
     """Return the git working-tree root for ``repo_path``, or None if not a repo."""
     try:
-        out = subprocess.run(
+        out = process_spawn.run_capture(
             ["git", "-C", str(repo_path), "rev-parse", "--show-toplevel"],
             check=True,
-            capture_output=True,
-            text=True,
         ).stdout.strip()
         return Path(out).resolve() if out else None
     except (subprocess.CalledProcessError, OSError):
@@ -71,11 +71,9 @@ def list_indexable_shas(
         args.append("--")
         args.extend(paths)
     try:
-        out = subprocess.run(
+        out = process_spawn.run_capture(
             ["git", "-C", str(repo_path), *args],
             check=True,
-            capture_output=True,
-            text=True,
             timeout=30,
         )
     except (subprocess.SubprocessError, OSError) as exc:
@@ -216,11 +214,9 @@ def load_commits(
     if not repo.exists():
         return []
     try:
-        proc = subprocess.run(
+        proc = process_spawn.run_capture(
             ["git", "-C", str(repo), *_build_args(depth, since_sha, paths)],
             check=True,
-            capture_output=True,
-            text=True,
         )
     except (subprocess.CalledProcessError, OSError) as exc:
         logger.debug("git log failed for %s: %s", repo, exc)

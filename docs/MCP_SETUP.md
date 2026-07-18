@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-17
+last_validated: 2026-07-18
 ---
 
 # MCP setup — connecting AI clients to BrainPalace
@@ -50,7 +50,7 @@ directory it was spawned in. `whoami` keeps the older `file_path` name.
 | -------------- | --------------- | ---------- | ------------------------------------------------------------- |
 | `query`        | string          | —          | Search query text (required).                                 |
 | `mode`         | string          | `"hybrid"` | Search mode: `bm25`, `vector`, `hybrid`, `graph`, `multi`.   |
-| `top_k`        | integer         | `8`        | Number of results to return (1–100).                          |
+| `top_k`        | integer         | `8`        | Number of results to return (1–50).                          |
 | `languages`    | list of strings | `null`     | Filter results by programming language(s).                    |
 | `source_types` | list of strings | `null`     | Filter results by source type(s).                             |
 | `language`     | string          | `null`     | BM25 query language override (ISO 639-1, e.g. `"en"`, `"de"`, `"zh"`). Overrides the project `bm25.language` setting for this call only. Only affects BM25 tokenization — ignored for vector/graph modes. |

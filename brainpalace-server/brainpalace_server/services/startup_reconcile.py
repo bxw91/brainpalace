@@ -254,16 +254,15 @@ def _current_git_shas(repo_path: str) -> set[str] | None:
     """
     import subprocess
 
+    from brainpalace_server import process_spawn
     from brainpalace_server.indexing.git_loader import git_toplevel
 
     top = git_toplevel(repo_path)
     if top is None:
         return None
     try:
-        out = subprocess.run(
+        out = process_spawn.run_capture(
             ["git", "-C", str(top), "rev-list", "--all"],
-            capture_output=True,
-            text=True,
             check=True,
             timeout=30,
         )

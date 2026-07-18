@@ -32,6 +32,7 @@ from ..ai_guidance import nudge
 from ..config_schema import passive_autostart_allowed, read_await_first_start
 from ..discovery import discover_project_dir, discover_server_url
 from ..doc_sync.triggers import is_interface_source
+from ..search_guard_bash import analyze_bash_command, classify, is_indexed_target
 from ..xdg_paths import get_xdg_config_dir, get_xdg_state_dir
 
 _DOCSYNC_NUDGE = (
@@ -268,32 +269,39 @@ _GUARD_DEFAULTS: dict[str, Any] = {
 
 # --- search guard (PreToolUse, main thread) -------------------------------
 
-# The main thread's own search tools. Bash is intentionally absent: the
-# PreToolUse matcher fires per tool *name*, so guarding Bash would spawn this
-# hook on EVERY shell command (~0.3s cold start each) — far too costly for an
-# on-by-default feature. Grep/Glob are dedicated, always-a-search tools that
-# fire rarely, and dropping to `grep`/`find` via Bash is the deliberate escape
-# hatch for raw search of non-indexed files.
-_SEARCH_GUARD_TOOLS = ("Grep", "Glob")
+# The main thread's dedicated content-search tool. Glob is deliberately NOT
+# here (and is dropped from the plugin matcher): a glob is a filename matcher
+# and BM25 is a content index — there is no correct query mapping, so steering
+# Glob anywhere is wrong advice. (A Glob payload from an older plugin whose
+# matcher still includes it must fall through silently.) Bash routes
+# separately through ``_bash_search_guard``. Kept as a tuple for the
+# dispatcher and version-skew clarity.
+_SEARCH_GUARD_TOOLS = ("Grep",)
 _SEARCH_GUARD_DEFAULTS: dict[str, Any] = {
-    # On by default, but advisory (nudge, never deny) — same rationale as the
-    # subagent guard: an on-by-default guard that silently DENIED every Grep/Glob
-    # would be far too blunt (it also fires on other plugins' searches). Advisory
-    # keeps the BrainPalace nudge without breaking workflows. Opt into hard
-    # blocking with ``cli.search_guard.mode: enforce`` or
-    # ``BRAINPALACE_SEARCH_GUARD=enforce``.
+    # ON by default, and ``enforce`` by default — the same journey the subagent
+    # guard made: enforce became safe THERE once the intent gate made it
+    # precise, and it is safe HERE now that every path is scope-aware. The
+    # guard only fires on: manifest-indexed content + a pattern BM25 answers
+    # faithfully + (for Bash) a pure search command. Unindexed targets, regex
+    # constructs, single-file greps, and Glob pass untouched. An advisory
+    # nudge is demonstrably read and then not binding (verified live
+    # 2026-07-18), which defeats the index's purpose; an enforce deny was
+    # observed to be recovered from on the first try via `brainpalace query`.
+    # Soften with ``cli.search_guard.mode: advisory`` or
+    # ``BRAINPALACE_SEARCH_GUARD=advisory``; disable with ``enabled: false`` /
+    # ``=off``.
     "enabled": True,
-    "mode": "advisory",
+    "mode": "enforce",
 }
 #: Advisory search-guard nudge at most once per window (per project). Enforce
 #: mode is exempt — a hard deny must be consistent, not rate-limited.
 _SEARCH_NUDGE_COOLDOWN_SECONDS = 900
 _SEARCH_DENY_REASON = (
     "BrainPalace is indexed and running for this project — search it instead of "
-    'Grep/Glob: `brainpalace query "..." --mode bm25` for exact '
+    'grep/Grep: `brainpalace query "..." --mode bm25` for exact '
     "symbols/tokens/paths (no embedding round-trip, ms latency) or `--mode "
-    "hybrid` for concepts. For raw search of non-indexed files, run `grep`/`find` "
-    "via Bash (not guarded). Disable with `cli.search_guard.enabled: false` or "
+    "hybrid` for concepts. Searches of paths BrainPalace does not index pass "
+    "through automatically. Disable with `cli.search_guard.enabled: false` or "
     "`BRAINPALACE_SEARCH_GUARD=off`."
 )
 
@@ -306,16 +314,23 @@ def hook_pretooluse() -> None:
     ``tool_name``:
       - **subagent guard** (``Agent``/``Task``) — gate spawns so subagents are
         forced to search via BrainPalace (``cli.subagent_guard.*``);
-      - **search guard** (``Grep``/``Glob``) — steer the main thread's own search
-        the same way (``cli.search_guard.*``).
+      - **search guard** (``Grep``, and ``Bash`` via ``_bash_search_guard``) —
+        scope-aware steering of the main thread's own search to `brainpalace
+        query`: only a search of manifest-indexed content with a BM25-answerable
+        pattern reacts (``cli.search_guard.*``; default ``enforce``). Glob is
+        not guarded — no correct BM25 mapping for filename matching exists.
+    A project that registers its OWN search-guard hook (project
+    ``.claude/settings.json`` mentions ``pretooluse-brainpalace-search-guard``)
+    suppresses the shipped search guard entirely — no double-fire.
     Both are ON by default, but ONLY when this project's BrainPalace server is
     actually running (``discover_server_url`` validates runtime.json + a live PID
     + ``GET /health/``). No live server → no action: pointless to force
     BrainPalace-only search when BrainPalace cannot answer. Each guard's
-    ``mode`` decides the reaction — ``enforce`` (subagent-guard default) denies
+    ``mode`` decides the reaction — ``enforce`` (default for both guards) denies
     with a fix hint, ``advisory`` injects a nudge. The subagent guard only acts on
-    *search-shaped* spawns (intent gate); the search guard (Grep/Glob) defaults to
-    ``advisory``. Disable per guard via its ``enabled: false`` or env kill-switch.
+    *search-shaped* spawns (intent gate); the search guard (Grep) is scope-aware
+    on manifest membership + pattern classification. Disable per guard via its
+    ``enabled: false`` or env kill-switch.
     Fail-soft: any error → allow (emit nothing). Never blocks on a crash.
     """
     try:
@@ -324,7 +339,9 @@ def hook_pretooluse() -> None:
         if tool in ("Agent", "Task"):
             _subagent_guard(payload)
         elif tool in _SEARCH_GUARD_TOOLS:
-            _search_guard()
+            _search_guard(payload)
+        elif tool == "Bash":
+            _bash_search_guard(payload)
     except Exception:  # noqa: BLE001 — a hook must NEVER crash/block a session
         pass
 
@@ -361,16 +378,88 @@ def _subagent_guard(payload: dict[str, Any]) -> None:
     _emit_pretooluse(cfg["mode"], _GUARD_DENY_REASON)
 
 
-def _search_guard() -> None:
-    """Steer a main-thread Grep/Glob toward BrainPalace search (when server up)."""
+def _search_guard(payload: dict[str, Any]) -> None:
+    """Steer a main-thread Grep over INDEXED content to BrainPalace.
+
+    Scope-aware like the Bash path: an unindexed target (absent from the
+    folder manifests) and a regex-construct pattern BM25 cannot honor (the
+    Grep tool pattern is ALWAYS a ripgrep regex — classification is
+    load-bearing) pass silently. A Grep call is purely a search, so an
+    ``enforce`` deny blocks nothing else; ``advisory`` nudges on the shared
+    900s cooldown.
+    """
     if discover_server_url(None) is None:
+        return
+    project = discover_project_dir(None)
+    if project is None or _project_ships_own_search_guard(project):
         return
     cfg = _load_search_guard_config()
     if not cfg["enabled"]:
         return
-    if cfg["mode"] == "advisory" and not _search_nudge_due():
-        return  # nudged recently — stay silent instead of spamming every Grep.
-    _emit_pretooluse(cfg["mode"], _SEARCH_DENY_REASON)
+    tool_input = payload.get("tool_input") or {}
+    if classify(tool_input.get("pattern") or "") == "grep":
+        return
+    cwd_raw = payload.get("cwd")
+    cwd = Path(cwd_raw) if cwd_raw else project
+    if not is_indexed_target(tool_input.get("path"), project, cwd):
+        return
+    if cfg["mode"] == "enforce":
+        _emit_pretooluse("enforce", _SEARCH_DENY_REASON)
+        return
+    if _search_nudge_due():
+        _emit_pretooluse("advisory", _SEARCH_DENY_REASON)
+
+
+def _project_ships_own_search_guard(project: Path) -> bool:
+    """True when the project registers its OWN BrainPalace search-guard hook.
+
+    Signal: the project-scope ``.claude/settings.json`` mentions the canonical
+    script name ``pretooluse-brainpalace-search-guard``. Then the shipped guard
+    stands down entirely (Grep/Glob and Bash) so the two never double-fire —
+    the BrainPalace repo itself is the known case (its committed settings
+    register a richer dev guard, so any clone auto-suppresses the shipped one
+    with no manual config). Deleting/unregistering the project hook re-enables
+    the shipped guard automatically. Fail-soft: any error -> False (guard runs).
+    """
+    try:
+        settings = project / ".claude" / "settings.json"
+        return settings.is_file() and (
+            "pretooluse-brainpalace-search-guard"
+            in settings.read_text(encoding="utf-8")
+        )
+    except Exception:  # noqa: BLE001 — hook path, never crash
+        return False
+
+
+def _bash_search_guard(payload: dict[str, Any]) -> None:
+    """Steer a Bash search of INDEXED content toward BrainPalace (spec D2-D4).
+
+    Silent for: non-search Bash, non-recursive ``grep file``, targets absent
+    from the folder manifests (the raw-search escape hatch, now scoped), and
+    regex constructs BM25 cannot honor. ``advisory`` nudges (shared 900s
+    cooldown). ``enforce`` denies ONLY a pure search command (the search
+    segment plus read-only stdin filters) — a deny blocks the whole Bash call,
+    so compound/multi commands downgrade to the nudge.
+    """
+    if discover_server_url(None) is None:
+        return
+    project = discover_project_dir(None)
+    if project is None or _project_ships_own_search_guard(project):
+        return
+    cfg = _load_search_guard_config()
+    if not cfg["enabled"]:
+        return
+    command = (payload.get("tool_input") or {}).get("command") or ""
+    cwd_raw = payload.get("cwd")
+    cwd = Path(cwd_raw) if cwd_raw else project
+    res = analyze_bash_command(command, project, cwd)
+    if not res.is_search or not res.target_indexed or res.classify == "grep":
+        return
+    if cfg["mode"] == "enforce" and res.classify == "bm25" and res.pure_search:
+        _emit_pretooluse("enforce", _SEARCH_DENY_REASON)
+        return
+    if _search_nudge_due():
+        _emit_pretooluse("advisory", _SEARCH_DENY_REASON)
 
 
 def _search_nudge_due() -> bool:

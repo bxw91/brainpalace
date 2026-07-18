@@ -1,10 +1,10 @@
 ---
-last_validated: 2026-07-17
+last_validated: 2026-07-18
 ---
 
 # BrainPalace Plugin Guide
 
-Complete reference for the BrainPalace Claude Code plugin - 42 commands, 6 agents, and 2 skills for intelligent document and code search.
+Complete reference for the BrainPalace Claude Code plugin - 43 commands, 6 agents, and 2 skills for intelligent document and code search.
 
 ## Table of Contents
 
@@ -34,7 +34,7 @@ claude plugins install github:bxw91/brainpalace
 ```
 
 This provides:
-- **42 slash commands** for all operations
+- **43 slash commands** for all operations
 - **6 intelligent agents** for complex tasks
 - **2 skills** for context-aware assistance
 

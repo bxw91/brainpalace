@@ -1,12 +1,13 @@
 """Tests for the PreToolUse search guard (`brainpalace hook pretooluse`).
 
 Sibling to the subagent guard: where that gates Agent/Task *spawns*, this gates
-the main thread's own `Grep`/`Glob` calls so it searches via BrainPalace instead
-of grep/glob by habit. ON by default (`cli.search_guard.enabled`) in `advisory`
-mode (enforce is opt-in), engages only while the project's BrainPalace server is
-running, and fails open. `Bash` is intentionally NOT guarded — firing on every
-shell command is too costly, and dropping to Bash grep/find is the deliberate
-escape hatch for raw search of non-indexed files.
+the main thread's own `Grep` calls so it searches via BrainPalace instead of
+grep by habit. ON by default in `enforce` mode (advisory is the opt-out
+softening), engages only while the project's BrainPalace server is running, and
+fails open. The guard is scope-aware on every path: only a search of
+manifest-indexed content with a pattern BM25 can answer faithfully reacts; Glob
+is not guarded at all (a glob is a filename matcher — no correct BM25 mapping
+exists).
 """
 
 from __future__ import annotations
@@ -41,49 +42,78 @@ _ENFORCE = {"enabled": True, "mode": "enforce"}
 _ADVISORY = {"enabled": True, "mode": "advisory"}
 
 
+def _grep_payload(proj: Path, pattern: str, path: str | None = None) -> dict:
+    ti: dict = {"pattern": pattern}
+    if path is not None:
+        ti["path"] = path
+    return {"tool_name": "Grep", "tool_input": ti, "cwd": str(proj)}
+
+
 def test_grep_advisory_nudges_not_denies(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    # Fresh tmp_path project so the advisory cooldown stamp can't already be hot
-    # from another test/run sharing the real project's .brainpalace dir.
-    (tmp_path / ".brainpalace").mkdir()
-    monkeypatch.setattr(hook, "discover_project_dir", lambda _=None: tmp_path)
-    res = _run(
-        {"tool_name": "Grep", "tool_input": {"pattern": "Next steps"}},
-        _ADVISORY,
-        monkeypatch,
-    )
+    proj = _bash_project(tmp_path)
+    monkeypatch.setattr(hook, "discover_project_dir", lambda _=None: proj)
+    res = _run(_grep_payload(proj, "Next steps", "src"), _ADVISORY, monkeypatch)
     hso = json.loads(res.output)["hookSpecificOutput"]
     assert hso["hookEventName"] == "PreToolUse"
     assert "permissionDecision" not in hso  # advisory never denies
     assert "brainpalace query" in hso["additionalContext"]
 
 
-def test_grep_enforce_denies(monkeypatch: pytest.MonkeyPatch) -> None:
-    res = _run(
-        {"tool_name": "Grep", "tool_input": {"pattern": "foo"}}, _ENFORCE, monkeypatch
-    )
+def test_grep_enforce_denies_indexed_target(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    proj = _bash_project(tmp_path)
+    monkeypatch.setattr(hook, "discover_project_dir", lambda _=None: proj)
+    res = _run(_grep_payload(proj, "foo", "src"), _ENFORCE, monkeypatch)
     hso = json.loads(res.output)["hookSpecificOutput"]
-    assert hso["hookEventName"] == "PreToolUse"
     assert hso["permissionDecision"] == "deny"
     assert "brainpalace query" in hso["permissionDecisionReason"]
 
 
-def test_glob_enforce_denies(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_grep_no_path_defaults_to_cwd(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    proj = _bash_project(tmp_path)
+    monkeypatch.setattr(hook, "discover_project_dir", lambda _=None: proj)
+    res = _run(_grep_payload(proj, "foo"), _ENFORCE, monkeypatch)
+    assert json.loads(res.output)["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+
+def test_grep_unindexed_target_is_silent(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # skip/ exists on disk but is absent from the manifest -> native Grep is fine.
+    proj = _bash_project(tmp_path)
+    (proj / "skip").mkdir()
+    monkeypatch.setattr(hook, "discover_project_dir", lambda _=None: proj)
+    res = _run(_grep_payload(proj, "foo", "skip"), _ENFORCE, monkeypatch)
+    assert res.exit_code == 0
+    assert res.output.strip() == ""
+
+
+def test_grep_regex_construct_pattern_is_silent(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The Grep tool pattern is ALWAYS a ripgrep regex; BM25 cannot honor \d+,
+    # so steering toward it would be wrong advice — native Grep is authoritative.
+    proj = _bash_project(tmp_path)
+    monkeypatch.setattr(hook, "discover_project_dir", lambda _=None: proj)
     res = _run(
-        {"tool_name": "Glob", "tool_input": {"pattern": "**/*.tsx"}},
-        _ENFORCE,
-        monkeypatch,
+        _grep_payload(proj, r"except.*EngineError", "src"), _ENFORCE, monkeypatch
     )
-    hso = json.loads(res.output)["hookSpecificOutput"]
-    assert hso["permissionDecision"] == "deny"
+    assert res.output.strip() == ""
 
 
-def test_bash_not_guarded(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Bash is the escape hatch: a raw `grep` via Bash must pass untouched even in
-    # enforce, so the model can search non-indexed files when it must.
+def test_glob_is_never_guarded(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    # Version-skew tolerance: an old plugin still matches Glob and sends the
+    # payload; the CLI must stay silent — a glob is a filename matcher, BM25 a
+    # content index, no correct query mapping exists.
+    proj = _bash_project(tmp_path)
+    monkeypatch.setattr(hook, "discover_project_dir", lambda _=None: proj)
     res = _run(
-        {"tool_name": "Bash", "tool_input": {"command": "grep -r foo ."}},
+        {"tool_name": "Glob", "tool_input": {"pattern": "**/*.tsx"}, "cwd": str(proj)},
         _ENFORCE,
         monkeypatch,
     )
@@ -91,9 +121,176 @@ def test_bash_not_guarded(monkeypatch: pytest.MonkeyPatch) -> None:
     assert res.output.strip() == ""
 
 
-def test_search_server_down_is_silent(monkeypatch: pytest.MonkeyPatch) -> None:
+def _bash_project(tmp_path: Path) -> Path:
+    """Project fixture with one indexed file recorded in a folder manifest."""
+    a = tmp_path / "src" / "a.py"
+    a.parent.mkdir(parents=True)
+    a.write_text("x = 1\n")
+    manifests = tmp_path / ".brainpalace" / "manifests"
+    manifests.mkdir(parents=True)
+    (manifests / "m.json").write_text(json.dumps({"files": {str(a.resolve()): {}}}))
+    return tmp_path
+
+
+def _bash_payload(proj: Path, command: str) -> dict:
+    return {"tool_name": "Bash", "tool_input": {"command": command}, "cwd": str(proj)}
+
+
+def test_bash_recursive_grep_indexed_advisory_nudges(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    proj = _bash_project(tmp_path)
+    monkeypatch.setattr(hook, "discover_project_dir", lambda _=None: proj)
+    res = _run(_bash_payload(proj, "grep -rn foo src/"), _ADVISORY, monkeypatch)
+    hso = json.loads(res.output)["hookSpecificOutput"]
+    assert "permissionDecision" not in hso  # advisory never denies
+    assert "brainpalace query" in hso["additionalContext"]
+
+
+def test_bash_enforce_pure_search_denies(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    proj = _bash_project(tmp_path)
+    monkeypatch.setattr(hook, "discover_project_dir", lambda _=None: proj)
     res = _run(
-        {"tool_name": "Grep", "tool_input": {"pattern": "foo"}},
+        _bash_payload(proj, "grep -rn foo src/ | head -5"), _ENFORCE, monkeypatch
+    )
+    hso = json.loads(res.output)["hookSpecificOutput"]
+    assert hso["permissionDecision"] == "deny"
+    assert "brainpalace query" in hso["permissionDecisionReason"]
+
+
+def test_bash_enforce_compound_side_effect_downgrades_to_nudge(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Denying `grep && make test` would block make too — spec D4 downgrades.
+    proj = _bash_project(tmp_path)
+    monkeypatch.setattr(hook, "discover_project_dir", lambda _=None: proj)
+    res = _run(
+        _bash_payload(proj, "grep -rn foo src/ && make test"), _ENFORCE, monkeypatch
+    )
+    hso = json.loads(res.output)["hookSpecificOutput"]
+    assert "permissionDecision" not in hso
+    assert "brainpalace query" in hso["additionalContext"]
+
+
+def test_bash_unindexed_target_is_silent(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # skip/ exists on disk but is absent from the manifest -> escape hatch.
+    proj = _bash_project(tmp_path)
+    (proj / "skip").mkdir()
+    monkeypatch.setattr(hook, "discover_project_dir", lambda _=None: proj)
+    res = _run(_bash_payload(proj, "grep -rn foo skip/"), _ENFORCE, monkeypatch)
+    assert res.exit_code == 0
+    assert res.output.strip() == ""
+
+
+def test_bash_non_search_is_silent(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    proj = _bash_project(tmp_path)
+    monkeypatch.setattr(hook, "discover_project_dir", lambda _=None: proj)
+    res = _run(_bash_payload(proj, "ls -la src/"), _ENFORCE, monkeypatch)
+    assert res.output.strip() == ""
+
+
+def test_bash_single_file_grep_is_silent(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Non-recursive grep of one known file is a line lookup, not a search (D3).
+    proj = _bash_project(tmp_path)
+    monkeypatch.setattr(hook, "discover_project_dir", lambda _=None: proj)
+    res = _run(_bash_payload(proj, "grep -n foo src/a.py"), _ENFORCE, monkeypatch)
+    assert res.output.strip() == ""
+
+
+def test_bash_regex_construct_is_silent(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # BM25 cannot honor \d+ — nudging toward it would be wrong advice (D3).
+    proj = _bash_project(tmp_path)
+    monkeypatch.setattr(hook, "discover_project_dir", lambda _=None: proj)
+    res = _run(_bash_payload(proj, r"grep -rn '\d+' src/"), _ENFORCE, monkeypatch)
+    assert res.output.strip() == ""
+
+
+def test_bash_server_down_is_silent(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    proj = _bash_project(tmp_path)
+    monkeypatch.setattr(hook, "discover_project_dir", lambda _=None: proj)
+    res = _run(
+        _bash_payload(proj, "grep -rn foo src/"), _ENFORCE, monkeypatch, server_up=False
+    )
+    assert res.output.strip() == ""
+
+
+def _register_own_guard(proj: Path) -> None:
+    """Simulate a project that ships its own search-guard hook (the BrainPalace
+    repo itself is the known case): committed .claude/settings.json registers
+    pretooluse-brainpalace-search-guard.sh on PreToolUse."""
+    claude = proj / ".claude"
+    claude.mkdir(exist_ok=True)
+    (claude / "settings.json").write_text(
+        json.dumps(
+            {
+                "hooks": {
+                    "PreToolUse": [
+                        {
+                            "matcher": "Bash",
+                            "hooks": [
+                                {
+                                    "type": "command",
+                                    "command": (
+                                        'bash "${CLAUDE_PROJECT_DIR}/.claude/hooks/'
+                                        'pretooluse-brainpalace-search-guard.sh"'
+                                    ),
+                                }
+                            ],
+                        }
+                    ]
+                }
+            }
+        )
+    )
+
+
+def test_bash_stands_down_when_project_ships_own_guard(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # A project registering its own search-guard hook must never double-fire
+    # with the shipped guard — silent even in enforce on an indexed target.
+    proj = _bash_project(tmp_path)
+    _register_own_guard(proj)
+    monkeypatch.setattr(hook, "discover_project_dir", lambda _=None: proj)
+    res = _run(_bash_payload(proj, "grep -rn foo src/"), _ENFORCE, monkeypatch)
+    assert res.exit_code == 0
+    assert res.output.strip() == ""
+
+
+def test_grep_stands_down_when_project_ships_own_guard(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Standdown covers the whole search guard (Grep/Glob too), fixing the
+    # pre-existing Grep double-fire in the BrainPalace repo as well.
+    proj = _bash_project(tmp_path)
+    _register_own_guard(proj)
+    monkeypatch.setattr(hook, "discover_project_dir", lambda _=None: proj)
+    res = _run(
+        {"tool_name": "Grep", "tool_input": {"pattern": "foo"}}, _ENFORCE, monkeypatch
+    )
+    assert res.exit_code == 0
+    assert res.output.strip() == ""
+
+
+def test_search_server_down_is_silent(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    proj = _bash_project(tmp_path)
+    monkeypatch.setattr(hook, "discover_project_dir", lambda _=None: proj)
+    res = _run(
+        _grep_payload(proj, "foo", "src"),
         _ENFORCE,
         monkeypatch,
         server_up=False,
@@ -102,9 +299,13 @@ def test_search_server_down_is_silent(monkeypatch: pytest.MonkeyPatch) -> None:
     assert res.output.strip() == ""
 
 
-def test_search_disabled_is_silent(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_search_disabled_is_silent(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    proj = _bash_project(tmp_path)
+    monkeypatch.setattr(hook, "discover_project_dir", lambda _=None: proj)
     res = _run(
-        {"tool_name": "Grep", "tool_input": {"pattern": "foo"}},
+        _grep_payload(proj, "foo", "src"),
         {"enabled": False, "mode": "enforce"},
         monkeypatch,
     )
@@ -112,33 +313,27 @@ def test_search_disabled_is_silent(monkeypatch: pytest.MonkeyPatch) -> None:
     assert res.output.strip() == ""
 
 
-def test_default_search_guard_is_on_and_advisory() -> None:
-    # On by default but advisory (nudge, never deny) — an on-by-default guard must
-    # not silently block every Grep/Glob for all users; enforce is opt-in.
+def test_default_search_guard_is_on_and_enforce() -> None:
+    # Enforce is safe as the shipped default now that every path is scope-aware:
+    # only indexed content + a BM25-answerable pattern (+ pure Bash search)
+    # fires. Advisory is the documented softening knob.
     assert hook._SEARCH_GUARD_DEFAULTS["enabled"] is True
-    assert hook._SEARCH_GUARD_DEFAULTS["mode"] == "advisory"
+    assert hook._SEARCH_GUARD_DEFAULTS["mode"] == "enforce"
 
 
-def test_search_default_nudges_not_denies(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    # With the shipped default (no cfg stub), a Grep is NUDGED, never DENIED.
-    # Fresh tmp_path project so the advisory cooldown stamp can't already be hot
-    # from another test/run sharing the real project's .brainpalace dir.
-    (tmp_path / ".brainpalace").mkdir()
+def test_search_default_denies(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    # With the shipped default (no cfg stub), an indexed-target Grep is DENIED.
+    proj = _bash_project(tmp_path)
     monkeypatch.setattr(hook, "discover_server_url", lambda _=None: "http://x")
-    monkeypatch.setattr(hook, "discover_project_dir", lambda _=None: tmp_path)
+    monkeypatch.setattr(hook, "discover_project_dir", lambda _=None: proj)
     monkeypatch.setattr(hook, "_guard_config_sources", lambda: [])
     monkeypatch.delenv("BRAINPALACE_SEARCH_GUARD", raising=False)
     runner = CliRunner()
     res = runner.invoke(
-        cli,
-        ["hook", "pretooluse"],
-        input=json.dumps({"tool_name": "Grep", "tool_input": {"pattern": "x"}}),
+        cli, ["hook", "pretooluse"], input=json.dumps(_grep_payload(proj, "x", "src"))
     )
     hso = json.loads(res.output)["hookSpecificOutput"]
-    assert "permissionDecision" not in hso
-    assert "brainpalace query" in hso["additionalContext"]
+    assert hso["permissionDecision"] == "deny"
 
 
 def test_search_malformed_stdin_is_silent() -> None:
@@ -212,9 +407,9 @@ def test_search_config_sources_reads_yaml(
 def test_advisory_nudge_respects_cooldown(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    (tmp_path / ".brainpalace").mkdir()
-    monkeypatch.setattr(hook, "discover_project_dir", lambda _=None: tmp_path)
-    payload = {"tool_name": "Grep", "tool_input": {"pattern": "foo"}}
+    proj = _bash_project(tmp_path)
+    monkeypatch.setattr(hook, "discover_project_dir", lambda _=None: proj)
+    payload = _grep_payload(proj, "foo", "src")
     first = _run(payload, _ADVISORY, monkeypatch)
     assert "additionalContext" in first.output
     # second call inside the same run reuses the monkeypatched server/config —
@@ -227,9 +422,9 @@ def test_advisory_nudge_respects_cooldown(
 def test_enforce_mode_ignores_cooldown(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    (tmp_path / ".brainpalace").mkdir()
-    monkeypatch.setattr(hook, "discover_project_dir", lambda _=None: tmp_path)
-    payload = {"tool_name": "Grep", "tool_input": {"pattern": "foo"}}
+    proj = _bash_project(tmp_path)
+    monkeypatch.setattr(hook, "discover_project_dir", lambda _=None: proj)
+    payload = _grep_payload(proj, "foo", "src")
     for _ in range(2):
         res = _run(payload, _ENFORCE, monkeypatch)
         assert '"permissionDecision": "deny"' in res.output

@@ -127,10 +127,12 @@ def doctor_command(
     Pass ``--reap`` to first kill orphan (unreferenced) server processes.
     """
     reaped: list[int] = []
+    survived: list[int] = []
     if reap:
         from brainpalace_cli.commands.reap import reap_orphans
 
-        reaped = reap_orphans()
+        outcome = reap_orphans()
+        reaped, survived = outcome.reaped, outcome.survived
         if not json_output:
             if reaped:
                 console.print(
@@ -139,6 +141,11 @@ def doctor_command(
                 )
             else:
                 console.print("[dim]No orphan server processes found.[/]")
+            if survived:
+                console.print(
+                    f"[red]Still alive after SIGKILL:[/] "
+                    f"{', '.join(map(str, survived))}"
+                )
 
     report = run_doctor(server_url_override=url)
 
@@ -155,6 +162,7 @@ def doctor_command(
             payload["applied_fixes"] = fix_actions
         if reap:
             payload["reaped_pids"] = reaped
+            payload["surviving_pids"] = survived
         click.echo(json.dumps(payload, indent=2))
         raise SystemExit(report.exit_code)
 

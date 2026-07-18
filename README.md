@@ -85,7 +85,7 @@ same prerequisites and end with the same `brainpalace` CLI on your `PATH`.
 
 > **Recommended if you use Claude Code.** Richest UX and it summarises your chat
 > sessions for through your Claude Code subscription (subagent calls to Haiku).
-> 42 slash commands, 6 agents, 2 skills.
+> 43 slash commands, 6 agents, 2 skills.
 
 **Install the plugin:**
 
@@ -166,7 +166,7 @@ with optional cloud providers for embeddings and summarisation.
 | **Server** (`brainpalace-rag`) | FastAPI backend — indexing pipeline, BM25 + vector + GraphRAG stores, REST API |
 | **CLI** (`brainpalace-cli`) | Click-based command-line client; primary interface for automation, mono-repos, and standalone use |
 | **MCP server** (`brainpalace mcp`) | Opt-in stdio shim exposing typed tool calls. `brainpalace init`/`install-mcp` wire it into Claude Code per-project (`.mcp.json`); other clients (VS Code / Copilot, Cursor, Kilo Code, Cline, Continue, Zed) configure it by hand — see [MCP Setup](docs/MCP_SETUP.md) |
-| **Claude Code plugin** | 42 slash commands, 6 agents, 2 skills for Claude Code users |
+| **Claude Code plugin** | 43 slash commands, 6 agents, 2 skills for Claude Code users |
 | **Web dashboard** (`brainpalace dashboard`) | Standalone browser control plane — manage every project server from one tab (instances, config, stats, jobs, cache, graph, sessions, logs, query history). Included with the CLI on Python 3.12+. See [DASHBOARD](docs/DASHBOARD.md) |
 
 ## Features
@@ -428,7 +428,7 @@ Or via the CLI: [docs/PROVIDER_CONFIGURATION.md](docs/PROVIDER_CONFIGURATION.md)
 
 ## Claude Code Plugin
 
-The plugin ships **42 slash commands**, **6 agents**, and **2 skills**.
+The plugin ships **43 slash commands**, **6 agents**, and **2 skills**.
 Full reference: [docs/PLUGIN_GUIDE.md](docs/PLUGIN_GUIDE.md).
 
 | Category | Commands |
@@ -458,7 +458,7 @@ Full reference: [docs/PLUGIN_GUIDE.md](docs/PLUGIN_GUIDE.md).
 ```
 brainpalace/
 ├── brainpalace-plugin/                     # Claude Code plugin
-│   ├── commands/                            # 42 slash commands
+│   ├── commands/                            # 43 slash commands
 │   ├── agents/                              # 6 agents
 │   ├── skills/                              # 2 context skills
 │   └── templates/                           # mcp-config-claude-code.json + sessionstart hook

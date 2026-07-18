@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "brainpalace-rag"
-version = "26.7.7"
+version = "26.7.8"
 description = "BrainPalace - Typed-memory & retrieval engine for AI agents (BM25 + vector + GraphRAG); code & docs today, more domains coming"
 authors = ["bxw91"]
 readme = "README.md"

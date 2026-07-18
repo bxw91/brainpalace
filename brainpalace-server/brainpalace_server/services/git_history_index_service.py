@@ -19,6 +19,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from brainpalace_server import process_spawn
 from brainpalace_server.config.git_config import GitIndexingConfig
 from brainpalace_server.config.indexing_config import load_indexing_config
 from brainpalace_server.indexing.git_chunker import GitCommitChunker
@@ -106,11 +107,9 @@ class GitHistoryIndexService:
     @staticmethod
     def _current_branch(repo_path: str) -> str | None:
         try:
-            out = subprocess.run(
+            out = process_spawn.run_capture(
                 ["git", "-C", repo_path, "rev-parse", "--abbrev-ref", "HEAD"],
                 check=True,
-                capture_output=True,
-                text=True,
             ).stdout.strip()
             return out or None
         except (subprocess.CalledProcessError, OSError):

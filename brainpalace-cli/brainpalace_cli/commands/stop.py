@@ -154,7 +154,11 @@ def resolve_project_root_from_url(url: str, timeout: float = 2.0) -> Path:
     "--force",
     "-f",
     is_flag=True,
-    help="Force stop with SIGKILL if SIGTERM fails",
+    help=(
+        "Skip the graceful-shutdown wait — SIGKILL immediately. With --all, "
+        "also skips the orphan-reaper's grace window (SIGKILL escalation "
+        "runs either way)."
+    ),
 )
 @click.option(
     "--timeout",
@@ -190,20 +194,32 @@ def stop_command(
       brainpalace stop --path /my/project           # Stop specific project's server
       brainpalace stop --url http://127.0.0.1:8001  # Stop server by URL
       brainpalace stop --all                        # Reap orphan server processes
+      brainpalace stop --all --force                # Reap orphans, skip grace window
     """
     if stop_all:
         from brainpalace_cli.commands.reap import reap_orphans
 
-        reaped = reap_orphans()
+        outcome = reap_orphans(grace=0.0) if force else reap_orphans()
+        reaped, survived = outcome.reaped, outcome.survived
         if json_output:
-            click.echo(json.dumps({"reaped_pids": reaped}, indent=2))
-        elif reaped:
-            console.print(
-                f"[green]Reaped {len(reaped)} orphan server process(es):[/] "
-                f"{', '.join(map(str, reaped))}"
+            click.echo(
+                json.dumps(
+                    {"reaped_pids": reaped, "surviving_pids": survived}, indent=2
+                )
             )
         else:
-            console.print("[dim]No orphan server processes found.[/]")
+            if reaped:
+                console.print(
+                    f"[green]Reaped {len(reaped)} orphan server process(es):[/] "
+                    f"{', '.join(map(str, reaped))}"
+                )
+            else:
+                console.print("[dim]No orphan server processes found.[/]")
+            if survived:
+                console.print(
+                    f"[red]Still alive after SIGKILL:[/] "
+                    f"{', '.join(map(str, survived))}"
+                )
         return
     try:
         # Resolve project root

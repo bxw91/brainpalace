@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-17
+last_validated: 2026-07-18
 ---
 
 # BrainPalace Quick Start
@@ -14,7 +14,7 @@ Install the BrainPalace plugin in Claude Code:
 claude plugins install github:bxw91/brainpalace
 ```
 
-This gives you access to 42 commands, 6 intelligent agents, and 2 skills for working with BrainPalace.
+This gives you access to 43 commands, 6 intelligent agents, and 2 skills for working with BrainPalace.
 
 ## Step 2: Install the Server and CLI
 
@@ -247,5 +247,5 @@ brainpalace doctor --fix    # also apply safe, offline fixes
 ## Next Steps
 
 - [User Guide](USER_GUIDE.md) - Detailed usage patterns
-- [Plugin Guide](PLUGIN_GUIDE.md) - All 42 commands documented
+- [Plugin Guide](PLUGIN_GUIDE.md) - All 43 commands documented
 - [Provider Configuration](../brainpalace-plugin/skills/using-brainpalace/references/provider-configuration.md) - Configure embedding and summarization providers

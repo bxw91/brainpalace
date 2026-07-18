@@ -171,14 +171,18 @@ def _dashboard_orphan_pids() -> list[int]:
         return []
 
 
-def _reap_orphan_servers() -> None:
-    """SIGTERM RAG-server processes not referenced by a live registry entry."""
+def _reap_orphan_servers() -> list[int]:
+    """SIGTERM+escalate RAG-server processes not referenced by a live registry
+    entry. Returns the PIDs that survived even the reaper's own SIGKILL, so
+    the caller's verification loop below can keep tracking them — an orphan
+    is by definition absent from the registry, so ``_live_survivors`` alone
+    can never see it."""
     try:
         from brainpalace_cli.commands.reap import reap_orphans  # noqa: PLC0415
 
-        reap_orphans()
+        return reap_orphans().survived
     except Exception:
-        pass
+        return []
 
 
 def _run_cmd(cmd: list[str], home: str) -> subprocess.CompletedProcess[str]:
@@ -227,15 +231,32 @@ def _server_pids(roots: list[str]) -> list[int]:
     return pids
 
 
-def _wait_until_stopped(grace: float) -> tuple[list[str], list[int]]:
-    """Poll until nothing is alive or ``grace`` seconds elapse; return survivors."""
+def _wait_until_stopped(
+    grace: float, *, extra_pids: list[int] | None = None
+) -> tuple[list[str], list[int]]:
+    """Poll until nothing is alive or ``grace`` seconds elapse; return survivors.
+
+    ``extra_pids`` folds orphan-reaper survivors (PIDs with no registry entry,
+    so ``_live_survivors`` can never see them — see ``_reap_orphan_servers``)
+    into the dashboard-pid slot so they're tracked and re-escalated exactly
+    like a stray dashboard, instead of silently vanishing from the loop.
+    """
     import time  # noqa: PLC0415
 
+    from brainpalace_cli.commands.reap import is_process_alive  # noqa: PLC0415
+
+    def _snapshot() -> tuple[list[str], list[int]]:
+        servers, dash_pids = _live_survivors()
+        if extra_pids:
+            alive_extra = [p for p in extra_pids if is_process_alive(p)]
+            dash_pids = dash_pids + alive_extra
+        return servers, dash_pids
+
     deadline = time.monotonic() + grace
-    servers, dash_pids = _live_survivors()
+    servers, dash_pids = _snapshot()
     while (servers or dash_pids) and time.monotonic() < deadline:
         time.sleep(_STOP_POLL_SECS)
-        servers, dash_pids = _live_survivors()
+        servers, dash_pids = _snapshot()
     return servers, dash_pids
 
 
@@ -260,15 +281,20 @@ def _warn_survivors(servers: list[str], dash_pids: list[int]) -> None:
         console.print(f"    [red]dashboard pid[/] {pid}")
 
 
-def _issue_stops(servers: list[str], *, argv: list[str], home: str) -> None:
-    """Fire the graceful (SIGTERM) stop for every server + the dashboard."""
+def _issue_stops(servers: list[str], *, argv: list[str], home: str) -> list[int]:
+    """Fire the graceful (SIGTERM) stop for every server + the dashboard.
+
+    Returns orphan-reaper survivor PIDs (still alive after the reaper's own
+    SIGKILL escalation) for the caller's verification loop to keep tracking.
+    """
     for project_root in servers:
         console.print(f"  [dim]stopping server[/] {project_root}")
         _run_cmd([*argv, "stop", "--path", project_root, "--json"], home)
-    _reap_orphan_servers()
+    orphan_survivors = _reap_orphan_servers()
     console.print("  [dim]stopping dashboard[/]")
     # `dashboard stop` reaps every dashboard (tracked + strays).
     _run_cmd([*argv, "dashboard", "stop"], home)
+    return orphan_survivors
 
 
 def _stop_all_instances(
@@ -288,15 +314,19 @@ def _stop_all_instances(
     continue. Returns ``True`` when everything is confirmed stopped, ``False``
     when the caller is proceeding with survivors still alive.
     """
-    _issue_stops(servers, argv=argv, home=home)
+    orphan_survivors = _issue_stops(servers, argv=argv, home=home) or []
     while True:
-        srv, dash_pids = _wait_until_stopped(_STOP_GRACE_SECS)
+        srv, dash_pids = _wait_until_stopped(
+            _STOP_GRACE_SECS, extra_pids=orphan_survivors
+        )
         if not srv and not dash_pids:
             return True
 
         console.print("  [yellow]still alive after SIGTERM — escalating to SIGKILL[/]")
         _sigkill_pids(_server_pids(srv) + dash_pids)
-        srv, dash_pids = _wait_until_stopped(_STOP_KILL_GRACE_SECS)
+        srv, dash_pids = _wait_until_stopped(
+            _STOP_KILL_GRACE_SECS, extra_pids=orphan_survivors
+        )
         if not srv and not dash_pids:
             return True
 
@@ -308,7 +338,7 @@ def _stop_all_instances(
             "Retry stopping the survivor(s)? (No = upgrade anyway)", default=True
         ):
             return False
-        _issue_stops(srv, argv=argv, home=home)
+        orphan_survivors = _issue_stops(srv, argv=argv, home=home) or []
 
 
 def _restart_and_verify(

@@ -4,6 +4,8 @@ import logging
 import subprocess
 from pathlib import Path
 
+from brainpalace_server import process_spawn
+
 logger = logging.getLogger(__name__)
 
 
@@ -49,12 +51,9 @@ def _resolve_git_root(start: Path) -> Path | None:
         Git root path or None if not in a git repo.
     """
     try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--show-toplevel"],
-            capture_output=True,
-            text=True,
+        result = process_spawn.run_capture(
+            ["git", "-C", str(start), "rev-parse", "--show-toplevel"],
             timeout=5,
-            cwd=str(start),
         )
         if result.returncode == 0:
             return Path(result.stdout.strip()).resolve()

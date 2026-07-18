@@ -1,9 +1,10 @@
 """Doc-Serve Server - RAG-based document indexing and query service."""
 
 import json
-import subprocess
 from importlib.metadata import PackageNotFoundError, distribution, version
 from urllib.parse import unquote, urlparse
+
+from brainpalace_server import process_spawn
 
 # Single source of truth: the version declared in pyproject.toml, read from the
 # installed package metadata. Avoids the drift class where pyproject and a
@@ -59,16 +60,12 @@ def _source_git_ref(dist_name: str = "brainpalace-rag") -> str | None:
     if not path:
         return None
     try:
-        branch = subprocess.run(
+        branch = process_spawn.run_capture(
             ["git", "-C", path, "rev-parse", "--abbrev-ref", "HEAD"],
-            capture_output=True,
-            text=True,
             check=True,
         ).stdout.strip()
-        commit = subprocess.run(
+        commit = process_spawn.run_capture(
             ["git", "-C", path, "rev-parse", "--short", "HEAD"],
-            capture_output=True,
-            text=True,
             check=True,
         ).stdout.strip()
     except Exception:

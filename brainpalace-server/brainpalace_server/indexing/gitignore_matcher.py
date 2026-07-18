@@ -16,6 +16,8 @@ from pathlib import Path
 
 import pathspec
 
+from brainpalace_server import process_spawn
+
 logger = logging.getLogger(__name__)
 
 # Directory names never indexed (VCS internals, virtualenvs, dep trees, build
@@ -181,10 +183,8 @@ def _git_common_dir(root: Path) -> Path | None:
     lives. The result can be relative; resolve it against `root`.
     """
     try:
-        out = subprocess.run(
+        out = process_spawn.run_capture(
             ["git", "-C", str(root), "rev-parse", "--git-common-dir"],
-            capture_output=True,
-            text=True,
             timeout=5,
         )
     except (OSError, subprocess.SubprocessError):
@@ -204,10 +204,8 @@ def _global_excludes_path(root: Path) -> Path | None:
     """Resolve git's global core.excludesFile (configured value or XDG default)."""
     configured = ""
     try:
-        out = subprocess.run(
+        out = process_spawn.run_capture(
             ["git", "-C", str(root), "config", "--get", "core.excludesFile"],
-            capture_output=True,
-            text=True,
             timeout=5,
         )
         if out.returncode == 0:
