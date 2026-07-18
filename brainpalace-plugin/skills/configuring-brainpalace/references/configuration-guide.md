@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-11
+last_validated: 2026-07-18
 ---
 
 # BrainPalace Configuration Guide
@@ -276,9 +276,11 @@ GraphRAG enables graph-based retrieval using entity relationships extracted from
 | `GRAPH_EXTRACTION_MODEL` | No | `claude-haiku-4-5` | Model for entity extraction |
 | `GRAPH_MAX_TRIPLETS_PER_CHUNK` | No | `10` | Maximum triplets extracted per document chunk |
 | `GRAPH_USE_CODE_METADATA` | No | `true` | Extract entities from AST metadata (imports, classes) |
-| `GRAPH_USE_LLM_EXTRACTION` | No | `false` | Use LLM for semantic entity extraction |
 | `GRAPH_TRAVERSAL_DEPTH` | No | `2` | Depth for graph traversal in queries |
 | `GRAPH_RRF_K` | No | `60` | Reciprocal Rank Fusion constant for multi-mode queries |
+
+LLM entity extraction has **no environment variable**. It is enabled with the
+`extraction.mode` key in `config.yaml` (`off` | `subagent` | `auto` | `provider`).
 
 ### GraphRAG in config.yaml
 

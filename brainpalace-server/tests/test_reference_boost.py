@@ -148,3 +148,22 @@ async def test_sensitivity_opt_in_passed_through():
     )
     await svc._apply_reference_boost(req, _resp(_chunk("c1", 0.8)))
     assert svc.reference_catalog_store.last_kwargs["include_sensitive"] is True
+
+
+async def test_reference_boost_preserves_routed_mode():
+    """The merge must not drop `routed_mode` (A1).
+
+    Same hazard as the memory boost: this rebuilds a fresh QueryResponse, and
+    it is the LAST thing an auto-routed graph query passes through on its way
+    to the caller. A dropped field here is invisible in every other test.
+    """
+    svc = _svc([(_entry("ref_1"), 0.9)])
+    resp = QueryResponse(
+        results=[_chunk("c1", 0.8)],
+        query_time_ms=1.0,
+        total_results=1,
+        routed_mode=QueryMode.GRAPH,
+    )
+    out = await svc._apply_reference_boost(_req(), resp)
+    assert any(r.source_type == "reference" for r in out.results), "boost must fire"
+    assert out.routed_mode == QueryMode.GRAPH

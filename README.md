@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-17
+last_validated: 2026-07-18
 ---
 
 <div align="center">
@@ -32,7 +32,7 @@ last_validated: 2026-07-17
 
 **Universal Vector + Graph RAG with a memory store.**
 
-Talk to your code, docs, chat history, or any text files. Your LLM will index all you write - not just current session.
+Talk to your code, docs, chat history, or any text files. BrainPalace will index all your files and chat sessions - not just current session.
 Explore it with Vector, BM25, Hybrid, Temporal Graph, Multi, Compute, Scan, Absence, Timeline, and Salience modes.
 
 Built for :
@@ -81,7 +81,7 @@ same prerequisites and end with the same `brainpalace` CLI on your `PATH`.
 
 ---
 
-### Install as a Claude Code plugin (deferred MCP)
+### Install as a Claude Code plugin + deferred MCP
 
 > **Recommended if you use Claude Code.** Richest UX and it summarises your chat
 > sessions for through your Claude Code subscription (subagent calls to Haiku).
@@ -269,12 +269,12 @@ with optional cloud providers for embeddings and summarisation.
 | `VECTOR` | Conceptual understanding | "Explain the architecture" |
 | `BM25` | Exact terms, error codes | "NullPointerException, getUserById" |
 | `HYBRID` | General questions | "How does caching work?" |
-| `GRAPH` | Relationships, dependencies | "What classes use AuthService?" |
+| `GRAPH` | Relationships, dependencies | "What uses QueryService?" |
 | `MULTI` | Comprehensive recall | "Everything about data validation" |
 | `COMPUTE` | Aggregates over your sessions (sum/count/avg, by week/month, superlatives) | "How many files did I touch this week?" |
 | `SCAN` | Utterance history over sessions | "Which week did I mention retries most?" |
 | `ABSENCE` | Subjects present under one value but absent under another | "Subjects with distance but not duration" |
-| `TIMELINE` | How a belief/fact evolved over time | "How did the auth decision evolve?" |
+| `TIMELINE` | How a belief/fact evolved over time | "How did QueryService evolve?" |
 <!--/GENERATED-->
 
 ## Usage Examples

@@ -6,7 +6,7 @@ Edit HERE only. Do NOT hand-edit generated copies:
   - SessionStart hook additionalContext                     (reads CORE tier, via `brainpalace hook`)
 See CLAUDE.md → "AI-guidance parity". Verified against code on the date below.
 
-meta: version=7.9.0 last_validated=2026-07-17
+meta: version=7.10.0 last_validated=2026-07-18
 
 Tiers:
   CORE = the marked slice below (between the CORE open/close HTML markers). The
@@ -105,6 +105,9 @@ Per-result keys are `text`, `source`, `score`, `chunk_id`, `start_line`,
 top-level `index_blocked` object means the index is STALE (paused over
 budget) — never auto-approve. (Runnable parsing snippet: `--tier full`.)
 
+A top-level `routed_mode` means the server ran a DIFFERENT mode than requested
+(auto-route, or read-only → `bm25`); absent when it ran as asked.
+
 **Allowed Glob/Grep (NOT codebase search):** inside a file BrainPalace already
 returned; non-indexed paths (`~/.claude/`, `~/.config/`, `/tmp/`, dotfiles,
 settings/logs); files changed since `last_indexed`; paths in `exclude_patterns`;
@@ -142,6 +145,30 @@ if 'error' in d: sys.exit('brainpalace error: %s' % d['error'])
 for r in d['results']:
     print(r['source'], r['score'])
     print(r['text'][:500])
+"
+```
+
+### `routed_mode` — did my query change mode?
+
+A top-level `routed_mode` is present only when the server executed a different
+mode than the one requested. Two causes: the **auto-router** re-routed a
+`hybrid` query (to `compute`, `scan`, `absence`, `timeline`, or `graph`), or
+**read-only mode** degraded it to `bm25` because no embedding call was possible.
+
+Check it before concluding recall was poor. Four of the re-route targets
+announce themselves structurally — `compute`/`scan`/`absence`/`timeline` rows
+arrive in their own top-level key with `results` empty. **`graph` does not**: it
+returns plain `results`, identical in shape to `hybrid`, so `routed_mode` is the
+only signal that the mode changed and the ranking you are looking at came from
+graph traversal rather than hybrid retrieval.
+
+```bash
+brainpalace query "what depends on QueryService" --mode hybrid --json | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+if 'error' in d: sys.exit('brainpalace error: %s' % d['error'])
+if d.get('routed_mode'):
+    print('server re-routed to:', d['routed_mode'])
 "
 ```
 
@@ -194,6 +221,20 @@ a genuine exemption, open the prompt with `# BRAINPALACE_EXEMPT: <reason of 20+ 
 
 ---
 
+## Multi Mode — Comprehensive Fusion
+
+`--mode multi` combines vector + BM25 + graph via Reciprocal Rank Fusion —
+documented as 3-way fusion. **The graph leg is dropped unless the storage
+backend is `chroma`** — on any other backend (e.g. PostgreSQL) `multi`
+silently degrades to 2-way (vector + BM25) fusion, no error, no warning in
+the response. This is a documented, deliberate constraint (graph queries
+require the ChromaDB backend) — not a bug, and not something to work around;
+just be aware recall may be lower than "3-way fusion" implies on a
+non-chroma deployment. Check the active backend if `multi` results look
+surprisingly graph-thin.
+
+---
+
 ## Compute Mode — Aggregation over Typed Records
 
 `--mode compute` answers set-level questions (sum/count/avg/superlative) over
@@ -202,6 +243,14 @@ chunks. It is **auto-routed**: queries containing "how many", "total", "which
 week had most", etc. are classified as compute-intent and routed to this mode
 automatically, falling back to `hybrid` when no metric resolves or records are
 empty.
+
+**Prerequisite — session extraction:** records only exist once session
+extraction has run (`extraction.mode` — `off` by default). With it off,
+`compute` always returns empty, which reads exactly like "search found
+nothing" rather than "the record store has never been populated." Before
+telling a user compute/absence found no match, check `brainpalace records
+stats` — `Total records: 0` means extraction is off or hasn't run yet, not
+that the query was wrong.
 
 **What records exist:** HIGH-confidence records are populated from session
 distillation. Phase 1 derives counts automatically (files touched, tools used,
@@ -254,7 +303,10 @@ is off or no term parses. Tie-break with compute: typed record metric wins.
 `--mode absence` — anti-join over typed records: subjects present under one
 partition value (`metric`/`source`/`domain`) but absent under another
 ("distance but not duration"). Deterministic, no LLM. Empty when no two
-stored values resolve, or nothing qualifies (e.g. no records exist).
+stored values resolve, or nothing qualifies (e.g. no records exist). Same
+record-store prerequisite as compute — see "Prerequisite — session
+extraction" above; `brainpalace records stats` tells "store is empty" apart
+from "nothing is absent."
 Auto-routed after compute and scan — a query carrying a compute or scan tell
 alongside an absence tell routes there instead (e.g. "did I discuss gmail but
 not session" is scan, not absence, because it carries "did i discuss").

@@ -78,8 +78,10 @@ export ENABLE_GRAPH_INDEX=true
 | `GRAPH_STORE_TYPE` | `sqlite` | Graph backend: `sqlite` (persistent + temporal, default) or `simple` (in-memory JSON) |
 | `GRAPH_MAX_TRIPLETS_PER_CHUNK` | `10` | Maximum entities to extract per document chunk |
 | `GRAPH_USE_CODE_METADATA` | `true` | Extract relationships from code AST metadata |
-| `GRAPH_USE_LLM_EXTRACTION` | `true` | Use LLM for entity extraction from documents |
 | `GRAPH_TRAVERSAL_DEPTH` | `2` | Default traversal depth for graph queries |
+
+LLM entity extraction has no environment variable — enable it with the
+`extraction.mode` key in `config.yaml` (`off` | `subagent` | `auto` | `provider`).
 
 ### Query Modes
 

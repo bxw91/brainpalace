@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-17
+last_validated: 2026-07-18
 ---
 
 # BrainPalace User Guide
@@ -40,7 +40,7 @@ BrainPalace is a RAG (Retrieval-Augmented Generation) system that indexes and se
 
 | Component | Count | Description |
 |-----------|-------|-------------|
-| **Commands** | 42 | Slash commands for all operations |
+| **Commands** | 43 | Slash commands for all operations |
 | **Agents** | 6 | Intelligent assistants for complex tasks |
 | **Skills** | 2 | Context for optimal search and configuration |
 
@@ -304,7 +304,7 @@ stopwords), so keyword search works precisely for non-English content. See
 Traverses entity relationships. Best for dependency and relationship queries.
 
 ```
-/brainpalace-query --mode graph "what classes use AuthService"
+/brainpalace-query --mode graph "what uses QueryService"
 /brainpalace-query --mode graph "what calls the validate function"
 ```
 
@@ -1047,8 +1047,8 @@ it is stopped.
 On the next `brainpalace start`, the server compares the recorded `indexed_root`
 against the current location. If they differ, it **rehomes** the index: it swaps
 `old_root → new_root` across every path-addressed store — folder records, manifest
-keys, chunk `source`/`file_path` metadata, the knowledge graph (both the `sqlite`
-and default `simple` backends), and the reference catalog — then serves normally. No
+keys, chunk `source`/`file_path` metadata, the knowledge graph (both the default
+`sqlite` and the `simple` backends), and the reference catalog — then serves normally. No
 embeddings are recomputed, so there is no provider cost and no wait for re-indexing.
 
 ### Fail-closed while rehoming
@@ -1078,8 +1078,8 @@ last checkpoint, so restarting the server is an equally valid recovery path.
   project root are not under `old_root`, so their paths are left unchanged by the
   rehome.
 
-The knowledge graph is rehomed for **both** backends — the `sqlite` store (node ids
-+ edge keys) and the default `simple` (JSON) store (node ids, relations, triplets) —
+The knowledge graph is rehomed for **both** backends — the default `sqlite` store
+(node ids + edge keys) and the `simple` (JSON) store (node ids, relations, triplets) —
 so graph-mode results stay correct across a move with no rebuild required.
 
 ### Copying a project vs moving it
@@ -1537,7 +1537,7 @@ brainpalace index .
 ## Next Steps
 
 - [Quick Start](QUICK_START.md) - Get running in minutes
-- [Plugin Guide](PLUGIN_GUIDE.md) - All 42 commands in detail
+- [Plugin Guide](PLUGIN_GUIDE.md) - All 43 commands in detail
 - [API Reference](API_REFERENCE.md) - REST API documentation
 - [GraphRAG Guide](GRAPHRAG_GUIDE.md) - Knowledge graph features
 - [Provider Configuration](../brainpalace-plugin/skills/using-brainpalace/references/provider-configuration.md) - Provider setup

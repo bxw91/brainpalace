@@ -356,6 +356,15 @@ class QueryResponse(BaseModel):
             "POST /index/jobs/{job_id}/approve."
         ),
     )
+    routed_mode: QueryMode | None = Field(
+        default=None,
+        description=(
+            "Set when the executed mode DIFFERS from the requested one — the "
+            "auto-router re-routed a hybrid query (compute/scan/absence/"
+            "timeline/graph), or read-only mode degraded it to bm25. Null when "
+            "the query ran in the mode the caller asked for."
+        ),
+    )
 
     model_config = {
         "json_schema_extra": {

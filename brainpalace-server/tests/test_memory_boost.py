@@ -150,3 +150,24 @@ async def test_summarization_on_keeps_session_derived_memory(monkeypatch):
     out = await svc._apply_memory_boost(_req(), _resp(_chunk("c1", 0.1)))
     mem_ids = {r.chunk_id for r in out.results if r.source_type == "memory"}
     assert mem_ids == {"user_1", "sess_1"}
+
+
+async def test_memory_boost_preserves_routed_mode():
+    """The merge must not drop `routed_mode` (A1).
+
+    `_apply_memory_boost` rebuilds a fresh QueryResponse rather than mutating,
+    so any field it forgets is silently lost. The auto-routed GRAPH leg is the
+    one re-route that does NOT early-return — it falls through the retrieval
+    tail and out through both boosters — so dropping the field here would blind
+    exactly the case the field exists to surface.
+    """
+    svc = _svc([MemoryHit(id="mem_1", text="staging url is x", score=0.9)])
+    resp = QueryResponse(
+        results=[_chunk("c1", 0.8)],
+        query_time_ms=1.0,
+        total_results=1,
+        routed_mode=QueryMode.GRAPH,
+    )
+    out = await svc._apply_memory_boost(_req(), resp)
+    assert any(r.source_type == "memory" for r in out.results), "boost must fire"
+    assert out.routed_mode == QueryMode.GRAPH

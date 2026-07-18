@@ -94,6 +94,7 @@ class TestCLIQueryModes:
         mock_response.query_time_ms = 12.5
         mock_response.total_results = 1
         mock_response.index_blocked = None
+        mock_response.routed_mode = None
         mock_client.query.return_value = mock_response
         mock_client_class.return_value = mock_client
 
@@ -144,6 +145,7 @@ class TestCLIQueryModes:
         mock_response.query_time_ms = 5.0
         mock_response.total_results = 1
         mock_response.index_blocked = None
+        mock_response.routed_mode = None
         mock_client.query.return_value = mock_response
         mock_client_class.return_value = mock_client
 

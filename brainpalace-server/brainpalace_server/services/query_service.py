@@ -414,6 +414,7 @@ class QueryService:
                     compute=compute_results,
                     query_time_ms=elapsed,
                     total_results=len(compute_results),
+                    routed_mode=QueryMode.COMPUTE,
                 )
             # empty → fall through to normal hybrid retrieval (finding #4)
 
@@ -434,6 +435,7 @@ class QueryService:
                     scan=scan_results,
                     query_time_ms=elapsed,
                     total_results=len(scan_results),
+                    routed_mode=QueryMode.SCAN,
                 )
 
         # Auto-router, absence leg (Phase 3). Runs AFTER compute and scan;
@@ -454,6 +456,7 @@ class QueryService:
                     absence=absence_results,
                     query_time_ms=elapsed,
                     total_results=len(absence_results),
+                    routed_mode=QueryMode.ABSENCE,
                 )
 
         # Auto-router, timeline leg (Phase 4). Runs AFTER compute, scan, and
@@ -478,13 +481,62 @@ class QueryService:
                     timeline=timeline_results,
                     query_time_ms=elapsed,
                     total_results=len(timeline_results),
+                    routed_mode=QueryMode.TIMELINE,
                 )
+
+        # Auto-router, graph leg (D1/D2). Inserted LAST, after compute, scan,
+        # absence, and timeline — appending keeps every existing router-growth
+        # eval assertion about the compute -> scan -> absence -> timeline
+        # order true. Unlike the other four legs, graph returns plain
+        # `results` (A13) — identical in shape to hybrid, no dedicated
+        # QueryResponse field — so instead of an early return this reroutes
+        # stage1_request to GRAPH mode and lets it fall through the normal
+        # hybrid retrieval tail (filters, decay, rerank) below. A cheap
+        # null-gate (graph_store is not None) mirrors the timeline leg; the
+        # try/except ValueError mirrors the multi path's graph guard
+        # (:1444-1448) — _execute_graph_query raises ValueError only for a
+        # non-chroma backend, and a mode the user never asked for must not
+        # propagate an exception out of a plain hybrid query. Empty graph
+        # results leave stage1_request.mode at HYBRID and fall through to
+        # normal hybrid retrieval, exactly like the other four legs.
+        from brainpalace_server.services.query_router import classify_graph_intent
+
+        # Carried to the tail response (:681) rather than derived there: by then
+        # stage1_request.mode has already been rewritten, so comparing it
+        # against request.mode could not distinguish "auto-routed to graph"
+        # from "the caller asked for graph".
+        _routed_mode: QueryMode | None = None
+        _auto_graph_results: list[QueryResult] | None = None
+        _gr_gm = getattr(self, "graph_index_manager", None)
+        _gr_graph = getattr(_gr_gm, "graph_store", None) if _gr_gm is not None else None
+        if (
+            stage1_request.mode == QueryMode.HYBRID
+            and _gr_graph is not None
+            and classify_graph_intent(stage1_request.query)
+        ):
+            try:
+                graph_results = await self._execute_graph_query(stage1_request)
+            except ValueError:
+                graph_results = []
+            if graph_results:
+                logger.info(
+                    "auto-router: hybrid query rerouted to graph (%d relationship "
+                    "hits)",
+                    len(graph_results),
+                )
+                _auto_graph_results = graph_results
+                stage1_request = stage1_request.model_copy(
+                    update={"mode": QueryMode.GRAPH}
+                )
+                _routed_mode = QueryMode.GRAPH
+            # empty → stage1_request.mode stays HYBRID (finding #4)
 
         # Read-only: vector/hybrid/multi need to embed the query text (a
         # provider call). On a cache miss, degrade to BM25 (purely lexical, no
-        # network) so the server stays queryable offline. GRAPH and BM25 are
-        # unaffected. Cached vector/hybrid results are still served — this runs
-        # only after the cache-miss path.
+        # network) so the server stays queryable offline. GRAPH (explicit or
+        # auto-routed above) and BM25 are unaffected — a graph query needs no
+        # embedding round-trip either way. Cached vector/hybrid results are
+        # still served — this runs only after the cache-miss path.
         if is_read_only() and stage1_request.mode in (
             QueryMode.VECTOR,
             QueryMode.HYBRID,
@@ -495,6 +547,10 @@ class QueryService:
                 stage1_request.mode.value,
             )
             stage1_request = stage1_request.model_copy(update={"mode": QueryMode.BM25})
+            # D3: same defect class as an auto-route — the caller asked for one
+            # mode and got another. The field means "your mode changed", not
+            # "the auto-router fired".
+            _routed_mode = QueryMode.BM25
 
         # Compute early-return: aggregation rows are not documents — skip the
         # entire retrieval tail (content-filter, hidden-source filter, time-decay,
@@ -552,7 +608,14 @@ class QueryService:
         elif stage1_request.mode == QueryMode.VECTOR:
             results = await self._execute_vector_query(stage1_request)
         elif stage1_request.mode == QueryMode.GRAPH:
-            results = await self._execute_graph_query(stage1_request)
+            # Reuse the auto-router's already-fetched results (above) rather
+            # than querying the graph twice; explicit --mode graph has no
+            # trial run, so _auto_graph_results is None and this executes.
+            results = (
+                _auto_graph_results
+                if _auto_graph_results is not None
+                else await self._execute_graph_query(stage1_request)
+            )
         elif stage1_request.mode == QueryMode.MULTI:
             results = await self._execute_multi_query(stage1_request)
         else:  # HYBRID
@@ -633,6 +696,11 @@ class QueryService:
             results=results,
             query_time_ms=query_time_ms,
             total_results=len(results),
+            # Set BEFORE cache.put below, so a cache hit reports the same
+            # routing as the miss that filled it. Safe to cache: the cache key
+            # carries the REQUESTED mode, so an identical query+mode always
+            # routes identically.
+            routed_mode=_routed_mode,
         )
 
         # Store in query cache (Phase 17 — QCACHE-01). Cache the memory-free
@@ -817,6 +885,10 @@ class QueryService:
             results=merged,
             query_time_ms=response.query_time_ms,
             total_results=len(merged),
+            # Carried, not re-derived: an auto-routed GRAPH query is the one
+            # re-route that falls through the retrieval tail into the boosters,
+            # so rebuilding without this drops the signal on its main path.
+            routed_mode=response.routed_mode,
         )
 
     async def _apply_reference_boost(
@@ -883,6 +955,7 @@ class QueryService:
             results=merged,
             query_time_ms=response.query_time_ms,
             total_results=len(merged),
+            routed_mode=response.routed_mode,  # see _apply_memory_boost
         )
 
     async def _execute_vector_query(self, request: QueryRequest) -> list[QueryResult]:
@@ -1397,11 +1470,16 @@ class QueryService:
         plan = compile_scan(request.query, explicit=request.mode == QueryMode.SCAN)
         if plan is None:
             return []
+        # A14: scan_archive takes an `engine` (stem|lemma) that used to be left
+        # at its default, so a project configured for the lemma BM25 engine
+        # silently scanned with the stem analyzer — different tokenization from
+        # the index the same query hits in every other mode.
         rows = await asyncio.to_thread(
             scan_archive,
             root,
             plan,
             request.language or "en",
+            getattr(getattr(self, "bm25_manager", None), "engine", None) or "stem",
             private_session_ids=self._private_session_ids(),
             include_sensitive=_sensitivity_allowed(request),
         )

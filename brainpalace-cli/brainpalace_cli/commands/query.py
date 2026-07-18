@@ -463,6 +463,10 @@ def query_command(
                 blocked = getattr(response, "index_blocked", None)
                 if blocked is not None:
                     output["index_blocked"] = blocked
+                # Emitted only when the server actually changed the mode, so
+                # its presence alone answers "was my query re-routed?".
+                if getattr(response, "routed_mode", None):
+                    output["routed_mode"] = response.routed_mode
                 click.echo(json.dumps(output, indent=2))
                 return
 
@@ -481,6 +485,19 @@ def query_command(
                     f"Approve: brainpalace jobs {blocked.get('job_id')} --approve[/]"
                 )
 
+            # Re-route notice (every mode). Without this an auto-routed graph
+            # query is indistinguishable from a hybrid one — same result shape,
+            # different recall — and the only trace is a server-side INFO log.
+            # Wording covers BOTH causes: the auto-router re-routing, and a
+            # read-only degrade to bm25. "Auto-routed" would be wrong for the
+            # latter.
+            routed = getattr(response, "routed_mode", None)
+            if routed:
+                console.print(
+                    f"[dim]↻ Ran in [bold]{routed}[/bold] mode "
+                    f"(you asked for {mode})[/]"
+                )
+
             # Compute mode: print aggregation rows as label: value lines
             if response.compute is not None:
                 console.print(
@@ -488,7 +505,12 @@ def query_command(
                     f"[dim]Compute results in {response.query_time_ms:.1f}ms[/]\n"
                 )
                 if not response.compute:
-                    console.print("[yellow]No compute results.[/]")
+                    console.print(
+                        "[yellow]No compute results — the typed numeric record "
+                        "store is empty or no metric resolved. Records come from "
+                        "session extraction (off by default: 'brainpalace init "
+                        "--sessions'). Check 'brainpalace records stats'.[/]"
+                    )
                 else:
                     for row in response.compute:
                         unit_suffix = f" {row.unit}" if row.unit else ""
@@ -521,8 +543,11 @@ def query_command(
                 )
                 if not response.absence:
                     console.print(
-                        "[yellow]No gaps found (no two stored values resolved, "
-                        "or nothing is absent).[/]"
+                        "[yellow]No gaps found — the typed numeric record store "
+                        "is empty or the two partitions never resolved. Records "
+                        "come from session extraction (off by default: "
+                        "'brainpalace init --sessions'). Check 'brainpalace "
+                        "records stats'.[/]"
                     )
                 else:
                     for absence_row in response.absence:

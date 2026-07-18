@@ -1,4 +1,4 @@
-"""Route set-level questions to compute/scan/absence/timeline; else hybrid."""
+"""Route set-level questions to compute/scan/absence/timeline/graph; else hybrid."""
 
 from __future__ import annotations
 
@@ -26,6 +26,23 @@ _TELLS = (
 )
 
 
+_COMPUTE_ANTI_TELLS = (
+    "did i mention",
+    "did we mention",
+    "did i say",
+    "did we say",
+    "did i talk about",
+    "did we talk about",
+    "did i discuss",
+    "did we discuss",
+    "mention the word",
+    "say the word",
+    "which week did",
+    "which month did",
+    "which day did",
+)
+
+
 def classify_compute_intent(query: str) -> bool:
     """Return True when the query expresses a set-level aggregation intent.
 
@@ -33,8 +50,18 @@ def classify_compute_intent(query: str) -> bool:
     positives fall through to compute (which returns [] when no metric
     resolves) and the auto-router then falls back to hybrid, so precision
     failures are safe.
+
+    Checked BEFORE the positive match: `_COMPUTE_ANTI_TELLS`, utterance-verb
+    phrasing ("did I mention", "which week did I say") that also carries a
+    compute tell like "most" (e.g. "which week did I mention retries most?").
+    Those questions are about the user's own utterances, not an aggregation —
+    scan owns them. Without this exclusion a populated record store would let
+    compute claim the query and return an aggregation answer instead of the
+    utterance-history answer the user asked for.
     """
     q = (query or "").lower()
+    if any(t in q for t in _COMPUTE_ANTI_TELLS):
+        return False
     return any(t in q for t in _TELLS)
 
 
@@ -119,8 +146,11 @@ def classify_timeline_intent(query: str) -> bool:
     Tells require an explicit temporal/evolution marker (deliberately NOT bare
     "how did", which fires on plain retrieval) — disjoint from compute
     (aggregation), scan (utterance history), absence (anti-join), AND graph
-    relationship phrasing ("what depends on / relates to X"). Graph mode is
-    explicit-only, so there is no runtime timeline<->graph collision. False
+    relationship phrasing ("what depends on / relates to X"). There is no
+    runtime timeline<->graph collision because the two tell-lists are
+    disjoint by construction: timeline tells are evolution/temporal markers
+    ("evolved", "over time", "history of"), graph tells are relationship
+    verbs ("what calls", "what depends on") — no query can trip both. False
     positives are safe — timeline returns [] when no entity resolves or the
     entity has no edges, and the auto-router falls back to hybrid. The auto-route
     order (compute -> scan -> absence -> timeline) is the tie-break when a query
@@ -128,3 +158,31 @@ def classify_timeline_intent(query: str) -> bool:
     """
     q = (query or "").lower()
     return any(t in q for t in _TIMELINE_TELLS)
+
+
+_GRAPH_TELLS = (
+    "what calls",
+    "what uses",
+    "what imports",
+    "who calls",
+    "what depends on",
+    "what references",
+    "classes that use",
+    "impact of changing",
+)
+
+
+def classify_graph_intent(query: str) -> bool:
+    """True when the query asks about a code relationship/dependency edge.
+
+    Tells are narrow relationship-verb phrases (deliberately NOT bare "how",
+    which fires on plain retrieval) — mirrors `_TIMELINE_TELLS`'s precision-
+    first shape. Disjoint from compute (aggregation), scan (utterance
+    history), absence (anti-join), and timeline (evolution/temporal markers).
+    False positives are safe — graph returns [] when no entity resolves or
+    the entity has no edges, and the auto-router falls back to hybrid. The
+    auto-route order (compute -> scan -> absence -> timeline -> graph) is the
+    tie-break when a query carries an earlier tell too.
+    """
+    q = (query or "").lower()
+    return any(t in q for t in _GRAPH_TELLS)

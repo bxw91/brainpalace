@@ -436,6 +436,8 @@ export type ReplayResponse = {
   scan?: AggRow[] | null;
   absence?: AbsenceRow[] | null;
   timeline?: TimelineRow[] | null;
+  /** Set when the server ran a DIFFERENT mode than the one requested. */
+  routed_mode?: string | null;
 };
 
 /** Server log tail (server `/health/logs`). */

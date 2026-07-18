@@ -17,7 +17,7 @@ metadata:
   category: ai-tools
   author: bxw91
   last_validated: 2026-06-13
-last_validated: 2026-07-13
+last_validated: 2026-07-18
 ---
 
 # Configuring BrainPalace
@@ -391,10 +391,10 @@ point-in-time queries, decision supersession). `simple` disables all temporal fe
 | `GRAPH_STORE_TYPE` | `graphrag.store_type` | `sqlite` | `simple` or `sqlite` |
 | `GRAPH_INDEX_PATH` | — | `./graph_index` | On-disk graph store path |
 | `GRAPH_USE_CODE_METADATA` | `graphrag.use_code_metadata` | `true` | AST metadata extraction |
-| `GRAPH_USE_LLM_EXTRACTION` | — | `true` | Use LLM extractor when available |
 | `GRAPH_MAX_TRIPLETS_PER_CHUNK` | — | `10` | Triplet cap per chunk |
 | `GRAPH_TRAVERSAL_DEPTH` | — | `2` | Default traversal depth |
 | `GRAPH_EXTRACTION_MODEL` | — | `claude-haiku-4-5` | Triplet-extraction model |
+| — | `extraction.mode` | `off` | LLM extraction switch — **config.yaml only, no env var** |
 
 **Note**: GraphRAG requires the `--include-code` flag during indexing to extract code structure:
 

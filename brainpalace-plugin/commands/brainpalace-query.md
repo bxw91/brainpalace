@@ -72,7 +72,7 @@ parameters:
     default: ""
 skills:
   - using-brainpalace
-last_validated: 2026-07-17
+last_validated: 2026-07-18
 ---
 
 # BrainPalace Query

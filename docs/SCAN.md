@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-13
+last_validated: 2026-07-18
 ---
 
 # Scan Mode — deterministic term counts over your session history
@@ -56,6 +56,30 @@ brainpalace query 'how often did I say "entity resolution" per month' --mode sca
 **`--json` contract for scan:** `results` is always `[]`; rows live under
 `scan`. Each row: `label` (bucket key or `"<term> count"`), `value` (float
 count), `term`, `group` (bucket key or `null`), `score` (0..1 normalised).
+
+## Cost and parallelism
+
+Scan cost is linear in archive size — every retained transcript is parsed and
+tokenized on every query. There is no index, so a large archive is seconds, not
+milliseconds. `since`/`until` bounds prune whole day-folders before any IO and
+are the cheapest way to make a scan faster.
+
+Per-file work is fanned out to an internal process pool once a scan touches at
+least **24 files**; below that the fixed pool cost dominates (measured: 12 files
+are *slower* pooled, 30 files 1.9x faster, 60 files 2.4x). Pool width is
+`min(8, CPUs this process may run on)` — `sched_getaffinity`, so container CPU
+limits are respected. The pool is created lazily, reused for the process
+lifetime, and rebuilt if the server forks.
+
+**Fork-only.** The pool is used only when the multiprocessing start method is
+`fork`. With fork, workers inherit the parent's imports and pool startup is
+~50ms; with spawn, every worker re-imports `brainpalace_server` (measured 7.6s
+for 4 workers — worse than the sequential scan the pool exists to fix). macOS
+and Windows default to spawn, so scan there runs sequentially by design. A
+crashed worker is not fatal: the scan is redone sequentially.
+
+On this repo's own archive the pool takes a representative weekly scan from
+~9.7s to ~1.0s.
 
 ## Configuration
 

@@ -391,6 +391,14 @@ export function Queries({ instanceId }: { instanceId?: string }) {
                 {runResults.total_results} result
                 {runResults.total_results === 1 ? "" : "s"} ·{" "}
                 {Math.round(runResults.query_time_ms)} ms
+                {runResults.routed_mode ? (
+                  <>
+                    {" · "}
+                    <span data-testid="routed-mode" title="The server ran a different mode than the one requested">
+                      ↻ ran as {runResults.routed_mode}
+                    </span>
+                  </>
+                ) : null}
               </p>
               {(() => {
                 if (runResults.timeline != null) {

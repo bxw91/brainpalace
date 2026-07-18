@@ -13,7 +13,11 @@ class TestAlphaWeighting:
         mock_service.is_ready.return_value = True
         mock_service.execute_query = AsyncMock(
             return_value=MagicMock(
-                results=[], query_time_ms=0, total_results=0, index_blocked=None
+                results=[],
+                query_time_ms=0,
+                total_results=0,
+                index_blocked=None,
+                routed_mode=None,
             )
         )
         mock_idx_service = MagicMock()

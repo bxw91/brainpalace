@@ -151,6 +151,7 @@ class TestQueryCommand:
         mock_response.absence = None
         mock_response.timeline = None
         mock_response.index_blocked = None
+        mock_response.routed_mode = None
 
         mock_client.query.return_value = mock_response
         mock_client_class.return_value = mock_client
@@ -177,6 +178,7 @@ class TestQueryCommand:
         mock_response.absence = None
         mock_response.timeline = None
         mock_response.index_blocked = None
+        mock_response.routed_mode = None
 
         mock_client.query.return_value = mock_response
         mock_client_class.return_value = mock_client
@@ -209,6 +211,7 @@ class TestQueryCommand:
         mock_response.absence = None
         mock_response.timeline = None
         mock_response.index_blocked = None
+        mock_response.routed_mode = None
 
         mock_client.query.return_value = mock_response
         mock_client_class.return_value = mock_client

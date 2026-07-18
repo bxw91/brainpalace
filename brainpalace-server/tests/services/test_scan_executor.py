@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import json
+from concurrent.futures.process import BrokenProcessPool
 from pathlib import Path
 
+import pytest
+
+from brainpalace_server.services import scan_executor
 from brainpalace_server.services.scan_compiler import ScanPlan
 from brainpalace_server.services.scan_executor import scan_archive
 
@@ -111,3 +115,117 @@ def test_no_hits_empty(tmp_path: Path) -> None:
 
 def test_missing_dir_empty(tmp_path: Path) -> None:
     assert scan_archive(tmp_path / "ghost", ScanPlan(term="foobar")) == []
+
+
+# --- fan-out: A8 privacy invariant + A10 bucketing under file-level fan-out ---
+
+#: Comfortably above the pool threshold, so these archives take the pooled path
+#: wherever the pool is enabled (fork) and the sequential path elsewhere. The
+#: assertions are identical either way — that is the point.
+_WIDE = 40
+
+
+def _wide_archive(tmp_path: Path, private_count: int = 0) -> tuple[Path, set[str]]:
+    """One day-folder with `_WIDE` sessions, one "widget" occurrence each.
+
+    Returns (archive_root, private_session_ids). The first `private_count`
+    sessions are the private ones.
+    """
+    root = tmp_path / "session_archive"
+    day = root / "2026-01-05-claude-code"
+    day.mkdir(parents=True)
+    private: set[str] = set()
+    for i in range(_WIDE):
+        sid = f"s{i:03d}"
+        (day / f"{sid}.jsonl").write_text(
+            _line("user", "widget mentioned here", "2026-01-05T09:00:00Z") + "\n",
+            encoding="utf-8",
+        )
+        if i < private_count:
+            private.add(sid)
+    return root, private
+
+
+def test_private_sessions_excluded_under_fanout(tmp_path: Path) -> None:
+    """A8: default-deny holds when files are scanned by fanned-out workers.
+
+    The filter must run inside the per-file worker, before the transcript is
+    read. If it ever moves back to a post-hoc parent filter, private
+    transcripts get read and counted and this count goes to `_WIDE`.
+    """
+    root, private = _wide_archive(tmp_path, private_count=10)
+    plan = ScanPlan(term="widget")
+
+    hidden = scan_archive(root, plan, private_session_ids=private)
+    assert hidden == [(None, _WIDE - 10)]
+
+    revealed = scan_archive(
+        root, plan, private_session_ids=private, include_sensitive=True
+    )
+    assert revealed == [(None, _WIDE)]
+
+
+def test_spawn_platforms_stay_sequential(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D10: on a spawn platform the pool is declined and results are unchanged.
+
+    macOS/Windows default to spawn, where each worker re-imports
+    `brainpalace_server` and the pool is far slower than scanning inline. The
+    gate is only correct if the sequential path returns identical rows, so this
+    forces the gate closed on Linux and re-asserts the pooled expectations.
+    """
+    monkeypatch.setattr(
+        scan_executor.multiprocessing, "get_start_method", lambda **kw: "spawn"
+    )
+    assert scan_executor._use_pool(_WIDE) is False
+
+    root, private = _wide_archive(tmp_path, private_count=10)
+    plan = ScanPlan(term="widget")
+    assert scan_archive(root, plan, private_session_ids=private) == [(None, _WIDE - 10)]
+
+
+def test_pool_break_falls_back_to_sequential(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A crashed worker degrades to a slow scan, never to an exception."""
+
+    class _BrokenPool:
+        def submit(self, *args: object, **kwargs: object) -> object:
+            raise BrokenProcessPool("worker died")
+
+    monkeypatch.setattr(scan_executor, "_use_pool", lambda n: True)
+    monkeypatch.setattr(scan_executor, "_get_pool", _BrokenPool)
+
+    root, _ = _wide_archive(tmp_path)
+    assert scan_archive(root, ScanPlan(term="widget")) == [(None, _WIDE)]
+
+
+def test_pool_width_is_bounded() -> None:
+    assert 1 <= scan_executor._pool_width() <= scan_executor._POOL_MAX_WORKERS
+
+
+def test_buckets_survive_fanout(tmp_path: Path) -> None:
+    """A10: day/tool travel with each path, so counts do not collapse.
+
+    Bucket assignment used to be a per-day-folder variable inherited by the
+    inner file loop. Under a file-level fan-out that would give every file the
+    last folder's bucket.
+    """
+    root = tmp_path / "session_archive"
+    expected: dict[str, int] = {}
+    for day_no, (folder, week) in enumerate(
+        [("2026-01-05-claude-code", "2026-W02"), ("2026-01-12-claude-code", "2026-W03")]
+    ):
+        d = root / folder
+        d.mkdir(parents=True)
+        n = _WIDE // 2 + day_no  # distinct per-week totals
+        for i in range(n):
+            (d / f"{folder}-{i:03d}.jsonl").write_text(
+                _line("user", "widget once", f"2026-01-0{day_no + 5}T09:00:00Z") + "\n",
+                encoding="utf-8",
+            )
+        expected[week] = n
+
+    rows = scan_archive(root, ScanPlan(term="widget", group_by="week"))
+    assert dict(rows) == expected

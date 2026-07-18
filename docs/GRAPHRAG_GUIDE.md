@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-13
+last_validated: 2026-07-18
 ---
 
 # GraphRAG Integration Guide
@@ -115,7 +115,6 @@ export GRAPH_INDEX_PATH=./graph_index  # Storage location
 
 # Entity extraction settings
 export GRAPH_USE_CODE_METADATA=true  # Extract from AST metadata (fast)
-export GRAPH_USE_LLM_EXTRACTION=true  # Use LLM for additional extraction (thorough)
 export GRAPH_EXTRACTION_MODEL=claude-haiku-4-5  # Model for LLM extraction
 export GRAPH_MAX_TRIPLETS_PER_CHUNK=10  # Limit per chunk
 
@@ -131,14 +130,16 @@ export GRAPH_RRF_K=60  # Reciprocal Rank Fusion constant
 ENABLE_GRAPH_INDEX=true
 GRAPH_STORE_TYPE=simple
 GRAPH_USE_CODE_METADATA=true
-GRAPH_USE_LLM_EXTRACTION=true
 GRAPH_EXTRACTION_MODEL=claude-haiku-4-5
 ```
 
+**LLM extraction has no env var.** It is selected solely by the `extraction.mode`
+key in `config.yaml` (`off` | `subagent` | `auto` | `provider`) — see below.
+
 ### In config.yaml
 
-Configure GraphRAG via `.brainpalace/config.yaml`. All 12 fields are supported and
-applied at server startup (Phase G). `brainpalace init` writes this file automatically
+Configure GraphRAG via `.brainpalace/config.yaml`. All 8 `graphrag:` fields are
+supported and applied at server startup (Phase G). `brainpalace init` writes this file automatically
 for new projects with sensible defaults.
 
 ```yaml
@@ -170,7 +171,10 @@ The full environment variable ↔ config.yaml mapping:
 | `GRAPH_MAX_TRIPLETS_PER_CHUNK` | `graphrag.max_triplets_per_chunk` | `10` |
 | `GRAPH_TRAVERSAL_DEPTH` | `graphrag.traversal_depth` | `2` |
 | `GRAPH_RRF_K` | `graphrag.rrf_k` | `60` |
-| `EXTRACTION_MODE` | `extraction.mode` | `off` |
+
+The `extraction:` section is **config.yaml-only** — `extraction.mode` (default
+`off`) and `extraction.grace_hours` (default `24`) have no environment-variable
+equivalent.
 
 **Note:** The `graph` query mode requires GraphRAG enabled with the ChromaDB backend and is not available with the PostgreSQL storage backend. The `multi` query mode gracefully adapts when GraphRAG or ChromaDB is unavailable — it automatically uses BM25 + vector search only, skipping the graph component without error.
 
@@ -227,9 +231,15 @@ Rules:
 - Identifies entities in documentation
 - Provides entity type classifications
 
-**Configuration**:
+**Configuration** — enabling LLM extraction is a `config.yaml` choice
+(`extraction.mode`); only the model and per-chunk cap are env vars:
+
+```yaml
+extraction:
+  mode: "subagent"   # off (default) | subagent (free) | auto | provider (BILLABLE)
+```
+
 ```bash
-export GRAPH_USE_LLM_EXTRACTION=true
 export GRAPH_EXTRACTION_MODEL=claude-haiku-4-5  # Fast, cost-effective
 export GRAPH_MAX_TRIPLETS_PER_CHUNK=10  # Prevent graph explosion
 ```
@@ -253,11 +263,11 @@ GraphRAG introduces two new query modes:
 Retrieves documents based purely on entity relationships.
 
 ```bash
-brainpalace query "what calls AuthService" --mode graph
+brainpalace query "what uses QueryService" --mode graph
 ```
 
 **How It Works**:
-1. Extract entity names from query ("AuthService")
+1. Extract entity names from query ("QueryService")
 2. Find matching entities in graph
 3. Traverse relationships (up to `GRAPH_TRAVERSAL_DEPTH` hops)
 4. Return documents linked to discovered entities
@@ -545,7 +555,7 @@ If graph queries return no results:
 
 If indexing is too slow with LLM extraction:
 
-1. Disable LLM extraction: `GRAPH_USE_LLM_EXTRACTION=false`
+1. Disable LLM extraction: set `extraction.mode: "off"` in `config.yaml`
 2. Use a faster model: `GRAPH_EXTRACTION_MODEL=claude-haiku-4-5`
 3. Reduce triplets per chunk: `GRAPH_MAX_TRIPLETS_PER_CHUNK=5`
 

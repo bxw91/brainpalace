@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-13
+last_validated: 2026-07-18
 ---
 
 # BrainPalace System Architecture
@@ -213,9 +213,9 @@ Knowledge graph for relationship-aware retrieval.
 - Graph traversal for multi-hop queries
 - Two interchangeable storage backends behind one `GraphStoreManager` surface
   (`storage/graph_store.py`), selected by `GRAPH_STORE_TYPE`:
-  - **`simple`** (default): `SimplePropertyGraphStore` — in-memory, whole-graph
+  - **`simple`**: `SimplePropertyGraphStore` — in-memory, whole-graph
     JSON persistence. Zero-setup.
-  - **`sqlite`** (`storage/sqlite_graph_store.py`, Phase 090): persistent
+  - **`sqlite`** (default; `storage/sqlite_graph_store.py`, Phase 090): persistent
     `sqlite3` property graph (`graph_store.db`, stdlib only). Incremental
     per-triplet writes (no whole-file rewrite), bounded per-query load, and a
     **temporal-validity model** — every edge has `valid_from`/`valid_until`,
@@ -405,8 +405,8 @@ rather than a re-index.
 **Rationale**:
 - Absolute paths appear on the outward-facing records: folder records and job
   records, manifest folder/file keys, chunk `source`/`file_path`/`path` metadata
-  (vector + BM25), the knowledge-graph node ids / edge keys (both the `sqlite` and
-  default `simple` backends), and the reference catalog's `pointer`/`source`/
+  (vector + BM25), the knowledge-graph node ids / edge keys (both the default
+  `sqlite` and the `simple` backends), and the reference catalog's `pointer`/`source`/
   `source_id` (and its recomputed `ref_id`).
 - On startup the server compares the recorded `indexed_root` against the current
   root (realpaths, so a symlink- or case-only difference is not a move). A genuine
@@ -419,7 +419,7 @@ rather than a re-index.
   `brainpalace rehome --resume`.
 
 **Scope**: The graph swap covers **both** backends — the `sqlite` store (node ids +
-edge PKs) and the default `simple` JSON store (node ids, relation keys, triplets,
+edge PKs, the default) and the `simple` JSON store (node ids, relation keys, triplets,
 recomputed from the swapped endpoints). A **nested** move (a project moved into its
 own subtree) is refused rather than rehomed. A **copy** (old location still present)
 keeps the original registered — only a genuine move drops the old registry entry. A

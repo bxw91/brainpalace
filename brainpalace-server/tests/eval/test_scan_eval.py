@@ -43,8 +43,12 @@ def test_scan_intent_boundaries(q: str, expected: bool) -> None:
 
 def test_tiebreak_typed_metric_wins(tmp_path: Path) -> None:
     """'how many X did I <verb>' with a REAL metric compiles for compute —
-    compute runs first in the auto-router, so it wins. The same shape with no
-    metric compiles to None for compute and to a plan for scan."""
+    compute runs first in the auto-router, so it wins. An utterance-verb
+    phrasing ("did I mention/say/discuss ...") is excluded from compute by
+    _COMPUTE_ANTI_TELLS (D5) even when it also carries a compute tell like
+    "how many" — those questions are about the user's own utterances, not an
+    aggregation, so scan owns them directly rather than via the compile-to-None
+    fallthrough this test previously relied on."""
     rs = RecordStore(tmp_path / "r.db")
     rs.insert_records(
         [
@@ -65,8 +69,7 @@ def test_tiebreak_typed_metric_wins(tmp_path: Path) -> None:
     assert compile_compute(compute_q, metrics) is not None  # compute wins
 
     scan_q = "how many times did I mention foobar"
-    assert classify_compute_intent(scan_q)  # 'how many' trips compute too …
-    assert compile_compute(scan_q, metrics) is None  # … but no metric resolves
+    assert not classify_compute_intent(scan_q)  # anti-tell "did i mention" excludes it
     assert classify_scan_intent(scan_q)
     plan = compile_scan(scan_q)
     assert plan is not None and plan.term == "foobar"  # scan takes it

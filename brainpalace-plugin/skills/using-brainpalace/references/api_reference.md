@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-13
+last_validated: 2026-07-18
 ---
 
 # BrainPalace API Reference
@@ -71,7 +71,7 @@ Get detailed indexing status.
 - `enabled` - Whether graph indexing is active
 - `entity_count` - Number of extracted entities (functions, classes, modules)
 - `relationship_count` - Number of relationships (calls, imports, inherits)
-- `store_type` - Graph store backend (`simple`; `unavailable` for non-chroma backends). A configured `sqlite` value is auto-downgraded to `simple`.
+- `store_type` - Graph store backend (`sqlite`, the default, or `simple`; `unavailable` for non-chroma backends). An unrecognized value is downgraded to `simple`.
 
 ---
 

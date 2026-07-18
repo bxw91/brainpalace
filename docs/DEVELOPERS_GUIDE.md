@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-13
+last_validated: 2026-07-18
 ---
 
 # BrainPalace Developer Guide
@@ -571,7 +571,7 @@ nested, marker-delimited tiers — **NUDGE ⊂ CORE ⊂ FULL**:
 |------|----------------|----------|---------------|
 | **NUDGE** | ~710 | SessionStart hook `additionalContext` | Plugin users already load FULL via the skill; the hook only nudges. |
 | **CORE** | ~4.5 K | MCP `Server(instructions=...)` | MCP clients have no skill/hook — they need the whole decision contract at connect. |
-| **FULL** | ~16 K | generated SKILL.md, `ai-guide --tier full`, `ai_guide` MCP tool | The complete guide; pulled on demand. |
+| **FULL** | ~19 K | generated SKILL.md, `ai-guide --tier full`, `ai_guide` MCP tool | The complete guide; pulled on demand. |
 
 CORE is a literal slice of FULL; NUDGE a literal slice of CORE — never
 hand-maintained copies. The loader/renderer is `brainpalace_cli/ai_guidance.py`;

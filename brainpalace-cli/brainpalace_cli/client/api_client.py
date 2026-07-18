@@ -140,6 +140,9 @@ class QueryResponse:
     absence: list[AbsenceRow] | None = None
     timeline: list[TimelineRow] | None = None
     index_blocked: dict[str, Any] | None = None
+    #: Set when the server executed a DIFFERENT mode than the one requested
+    #: (auto-router re-route, or a read-only degrade to bm25). None otherwise.
+    routed_mode: str | None = None
 
 
 @dataclass
@@ -467,6 +470,7 @@ class DocServeClient:
             absence=absence_rows,
             timeline=timeline_rows,
             index_blocked=data.get("index_blocked"),
+            routed_mode=data.get("routed_mode"),
         )
 
     def index(

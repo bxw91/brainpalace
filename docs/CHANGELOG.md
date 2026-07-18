@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-17
+last_validated: 2026-07-18
 ---
 
 # Changelog
@@ -20,6 +20,50 @@ Entries are kept short (≤ 3 sentences and ≤ 320 characters); see
 _Entries accumulate here between releases. The release step renames this to
 `## [YY.M.N] - DATE` and adds a fresh empty `## [Unreleased]` above it — never
 hand-number an unreleased section._
+
+## [26.7.7] - 2026-07-18
+
+### Fixed
+- **Docs no longer call `simple` the default graph store.** `GRAPH_STORE_TYPE`
+  has defaulted to `sqlite` since the Phase 090 flip; ARCHITECTURE, USER_GUIDE and
+  the skill's api_reference said otherwise. Also corrected the plugin command count
+  (42 → 43) and the AI-guidance FULL tier size (~16 K → ~19 K).
+- **Auto-router no longer lets a compute tell steal utterance-history queries.**
+  "Which week did I mention retries most?" now excludes compute via new
+  utterance-verb anti-tells, so scan owns it once a metric resolves — previously
+  latent, masked only by empty-result fallthrough.
+- **`--mode graph` is now reachable from plain `hybrid` queries.** A new
+  `classify_graph_intent` auto-route leg (last in order, after timeline) reroutes
+  relationship-shaped queries ("what calls X", "what depends on Y") to graph,
+  logged at INFO; empty results still fall through to hybrid.
+- **Compute/absence empty results now explain themselves.** Both modes read the
+  typed numeric record store (populated only by session extraction, off by
+  default); the CLI's empty-state prose now says so and points at `brainpalace
+  records stats`, instead of reading like a plain search miss.
+- **Removed the fictional `AuthService`/"auth decision" doc examples.** Neither
+  entity exists in this repo, so the shipped graph/timeline examples returned
+  nothing when run. Replaced with `QueryService`, verified live to return real
+  results in both modes.
+
+### Added
+- **`routed_mode` tells you when your query ran in a different mode than you
+  asked.** Set when the auto-router re-routes a `hybrid` query (compute/scan/
+  absence/timeline/**graph**) or read-only degrades it to `bm25`; null otherwise.
+  Graph re-routes were previously invisible (INFO log only); now surfaced in
+  `--json`, the CLI header, and the dashboard replay panel.
+
+### Changed
+- **Scan mode now fans out across processes — ~9.7s to ~1.0s** on this repo's
+  archive. Per-file counting moved to a lazily-created, reused pool
+  (`min(8, affinity)` workers) once a scan touches 24+ files; fork-only, since
+  spawn's re-import cost is worse than scanning inline. Private-session
+  default-deny runs inside each worker.
+
+### Added
+- **AI guidance documents two query-mode gotchas.** Compute/absence need session
+  extraction enabled or they return empty; `multi` silently drops its graph leg
+  on a non-chroma backend (documented 3-way fusion becomes 2-way). Single-sourced
+  in `ai_guidance.md`, regenerated into `SKILL.md`.
 
 ## [26.7.6] - 2026-07-17
 

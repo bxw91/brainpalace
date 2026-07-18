@@ -32,6 +32,7 @@ def _response(results: list[SimpleNamespace]) -> SimpleNamespace:
         absence=None,
         timeline=None,
         index_blocked=None,
+        routed_mode=None,
     )
 
 

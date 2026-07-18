@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-10
+last_validated: 2026-07-18
 ---
 
 # Graph Search Guide
@@ -163,7 +163,6 @@ export GRAPH_INDEX_PATH=./graph_index
 
 # Extraction controls
 export GRAPH_USE_CODE_METADATA=true
-export GRAPH_USE_LLM_EXTRACTION=true
 export GRAPH_MAX_TRIPLETS_PER_CHUNK=10
 export GRAPH_EXTRACTION_MODEL=claude-haiku-4-5
 
@@ -180,11 +179,14 @@ ENABLE_GRAPH_INDEX=true
 GRAPH_STORE_TYPE=sqlite
 GRAPH_INDEX_PATH=./graph_index
 GRAPH_USE_CODE_METADATA=true
-GRAPH_USE_LLM_EXTRACTION=true
 GRAPH_MAX_TRIPLETS_PER_CHUNK=10
 GRAPH_TRAVERSAL_DEPTH=2
 GRAPH_EXTRACTION_MODEL=claude-haiku-4-5
 ```
+
+LLM extraction itself has no environment variable — it is turned on with the
+`extraction.mode` key in `.brainpalace/config.yaml` (`off` | `subagent` | `auto`
+| `provider`).
 
 ### Optional Dependencies
 

@@ -31,8 +31,11 @@ def test_negative_cases() -> None:
         assert not classify_scan_intent(q), q
 
 
-def test_overlap_with_compute_is_allowed() -> None:
-    # 'how many times did I say X' trips both classifiers — the tie-break is
-    # ORDER in the auto-router (compute first), not classifier exclusivity.
+def test_utterance_verb_excludes_compute() -> None:
+    # 'how many times did I say X' carries a compute tell ("how many") but
+    # also an utterance-verb phrase ("did i say"). _COMPUTE_ANTI_TELLS (D5)
+    # excludes utterance-verb phrasing from compute outright, so scan owns
+    # this query directly rather than via the auto-router's order tie-break.
     q = "how many times did I say refactor"
-    assert classify_scan_intent(q) and classify_compute_intent(q)
+    assert classify_scan_intent(q)
+    assert not classify_compute_intent(q)

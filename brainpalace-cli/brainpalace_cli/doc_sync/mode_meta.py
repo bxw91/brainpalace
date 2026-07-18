@@ -38,7 +38,7 @@ MODE_META: dict[str, ModeMeta] = {
     "graph": ModeMeta(
         description="Knowledge graph relationships (empty unless the graph is built)",
         best_for="Relationships, dependencies",
-        example="What classes use AuthService?",
+        example="What uses QueryService?",
     ),
     "multi": ModeMeta(
         description="Fusion of vector + BM25 + graph via RRF",
@@ -74,7 +74,7 @@ MODE_META: dict[str, ModeMeta] = {
             "resolves to no graph node)"
         ),
         best_for="How a belief/fact evolved over time",
-        example="How did the auth decision evolve?",
+        example="How did QueryService evolve?",
     ),
 }
 
