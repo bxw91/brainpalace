@@ -2,13 +2,28 @@ import asyncio
 from pathlib import Path
 
 from brainpalace_server.services.session_reconciler import reconcile_once
+from brainpalace_server.sessions.adapters.base import SessionSource
+
+
+class _StubAdapter:
+    slug = "claude-code"
+
+    def discover(self, src, project_root):
+        return sorted(Path(src).glob("*.jsonl"))
+
+    def owns(self, path, project_root):
+        return True
+
+
+def _sources(sdir):
+    return [SessionSource(adapter=_StubAdapter(), directory=sdir)]
 
 
 class _FakeArchive:
     def __init__(self):
         self.synced = []
 
-    def sync(self, live):
+    def sync(self, live, *, tool=None):
         self.synced.append(Path(live))
         return Path(str(live) + ".arch")  # pretend-archived path
 
@@ -35,10 +50,6 @@ class _Cfg:
 
 def _patch_helpers(monkeypatch):
     monkeypatch.setattr(
-        "brainpalace_server.services.session_reconciler.discover_session_files",
-        lambda d: sorted(Path(d).glob("*.jsonl")),
-    )
-    monkeypatch.setattr(
         "brainpalace_server.services.session_reconciler.retain_cutoff",
         lambda days: None,
     )
@@ -53,7 +64,7 @@ def test_reconcile_once_syncs_each_live_file(tmp_path, monkeypatch):
     arch = _FakeArchive()
     res = asyncio.run(
         reconcile_once(
-            sessions_dir=sdir,
+            sources=_sources(sdir),
             archive_service=arch,
             sess_svc=None,
             session_cfg=_Cfg(),
@@ -77,7 +88,7 @@ def test_reconciler_tick_runs_one_sweep(tmp_path, monkeypatch):
     monkeypatch.setattr(sr, "reconcile_once", fake_once)
     rec = sr.SessionReconciler(
         interval_seconds=600,
-        sessions_dir=tmp_path,
+        sources_provider=lambda: _sources(tmp_path),
         archive_service=None,
         sess_svc=None,
         session_cfg=_Cfg(),
@@ -107,7 +118,7 @@ def test_tick_invokes_memory_curator(tmp_path, monkeypatch):
     cur = _Curator()
     rec = sr.SessionReconciler(
         interval_seconds=600,
-        sessions_dir=tmp_path,
+        sources_provider=lambda: _sources(tmp_path),
         archive_service=None,
         sess_svc=None,
         session_cfg=_Cfg(),
@@ -129,7 +140,7 @@ def test_tick_no_curator_is_noop(tmp_path, monkeypatch):
     monkeypatch.setattr(sr, "reconcile_once", fake_once)
     rec = sr.SessionReconciler(
         interval_seconds=600,
-        sessions_dir=tmp_path,
+        sources_provider=lambda: _sources(tmp_path),
         archive_service=None,
         sess_svc=None,
         session_cfg=_Cfg(),
@@ -151,7 +162,7 @@ def test_distiller_runs_on_live_when_archive_off(tmp_path, monkeypatch):
     dist = _FakeDistiller()
     res = asyncio.run(
         reconcile_once(
-            sessions_dir=sdir,
+            sources=_sources(sdir),
             archive_service=None,  # copy OFF
             sess_svc=None,  # index OFF
             session_cfg=_Cfg(),
@@ -174,7 +185,7 @@ def test_distiller_runs_on_archive_when_archiving(tmp_path, monkeypatch):
     dist = _FakeDistiller()
     asyncio.run(
         reconcile_once(
-            sessions_dir=sdir,
+            sources=_sources(sdir),
             archive_service=_FakeArchive(),
             sess_svc=None,
             session_cfg=_Cfg(),
@@ -196,7 +207,7 @@ def test_reconcile_once_offers_files_every_sweep(tmp_path, monkeypatch):
     for _ in range(2):
         asyncio.run(
             reconcile_once(
-                sessions_dir=sdir,
+                sources=_sources(sdir),
                 archive_service=arch,
                 sess_svc=None,
                 session_cfg=_Cfg(),

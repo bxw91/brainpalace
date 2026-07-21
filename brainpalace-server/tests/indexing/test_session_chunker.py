@@ -162,3 +162,65 @@ def test_chunk_metadata_includes_origin_path() -> None:
     md = chunks[0].metadata.to_dict()
     assert md["origin_path"] == "/home/u/.claude/projects/p/s1.jsonl"
     assert md["source_path"] == "/arch/2026-06-01/s1.jsonl"
+
+
+def test_claude_code_chunk_ids_are_unchanged():
+    """Regression guard: changing claude-code ids re-embeds the whole corpus."""
+    from brainpalace_server.indexing.session_chunker import SessionChunker
+    from brainpalace_server.indexing.session_loader import SessionMeta, Turn
+
+    meta = SessionMeta(
+        session_id="sess-1",
+        project_path="/proj",
+        branch="main",
+        started_at="2026-07-21T10:00:00Z",
+        ended_at="2026-07-21T10:01:00Z",
+        source_path="/tmp/sess-1.jsonl",
+        tool="claude-code",
+    )
+    turns = [Turn(0, "assistant", "text", "hello world")]
+    chunks = SessionChunker(window=1, stride=1).chunk(meta, turns)
+
+    assert chunks, "expected at least one chunk"
+    cid = chunks[0].chunk_id
+    assert cid.startswith("session:sess-1:")
+    assert cid.count(":") == 2
+    assert chunks[0].metadata.extra["tool"] == "claude-code"
+
+
+def test_non_claude_tools_get_tool_scoped_chunk_ids():
+    from brainpalace_server.indexing.session_chunker import SessionChunker
+    from brainpalace_server.indexing.session_loader import SessionMeta, Turn
+
+    meta = SessionMeta(
+        session_id="sess-1",
+        project_path="/proj",
+        branch=None,
+        started_at="2026-07-21T10:00:00Z",
+        ended_at=None,
+        source_path="/tmp/sess-1.jsonl",
+        tool="codex",
+    )
+    turns = [Turn(0, "assistant", "text", "hello world")]
+    chunks = SessionChunker(window=1, stride=1).chunk(meta, turns)
+
+    assert chunks[0].chunk_id.startswith("session:codex:sess-1:")
+    assert chunks[0].metadata.extra["tool"] == "codex"
+
+
+def test_non_terminal_turns_are_not_chunked():
+    from brainpalace_server.indexing.session_chunker import SessionChunker
+    from brainpalace_server.indexing.session_loader import SessionMeta, Turn
+
+    meta = SessionMeta(
+        session_id="sess-1",
+        project_path="/proj",
+        branch=None,
+        started_at="2026-07-21T10:00:00Z",
+        ended_at=None,
+        source_path="/tmp/sess-1.jsonl",
+        tool="antigravity",
+    )
+    turns = [Turn(0, "assistant", "text", "still running", terminal=False)]
+
+    assert SessionChunker(window=1, stride=1).chunk(meta, turns) == []

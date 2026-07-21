@@ -68,6 +68,9 @@ class SessionChunker:
 
     def _keep(self, turn: Turn) -> bool:
         """Drop human user *dialogue* unless opted in; keep everything else."""
+        if not turn.terminal:
+            return False  # in-flight step: content still mutating; a chunk cut
+            # now would go stale (new content hash) on the next regeneration
         if turn.role == "user" and turn.kind == "text" and not self.include_user_turns:
             return False
         return True
@@ -129,10 +132,17 @@ class SessionChunker:
             digest = hashlib.sha256(f"{meta.session_id}\n{text}".encode()).hexdigest()[
                 :32
             ]
-            chunk_id = f"session:{meta.session_id}:{digest}"
+            # Claude Code keeps its original id scheme so existing chunks are
+            # never re-embedded; other tools get a tool-scoped namespace.
+            tool = getattr(meta, "tool", "claude-code") or "claude-code"
+            if tool == "claude-code":
+                chunk_id = f"session:{meta.session_id}:{digest}"
+            else:
+                chunk_id = f"session:{tool}:{meta.session_id}:{digest}"
 
             extra = {
                 "session_id": meta.session_id,
+                "tool": tool,
                 "started_at": meta.started_at,
                 "turn_index": window_start_index,
                 "turn_span": len(group),

@@ -17,7 +17,6 @@ from typing import Any
 from brainpalace_server.config.session_config import DEFAULT_TOOL
 from brainpalace_server.indexing.session_loader import (
     is_subagent_path,
-    load_session,
     parent_session_id_for,
 )
 
@@ -152,9 +151,9 @@ class SessionArchiveService:
             return started_at[:10]
         return "undated"
 
-    def _folder_for(self, date: str) -> str:
+    def _folder_for(self, date: str, tool: str) -> str:
         """Tool-tagged date folder segment, e.g. ``2026-06-01-claude-code``."""
-        return f"{date}-{self.tool}"
+        return f"{date}-{tool}"
 
     @staticmethod
     def _manifest_key(live_path: Path, session_id: str) -> str:
@@ -193,16 +192,19 @@ class SessionArchiveService:
             )
         return self.archive_dir / folder / f"{session_id}.jsonl"
 
-    def sync(self, live_path: str | Path) -> Path | None:
+    def sync(self, live_path: str | Path, *, tool: str | None = None) -> Path | None:
         """Copy a live transcript into the archive. Returns archive path or None.
 
         Returns None when the session is tombstoned (curated away) or the file
         cannot be read. Returns the existing archive path without re-copying when
         the file is unchanged (mtime + size match).
         """
+        from brainpalace_server.sessions.parse import parse_transcript
+
         live_path = Path(live_path)
+        tool = tool or self.tool
         try:
-            meta, _turns = load_session(live_path)
+            meta, _turns = parse_transcript(live_path, tool=tool)
         except (OSError, ValueError) as exc:
             logger.warning("Cannot read transcript %s: %s", live_path, exc)
             return None
@@ -226,7 +228,7 @@ class SessionArchiveService:
             return Path(entry["archive_path"])  # unchanged: no re-copy
 
         date = self._date_for(meta.started_at)
-        folder = self._folder_for(date)
+        folder = self._folder_for(date, tool)
         dest = self._dest_for(live_path, session_id, folder)
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(live_path, dest)  # copy2 preserves mtime
@@ -239,7 +241,7 @@ class SessionArchiveService:
                 "archive_path": str(dest),
                 "archived_date": date,
                 "archived_dir": folder,
-                "tool": self.tool,
+                "tool": tool,
                 "src_mtime": stat.st_mtime,
                 "src_size": stat.st_size,
             },

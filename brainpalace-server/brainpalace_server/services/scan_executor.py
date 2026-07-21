@@ -25,7 +25,6 @@ from datetime import date
 from functools import cache
 from pathlib import Path
 
-from brainpalace_server.indexing.session_loader import load_session
 from brainpalace_server.indexing.text_analysis import get_analyzer
 from brainpalace_server.services.scan_compiler import ScanPlan
 
@@ -184,7 +183,9 @@ def _scan_one_file(
     needle = list(_needle(plan.term, language, engine))
     key = _bucket(day, tool, plan.group_by)
     total = 0
-    _, turns = load_session(path, text_trunc=0)
+    from brainpalace_server.sessions.parse import parse_transcript
+
+    _, turns = parse_transcript(path, text_trunc=0)
     for t in turns:
         if t.kind != "text" or not t.text:
             continue

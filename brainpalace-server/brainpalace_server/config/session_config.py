@@ -32,8 +32,9 @@ from brainpalace_server.config.provider_config import load_raw_config
 
 logger = logging.getLogger(__name__)
 
-#: Tool slug stamped onto archive folder names + manifest entries. Only Claude
-#: Code is supported today; future tools (codex, gemini, opencode) extend this.
+#: Default tool slug, used when a caller does not name one. Archive folders are
+#: tagged ``YYYY-MM-DD-<tool>``; the shipped adapters are claude-code, codex and
+#: antigravity (see ``sessions.adapters``).
 DEFAULT_TOOL = "claude-code"
 
 
@@ -94,6 +95,14 @@ class SessionIndexingConfig(BaseModel):
     sessions_dir: str | None = Field(
         default=None,
         description="Override the auto-resolved runtime session directory.",
+    )
+    tools: list[str] | None = Field(
+        default=None,
+        description="Tools to archive sessions from; null auto-detects installed ones.",
+    )
+    tool_dirs: dict[str, str] = Field(
+        default_factory=dict,
+        description="Per-tool session directory overrides, keyed by tool slug.",
     )
     archive: SessionArchiveConfig = Field(default_factory=SessionArchiveConfig)
 
@@ -158,7 +167,12 @@ class SessionCapabilities:
 
     archive_enabled: bool
     index_enabled: bool
-    tool: str = DEFAULT_TOOL
+    tools: tuple[str, ...] = (DEFAULT_TOOL,)
+
+    @property
+    def tool(self) -> str:
+        """Deprecated single-tool accessor — first enabled tool."""
+        return self.tools[0] if self.tools else DEFAULT_TOOL
 
 
 def _env_flag(name: str, *, default: bool = True) -> bool:
@@ -260,7 +274,7 @@ def load_session_indexing_config(
 
 def resolve_session_capabilities(
     cfg: SessionIndexingConfig,
-    tool: str = DEFAULT_TOOL,
+    tools: tuple[str, ...] = (DEFAULT_TOOL,),
 ) -> SessionCapabilities:
     """Single source of truth for the archive/index on-off decision.
 
@@ -271,7 +285,7 @@ def resolve_session_capabilities(
     return SessionCapabilities(
         archive_enabled=bool(cfg.archive.enabled) and _env_archive_enabled(),
         index_enabled=bool(cfg.enabled),
-        tool=tool,
+        tools=tuple(tools) or (DEFAULT_TOOL,),
     )
 
 

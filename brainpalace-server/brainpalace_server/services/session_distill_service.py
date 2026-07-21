@@ -36,7 +36,7 @@ from typing import Any, Protocol
 
 from pydantic import ValidationError
 
-from brainpalace_server.indexing.session_loader import SessionMeta, Turn, load_session
+from brainpalace_server.indexing.session_loader import SessionMeta, Turn
 from brainpalace_server.models.session_extract import (
     SessionExtraction,
     SessionExtractResult,
@@ -46,6 +46,7 @@ from brainpalace_server.services.auto_grace import (
     read_last_drain,
 )
 from brainpalace_server.services.session_extract_service import SessionExtractService
+from brainpalace_server.sessions.parse import parse_transcript
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +102,7 @@ def filter_transcript(path: str | Path) -> str:
     plugin's ``chat-session-extractor`` agent prompt mirrors this contract (see
     docs/SESSION_INDEXING.md → "Session filter contract").
     """
-    _meta, turns = load_session(path)
+    _meta, turns = parse_transcript(path)
     return render_turns(turns)
 
 
@@ -584,6 +585,39 @@ async def _run_extraction(
     return parse_extraction(merged, meta, session_id) if merged is not None else None
 
 
+def select_new_turns(turns: list[Turn], prior_offset: int) -> list[Turn]:
+    """Turns newer than ``prior_offset`` that are safe to distil.
+
+    ``Turn.index`` is the record's own identity (a positional counter for
+    Claude Code, the transcript's ``step_index`` for tools that publish one),
+    so this slice stays correct even when a tool REGENERATES its transcript
+    rather than appending to it. Non-terminal turns are excluded: their content
+    can still change, and distilling them now would either duplicate work or
+    bake in a half-finished record.
+    """
+    return [t for t in turns if t.index > prior_offset and t.terminal]
+
+
+def resume_offset_for(turns: list[Turn]) -> int:
+    """Durable high-water mark to persist in the resume sidecar.
+
+    The highest terminal index BELOW the first still-in-flight record — never
+    the last position. An in-flight record must not be advanced past, whether
+    it trails the transcript or sits in the MIDDLE (antigravity statuses mutate
+    in place, so a RUNNING step can be followed by DONE ones): once the offset
+    moves beyond it, its finished form would be skipped forever. Terminal turns
+    after a gap may be re-selected on a later sweep — that is the safe
+    direction (``merge_extractions`` is a structural union), while a skipped
+    step is silent data loss.
+    """
+    non_terminal = [t.index for t in turns if not t.terminal]
+    if not non_terminal:
+        return max((t.index for t in turns), default=-1)
+    gate = min(non_terminal)
+    below = [t.index for t in turns if t.terminal and t.index < gate]
+    return max(below) if below else -1
+
+
 async def distill_transcript(
     path: str | Path,
     *,
@@ -604,7 +638,7 @@ async def distill_transcript(
     failure) returns ``None`` and leaves the session **un-marked** so the
     catch-up sweep retries it. A success writes the ``.done`` marker last.
     """
-    meta, turns = load_session(path)
+    meta, turns = parse_transcript(path)
     sid = _session_id(meta, path)
 
     # Serialize the read-modify-write per session (2b-3): an overlapping run waits
@@ -616,7 +650,7 @@ async def distill_transcript(
             # Append-only assumption (2b-5): Turn.index is positional in file order,
             # so this delta is correct only while transcripts are append-only (the
             # case for Claude Code). Documented at load_session's index counter.
-            new_turns = [t for t in turns if t.index > prior_offset]
+            new_turns = select_new_turns(turns, prior_offset)
             if not new_turns:
                 return None  # already current — nothing new to distil
             text = render_turns(new_turns)
@@ -630,10 +664,13 @@ async def distill_transcript(
             # Structural, no-LLM merge (2b-2) — lossless union, no re-summarization.
             payload = merge_extractions(prior_extraction, new_payload, sid)
         else:
-            text = render_turns(turns)
+            text = render_turns(select_new_turns(turns, -1))
             if not text.strip():
-                # Degenerate/empty transcript — nothing to summarize. Mark so it is
-                # not reprocessed forever (this is not a "skip": there is no content).
+                if turns:
+                    # Content exists but is all still in flight — do NOT mark;
+                    # a later sweep picks it up once the steps settle.
+                    return None
+                # Truly empty transcript — mark so it is not reprocessed forever.
                 write_marker(project_root, sid)
                 return None
             fresh = await _run_extraction(
@@ -659,7 +696,7 @@ async def distill_transcript(
             return None
 
         write_marker(project_root, sid)
-        last_offset = turns[-1].index if turns else -1
+        last_offset = resume_offset_for(turns)
         write_progress(project_root, sid, last_offset, payload)
         return result
 
@@ -730,7 +767,7 @@ class SessionDistiller:
         ``force`` (on-demand backfill) bypasses the marker dedup AND the
         quiescence gate — re-distilling even an already-marked session.
         """
-        meta, _turns = load_session(path)
+        meta, _turns = parse_transcript(path)
         sid = _session_id(meta, path)
         if self.mode == "auto" and self._plugin_present():
             # Plugin owns extraction (subagent). Defer — UNLESS the provider is

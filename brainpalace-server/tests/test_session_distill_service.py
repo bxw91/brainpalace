@@ -254,7 +254,7 @@ async def test_watcher_schedules_distill_on_archive(tmp_path):
     t = _write_transcript(tmp_path / "w.jsonl", "w")
 
     class FakeArchive:
-        def sync(self, p):
+        def sync(self, p, *, tool=None):
             return Path(p)
 
     scheduled: list = []

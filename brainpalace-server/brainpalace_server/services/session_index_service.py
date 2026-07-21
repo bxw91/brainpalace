@@ -20,7 +20,6 @@ from typing import Any
 from brainpalace_server.config.indexing_config import load_indexing_config
 from brainpalace_server.config.session_config import SessionIndexingConfig
 from brainpalace_server.indexing.session_chunker import SessionChunker
-from brainpalace_server.indexing.session_loader import load_session
 from brainpalace_server.services.indexing_service import enforce_token_budget
 
 logger = logging.getLogger(__name__)
@@ -40,14 +39,12 @@ def encode_project_to_sessions_dir(project_path: str, home: Path | None = None) 
 def discover_session_files(sessions_dir: Path) -> list[Path]:
     """Top-level transcripts + sub-agent transcripts (R2).
 
-    Module-level so archive-only boot (no index service) can enumerate live
-    transcripts without constructing a :class:`SessionIndexService`.
+    Claude-Code-shaped shim retained for callers that still resolve a single
+    directory; multi-tool callers use ``adapter.discover`` instead.
     """
-    if not sessions_dir.exists():
-        return []
-    files = sorted(sessions_dir.glob("*.jsonl"))
-    files += sorted(sessions_dir.glob("*/subagents/*.jsonl"))
-    return files
+    from brainpalace_server.sessions.adapters import get_adapter
+
+    return get_adapter("claude-code").discover(sessions_dir, "")
 
 
 class SessionIndexService:
@@ -68,9 +65,12 @@ class SessionIndexService:
         window: int = 4,
         stride: int = 2,
         origin_path: str | None = None,
+        tool: str | None = None,
     ) -> dict[str, Any]:
         """Chunk + dedup + embed + upsert a single transcript."""
-        meta, turns = load_session(path)
+        from brainpalace_server.sessions.parse import parse_transcript
+
+        meta, turns = parse_transcript(path, tool=tool)
         if origin_path is not None:
             meta.origin_path = origin_path
         chunker = SessionChunker(

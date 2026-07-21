@@ -433,6 +433,11 @@ def status_command(
                     )
                 # To-summarize backlog (advisory; shown whenever archive is on).
                 if arch.get("enabled"):
+                    tools = arch.get("tools") or []
+                    table.add_row(
+                        "Session Tools",
+                        ", ".join(tools) if tools else "[dim]none detected[/]",
+                    )
                     table.add_row("Session Queue", render_session_queue_row(arch))
 
             # Session memory / INDEX (from the feature view).

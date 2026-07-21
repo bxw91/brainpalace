@@ -13,10 +13,10 @@ on:
     branches: [main, develop]
 
 env:
-  # arduino/setup-task@v2 and codecov-action's internal actions/github-script
-  # have no node24 release. Force node20 JS actions onto node24: GitHub flips
-  # this default ~2026-06-16, and node20 is removed ~2026-09-16 — opting in now
-  # keeps these green through both dates.
+  # codecov-action's internal actions/github-script still has no node24 release
+  # (arduino/setup-task is now @v3 = node24). Force remaining node20 JS actions
+  # onto node24: GitHub flips this default ~2026-06-16, and node20 is removed
+  # ~2026-09-16 — opting in now keeps these green through both dates.
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
@@ -62,7 +62,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install Task
-        uses: arduino/setup-task@v2
+        uses: arduino/setup-task@v3
         with:
           version: 3.43.3
 
@@ -214,7 +214,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install Task
-        uses: arduino/setup-task@v2
+        uses: arduino/setup-task@v3
         with:
           version: 3.43.3
 

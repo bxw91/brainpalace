@@ -465,6 +465,16 @@ FIELD_OVERRIDES: dict[str, dict[str, Any]] = {
         "(~/.claude/projects/...). This is the SOURCE, not the archive "
         "directory (see Session archive below).",
     },
+    "session_indexing.tools": {
+        "init_role": "advanced",
+        "prompt": "Session tools",
+        "help": "Tools to archive sessions from (claude-code, codex, "
+        "antigravity); empty auto-detects installed ones.",
+    },
+    "session_indexing.tool_dirs": {
+        # Per-tool path escape hatch; hidden on the dashboard too.
+        "init_role": "hidden",
+    },
     # --- session_indexing.archive (nested) ---
     "session_indexing.archive.enabled": {"prompt": "Archive enabled"},
     "session_indexing.archive.dir": {

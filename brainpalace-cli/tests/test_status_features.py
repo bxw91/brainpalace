@@ -383,3 +383,49 @@ def test_status_renders_session_queue_row():
     )
     assert result.exit_code == 0, result.output
     assert "Session Queue" in result.output
+
+
+def test_status_renders_detected_session_tools():
+    result = _invoke(
+        {
+            "doc_indexing": {
+                "active": True,
+                "total_chunks": 42,
+                "total_documents": 3,
+            },
+            "session_archive": {
+                "enabled": True,
+                "archived_files": 2,
+                "archived_bytes": 0,
+                "retain_days": 0,
+                "pending_summarization": 0,
+                "tools": ["claude-code", "codex"],
+            },
+        }
+    )
+    assert result.exit_code == 0, result.output
+    assert "Session Tools" in result.output
+    assert "claude-code, codex" in result.output
+
+
+def test_status_session_tools_empty_is_explicit():
+    result = _invoke(
+        {
+            "doc_indexing": {
+                "active": True,
+                "total_chunks": 42,
+                "total_documents": 3,
+            },
+            "session_archive": {
+                "enabled": True,
+                "archived_files": 0,
+                "archived_bytes": 0,
+                "retain_days": 0,
+                "pending_summarization": 0,
+                "tools": [],
+            },
+        }
+    )
+    assert result.exit_code == 0, result.output
+    assert "Session Tools" in result.output
+    assert "none detected" in result.output

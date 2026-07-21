@@ -414,6 +414,20 @@ async def indexing_status(request: Request) -> dict[str, Any]:
     except Exception:  # noqa: BLE001
         _git_cfg_enabled = False
 
+    # Detected session tools (multi-tool archive). Prefer the live provider —
+    # it re-resolves per call, so an agent installed while the server runs
+    # shows up without a restart; the startup snapshot is the fallback.
+    _sources_provider = getattr(request.app.state, "session_sources_provider", None)
+    try:
+        _session_sources = (
+            _sources_provider()
+            if _sources_provider is not None
+            else getattr(request.app.state, "session_sources", None) or []
+        )
+    except Exception:  # noqa: BLE001 — status must never fail hard
+        _session_sources = getattr(request.app.state, "session_sources", None) or []
+    session_tools = [s.slug for s in _session_sources]
+
     fw = file_watcher_info or {}
     data["features"] = {
         "doc_indexing": {
@@ -445,6 +459,8 @@ async def indexing_status(request: Request) -> dict[str, Any]:
         # ARCHIVE capability (raw transcript backup) — independent of index.
         "session_archive": {
             "enabled": archive_enabled,
+            # Which tools' stores were detected this call (empty = none found).
+            "tools": session_tools,
             "retain_days": int(
                 getattr(getattr(session_cfg, "archive", None), "retain_days", 0) or 0
             ),

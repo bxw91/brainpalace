@@ -36,7 +36,7 @@ Built for :
 - code & docs repos
 - and for any text project like personal life or work memory projects with option to index content of external sources.
 
-Talk to your code, docs, chat session history (Claude Code only for now), or any text files.
+Talk to your code, docs, text files and for Claude Code, Codex and Antigravity CLI : also with chat session history.
 
 Explore it with Vector, BM25, Hybrid, Temporal Graph, Multi, Compute, Scan, Absence, Timeline, and Salience modes.
 
@@ -52,7 +52,7 @@ All will be indexed - re-indexed on file update - recalled instantly - with high
 
 Keep your memory always ready. Never forgotten. Upgrade your own personal memory with BrainPalace.
 
-Make The Context Window Unlimited.
+**Make The Context Window Unlimited**
 
 |   |   |
 |:-:|:-:|
@@ -96,21 +96,18 @@ depends on your assistant:
 | Codex / OpenCode / Antigravity / Qwen / Kimi | ask the assistant, or terminal `brainpalace init` |
 | CLI / terminal | `brainpalace init` |
 
-`brainpalace init` wires Claude Code's MCP by default (`--no-mcp` to skip); other
-MCP clients (VS Code, Cursor, …): [`docs/MCP_SETUP.md`](docs/MCP_SETUP.md). Other
-runtimes and Windows / WSL2 notes: [`docs/INSTALL.md`](docs/INSTALL.md). Full
-plugin reference: [`docs/PLUGIN_GUIDE.md`](docs/PLUGIN_GUIDE.md).
+Project initialization wires Claude Code's MCP per project by default. Other runtimes and Windows / WSL2 notes: [`docs/INSTALL.md`](docs/INSTALL.md).
 
 ---
 
 ### Web dashboard
 
-Manage every BrainPalace project server from one browser tab. It's **included
-automatically** with the CLI on **Python 3.12+** — no extra to enable (on
-Python 3.10/3.11 it's skipped and the CLI still installs):
+Manage every BrainPalace project server from one browser tab. 
+
+On any BrainPalace instance start, dashboard is auto started. (requirement : Python 3.12+). To start manually:
 
 ```bash
-brainpalace dashboard start          # localhost:8787, opens a browser
+brainpalace dashboard start
 ```
 
 Full reference: [`docs/DASHBOARD.md`](docs/DASHBOARD.md).

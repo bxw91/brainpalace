@@ -1287,15 +1287,45 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 or distill_would_run
                 or doc_extraction_would_run
             ) and app.state.project_root:
-                from brainpalace_server.services.session_index_service import (
-                    encode_project_to_sessions_dir,
+                from brainpalace_server.sessions.adapters import (
+                    resolve_session_sources,
                 )
 
-                sessions_dir = (
-                    Path(session_cfg.sessions_dir)
-                    if session_cfg.sessions_dir
-                    else encode_project_to_sessions_dir(app.state.project_root)
+                # `sessions_dir` remains the claude-code-specific override.
+                tool_dirs = dict(session_cfg.tool_dirs)
+                if session_cfg.sessions_dir:
+                    tool_dirs.setdefault("claude-code", session_cfg.sessions_dir)
+
+                session_sources = resolve_session_sources(
+                    app.state.project_root,
+                    tools=session_cfg.tools,
+                    tool_dirs=tool_dirs,
                 )
+                app.state.session_sources = session_sources
+                logger.info(
+                    "Session sources: %s",
+                    ", ".join(f"{s.slug}@{s.directory}" for s in session_sources)
+                    or "none detected",
+                )
+
+                caps = (
+                    resolve_session_capabilities(
+                        session_cfg, tools=tuple(s.slug for s in session_sources)
+                    )
+                    if session_sources
+                    else caps
+                )
+
+                def _session_sources_provider() -> list[Any]:
+                    """Re-resolve per call: an agent installed while the server
+                    runs must be picked up without a restart."""
+                    return resolve_session_sources(
+                        app.state.project_root,
+                        tools=session_cfg.tools,
+                        tool_dirs=tool_dirs,
+                    )
+
+                app.state.session_sources_provider = _session_sources_provider
 
                 # Archive service — independent of indexing.
                 archive_service = None
@@ -1559,7 +1589,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
                     reconciler = SessionReconciler(
                         interval_seconds=session_cfg.archive.reconcile_seconds,
-                        sessions_dir=sessions_dir,
+                        sources_provider=_session_sources_provider,
+                        project_root=app.state.project_root or "",
                         archive_service=archive_service,
                         sess_svc=sess_svc,
                         session_cfg=session_cfg,
@@ -1600,10 +1631,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                         await archive_watcher.start()
                         app.state.session_archive_watcher = archive_watcher
                 logger.info(
-                    "Session capabilities — archive=%s index=%s (%s)",
+                    "Session capabilities — archive=%s index=%s (tools: %s)",
                     caps.archive_enabled,
                     caps.index_enabled,
-                    sessions_dir,
+                    ", ".join(s.slug for s in session_sources) or "none",
                 )
         except Exception as exc:  # noqa: BLE001 — never block startup on sessions
             logger.warning("Session archive/index setup failed: %s", exc)

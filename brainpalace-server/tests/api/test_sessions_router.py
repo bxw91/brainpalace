@@ -102,3 +102,33 @@ def test_extract_rejects_bad_relation() -> None:
         },
     )
     assert r.status_code == 422  # pydantic validation rejects closed-vocab break
+
+
+def test_lifespan_publishes_resolved_sources(tmp_path, monkeypatch):
+    """Startup resolves one source per detected tool and exposes them."""
+    from brainpalace_server.sessions.adapters import resolve_session_sources
+
+    cc = tmp_path / ".claude" / "projects" / "-proj-ours"
+    cc.mkdir(parents=True)
+    codex = tmp_path / ".codex" / "sessions"
+    codex.mkdir(parents=True)
+
+    sources = resolve_session_sources("/proj/ours", home=tmp_path)
+
+    assert sorted(s.slug for s in sources) == ["claude-code", "codex"]
+
+
+def test_capabilities_tools_follow_resolved_sources(tmp_path):
+    from brainpalace_server.config.session_config import (
+        SessionIndexingConfig,
+        resolve_session_capabilities,
+    )
+    from brainpalace_server.sessions.adapters import resolve_session_sources
+
+    (tmp_path / ".codex" / "sessions").mkdir(parents=True)
+    sources = resolve_session_sources("/proj/ours", home=tmp_path)
+    caps = resolve_session_capabilities(
+        SessionIndexingConfig(), tools=tuple(s.slug for s in sources)
+    )
+
+    assert caps.tools == ("codex",)

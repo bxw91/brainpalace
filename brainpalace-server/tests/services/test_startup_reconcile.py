@@ -8,6 +8,7 @@ drifted.
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
@@ -960,3 +961,162 @@ async def test_self_heal_drops_never_materialized_git_ids_when_plane_partial(
 
     # a stays (live); b is dropped (never materialized) => no phantom residue.
     assert captured["wanted_ids"] == live_a
+
+
+@pytest.mark.asyncio
+async def test_reconcile_once_sweeps_every_source_and_tags_each_tool(tmp_path):
+    """Two tools, one archive: each file is stamped with its own slug."""
+    from brainpalace_server.config.session_config import (
+        SessionCapabilities,
+        SessionIndexingConfig,
+    )
+    from brainpalace_server.services.session_reconciler import reconcile_once
+    from brainpalace_server.sessions.adapters.base import SessionSource
+
+    class _Adapter:
+        def __init__(self, slug: str, owned: bool) -> None:
+            self.slug = slug
+            self._owned = owned
+
+        def discover(self, src, project_root):
+            return sorted(Path(src).glob("*.jsonl"))
+
+        def owns(self, path, project_root):
+            return self._owned
+
+    class _Archive:
+        def __init__(self) -> None:
+            self.synced: list[tuple[str, str]] = []
+
+        def sync(self, path, *, tool=None):
+            self.synced.append((Path(path).name, tool))
+            return Path(str(path) + ".archived")
+
+    a_dir = tmp_path / "a"
+    b_dir = tmp_path / "b"
+    a_dir.mkdir()
+    b_dir.mkdir()
+    (a_dir / "one.jsonl").write_text("", encoding="utf-8")
+    (b_dir / "two.jsonl").write_text("", encoding="utf-8")
+
+    archive = _Archive()
+    result = await reconcile_once(
+        sources=[
+            SessionSource(adapter=_Adapter("claude-code", True), directory=a_dir),
+            SessionSource(adapter=_Adapter("codex", True), directory=b_dir),
+        ],
+        archive_service=archive,
+        sess_svc=None,
+        session_cfg=SessionIndexingConfig(),
+        caps=SessionCapabilities(archive_enabled=True, index_enabled=False),
+        distiller=None,
+        project_root=str(tmp_path),
+    )
+
+    assert result["archived"] == 2
+    assert sorted(archive.synced) == [
+        ("one.jsonl", "claude-code"),
+        ("two.jsonl", "codex"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_reconcile_once_skips_unowned_files(tmp_path):
+    from brainpalace_server.config.session_config import (
+        SessionCapabilities,
+        SessionIndexingConfig,
+    )
+    from brainpalace_server.services.session_reconciler import reconcile_once
+    from brainpalace_server.sessions.adapters.base import SessionSource
+
+    class _Adapter:
+        slug = "codex"
+
+        def discover(self, src, project_root):
+            return sorted(Path(src).glob("*.jsonl"))
+
+        def owns(self, path, project_root):
+            return False
+
+    class _Archive:
+        def __init__(self) -> None:
+            self.synced: list[str] = []
+
+        def sync(self, path, *, tool=None):
+            self.synced.append(Path(path).name)
+            return Path(str(path) + ".archived")
+
+    d = tmp_path / "global"
+    d.mkdir()
+    (d / "theirs.jsonl").write_text("", encoding="utf-8")
+
+    archive = _Archive()
+    result = await reconcile_once(
+        sources=[SessionSource(adapter=_Adapter(), directory=d)],
+        archive_service=archive,
+        sess_svc=None,
+        session_cfg=SessionIndexingConfig(),
+        caps=SessionCapabilities(archive_enabled=True, index_enabled=False),
+        distiller=None,
+        project_root="/proj/ours",
+    )
+
+    assert result["archived"] == 0
+    assert archive.synced == []
+
+
+@pytest.mark.asyncio
+async def test_a_tool_appearing_later_is_picked_up_without_restart(tmp_path):
+    """A coding agent installed while the server runs must not need a restart."""
+    from brainpalace_server.config.session_config import (
+        SessionCapabilities,
+        SessionIndexingConfig,
+    )
+    from brainpalace_server.services.session_reconciler import reconcile_once
+    from brainpalace_server.sessions.adapters.base import SessionSource
+
+    class _Adapter:
+        slug = "codex"
+
+        def discover(self, src, project_root):
+            return sorted(Path(src).glob("*.jsonl"))
+
+        def owns(self, path, project_root):
+            return True
+
+    class _Archive:
+        def __init__(self) -> None:
+            self.synced: list[str] = []
+
+        def sync(self, path, *, tool=None):
+            self.synced.append(Path(path).name)
+            return Path(str(path) + ".archived")
+
+    late_dir = tmp_path / "codex-sessions"
+    archive = _Archive()
+
+    def resolve():
+        """Stand-in for resolve_session_sources: only exists once created."""
+        if not late_dir.exists():
+            return []
+        return [SessionSource(adapter=_Adapter(), directory=late_dir)]
+
+    common = {
+        "archive_service": archive,
+        "sess_svc": None,
+        "session_cfg": SessionIndexingConfig(),
+        "caps": SessionCapabilities(archive_enabled=True, index_enabled=False),
+        "distiller": None,
+        "project_root": "/proj/ours",
+    }
+
+    first = await reconcile_once(sources=resolve(), **common)
+    assert first["archived"] == 0
+
+    # The user installs the agent and runs a session — mid-flight.
+    late_dir.mkdir()
+    (late_dir / "new.jsonl").write_text("", encoding="utf-8")
+
+    second = await reconcile_once(sources=resolve(), **common)
+    assert second["archived"] == 1
+    assert archive.synced == ["new.jsonl"]

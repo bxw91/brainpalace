@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-13
+last_validated: 2026-07-21
 ---
 
 # Session Indexing
@@ -158,14 +158,30 @@ copy, not the live file.
 
 ### Archive location
 
-Date folders are **tool-tagged** `YYYY-MM-DD-<tool>` so same-day sessions from
-different tools sort adjacently and future multi-tool support (Codex, Gemini,
-OpenCode) slots in cleanly. Today the only tool is `claude-code`:
+Archive folders are tool-tagged `YYYY-MM-DD-<tool>`:
 
 ```
-.brainpalace/session_archive/<YYYY-MM-DD>-<tool>/<session_id>.jsonl
-# e.g. .brainpalace/session_archive/2026-06-01-claude-code/s_abc.jsonl
+.brainpalace/session_archive/2026-07-21-claude-code/<session_id>.jsonl
+.brainpalace/session_archive/2026-07-21-codex/<session_id>.jsonl
+.brainpalace/session_archive/2026-07-21-antigravity/<session_id>.jsonl
 ```
+
+Supported tools and their live stores:
+
+| Tool | Store | Project attribution |
+|------|-------|---------------------|
+| `claude-code` | `~/.claude/projects/<cwd-with-slashes-as-dashes>/*.jsonl` | the directory is the project |
+| `codex` | `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` | `session_meta.payload.cwd` |
+| `antigravity` | `~/.gemini/antigravity-cli/brain/<id>/.system_generated/logs/transcript_full.jsonl` | `history.jsonl` workspace join |
+
+Codex uses a single global store shared across every project, so BrainPalace
+checks each transcript's recorded working directory and archives only the ones
+belonging to this project.
+
+Tool selection is automatic — a tool is enabled when its session directory
+exists. Pin it explicitly with `session_indexing.tools`, e.g.
+`tools: [claude-code, codex]`, or `tools: []` to disable session sources
+entirely.
 
 Subagent transcripts nest under their parent's tool-dated folder:
 

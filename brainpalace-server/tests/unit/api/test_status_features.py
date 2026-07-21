@@ -432,3 +432,41 @@ def test_features_ranking_reflects_configured_weight():
     client.app.state.ranking_config = RankingConfig(doc_weight=0.2)
     ranking = client.get("/status").json()["features"]["ranking"]
     assert ranking["doc_weight"] == 0.2
+
+
+def test_session_archive_reports_detected_tools():
+    """`features.session_archive.tools` mirrors the resolved sources."""
+    from types import SimpleNamespace
+
+    client = _client_with_extraction()
+    client.app.state.session_sources = [
+        SimpleNamespace(slug="claude-code", directory="/x"),
+        SimpleNamespace(slug="codex", directory="/y"),
+    ]
+
+    features = client.get("/status").json()["features"]
+
+    assert features["session_archive"]["tools"] == ["claude-code", "codex"]
+
+
+def test_session_archive_tools_prefers_the_live_provider():
+    """A provider re-resolves per call, so a tool installed after startup
+    shows up without a restart; the snapshot is only the fallback."""
+    from types import SimpleNamespace
+
+    client = _client_with_extraction()
+    client.app.state.session_sources = [SimpleNamespace(slug="claude-code")]
+    client.app.state.session_sources_provider = lambda: [
+        SimpleNamespace(slug="claude-code"),
+        SimpleNamespace(slug="antigravity"),
+    ]
+
+    features = client.get("/status").json()["features"]
+
+    assert features["session_archive"]["tools"] == ["claude-code", "antigravity"]
+
+
+def test_session_archive_tools_defaults_to_empty():
+    client = _client_with_extraction()
+    features = client.get("/status").json()["features"]
+    assert features["session_archive"]["tools"] == []

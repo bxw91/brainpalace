@@ -15,7 +15,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import anyio
 import watchfiles
@@ -43,6 +43,8 @@ class SessionWatcher:
         debounce_ms: int = 2000,
         index_enabled: bool = True,
         distiller: SessionDistiller | None = None,
+        adapter: Any | None = None,
+        project_root: str | None = None,
     ) -> None:
         self.sessions_dir = Path(sessions_dir)
         self.service = service
@@ -54,6 +56,12 @@ class SessionWatcher:
         # mode is `provider` and SESSION_DISTILL_ENABLED is on — so its presence
         # is the gate. Distills run fire-and-forget; never block the watcher.
         self.distiller = distiller
+        # Ownership gate. A tool with a GLOBAL store (codex) surfaces every
+        # project's transcripts under one directory; without this filter we
+        # would archive another project's raw transcript — user turns and
+        # secrets included — into this project's archive.
+        self.adapter = adapter
+        self.project_root = project_root
         self._stop_event: anyio.Event | None = None
         self._task: asyncio.Task[None] | None = None
 
@@ -74,10 +82,17 @@ class SessionWatcher:
                 continue
             if not Path(path).exists():  # deletion / rename-away
                 continue
+            if (
+                self.adapter is not None
+                and self.project_root is not None
+                and not self.adapter.owns(Path(path), self.project_root)
+            ):
+                continue  # another project's transcript — never archive it
 
             archived: Path | None = None
             if self.archive is not None:
-                archived = self.archive.sync(path)
+                tool = self.adapter.slug if self.adapter is not None else None
+                archived = self.archive.sync(path, tool=tool)
                 if archived is None:
                     continue  # tombstoned / unreadable: skip entirely
                 # Phase 080: schedule a provider-engine distill of the archived

@@ -155,7 +155,7 @@ async def test_fresh_distil_writes_progress_and_calls_store_once(tmp_path, monke
 
     meta = _meta("s1")
     turns = [Turn(0, "user", "text", "hello"), Turn(1, "assistant", "text", "hi")]
-    monkeypatch.setattr(sds, "load_session", lambda p: (meta, turns))
+    monkeypatch.setattr(sds, "parse_transcript", lambda p: (meta, turns))
     summ = _Summarizer()
     monkeypatch.setattr(sds, "SessionExtractService", lambda: _NoopStore())
 
@@ -187,7 +187,7 @@ async def test_concurrent_distill_same_session_extracts_once(tmp_path, monkeypat
 
     meta = _meta("s1")
     turns = [Turn(0, "user", "text", "hello"), Turn(1, "assistant", "text", "hi")]
-    monkeypatch.setattr(sds, "load_session", lambda p: (meta, turns))
+    monkeypatch.setattr(sds, "parse_transcript", lambda p: (meta, turns))
     monkeypatch.setattr(sds, "SessionExtractService", lambda: _NoopStore())
 
     class _SlowSummarizer:
@@ -282,7 +282,7 @@ async def test_resume_distils_only_new_turns_and_merges(tmp_path, monkeypatch):
         Turn(2, "user", "text", "NEW-C"),
         Turn(3, "assistant", "text", "NEW-D"),
     ]
-    monkeypatch.setattr(sds, "load_session", lambda p: (meta, turns))
+    monkeypatch.setattr(sds, "parse_transcript", lambda p: (meta, turns))
 
     captured = {}
 
@@ -335,7 +335,7 @@ async def test_fresh_path_no_merge_call_and_payload_is_run_extraction_output(
 
     meta = _meta("s9")
     turns = [Turn(0, "user", "text", "A"), Turn(1, "assistant", "text", "B")]
-    monkeypatch.setattr(sds, "load_session", lambda p: (meta, turns))
+    monkeypatch.setattr(sds, "parse_transcript", lambda p: (meta, turns))
 
     captured = {}
 
@@ -364,3 +364,77 @@ async def test_fresh_path_no_merge_call_and_payload_is_run_extraction_output(
     assert len(summ.calls) == 1  # no merge call on a fresh session
     assert captured["summary"] == "fresh"
     assert not any("Merge these" in c for c in summ.calls)
+
+
+def test_non_terminal_turns_are_not_distilled():
+    """A step still in flight must be skipped, then picked up once when done."""
+    from brainpalace_server.indexing.session_loader import Turn
+    from brainpalace_server.services.session_distill_service import (
+        select_new_turns,
+    )
+
+    turns = [
+        Turn(0, "user", "text", "a"),
+        Turn(1, "assistant", "text", "b", terminal=False),
+        Turn(2, "assistant", "text", "c"),
+    ]
+
+    selected = select_new_turns(turns, prior_offset=-1)
+
+    assert [t.index for t in selected] == [0, 2]
+
+
+def test_offset_is_the_max_terminal_index_not_the_last_position():
+    from brainpalace_server.indexing.session_loader import Turn
+    from brainpalace_server.services.session_distill_service import (
+        resume_offset_for,
+    )
+
+    turns = [
+        Turn(0, "user", "text", "a"),
+        Turn(7, "assistant", "text", "b"),
+        Turn(9, "assistant", "text", "c", terminal=False),
+    ]
+
+    # 9 is still running, so the durable high-water mark is 7.
+    assert resume_offset_for(turns) == 7
+
+
+def test_offset_never_advances_past_an_in_flight_middle_step():
+    """A RUNNING step with DONE steps after it (antigravity mutates statuses in
+    place — the antigravity fixture has exactly this shape: step 3 RUNNING while
+    4-9 are DONE) must gate the offset, or its finished form is skipped forever.
+    Post-gap terminal turns may be re-selected later; merge is a union, loss is
+    not recoverable."""
+    from brainpalace_server.indexing.session_loader import Turn
+    from brainpalace_server.services.session_distill_service import (
+        resume_offset_for,
+    )
+
+    turns = [
+        Turn(0, "user", "text", "a"),
+        Turn(3, "assistant", "text", "b", terminal=False),
+        Turn(4, "assistant", "text", "c"),
+        Turn(5, "assistant", "text", "d"),
+    ]
+
+    assert resume_offset_for(turns) == 0
+
+
+def test_resume_offset_of_empty_transcript_is_minus_one():
+    from brainpalace_server.services.session_distill_service import (
+        resume_offset_for,
+    )
+
+    assert resume_offset_for([]) == -1
+
+
+def test_select_new_turns_respects_prior_offset():
+    from brainpalace_server.indexing.session_loader import Turn
+    from brainpalace_server.services.session_distill_service import (
+        select_new_turns,
+    )
+
+    turns = [Turn(i, "assistant", "text", str(i)) for i in range(5)]
+    selected = select_new_turns(turns, prior_offset=2)
+    assert [t.index for t in selected] == [3, 4]

@@ -53,12 +53,17 @@ def test_sync_copies_into_dated_folder(tmp_path: Path) -> None:
 
 
 def test_custom_tool_slug_in_folder_and_manifest(tmp_path: Path) -> None:
+    # "custom-tool" is a synthetic, unregistered slug — this test verifies the
+    # archive service's tool-tagging mechanic (folder naming, manifest), not
+    # any real adapter's parsing. A registered slug (e.g. "codex") would
+    # dispatch to that adapter's real parser, which the claude-code-shaped
+    # fixture below does not match.
     live = tmp_path / "live" / "s_t.jsonl"
     _write_transcript(live, "s_t", "2026-06-01T10:00:00Z")
-    svc = SessionArchiveService(archive_dir=tmp_path / "arch", tool="codex")
+    svc = SessionArchiveService(archive_dir=tmp_path / "arch", tool="custom-tool")
     dest = svc.sync(live)
-    assert dest == tmp_path / "arch" / "2026-06-01-codex" / "s_t.jsonl"
-    assert svc.manifest_entry("s_t")["tool"] == "codex"
+    assert dest == tmp_path / "arch" / "2026-06-01-custom-tool" / "s_t.jsonl"
+    assert svc.manifest_entry("s_t")["tool"] == "custom-tool"
 
 
 def test_sync_skips_tombstoned(tmp_path: Path) -> None:

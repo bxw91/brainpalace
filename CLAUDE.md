@@ -218,7 +218,9 @@ Modes: `bm25` (exact terms), `vector` (semantic/concepts), `hybrid` (default), `
   cost. `brainpalace init` writes archive ON, index OFF — embedding is opt-in: `--sessions`
   enables it non-interactively (`--yes` = archive + summarize, no embed); `--no-sessions` /
   `--no-archive` force each off. Kill-switches: `SESSION_INDEXING_ENABLED=false`, `SESSION_ARCHIVE_ENABLED=false`.
-  Archive folders are tool-tagged `YYYY-MM-DD-<tool>` (today `claude-code`). ⚠️ The raw archive
+  Archive folders are tool-tagged `YYYY-MM-DD-<tool>` — `claude-code`, `codex`
+  and `antigravity` (CLI) are supported; tools are auto-detected from their
+  session directory and pinnable via `session_indexing.tools`. ⚠️ The raw archive
   holds **full transcripts incl. user turns/secrets**.
 - **`brainpalace status`** shows a per-feature view: document indexing, file watcher (with a
   clear "0 folders — none marked watch=auto" state), session archive (on/off, files, size),

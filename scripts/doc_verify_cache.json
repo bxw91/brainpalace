@@ -58,7 +58,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh; grounding unchanged",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/providers/summarization/anthropic.py"
     ],
@@ -150,7 +150,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "unchanged: fresh cached verdict, prose and grounded relation unchanged since last verified pass",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/folders.py"
     ],
@@ -202,7 +202,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "audit",
-    "evidence": "reused fresh cached verdict"
+    "evidence": "reused fresh cached verdict (unchanged prose + grounding)"
   },
   "02c698621e7a36f8c1a17a0fac7399f1a50fee637f1399c98fd968d4ce80e3e4": {
     "doc": "brainpalace-plugin/skills/using-brainpalace/references/hybrid-search-guide.md",
@@ -224,7 +224,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "reused fresh cached verdict",
+    "evidence": "(cached, echoed verbatim)",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/models/query.py"
     ],
@@ -261,7 +261,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/ingestion/sink.py"
     ],
@@ -274,7 +274,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "reference_catalog_store.py defines ref_id, upsert, replace_source, delete_by_source, list, search_summaries, resolve, count, unembedded_entries, count_unembedded, set_embeddings \u2014 all present as named",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/storage/reference_catalog_store.py"
     ],
@@ -287,7 +287,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "unchanged: fresh cached verdict, prose and grounded relation unchanged since last verified pass",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/folders.py",
       "brainpalace-cli/brainpalace_cli/commands/init.py"
@@ -340,7 +340,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "reused fresh cached verdict",
+    "evidence": "(cached, echoed verbatim)",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/init.py"
     ],
@@ -375,7 +375,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached (fresh, relation unchanged)",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/git_config.py"
     ],
@@ -440,7 +440,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/extraction_config.py"
     ],
@@ -467,7 +467,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "reused fresh cached verdict",
+    "evidence": "(cached, echoed verbatim)",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/init.py"
     ],
@@ -506,7 +506,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "reused fresh cached verdict",
+    "evidence": "(cached, echoed verbatim)",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/provider_config.py"
     ],
@@ -519,7 +519,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
@@ -598,7 +598,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "reused fresh cached verdict",
+    "evidence": "(cached, echoed verbatim)",
     "grounding_files": [
       ".gitignore"
     ],
@@ -611,7 +611,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "reused fresh cached verdict",
+    "evidence": "(cached, echoed verbatim)",
     "grounding_files": [
       "brainpalace-dashboard/brainpalace_dashboard/coverage_maps.py"
     ],
@@ -677,7 +677,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "reused fresh cached verdict",
+    "evidence": "(cached, echoed verbatim)",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/index.py"
     ],
@@ -782,7 +782,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "reused fresh cached verdict",
+    "evidence": "(cached, echoed verbatim)",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/init.py"
     ],
@@ -808,7 +808,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
@@ -821,11 +821,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cli.py contains no occurrence of the word loop anywhere in the command group -- no /loop command exists",
+    "evidence": "grep for loop/drain-tick/babysitter in cli.py returns no matches",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/cli.py"
     ],
-    "grounding_hash": "71487de3b79e726f4baf5355c11ce70549f1602bdae8e338bf639354ec4728cc"
+    "grounding_hash": "5ac9321c1429dd025cdbd4c45c9cadae9b6364d56b6b0804ffa07370791c13b0"
   },
   "1172189dd014337aa8b66f896bf28270a2ae061eacd819feeb29cbdc4ce1419d": {
     "doc": "brainpalace-plugin/skills/using-brainpalace/references/interactive-setup.md",
@@ -847,7 +847,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "unchanged: fresh cached verdict, prose and grounded relation unchanged since last verified pass",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
@@ -886,7 +886,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh verdict, re-echoed unchanged",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/plugin_detect.py"
     ],
@@ -912,11 +912,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "reused fresh cached verdict",
+    "evidence": "(cached, echoed verbatim)",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/status.py"
     ],
-    "grounding_hash": "53fe902576af9e89b28f2929f659acb2fe5652da479ec57f78a8698a1b903feb"
+    "grounding_hash": "ffaaa041e3462ff309c255dbb4c7fe369f75a6c880ddfc09ac3f2269710086d2"
   },
   "12e8928544c7127fbde04abfb3026acb49131fd69321baa136e6d81bdf0fae3f": {
     "doc": "docs/API_REFERENCE.md",
@@ -967,7 +967,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "reused fresh cached verdict",
+    "evidence": "(cached, echoed verbatim)",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/sync_docs.py"
     ],
@@ -1006,7 +1006,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/ingestion/sink.py",
       "brainpalace-server/tests/ingestion/test_sink.py"
@@ -1020,7 +1020,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "re-confirmed against current code",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/init.py"
     ],
@@ -1033,7 +1033,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/extraction_drain.py"
     ],
@@ -1046,7 +1046,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "all named files/dirs exist and match described roles",
+    "evidence": "(cached, echoed verbatim)",
     "grounding_files": [
       "brainpalace-plugin/agents/setup-assistant.md",
       "brainpalace-plugin/commands/",
@@ -1116,7 +1116,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/tests/unit/storage/test_postgres_config.py"
     ],
@@ -1129,7 +1129,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh; grounding unchanged",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/extraction_config.py"
     ],
@@ -1142,7 +1142,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "Taskfile.yml before-push task includes '- task: lint:doc-verify' at line 356; lint:doc-verify task defined at line 274",
+    "evidence": "reused fresh cached verdict (unchanged prose + grounding)",
     "grounding_files": [
       "Taskfile.yml"
     ],
@@ -1194,7 +1194,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "unchanged: fresh cached verdict, prose and grounded relation unchanged since last verified pass",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/api/routers/ingest.py",
       "brainpalace-server/brainpalace_server/ingestion/sink.py"
@@ -1247,11 +1247,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "quality-gate job installs server from local build then installs CLI with local server dependency; Dashboard Gate job installs server+cli+dashboard+life together",
+    "evidence": "reused fresh cached verdict (unchanged prose + grounding)",
     "grounding_files": [
       ".github/workflows/publish-to-pypi.yml"
     ],
-    "grounding_hash": "13b5f71783a1c6addcd0493cc7269a9aad41bf8aa099b779a386e61a32e85fca"
+    "grounding_hash": "f48b7f9c35d2ab5c3e39e059deed960baf1bd7bdff5cd3031fe955191f59855d"
   },
   "18a66d179fad6bb686fc7437f0c2f5e724acae4eff8f6d6737f936ef17bbfec4": {
     "doc": "docs/BUILDING_ON_BRAINPALACE.md",
@@ -1260,7 +1260,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "unchanged: fresh cached verdict, prose and grounded relation unchanged since last verified pass",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "e2e/integration/test_share_receive_convention.py"
     ],
@@ -1326,7 +1326,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "unchanged: fresh cached verdict, prose and grounded relation unchanged since last verified pass",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/services/session_extract_service.py"
     ],
@@ -1352,7 +1352,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "reused fresh cached verdict",
+    "evidence": "(cached, echoed verbatim)",
     "grounding_files": [
       "scripts/dev-install-from-source.sh"
     ],
@@ -1378,7 +1378,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
@@ -1391,7 +1391,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
@@ -1417,7 +1417,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached (fresh, relation unchanged)",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/git_config.py"
     ],
@@ -1471,7 +1471,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
@@ -1498,7 +1498,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh; grounding unchanged",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/config.py"
     ],
@@ -1511,7 +1511,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "reused fresh cached verdict",
+    "evidence": "(cached, echoed verbatim)",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/init.py"
     ],
@@ -1524,7 +1524,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached (fresh, relation unchanged)",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/git_config.py"
     ],
@@ -1576,7 +1576,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "audit",
-    "evidence": "cached (fresh, relation unchanged)"
+    "evidence": "cached fresh verdict, unchanged"
   },
   "1f4834fa8bcf77ce5a9cc0f002187e560ed52baeb719f657f17bc12bd3f664c7": {
     "doc": "docs/BUILDING_ON_BRAINPALACE.md",
@@ -1585,7 +1585,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "unchanged: fresh cached verdict, prose and grounded relation unchanged since last verified pass",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/api/routers/ingest.py",
       "e2e/integration/test_share_receive_convention.py"
@@ -1639,11 +1639,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "workflow triggers on release:published against tags, consistent with main-only publishing model",
+    "evidence": "reused fresh cached verdict (unchanged prose + grounding)",
     "grounding_files": [
       ".github/workflows/publish-to-pypi.yml"
     ],
-    "grounding_hash": "13b5f71783a1c6addcd0493cc7269a9aad41bf8aa099b779a386e61a32e85fca"
+    "grounding_hash": "f48b7f9c35d2ab5c3e39e059deed960baf1bd7bdff5cd3031fe955191f59855d"
   },
   "20ac7fa3e344f2d461873b9a65cdefe9ec927eccd2c5754fc0b6c7dc5653c83c": {
     "doc": "docs/COMPUTE.md",
@@ -1705,7 +1705,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh; grounding unchanged",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "Taskfile.yml"
     ],
@@ -1731,7 +1731,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "install_agent.py CONVERTERS registry has exactly these 7 runtimes: claude, opencode, skill-runtime, codex, antigravity, qwen, kimi",
+    "evidence": "reused fresh cached verdict (unchanged prose + grounding)",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/install_agent.py"
     ],
@@ -1822,7 +1822,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "doc-dep",
-    "evidence": "reused fresh cached verdict",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "docs/COMPUTE.md"
     ],
@@ -1835,7 +1835,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "config_review.py:258-259 note = \"inherited from global\" passed to ask_field(inherited_note=note)",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/config_review.py"
     ],
@@ -1874,7 +1874,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "reused/reconfirmed, still present in current prose",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/sessions.py"
     ],
@@ -1967,11 +1967,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "reused fresh cached verdict",
+    "evidence": "brainpalace-server/pyproject.toml: name=brainpalace-rag, description mentions BM25+vector+GraphRAG retrieval engine, own Poetry pyproject",
     "grounding_files": [
       "brainpalace-server/pyproject.toml"
     ],
-    "grounding_hash": "804d7f75b15157e745326075cb95d08623da1a1e7b17e084b57b4263a5e6c3a0"
+    "grounding_hash": "99c2c163e98b5b16c18817635e55c3c0c3024f38d41bbf574360a1aa5e14727d"
   },
   "25f9cc4db1b9188fa7bf71af92ade92535331cd80d9d411bdf27d4fd862159d7": {
     "doc": "docs/BUILDING_ON_BRAINPALACE.md",
@@ -1980,7 +1980,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "unchanged: fresh cached verdict, prose and grounded relation unchanged since last verified pass",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/storage/record_store.py",
       "brainpalace-server/brainpalace_server/storage/reference_catalog_store.py"
@@ -1994,7 +1994,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
@@ -2007,7 +2007,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh; grounding unchanged",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/tests/eval/report.py"
     ],
@@ -2065,6 +2065,19 @@
     ],
     "grounding_hash": "23900e15e2f60b1e47c40a2ef2a6130f8bb871472b67a48867ce8d69f9c42772"
   },
+  "2911eea4bdc08815ef37261816e594e6c716d823834dfb29f3c7b3b1527314ec": {
+    "doc": "CLAUDE.md",
+    "claim": "AI guidance single source is brainpalace-cli/brainpalace_cli/data/ai_guidance.md; loader is brainpalace_cli/ai_guidance.py; brainpalace ai-guide renders it",
+    "grounding": "brainpalace-cli/brainpalace_cli/ai_guidance.py",
+    "raw_verdict": "SUPPORTED",
+    "verdict": "SUPPORTED",
+    "grounding_tier": "code",
+    "evidence": "(cached, echoed verbatim)",
+    "grounding_files": [
+      "brainpalace-cli/brainpalace_cli/ai_guidance.py"
+    ],
+    "grounding_hash": "9020e0520dff66094b5d50757e588255d5e1fed3a365691e9f0b94c7e4316b97"
+  },
   "2934aa2800e547d81c5474c846ed6079c68a5b58a526901326b7fd919b12a3f6": {
     "doc": "docs/SCAN.md",
     "claim": "Fork-only: the pool is used only when the multiprocessing start method is fork",
@@ -2085,7 +2098,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/services/query_cache.py"
     ],
@@ -2256,7 +2269,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh; grounding unchanged",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/provider_config.py"
     ],
@@ -2452,7 +2465,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "unchanged: fresh cached verdict, prose and grounded relation unchanged since last verified pass",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/mcp_server/server.py"
     ],
@@ -2543,7 +2556,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "reused fresh cached verdict",
+    "evidence": "(cached, echoed verbatim)",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/folders.py"
     ],
@@ -2569,7 +2582,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh; grounding unchanged",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/tests/eval/test_eval_smoke.py"
     ],
@@ -2634,7 +2647,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "re-confirmed against current code",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/init.py"
     ],
@@ -2673,7 +2686,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "install_agent.py CONVERTERS registry has exactly these runtimes (plus skill-runtime, not itemized in this shorthand row)",
+    "evidence": "reused fresh cached verdict (unchanged prose + grounding)",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/install_agent.py"
     ],
@@ -2712,12 +2725,12 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "config_fields.py:63 scope field + _scope_ok() at line 690/700 filters fields shown per layer",
+    "evidence": "config_fields.py: session_indexing.archive.dir has scope='project'; config_review.py hides project-only fields from global editor",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/config_fields.py",
       "brainpalace-cli/brainpalace_cli/config_review.py"
     ],
-    "grounding_hash": "6bdfcb5adb65b791f38bfda36f85d88fe5aa5964d106ad265ecf750cdc0b7649"
+    "grounding_hash": "a081975b778a86cdbce4afbcd70a26b14e6e22f4d8dc4cd415c9b5e819fd5da8"
   },
   "36554c8645dece2622e7be85a25b312874125f25a5ec0e3ae1a84337cfda8aba": {
     "doc": "brainpalace-plugin/agents/graph-triplet-extractor.md",
@@ -2809,11 +2822,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh verdict reused verbatim",
+    "evidence": "(cached, echoed verbatim)",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/update.py"
     ],
-    "grounding_hash": "1f7ffaa61fb02e6c0a6e89c611c6891064e4b43b46884102f267d171643d26da"
+    "grounding_hash": "44a5bb345f3bcfaef7cd434d219a1f1fbf4b005fd5e27bb87c95415633993718"
   },
   "380cc798540515d62d237f54caa5af20e4e06776bb911d30564b136dfe108370": {
     "doc": "brainpalace-plugin/commands/brainpalace-graph.md",
@@ -2835,7 +2848,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/ingestion/sink.py"
     ],
@@ -2874,7 +2887,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "reused/reconfirmed, still present in current prose",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/tests/test_session_filter_contract.py"
     ],
@@ -2939,11 +2952,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh; grounding unchanged",
+    "evidence": "HealthStatus/IndexingStatus models in models/health.py have exactly these fields; bm25 dict added by status.py CLI from bm25_config",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/api/routers/health.py"
     ],
-    "grounding_hash": "136236491c46d09b18f30541e191c79b349414bae7bb08847f76f29ba75aec49"
+    "grounding_hash": "9f6482dbc18358fdeddd044011998e2253e8a301506de889d53925ef3be5dea0"
   },
   "3ab4ea416b0347dc540937bff9440a1446d7750f01d5a6d32632ab1b3bf3f1e0": {
     "doc": "brainpalace-plugin/commands/brainpalace-config.md",
@@ -2965,12 +2978,12 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "init.py:953 dashboard.autostart/dashboard.port written only on --global path, outside the sparse per-project registry writer",
+    "evidence": "init.py _write_global_dashboard_settings writes dashboard.autostart/dashboard.port as global-only, separate from per-project registry",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/init.py",
       "brainpalace-dashboard/brainpalace_dashboard/services/config_svc.py"
     ],
-    "grounding_hash": "f921c7e1f4a803bdf5abd196a4866f98f34e37e597a9216e88ce596c66c895cd"
+    "grounding_hash": "d57f909153cac3a6711c7e7369ceb7df84a50526502a922e7e0364d1cdd2b1be"
   },
   "3af4bedf61c4ce67060a2e749fbf091f41ab9f1737aaa33216a6e57b57b86aa6": {
     "doc": "brainpalace-plugin/commands/brainpalace-read-only.md",
@@ -2992,7 +3005,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "unchanged: fresh cached verdict, prose and grounded relation unchanged since last verified pass",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/api/routers/entities.py",
       "brainpalace-server/brainpalace_server/storage/identity_store.py"
@@ -3100,7 +3113,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "unchanged: fresh cached verdict, prose and grounded relation unchanged since last verified pass",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/init.py",
       "brainpalace-cli/brainpalace_cli/commands/start.py"
@@ -3114,7 +3127,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
@@ -3127,7 +3140,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "reused fresh cached verdict",
+    "evidence": "(cached, echoed verbatim)",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/models/query.py"
     ],
@@ -3166,7 +3179,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "unchanged: fresh cached verdict, prose and grounded relation unchanged since last verified pass",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/indexing/document_loader.py"
     ],
@@ -3244,7 +3257,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/extraction_config.py"
     ],
@@ -3378,11 +3391,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "reused fresh cached verdict",
+    "evidence": "brainpalace-cli/pyproject.toml: name=brainpalace-cli, own Poetry pyproject; CLI bundles server per description",
     "grounding_files": [
       "brainpalace-cli/pyproject.toml"
     ],
-    "grounding_hash": "30b39726ac0cfa2552e4fb909d5c3c24856d3b47ae21c2ed9fa68b2b52f841a7"
+    "grounding_hash": "ff94879ea109c42e62501e1332fc54012366a80f5ff1d59b0084990c6e9a1e6d"
   },
   "43ca8afd0443f58c37ef2beba97fd485cc6d01ed273681fe038240e458902fa7": {
     "doc": "docs/BUILDING_ON_BRAINPALACE.md",
@@ -3391,7 +3404,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "unchanged: fresh cached verdict, prose and grounded relation unchanged since last verified pass",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/services/query_service.py"
     ],
@@ -3443,7 +3456,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/ingestion/sink.py"
     ],
@@ -3482,7 +3495,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "reused fresh cached verdict",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/indexing/text_analysis/registry.py",
       "brainpalace-server/brainpalace_server/indexing/text_analysis/snowball.py"
@@ -3496,7 +3509,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
@@ -3535,7 +3548,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh; grounding unchanged",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/tests/eval/cases_graph.yaml",
       "brainpalace-server/tests/eval/runner.py"
@@ -3627,7 +3640,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/ingestion/adapter.py"
     ],
@@ -3718,7 +3731,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "reused fresh cached verdict",
+    "evidence": "(cached, echoed verbatim)",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/verify_docs.py"
     ],
@@ -3913,7 +3926,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached (fresh, relation unchanged)",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/api/routers/git.py"
     ],
@@ -3926,7 +3939,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "Taskfile.yml release:prep task exists at line 402, desc matches; calls bump_version.py + roll_changelog.py",
+    "evidence": "reused fresh cached verdict (unchanged prose + grounding)",
     "grounding_files": [
       "Taskfile.yml",
       "scripts/bump_version.py",
@@ -3954,7 +3967,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/services/query_cache.py"
     ],
@@ -4006,7 +4019,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "provider_tables.py defines exactly these 4 block names: providers-embedding, providers-summarization, providers-reranker, install-dirs, plus class ProviderTablesChecker",
+    "evidence": "reused fresh cached verdict (unchanged prose + grounding)",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/doc_sync/checkers/provider_tables.py"
     ],
@@ -4032,7 +4045,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/optional_deps.py"
     ],
@@ -4138,7 +4151,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
@@ -4190,7 +4203,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "unchanged: fresh cached verdict, prose and grounded relation unchanged since last verified pass",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/rehome/orchestrator.py",
       "brainpalace-server/brainpalace_server/rehome/quarantine.py"
@@ -4204,11 +4217,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "workflow uses OIDC trusted publishing steps, no token secrets referenced",
+    "evidence": "reused fresh cached verdict (unchanged prose + grounding)",
     "grounding_files": [
       ".github/workflows/publish-to-pypi.yml"
     ],
-    "grounding_hash": "13b5f71783a1c6addcd0493cc7269a9aad41bf8aa099b779a386e61a32e85fca"
+    "grounding_hash": "f48b7f9c35d2ab5c3e39e059deed960baf1bd7bdff5cd3031fe955191f59855d"
   },
   "5693b536b784a40a97370d4d831ecbb0d3c2a84da138201b2dd7af93670f3e4e": {
     "doc": "brainpalace-plugin/commands/brainpalace-dashboard.md",
@@ -4256,11 +4269,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "session_config.py reads os.getenv('SESSION_DISTILL_GRACE_HOURS')",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/session_config.py"
     ],
-    "grounding_hash": "e5e93ac6aab8fe38b172278aed9898be9f31fb815051176bc7f3fff8249c1d5e"
+    "grounding_hash": "cb3e3ad6ebdee869ec592245dd6d818cdad18d2916225fc5705644dbb26bf9b6"
   },
   "57db5b741a4b8c66b1e8aacf4d66542443d4c4730cb821f04010849210eef49f": {
     "doc": "brainpalace-plugin/commands/brainpalace-install.md",
@@ -4395,11 +4408,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "reused fresh cached verdict",
+    "evidence": "(cached, echoed verbatim)",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/services/session_archive_service.py"
     ],
-    "grounding_hash": "6c3fe5e92c409bd3ac4a614fa3d91fe6b490c3512a61788038dca871722a8086"
+    "grounding_hash": "39a0e8a39af2d6a327d31d9fe24869a3e28c735fc5e954e4d66169f29e4dd082"
   },
   "5c70eca991e15c3c8fbc02ab9f533a911274be7891faf142715022829a65a680": {
     "doc": "docs/SCAN.md",
@@ -4506,7 +4519,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
@@ -4532,7 +4545,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/provider_config.py"
     ],
@@ -4571,7 +4584,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "both scripts exist at documented paths",
+    "evidence": "reused fresh cached verdict (unchanged prose + grounding)",
     "grounding_files": [
       "scripts/add_audit_metadata.py",
       "scripts/check_doc_freshness.py"
@@ -4599,7 +4612,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/ingestion/adapter.py",
       "brainpalace-server/brainpalace_server/ingestion/sink.py"
@@ -4652,7 +4665,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
@@ -4718,7 +4731,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "reused fresh cached verdict",
+    "evidence": "(cached, echoed verbatim)",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/init_plan.py"
     ],
@@ -4783,7 +4796,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "unchanged: fresh cached verdict, prose and grounded relation unchanged since last verified pass",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
@@ -4994,12 +5007,12 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "unchanged: fresh cached verdict, prose and grounded relation unchanged since last verified pass",
+    "evidence": "record_store.py: 'SQLite only \u2014 no DuckDB'; main.py: RecordStore(db_path(state_dir, 'records.db'))",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/api/main.py",
       "brainpalace-server/brainpalace_server/storage/record_store.py"
     ],
-    "grounding_hash": "8a59309bca7dd24cb1d5effd4ccf51c0bff34ddc0f866ef285e79fa085f1ad1e"
+    "grounding_hash": "42fe45fdcc1fc78dbf5a9f84c4823ac60b349864779d1c600b4af359cc95a1d7"
   },
   "69df073bae2e18c77eeb1791723f6a6127078fc94afeada8b065be54002c978e": {
     "doc": "brainpalace-plugin/skills/configuring-brainpalace/references/provider-configuration.md",
@@ -5031,7 +5044,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
@@ -5149,7 +5162,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh; grounding unchanged",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py",
       "brainpalace-server/brainpalace_server/storage/graph_store.py"
@@ -5243,7 +5256,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh verdict, re-echoed unchanged"
+    "evidence": "cached fresh verdict, unchanged"
   },
   "6dfa982fa8dce85d20b377b484c828cce3db25fab77f00f604b333c5625252a9": {
     "doc": "brainpalace-plugin/commands/brainpalace-folders.md",
@@ -5265,7 +5278,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "unchanged: fresh cached verdict, prose and grounded relation unchanged since last verified pass",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/entities.py",
       "brainpalace-server/brainpalace_server/api/routers/entities.py"
@@ -5318,7 +5331,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "bump_version.py bumps brainpalace-dashboard/brainpalace_dashboard/__init__.py __version__ directly (site 4) but not cli/server __init__.py, consistent with metadata-derivation claim",
+    "evidence": "reused fresh cached verdict (unchanged prose + grounding)",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/__init__.py",
       "scripts/bump_version.py"
@@ -5358,7 +5371,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
@@ -5371,7 +5384,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "reused fresh cached verdict",
+    "evidence": "(cached, echoed verbatim)",
     "grounding_files": [
       ".git/info/exclude"
     ],
@@ -5398,7 +5411,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "reused fresh cached verdict",
+    "evidence": "(cached, echoed verbatim)",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/init.py"
     ],
@@ -5463,7 +5476,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/ingestion/sink.py",
       "brainpalace-server/brainpalace_server/services/session_records.py"
@@ -5542,7 +5555,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/references.py",
       "brainpalace-server/brainpalace_server/api/routers/ingest.py",
@@ -5713,7 +5726,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
@@ -5739,7 +5752,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "reused fresh cached verdict",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/providers/embedding/",
       "brainpalace-server/brainpalace_server/providers/summarization/"
@@ -5753,7 +5766,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "provider_config.py:545 \"the full precedence is env > project > global > code\" (flags set env vars at the CLI layer)",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/provider_config.py"
     ],
@@ -5793,7 +5806,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
@@ -5884,7 +5897,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "reused/reconfirmed, still present in current prose",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/tests/test_session_filter_contract.py"
     ],
@@ -5911,13 +5924,13 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "43 .md in commands/, 6 in agents/, 2 dirs in skills/",
+    "evidence": "find brainpalace-plugin/commands *.md = 43, agents = 6, skills dirs = 2 \u2014 matches README text exactly",
     "grounding_files": [
       "brainpalace-plugin/agents/",
       "brainpalace-plugin/commands/",
       "brainpalace-plugin/skills/"
     ],
-    "grounding_hash": "7ea14531f0acf8715dea438f6bdaceb79dcbf5eecfff34c4e0efd4fb8c71e8e8"
+    "grounding_hash": "56c430e926b1ac2711ca12886bed4183ea50cb3135616246bb325c3315afd043"
   },
   "7b44bc21297264b6728c545c82779e1e7f6291e32edcbf80cdb5aed0c241566a": {
     "doc": "docs/RELEASING.md",
@@ -5926,7 +5939,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "bump_version.py docstring enumerates exactly these 6 sites",
+    "evidence": "reused fresh cached verdict (unchanged prose + grounding)",
     "grounding_files": [
       "scripts/bump_version.py"
     ],
@@ -5952,7 +5965,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "reused fresh cached verdict",
+    "evidence": "(cached, echoed verbatim)",
     "grounding_files": [
       "Taskfile.yml"
     ],
@@ -6043,7 +6056,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "audit",
-    "evidence": "unchanged: fresh cached verdict, prose and grounded relation unchanged since last verified pass"
+    "evidence": "cached fresh verdict, unchanged"
   },
   "7d6b1e75fb46dced2a0e8bf70ce4d3e9f7bbb269f0cb042a8626355914e70ff9": {
     "doc": "brainpalace-plugin/commands/brainpalace-recall.md",
@@ -6092,11 +6105,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "reused fresh cached verdict",
+    "evidence": "(cached, echoed verbatim)",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/session_config.py"
     ],
-    "grounding_hash": "e5e93ac6aab8fe38b172278aed9898be9f31fb815051176bc7f3fff8249c1d5e"
+    "grounding_hash": "cb3e3ad6ebdee869ec592245dd6d818cdad18d2916225fc5705644dbb26bf9b6"
   },
   "7e166dc0755d65bc39168574a9dd504e43211c3ea2dd9351567db7bbb24c70c9": {
     "doc": "docs/CODE_INDEXING.md",
@@ -6197,7 +6210,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh; grounding unchanged",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/tests/eval/runner.py"
     ],
@@ -6210,7 +6223,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
@@ -6223,7 +6236,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "reused fresh cached verdict",
+    "evidence": "(cached, echoed verbatim)",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/ai_guidance.py"
     ],
@@ -6236,7 +6249,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
@@ -6262,7 +6275,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "dashboard_status_info() defined in _dashboard_url.py, used by commands/status.py as the dashboard-aware probe seam",
+    "evidence": "reused fresh cached verdict (unchanged prose + grounding)",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/_dashboard_url.py"
     ],
@@ -6310,7 +6323,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh verdict, re-echoed unchanged"
+    "evidence": "cached fresh verdict, unchanged"
   },
   "83cb80d323a37f98888da184ca04e3b3a65d98ef0cd54891ed7571dfc4df89a4": {
     "doc": "brainpalace-plugin/agents/setup-assistant.md",
@@ -6372,11 +6385,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "reused/reconfirmed, still present in current prose",
+    "evidence": "session_config.py SessionCapabilities.index_enabled gates extraction",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/session_config.py"
     ],
-    "grounding_hash": "e5e93ac6aab8fe38b172278aed9898be9f31fb815051176bc7f3fff8249c1d5e"
+    "grounding_hash": "cb3e3ad6ebdee869ec592245dd6d818cdad18d2916225fc5705644dbb26bf9b6"
   },
   "863896b269e956a58f32db9150b91c20d4cbf6d1a47ecf0e3f182931dcb6290b": {
     "doc": "brainpalace-plugin/commands/brainpalace-config.md",
@@ -6424,7 +6437,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "reused fresh cached verdict",
+    "evidence": "(cached, echoed verbatim)",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/ai_guidance.py"
     ],
@@ -6463,7 +6476,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "unchanged: fresh cached verdict, prose and grounded relation unchanged since last verified pass",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/rehome/identity.py"
     ],
@@ -6485,7 +6498,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "test_version_consistency.py exists in brainpalace-cli/tests/",
+    "evidence": "reused fresh cached verdict (unchanged prose + grounding)",
     "grounding_files": [
       "brainpalace-cli/tests/test_version_consistency.py"
     ],
@@ -6498,7 +6511,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/indexing/chunking.py"
     ],
@@ -6524,7 +6537,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "bump_version.py bumps version across cli/server/dashboard pyproject.toml + dashboard __init__.py in one run",
+    "evidence": "reused fresh cached verdict (unchanged prose + grounding)",
     "grounding_files": [
       "scripts/bump_version.py"
     ],
@@ -6537,7 +6550,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh; grounding unchanged",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/tests/lsp/test_live_pyright.py"
     ],
@@ -6550,7 +6563,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "reused fresh cached verdict",
+    "evidence": "(cached, echoed verbatim)",
     "grounding_files": [
       "Taskfile.yml"
     ],
@@ -6602,11 +6615,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "SessionIndexingConfig/SessionArchiveConfig field defaults in session_config.py match exactly",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/session_config.py"
     ],
-    "grounding_hash": "e5e93ac6aab8fe38b172278aed9898be9f31fb815051176bc7f3fff8249c1d5e"
+    "grounding_hash": "cb3e3ad6ebdee869ec592245dd6d818cdad18d2916225fc5705644dbb26bf9b6"
   },
   "8b87efa0e74e1c3b8d9324f34299704f8104ac2401bba1f389ce0c624ecbc9ab": {
     "doc": "docs/SCAN.md",
@@ -6707,7 +6720,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "roll_changelog.py implements Unreleased -> versioned section rename + fresh Unreleased insertion",
+    "evidence": "reused fresh cached verdict (unchanged prose + grounding)",
     "grounding_files": [
       "scripts/roll_changelog.py"
     ],
@@ -6733,7 +6746,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "unchanged: fresh cached verdict, prose and grounded relation unchanged since last verified pass",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "scripts/check_import_boundary.py"
     ],
@@ -6795,7 +6808,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
@@ -6821,7 +6834,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
@@ -6869,7 +6882,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "unchanged: fresh cached verdict, prose and grounded relation unchanged since last verified pass",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/ingestion/sink.py",
       "brainpalace-server/brainpalace_server/services/document_ingest_service.py"
@@ -6883,7 +6896,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "reused fresh cached verdict",
+    "evidence": "(cached, echoed verbatim)",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/doc_sync/checkers/skills.py"
     ],
@@ -6896,7 +6909,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/provider_config.py"
     ],
@@ -6974,7 +6987,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
@@ -6987,7 +7000,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
@@ -7013,7 +7026,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
@@ -7131,7 +7144,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh; grounding unchanged",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
@@ -7144,7 +7157,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "unchanged: fresh cached verdict, prose and grounded relation unchanged since last verified pass",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/ingestion/sink.py"
     ],
@@ -7235,7 +7248,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "unchanged: fresh cached verdict, prose and grounded relation unchanged since last verified pass",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/api/routers/rehome.py",
       "brainpalace-server/brainpalace_server/rehome/quarantine.py"
@@ -7262,7 +7275,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "reconfirmed: table lists specific named files (not claiming exhaustiveness); each named file (corpus/, cases.yaml, runner.py, scorer.py, report.py, baseline.json, test_scorer.py, test_eval_smoke.py) exists in brainpalace-server/tests/eval/",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/tests/eval/"
     ],
@@ -7288,7 +7301,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "unchanged: fresh cached verdict, prose and grounded relation unchanged since last verified pass",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/indexing/bm25_index.py",
       "brainpalace-server/brainpalace_server/indexing/graph_index.py",
@@ -7329,11 +7342,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "reused fresh cached verdict",
+    "evidence": "(cached, echoed verbatim)",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/api/routers/sessions.py"
     ],
-    "grounding_hash": "f71023a3b164d610c8b634585b7e6878aaf3c2ad914c2094b69bc14785b80742"
+    "grounding_hash": "1694e9d8089ad1341245daaff88fd9ef4c7526dd746b5ca4231345484dee2acb"
   },
   "9b995f3a498ff2edea35ef333bcd24915ea54bb41531a3530ae494f20c2051ba": {
     "doc": "brainpalace-plugin/commands/brainpalace-entities.md",
@@ -7403,7 +7416,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "unchanged: fresh cached verdict, prose and grounded relation unchanged since last verified pass",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/job_queue/job_service.py"
     ],
@@ -7521,7 +7534,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh verdict, re-echoed unchanged"
+    "evidence": "cached fresh verdict, unchanged"
   },
   "9f30164ef0156adb700b34d8328ac23409310f80e03240a15dff2390bccd84a2": {
     "doc": "brainpalace-plugin/agents/setup-assistant.md",
@@ -7597,15 +7610,15 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "main.py:1350 comment: SESSION_DISTILL_ENABLED is truthy (disabled by default)",
+    "evidence": "session_config.py session_distill_enabled(): _env_flag('SESSION_DISTILL_ENABLED', default=False)",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/api/main.py"
     ],
-    "grounding_hash": "e6f32d0400665e1cb703de9982d58c3cf7ceb867812c8a7190705d37f9d529d4"
+    "grounding_hash": "0c53dbce0902f41b03130d2bfc80a615cf7000c64d1acd34865f244d21e64feb"
   },
   "__marker__": {
-    "base": "c85ce90b2db9ed050dd48c3a0448805fee05f618",
-    "fingerprint": "28e32042644e77aa7dd9ced59ffe204a40ed8e64e1c9ed01eccf06ab340fe265"
+    "base": "f53d366da626ab3cd5ca4202463afb9e18444ee9",
+    "fingerprint": "ad027db9eda22a183229d7c55f055a7e619c3e1c8c1464d6739499d5bee5a6df"
   },
   "a03db0b21cb4f891a4a126d69fc9ae2c80621f185d3e619392826c74bb1e82fa": {
     "doc": "docs/POSTGRESQL_SETUP.md",
@@ -7680,7 +7693,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
@@ -7693,7 +7706,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "doc-dep",
-    "evidence": "reused fresh cached verdict",
+    "evidence": "(cached, echoed verbatim)",
     "grounding_files": [
       "docs/RELEASING.md"
     ],
@@ -7706,7 +7719,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
@@ -7719,7 +7732,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh; grounding unchanged",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/tests/validation/"
     ],
@@ -7797,7 +7810,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "before-push includes '- task: release:rehearse-ci' at line 364; release:rehearse-ci task at line 367 sets BRAINPALACE_DOCSYNC_NO_DASHBOARD and uses sitecustomize import-blocker",
+    "evidence": "reused fresh cached verdict (unchanged prose + grounding)",
     "grounding_files": [
       "Taskfile.yml"
     ],
@@ -7871,7 +7884,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "unchanged: fresh cached verdict, prose and grounded relation unchanged since last verified pass",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/rehome/identity.py"
     ],
@@ -7889,15 +7902,6 @@
       "brainpalace-cli/brainpalace_cli/commands/folders.py"
     ],
     "grounding_hash": "da55984b0cbec0241e98e8c495d2441bc4c77f01c590729c0b50e42025456fd6"
-  },
-  "a4cc2984ba262449aafb1ff947d0ba02fa888e2028253589ff6bba24a3c1a32c": {
-    "doc": "CLAUDE.md",
-    "claim": "AI guidance single source is brainpalace-cli/brainpalace_cli/data/ai_guidance.md; loader is brainpalace_cli/ai_guidance.py; brainpalace ai-guide renders it",
-    "grounding": "brainpalace-cli/brainpalace_cli/data/ai_guidance.md",
-    "raw_verdict": "SUPPORTED",
-    "verdict": "SUPPORTED",
-    "grounding_tier": "audit",
-    "evidence": "reused fresh cached verdict"
   },
   "a515fbf664e31a065e146e04d8d82e4cc7f7b1a86cb2923726deaf779b021b57": {
     "doc": "docs/QUICK_START.md",
@@ -7946,7 +7950,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
@@ -8011,11 +8015,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "re-confirmed against current code",
+    "evidence": "main.py logs 'Git boot-index enqueued' / warns 'enqueue failed' non-fatally on startup",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/api/main.py"
     ],
-    "grounding_hash": "f4e0bb09e3c1ac03be6b4bd1817f617a810b7cafcd862f7cf97bb7df275623b4"
+    "grounding_hash": "0c53dbce0902f41b03130d2bfc80a615cf7000c64d1acd34865f244d21e64feb"
   },
   "a7c461bdac0ac3871ca1ae3bf9cf9123475fd755014373842a793f32772853cb": {
     "doc": "brainpalace-plugin/commands/brainpalace-config.md",
@@ -8050,7 +8054,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/ingestion/adapter.py"
     ],
@@ -8116,11 +8120,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh verdict reused verbatim",
+    "evidence": "(cached, echoed verbatim)",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/update.py"
     ],
-    "grounding_hash": "1f7ffaa61fb02e6c0a6e89c611c6891064e4b43b46884102f267d171643d26da"
+    "grounding_hash": "44a5bb345f3bcfaef7cd434d219a1f1fbf4b005fd5e27bb87c95415633993718"
   },
   "a9ae8f0c65e42c6fa903e868273a1136e519b59647a39e8832d357c959ee04a5": {
     "doc": "docs/DEPLOYMENT.md",
@@ -8157,12 +8161,12 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "reused fresh cached verdict",
+    "evidence": "(cached, echoed verbatim)",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/init.py",
       "docs/SESSION_INDEXING.md"
     ],
-    "grounding_hash": "79ae0709c364ffeb4c6aea72b7cf2a53d11b48c498aadc9590ed3bd3636840ef"
+    "grounding_hash": "9bdce468acd264d484744371d466818293c17ebfb792f6cdcc10839dc2e1f73a"
   },
   "aa2371d12ca33905caaac349c49e5cc3133991b0e174f333cc9b04428f669911": {
     "doc": "brainpalace-plugin/agents/graph-triplet-extractor.md",
@@ -8232,11 +8236,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh; grounding unchanged",
+    "evidence": "status.py: click.option('--url', envvar='BRAINPALACE_URL'), resolved_url = url or get_server_url()",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/status.py"
     ],
-    "grounding_hash": "53fe902576af9e89b28f2929f659acb2fe5652da479ec57f78a8698a1b903feb"
+    "grounding_hash": "ffaaa041e3462ff309c255dbb4c7fe369f75a6c880ddfc09ac3f2269710086d2"
   },
   "abb563616078580c78208e0586fd1580752c5595838e2d0e505ead9837c8d603": {
     "doc": "docs/CONFIGURATION.md",
@@ -8245,7 +8249,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
@@ -8272,7 +8276,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
@@ -8311,7 +8315,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "unchanged: fresh cached verdict, prose and grounded relation unchanged since last verified pass",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/rehome/detect.py"
     ],
@@ -8337,7 +8341,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "reused fresh cached verdict",
+    "evidence": "(cached, echoed verbatim)",
     "grounding_files": [
       "Taskfile.yml"
     ],
@@ -8456,11 +8460,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "SessionExtractionConfig.quiescence_seconds default=1800; docstring: 'engine selector (mode) has moved to extraction.mode'",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/session_config.py"
     ],
-    "grounding_hash": "e5e93ac6aab8fe38b172278aed9898be9f31fb815051176bc7f3fff8249c1d5e"
+    "grounding_hash": "cb3e3ad6ebdee869ec592245dd6d818cdad18d2916225fc5705644dbb26bf9b6"
   },
   "afff356f1269fd5d79e4666723b58213f9e05aedcb6bae91515aadcdbc223f97": {
     "doc": "brainpalace-plugin/skills/configuring-brainpalace/references/troubleshooting-guide.md",
@@ -8495,7 +8499,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "unchanged: fresh cached verdict, prose and grounded relation unchanged since last verified pass",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/job_queue/job_service.py"
     ],
@@ -8508,7 +8512,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/ingestion/adapter.py",
       "brainpalace-server/brainpalace_server/ingestion/sink.py"
@@ -8574,7 +8578,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "reused fresh cached verdict",
+    "evidence": "(cached, echoed verbatim)",
     "grounding_files": [
       "scripts/add_audit_metadata.py"
     ],
@@ -8587,7 +8591,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "reused/reconfirmed, still present in current prose",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/tests/test_session_filter_contract.py"
     ],
@@ -8613,12 +8617,12 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "config_svc.py effective_global() (line 240-267) iterates set(global_) | set(DEFAULTS) with no scope check, unlike the CLI review screen; ui_schema.py comment confirms project_root/state_dir fields were removed from the schema",
+    "evidence": "GlobalConfig.tsx: schema.sections.filter(s => s.key !== 'project') is the ONLY filter applied \u2014 comment: 'Project section is per-instance identity ... drop it here'",
     "grounding_files": [
       "brainpalace-dashboard/brainpalace_dashboard/services/config_svc.py",
       "brainpalace-dashboard/brainpalace_dashboard/ui_schema.py"
     ],
-    "grounding_hash": "86bc83ebc6a4bfa849548799647a369fdd8be60920d6dfa6ea175d26c76cb19a"
+    "grounding_hash": "f179372868120ecc86e4267a7bafa224b4bb7938d562e1d13c30429683eeed4b"
   },
   "b40c6e45f0e47e05ae1065c928e04c79a99228aa7b3a926e75f014215c057515": {
     "doc": "brainpalace-plugin/agents/graph-triplet-extractor.md",
@@ -8679,7 +8683,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
@@ -8848,7 +8852,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "unchanged: fresh cached verdict, prose and grounded relation unchanged since last verified pass",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/storage/record_store.py"
     ],
@@ -8874,12 +8878,12 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "publish-dashboard job sets up node-version 20 (line 335) consistent with an npm build step before packaging",
+    "evidence": "reused fresh cached verdict (unchanged prose + grounding)",
     "grounding_files": [
       ".github/workflows/publish-to-pypi.yml",
       ".gitignore"
     ],
-    "grounding_hash": "2e0333450850c786ea8379600c3562aa1359cd1ebf3cfee9b2f5760e3f6eb041"
+    "grounding_hash": "8cd2bb29b866986e29c363956a1ae3969de7af874871caee647e4621a6c60c24"
   },
   "b9bba291a6b62fbe8dc571a557c75a7d70aae356919e4289456224316d7239e0": {
     "doc": "docs/INGESTION.md",
@@ -8888,7 +8892,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/ingestion/adapter.py",
       "brainpalace-server/brainpalace_server/ingestion/sink.py"
@@ -8915,7 +8919,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/provider_config.py"
     ],
@@ -8967,7 +8971,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "unchanged: fresh cached verdict, prose and grounded relation unchanged since last verified pass",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/api/routers/entities.py",
       "brainpalace-server/brainpalace_server/storage/identity_store.py"
@@ -8981,7 +8985,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "reused fresh cached verdict",
+    "evidence": "(cached, echoed verbatim)",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/verify_docs.py"
     ],
@@ -9202,7 +9206,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh verdict, re-echoed unchanged",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/plugin_detect.py"
     ],
@@ -9215,12 +9219,12 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "models/query.py QueryMode enum unchanged set of modes; adapter.py EmittedEntity is a distinct emitted-item type, separate from graph node schema",
+    "evidence": "models/query.py QueryMode enum still has exactly 9 members; adapter.py EmittedEntity present, routes via identity store",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/ingestion/adapter.py",
       "brainpalace-server/brainpalace_server/models/query.py"
     ],
-    "grounding_hash": "6a4a0ab06bc83b8ac07a5bc0d00a88d0b95f4c0742014bd2a4816a9a80a0101a"
+    "grounding_hash": "4ae8936dbaf250ff691158a48df3be061c87df52b02af4fcc6a73b1ad5f6eb11"
   },
   "c084370e9aefa7edc18616b5e80db53a8e415ff16c95dbcaeac925aaab3057d7": {
     "doc": "brainpalace-plugin/skills/using-brainpalace/references/api_reference.md",
@@ -9243,7 +9247,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh verdict, re-echoed unchanged",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/plugin_detect.py"
     ],
@@ -9279,7 +9283,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "unchanged: fresh cached verdict, prose and grounded relation unchanged since last verified pass",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/rehome/orchestrator.py"
     ],
@@ -9292,7 +9296,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "reused fresh cached verdict",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/indexing/text_analysis/snowball.py"
     ],
@@ -9357,7 +9361,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "unchanged: fresh cached verdict, prose and grounded relation unchanged since last verified pass",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/services/document_ingest_service.py"
     ],
@@ -9396,7 +9400,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "unchanged: fresh cached verdict, prose and grounded relation unchanged since last verified pass",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/ranking_config.py"
     ],
@@ -9448,7 +9452,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/provider_config.py"
     ],
@@ -9461,7 +9465,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "unchanged: fresh cached verdict, prose and grounded relation unchanged since last verified pass",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/storage/identity_store.py"
     ],
@@ -9500,7 +9504,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
@@ -9513,7 +9517,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "unchanged: fresh cached verdict, prose and grounded relation unchanged since last verified pass",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/api/routers/ingest.py"
     ],
@@ -9526,12 +9530,12 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "config_svc.py effective()/effective_global() iterate only DEFAULTS/project config registry keys, no dashboard.* entries; dashboard settings are a separate route/tab",
+    "evidence": "GlobalConfig.tsx renders per-project registry schema (minus project section); dashboard.* is written via a separate CLI/global step, not part of that schema",
     "grounding_files": [
       "brainpalace-dashboard/brainpalace_dashboard/services/config_svc.py",
       "brainpalace-dashboard/brainpalace_dashboard/ui_schema.py"
     ],
-    "grounding_hash": "86bc83ebc6a4bfa849548799647a369fdd8be60920d6dfa6ea175d26c76cb19a"
+    "grounding_hash": "f179372868120ecc86e4267a7bafa224b4bb7938d562e1d13c30429683eeed4b"
   },
   "c6459332e6e520598d05f595b26c09a3f67f4760743c850a2c8d759a16cd1b61": {
     "doc": "docs/GRAPHRAG_GUIDE.md",
@@ -9748,7 +9752,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/ingestion/sink.py",
       "brainpalace-server/brainpalace_server/services/session_records.py"
@@ -9762,11 +9766,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "python = \"^3.10\"; classifiers list Python 3.10/3.11/3.12",
+    "evidence": "brainpalace-cli/pyproject.toml classifiers list Python 3.10/3.11/3.12; python = \"^3.10\"",
     "grounding_files": [
       "brainpalace-cli/pyproject.toml"
     ],
-    "grounding_hash": "0073b50c67d013c3ade85bbc996de0e39ea001edaa2c66e5d2d1d0a0dd2ce23b"
+    "grounding_hash": "ff94879ea109c42e62501e1332fc54012366a80f5ff1d59b0084990c6e9a1e6d"
   },
   "ce06667152bcd1469b55ad39a9685ddd8de4c2e52a344200e8b576898e42f922": {
     "doc": "brainpalace-plugin/commands/brainpalace-inject.md",
@@ -9906,7 +9910,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
@@ -10024,11 +10028,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "install_agent.py implements --agent claude/opencode/gemini/codex/skill-runtime multi-runtime installation",
+    "evidence": "(cached, echoed verbatim)",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/install_agent.py"
     ],
-    "grounding_hash": "fa1cb1c26560d46b9d53f3d2fd982cae17d8b41a4456cf47c3d88f980f558791"
+    "grounding_hash": "4d03937a994dc75b529538222025419c9d957e484b1a197c30984dde6552a786"
   },
   "d3060dcdc4847004c2d6b843ce31f6fc2328c14815f116459c0d7f915066042a": {
     "doc": "brainpalace-plugin/commands/brainpalace-rehome.md",
@@ -10051,7 +10055,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "reused fresh cached verdict",
+    "evidence": "(cached, echoed verbatim)",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/services/file_watcher_service.py"
     ],
@@ -10208,7 +10212,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "unchanged: fresh cached verdict, prose and grounded relation unchanged since last verified pass",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/api/routers/ingest.py"
     ],
@@ -10247,7 +10251,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached (fresh, relation unchanged)",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/indexing/git_chunker.py"
     ],
@@ -10390,7 +10394,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "unchanged: fresh cached verdict, prose and grounded relation unchanged since last verified pass",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/rehome/orchestrator.py",
       "brainpalace-server/brainpalace_server/rehome/state.py"
@@ -10508,11 +10512,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "query.py: click.option('--no-time-decay'); time_decay=not no_time_decay passed through",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/query.py"
     ],
-    "grounding_hash": "ec4b4985af084776c1495766fd43ae2d39098e89d355af7f808ee5cccd84ecab"
+    "grounding_hash": "f15ff41b41afc5837d0f64a6fe871d2e7f986d2137734b814d0e7d023755c5e1"
   },
   "dd5878216427d96a80dc15659672572736263ea04c94ec6bf0106eb5e01b6c24": {
     "doc": "brainpalace-plugin/agents/research-assistant.md",
@@ -10534,11 +10538,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "SessionArchiveConfig.reconcile_seconds default=600",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/session_config.py"
     ],
-    "grounding_hash": "e5e93ac6aab8fe38b172278aed9898be9f31fb815051176bc7f3fff8249c1d5e"
+    "grounding_hash": "cb3e3ad6ebdee869ec592245dd6d818cdad18d2916225fc5705644dbb26bf9b6"
   },
   "dd92a100a3d79eddfa0bbd42294979237a38c364034d31e18969a3ccabe155da": {
     "doc": "docs/COMPUTE.md",
@@ -10612,7 +10616,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/ingestion/sink.py"
     ],
@@ -10652,7 +10656,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "reused fresh cached verdict",
+    "evidence": "(cached, echoed verbatim)",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/provider_config.py"
     ],
@@ -10704,7 +10708,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "unchanged: fresh cached verdict, prose and grounded relation unchanged since last verified pass",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/services/folder_manager.py"
     ],
@@ -10717,7 +10721,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
@@ -10784,7 +10788,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/tests/unit/storage/test_postgres_config.py"
     ],
@@ -10810,7 +10814,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
@@ -10875,7 +10879,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "unchanged: fresh cached verdict, prose and grounded relation unchanged since last verified pass",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/api/routers/ingest.py",
       "brainpalace-server/brainpalace_server/services/document_ingest_service.py"
@@ -10904,7 +10908,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
@@ -10917,7 +10921,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "reused fresh cached verdict",
+    "evidence": "(cached, echoed verbatim)",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/doc_sync/checkers/skills.py"
     ],
@@ -10969,7 +10973,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "reused fresh cached verdict",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/providers.py"
     ],
@@ -10995,11 +10999,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "reused fresh cached verdict",
+    "evidence": "(cached, echoed verbatim)",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/api/main.py"
     ],
-    "grounding_hash": "f4e0bb09e3c1ac03be6b4bd1817f617a810b7cafcd862f7cf97bb7df275623b4"
+    "grounding_hash": "0c53dbce0902f41b03130d2bfc80a615cf7000c64d1acd34865f244d21e64feb"
   },
   "e684558209ed9b992a7a66622fdecc9d9d618a478c7b98aadf58e759aaf10c3b": {
     "doc": "docs/DEPLOYMENT.md",
@@ -11060,11 +11064,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "doc-dep",
-    "evidence": "reused/reconfirmed, still present in current prose",
+    "evidence": "docs/SESSION_INDEXING.md: '~/.claude/projects/<cwd-with-slashes-as-dashes>/*.jsonl'",
     "grounding_files": [
       "docs/SESSION_INDEXING.md"
     ],
-    "grounding_hash": "74a48f00fe49ff5f3107543bc5f7ad2b5a4749cd810ef7834b622b953431f6a1"
+    "grounding_hash": "85552268da86d73abd63f10f060935f9053ec96512b0fee76af01f1e7316f097"
   },
   "e71bbcad3d566d99d2e4a536fb60a0f62cc3aa5254ffbe59eae427bb0c25b908": {
     "doc": "docs/INGESTION.md",
@@ -11073,7 +11077,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/ingestion/adapter.py"
     ],
@@ -11086,7 +11090,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "reused fresh cached verdict",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/providers/embedding/",
       "brainpalace-server/brainpalace_server/providers/summarization/"
@@ -11100,7 +11104,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
@@ -11113,7 +11117,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
@@ -11126,7 +11130,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "unchanged: fresh cached verdict, prose and grounded relation unchanged since last verified pass",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/services/query_service.py"
     ],
@@ -11204,7 +11208,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "unchanged: fresh cached verdict, prose and grounded relation unchanged since last verified pass",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/query.py",
       "brainpalace-cli/brainpalace_cli/merge.py"
@@ -11271,7 +11275,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
@@ -11298,7 +11302,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
@@ -11364,7 +11368,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "reused fresh cached verdict",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "scripts/setup.sh"
     ],
@@ -11403,11 +11407,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh; grounding unchanged",
+    "evidence": "HealthStatus.status: Literal['healthy','indexing','degraded','unhealthy']",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/api/routers/health.py"
     ],
-    "grounding_hash": "136236491c46d09b18f30541e191c79b349414bae7bb08847f76f29ba75aec49"
+    "grounding_hash": "9f6482dbc18358fdeddd044011998e2253e8a301506de889d53925ef3be5dea0"
   },
   "ed7ffe2b1ccc3545dd08825a1eb537aa7377df428261f979af0850a704ca78e8": {
     "doc": "brainpalace-plugin/commands/brainpalace-memories.md",
@@ -11520,7 +11524,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/ingestion/sink.py"
     ],
@@ -11533,7 +11537,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "unchanged: fresh cached verdict, prose and grounded relation unchanged since last verified pass",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/rehome/detect.py",
       "brainpalace-server/brainpalace_server/rehome/orchestrator.py"
@@ -11547,7 +11551,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "reused fresh cached verdict",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/indexing/chunking.py"
     ],
@@ -11586,7 +11590,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
@@ -11691,7 +11695,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "unchanged: fresh cached verdict, prose and grounded relation unchanged since last verified pass",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/storage/reference_catalog_store.py"
     ],
@@ -11704,7 +11708,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "reused fresh cached verdict",
+    "evidence": "(cached, echoed verbatim)",
     "grounding_files": [
       "brainpalace-plugin/hooks/pretooluse-subagent-guard-hook.sh"
     ],
@@ -11717,7 +11721,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "reused fresh cached verdict",
+    "evidence": "(cached, echoed verbatim)",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/provider_config.py"
     ],
@@ -11730,7 +11734,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "re-confirmed against current code",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/init.py"
     ],
@@ -11810,7 +11814,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "reused fresh cached verdict",
+    "evidence": "reused fresh cached verdict (unchanged prose + grounding)",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/ai_guidance.py"
     ],
@@ -11849,7 +11853,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh; grounding unchanged",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/provider_config.py"
     ],
@@ -11875,11 +11879,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "session_config.py docstring: 'Default ON only when session_indexing block is present (opt-in). ... archive stays ON (its field default)'",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/session_config.py"
     ],
-    "grounding_hash": "e5e93ac6aab8fe38b172278aed9898be9f31fb815051176bc7f3fff8249c1d5e"
+    "grounding_hash": "cb3e3ad6ebdee869ec592245dd6d818cdad18d2916225fc5705644dbb26bf9b6"
   },
   "f9143fe7d22e16e9fa48d10277a2613182e1c237797fa99d64a7342992c84465": {
     "doc": "brainpalace-plugin/skills/using-brainpalace/references/integration-guide.md",
@@ -11901,11 +11905,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "on: release: types: [published]; jobs publish-server(environment: pypi)->publish-cli(needs publish-server, environment: pypi-cli)->publish-dashboard(environment: pypi-dashboard)",
+    "evidence": "reused fresh cached verdict (unchanged prose + grounding)",
     "grounding_files": [
       ".github/workflows/publish-to-pypi.yml"
     ],
-    "grounding_hash": "13b5f71783a1c6addcd0493cc7269a9aad41bf8aa099b779a386e61a32e85fca"
+    "grounding_hash": "f48b7f9c35d2ab5c3e39e059deed960baf1bd7bdff5cd3031fe955191f59855d"
   },
   "f97dfb4221a9cd9132487df36d50659e885c0db78561beaabf64d46a9e2edf31": {
     "doc": "brainpalace-plugin/agents/setup-assistant.md",
@@ -11927,7 +11931,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh \u2014 reused verbatim",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py"
     ],
@@ -11979,11 +11983,11 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "cached fresh; grounding unchanged",
+    "evidence": "status.py click.option decorators for --url, --json, --verbose/-v, --all/-a all present",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/commands/status.py"
     ],
-    "grounding_hash": "53fe902576af9e89b28f2929f659acb2fe5652da479ec57f78a8698a1b903feb"
+    "grounding_hash": "ffaaa041e3462ff309c255dbb4c7fe369f75a6c880ddfc09ac3f2269710086d2"
   },
   "fbc69005ae2bb3248b2b594baf127af691cb63bd4509dd7432093d716e02387e": {
     "doc": "brainpalace-plugin/commands/brainpalace-entities.md",
@@ -12005,7 +12009,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "TOOL_REGISTRY in mcp_server/server.py has exactly these 12 tools",
+    "evidence": "reused fresh cached verdict (unchanged prose + grounding)",
     "grounding_files": [
       "brainpalace-cli/brainpalace_cli/mcp_server/server.py"
     ],
@@ -12175,7 +12179,7 @@
     "raw_verdict": "SUPPORTED",
     "verdict": "SUPPORTED",
     "grounding_tier": "code",
-    "evidence": "unchanged: fresh cached verdict, prose and grounded relation unchanged since last verified pass",
+    "evidence": "cached fresh verdict, unchanged",
     "grounding_files": [
       "brainpalace-server/brainpalace_server/config/settings.py",
       "brainpalace-server/brainpalace_server/rehome/quarantine.py",

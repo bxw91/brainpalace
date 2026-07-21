@@ -21,6 +21,25 @@ _Entries accumulate here between releases. The release step renames this to
 `## [YY.M.N] - DATE` and adds a fresh empty `## [Unreleased]` above it — never
 hand-number an unreleased section._
 
+## [26.7.10] - 2026-07-21
+
+### Added
+- **Session archiving now covers Codex and Antigravity CLI**, not just Claude
+  Code, via per-tool adapters in `brainpalace_server/sessions/adapters/`.
+  Transcripts land in the existing tool-tagged `YYYY-MM-DD-<tool>` archive
+  folders. Tools are auto-detected from the presence of their session directory
+  and can be pinned with `session_indexing.tools` (per-tool directory overrides:
+  `session_indexing.tool_dirs`), surfaced across CLI wizard and dashboard.
+- `brainpalace status` and the `/status` endpoint now report which session tools
+  were detected (`features.session_archive.tools`).
+
+### Fixed
+- Session chunks now carry a `tool` metadata field.
+- Incremental distillation resumes by record identity rather than file position,
+  so tools that regenerate their transcript are sliced correctly, and steps still
+  in flight are skipped (by the distiller and the chunker) until they reach a
+  terminal state.
+
 ## [26.7.9] - 2026-07-21
 
 ### Added

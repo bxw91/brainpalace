@@ -159,6 +159,10 @@ _DASHBOARD_ONLY_HIDDEN: dict[str, str] = {
     # the leaf specs (graph_indexing.lsp.mode/python/typescript) render as flat
     # controls in the graph_indexing section — hide the container object itself.
     "graph_indexing.lsp": "nested model container; leaf fields render as flat controls",
+    "session_indexing.tool_dirs": (
+        "advanced per-tool path escape hatch; the tools list is the "
+        "user-facing control"
+    ),
 }
 
 # Grid-hidden fields (from the CLI single source, cf.GRID_HIDDEN_FIELDS) are merged

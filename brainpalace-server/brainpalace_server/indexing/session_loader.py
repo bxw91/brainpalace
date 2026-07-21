@@ -67,6 +67,11 @@ class Turn:
     tool_name: str | None = None
     tool_inputs: dict[str, Any] = field(default_factory=dict)
     ts: str | None = None
+    #: False when the record is still in flight (a tool call that has not
+    #: finished). Non-terminal turns are skipped by the distiller and picked up
+    #: on a later sweep in their final form. Tools whose transcript is
+    #: regenerated rather than appended (antigravity) rely on this.
+    terminal: bool = True
 
 
 @dataclass
@@ -83,6 +88,7 @@ class SessionMeta:
     parent_session_id: str | None = None
     origin_path: str | None = None
     sensitivity: str = "normal"
+    tool: str = "claude-code"
 
 
 def is_subagent_path(path: str | Path) -> bool:

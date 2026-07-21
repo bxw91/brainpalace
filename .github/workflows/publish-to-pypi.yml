@@ -15,8 +15,8 @@ permissions:
   id-token: write  # Required for OIDC authentication with PyPI
 
 env:
-  # Force node20 JS actions (e.g. arduino/setup-task@v2) onto node24 — they
-  # have no node24 release. Survives the 2026-06-16 default flip + 2026-09-16
+  # Force remaining node20 JS actions (transitive actions/github-script) onto
+  # node24 — arduino/setup-task is now @v3 (node24). Survives the 2026-06-16 default flip + 2026-09-16
   # node20 removal.
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
@@ -43,7 +43,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install Task
-        uses: arduino/setup-task@v2
+        uses: arduino/setup-task@v3
         with:
           version: 3.43.3
 
@@ -151,7 +151,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install Task
-        uses: arduino/setup-task@v2
+        uses: arduino/setup-task@v3
         with:
           version: 3.43.3
 

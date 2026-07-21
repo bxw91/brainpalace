@@ -92,3 +92,69 @@ async def test_archive_index_then_delete_purges(tmp_path: Path) -> None:
     assert store.docs == {}
     await watcher._ingest_paths({str(live)})
     assert store.docs == {}
+
+
+def test_sync_accepts_per_file_tool_and_folders_by_it(tmp_path):
+    """One archive dir holds several tools; tool is a property of the file."""
+    import json
+
+    from brainpalace_server.services.session_archive_service import (
+        SessionArchiveService,
+    )
+
+    live = tmp_path / "live" / "sess-9.jsonl"
+    live.parent.mkdir(parents=True)
+    live.write_text(
+        json.dumps(
+            {
+                "type": "user",
+                "sessionId": "sess-9",
+                "cwd": "/proj",
+                "timestamp": "2026-07-21T10:00:00Z",
+                "message": {"role": "user", "content": "hi"},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    # "custom-tool" is a synthetic, unregistered slug — this test verifies
+    # per-file tool STAMPING (folder naming, manifest), not any real adapter's
+    # parsing. A registered slug (e.g. "codex") would dispatch to that
+    # adapter's real parser, which this claude-code-shaped fixture won't match.
+    svc = SessionArchiveService(archive_dir=tmp_path / "archive")
+    dest = svc.sync(live, tool="custom-tool")
+
+    assert dest is not None
+    assert dest.parent.name == "2026-07-21-custom-tool"
+    assert svc.manifest_entry("sess-9")["tool"] == "custom-tool"
+
+
+def test_sync_without_tool_falls_back_to_service_default(tmp_path):
+    import json
+
+    from brainpalace_server.services.session_archive_service import (
+        SessionArchiveService,
+    )
+
+    live = tmp_path / "live" / "sess-10.jsonl"
+    live.parent.mkdir(parents=True)
+    live.write_text(
+        json.dumps(
+            {
+                "type": "user",
+                "sessionId": "sess-10",
+                "cwd": "/proj",
+                "timestamp": "2026-07-21T10:00:00Z",
+                "message": {"role": "user", "content": "hi"},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    svc = SessionArchiveService(archive_dir=tmp_path / "archive")
+    dest = svc.sync(live)
+
+    assert dest is not None
+    assert dest.parent.name == "2026-07-21-claude-code"

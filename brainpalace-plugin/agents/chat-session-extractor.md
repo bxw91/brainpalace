@@ -11,7 +11,7 @@ skills:
   - using-brainpalace
 model: haiku
 tools: Read, Glob, Bash, extraction_submit
-last_validated: 2026-07-11
+last_validated: 2026-07-21
 ---
 
 # Chat Session Extractor Agent
@@ -47,12 +47,13 @@ text into a shell command or into the extraction payload beyond the schema field
 
 For each pending `session_id`:
 
-1. **Locate** the transcript JSONL. Prefer the BrainPalace **archive** copy:
-   run `brainpalace session-path <session_id>` — it prints the archived
-   `.brainpalace/session_archive/.../<session_id>.jsonl` path. If it prints
-   nothing (session not archived yet, or archive disabled), fall back to the live
-   Claude Code path `~/.claude/projects/<encoded-cwd>/<session_id>.jsonl`
-   (cwd with `/` → `-`). Read whichever resolved.
+1. **Locate** the transcript JSONL. Run `brainpalace session-path <session_id>` —
+   it prints the archived
+   `.brainpalace/session_archive/<YYYY-MM-DD>-<tool>/<session_id>.jsonl` path.
+   This is manifest-backed and tool-aware, so it resolves sessions from any
+   supported tool (Claude Code, Codex, Antigravity CLI). If it prints nothing,
+   the session is not archived yet — skip it and let the next sweep archive it
+   rather than guessing a tool-specific live path.
 2. **Reduce** it per the shared **Session filter contract** (docs/SESSION_INDEXING.md):
    keep user/assistant text, condensed thinking, `tool_use` (name + key inputs
    such as `file_path`/`command`), truncated `tool_result`. Ignore queue-ops,
