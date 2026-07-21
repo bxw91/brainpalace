@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-18
+last_validated: 2026-07-21
 ---
 
 # Changelog
@@ -20,6 +20,40 @@ Entries are kept short (≤ 3 sentences and ≤ 320 characters); see
 _Entries accumulate here between releases. The release step renames this to
 `## [YY.M.N] - DATE` and adds a fresh empty `## [Unreleased]` above it — never
 hand-number an unreleased section._
+
+## [26.7.9] - 2026-07-21
+
+### Added
+- **Unified multi-runtime setup via `setup.sh`.** The guided installer now offers
+  a multi-select over Claude, Codex, OpenCode, Antigravity, and skill-runtime in
+  one run; `/brainpalace-setup` mirrors the same wiring for setup-surface parity.
+- **Antigravity (agy) runtime support.** `install-agent --agent antigravity`
+  mirrors the Codex converter — skill-runtime flatten + `AGENTS.md`, no
+  tool-name remap.
+- **`install-mcp --client` writes MCP config for more editors.** Now supports
+  Cursor, Windsurf, VS Code/Copilot, Kilo, Cline, Qwen, and Kimi in addition to
+  Claude; `setup.sh`'s multi-select wires the five MCP-only editors (Qwen/Kimi
+  wire alongside their skills converter in Phase C).
+- **Qwen Code + Kimi CLI runtimes (skills + MCP).** `install-agent --agent
+  qwen|kimi` writes skills + `QWEN.md`/`AGENTS.md`; `setup.sh` wires both
+  skills and MCP for them in one pick. Codex, Antigravity, Qwen, and Kimi now
+  share one `SkillInstructionConverter` base (Codex/Antigravity behaviour
+  unchanged).
+
+### Removed
+- **Gemini CLI runtime removed.** Deprecated in favour of Antigravity; the
+  embedding/summarization `gemini` provider (`GOOGLE_API_KEY`) is unaffected.
+
+### Fixed
+- **`setup.sh` no longer clobbers existing MCP configs.** The old hand-rolled
+  MCP step (backup + overwrite, which destroyed other servers in a user's
+  `.cursor/mcp.json` etc.) is gone; all MCP wiring now routes through the
+  merge-safe `install-mcp --client`, in one multi-select that also runs without a
+  project.
+- **`install-agent` works on a standalone install.** The canonical plugin is now
+  vendored into the CLI wheel at build time, so `install-agent --agent
+  codex|opencode|antigravity|skill-runtime` no longer needs a repo checkout,
+  Claude Code, or a manual `--plugin-dir` — it falls back to the bundled copy.
 
 ## [26.7.8] - 2026-07-18
 

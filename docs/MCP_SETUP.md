@@ -134,6 +134,17 @@ BM25 `lemma` engine → `simplemma`; postgres backend → `asyncpg` + `sqlalchem
 
 ## Per-client setup
 
+> **Codex, OpenCode, and Antigravity are skills-only for now** — they consume
+> BrainPalace via the CLI, guided by the skills/`AGENTS.md` that
+> `install-agent` writes (see [USER_GUIDE.md → Runtime
+> Installation](USER_GUIDE.md#runtime-installation)), not through MCP. **Qwen
+> Code and Kimi CLI are dual** — they have both a skills converter
+> (`install-agent --agent qwen|kimi`, writing `QWEN.md`/`AGENTS.md`) and an
+> MCP client (below); `setup.sh`'s multi-select wires both halves for them in
+> one pick. Every client below except Continue and Zed can also be wired with
+> one command — `brainpalace install-mcp --client <name>` — instead of
+> pasting the snippet by hand; each client's section notes it.
+
 ### Claude Code (opt-in, automatic per project)
 
 Claude Code users typically prefer the **skill model** installed by the plugin
@@ -229,6 +240,7 @@ skill, no shell-out). It's the highest-reach client in this list.
   user `settings.json`.
 - See the **VS Code extension users** section below for the PATH-inheritance
   gotcha that affects this client too.
+- Or let the CLI write it: `brainpalace install-mcp --client vscode`.
 
 ### Cursor
 
@@ -245,6 +257,26 @@ Verified against Cursor's `mcp.json` format (early 2026).
   }
 }
 ```
+
+Or let the CLI write it: `brainpalace install-mcp --client cursor`.
+
+### Windsurf
+
+Global config only — no per-project override.
+
+```json
+// ~/.codeium/windsurf/mcp_config.json
+{
+  "mcpServers": {
+    "brainpalace": {
+      "command": "brainpalace",
+      "args": ["mcp", "--ensure-server"]
+    }
+  }
+}
+```
+
+Or let the CLI write it: `brainpalace install-mcp --client windsurf`.
 
 ### Kilo Code (v7.x — verified 2026-05)
 
@@ -284,6 +316,8 @@ Format notes vs the old Cline format:
   cold HTTP server or a `multi`-mode query — set `30000` (as the example above
   does). See [Troubleshooting](#troubleshooting).
 
+Or let the CLI write it: `brainpalace install-mcp --client kilo`.
+
 ### Cline
 
 Cline retains the legacy `cline_mcp_settings.json` / `mcpServers` format that
@@ -301,6 +335,57 @@ current Cline docs before publishing. Legacy starting point:
   }
 }
 ```
+
+Or let the CLI write it: `brainpalace install-mcp --client cline`. It resolves
+the VS Code extension's `globalStorage` dir per OS; if the Cline extension
+isn't installed (the dir doesn't exist), the CLI prints this snippet and the
+path to paste it into instead of fabricating the directory.
+
+### Qwen Code
+
+```json
+// .qwen/settings.json  (project, default) or ~/.qwen/settings.json (global)
+{
+  "mcpServers": {
+    "brainpalace": {
+      "command": "brainpalace",
+      "args": ["mcp", "--ensure-server"]
+    }
+  }
+}
+```
+
+Or let the CLI write it: `brainpalace install-mcp --client qwen`.
+
+> Qwen Code also has a **skills converter**: `brainpalace install-agent
+> --agent qwen` writes `.qwen/skills/brainpalace/` + `QWEN.md` at the project
+> root. `setup.sh`'s multi-select wires both in one pick (dual). See
+> [USER_GUIDE.md → Runtime Installation](USER_GUIDE.md#runtime-installation).
+
+### Kimi CLI
+
+Global config only — no per-project override.
+
+```json
+// ~/.kimi/mcp.json
+{
+  "mcpServers": {
+    "brainpalace": {
+      "command": "brainpalace",
+      "args": ["mcp", "--ensure-server"]
+    }
+  }
+}
+```
+
+Or let the CLI write it: `brainpalace install-mcp --client kimi`.
+
+> Kimi CLI also has a **skills converter**: `brainpalace install-agent
+> --agent kimi` writes `.kimi-code/skills/brainpalace/` + `AGENTS.md` at the
+> project root — a separate home-dir split from this MCP config (`~/.kimi/`
+> vs `~/.kimi-code/`). `setup.sh`'s multi-select wires both in one pick
+> (dual). See [USER_GUIDE.md → Runtime
+> Installation](USER_GUIDE.md#runtime-installation).
 
 ### Continue
 

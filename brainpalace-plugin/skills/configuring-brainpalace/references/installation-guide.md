@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-18
+last_validated: 2026-07-21
 ---
 
 # BrainPalace Installation Guide
@@ -433,11 +433,17 @@ brainpalace install-agent --agent claude
 # Install for OpenCode
 brainpalace install-agent --agent opencode
 
-# Install for Gemini
-brainpalace install-agent --agent gemini
-
 # Install for Codex (generates skill directories + AGENTS.md)
 brainpalace install-agent --agent codex
+
+# Install for Antigravity (agy)
+brainpalace install-agent --agent antigravity
+
+# Install for Qwen Code
+brainpalace install-agent --agent qwen
+
+# Install for Kimi CLI
+brainpalace install-agent --agent kimi
 
 # Install for any skill-based runtime (requires --dir)
 brainpalace install-agent --agent skill-runtime --dir /path/to/skills
@@ -455,8 +461,10 @@ brainpalace install-agent --agent claude --global
 |---------|-------------------|--------|
 | `claude` | `.claude/plugins/brainpalace` | Claude plugin |
 | `opencode` | `.opencode/plugins/brainpalace` | OpenCode plugin |
-| `gemini` | `.gemini/plugins/brainpalace` | Gemini plugin |
 | `codex` | `.codex/skills/brainpalace` | Skill dirs + AGENTS.md |
+| `antigravity` | `.agents/skills/brainpalace` | Skill dirs + AGENTS.md |
+| `qwen` | `.qwen/skills/brainpalace` | Skill dirs + QWEN.md |
+| `kimi` | `.kimi-code/skills/brainpalace` | Skill dirs + AGENTS.md |
 | `skill-runtime` | (requires `--dir`) | Generic skill dirs |
 
 ### Uninstalling
@@ -467,8 +475,10 @@ Delete the install dir directly — project scope + global scope:
 ```bash
 rm -rf .claude/plugins/brainpalace    ~/.claude/plugins/brainpalace
 rm -rf .opencode/plugins/brainpalace  ~/.config/opencode/plugins/brainpalace
-rm -rf .gemini/plugins/brainpalace    ~/.config/gemini/plugins/brainpalace
 rm -rf .codex/skills/brainpalace      ~/.codex/skills/brainpalace
+rm -rf .agents/skills/brainpalace     ~/.gemini/config/skills/brainpalace
+rm -rf .qwen/skills/brainpalace       ~/.qwen/skills/brainpalace
+rm -rf .kimi-code/skills/brainpalace  ~/.kimi-code/skills/brainpalace
 ```
 
 ---
@@ -540,7 +550,7 @@ Full prose version: [docs/INSTALL.md → Full uninstall (teardown)](../../../../
 |---------|-------------|
 | v7.0 | Folder management (`folders add/list/remove`), file type presets (`types list`), content injection (`inject`), chunk eviction |
 | v8.0 | File watcher (auto-reindex on file changes), embedding cache, setup wizard, query cache, reranking |
-| v9.0+ | Multi-runtime install (5 runtimes), pluggable providers (7 providers), generic skill-runtime converter |
+| v9.0+ | Multi-runtime install (7 runtimes), pluggable providers (7 providers), generic skill-runtime converter |
 
 ---
 

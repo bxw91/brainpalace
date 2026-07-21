@@ -2,8 +2,9 @@
 name: setup-assistant
 description: Proactively assists with BrainPalace installation and configuration — use for install/setup/config requests, "command not found", missing API keys, Postgres/pgvector connection errors, embedding dimension mismatches, and BM25 language questions
 # `triggers:`/`skills:` feed `brainpalace install-agent` runtime converters
-# (OpenCode/Gemini/skill-runtime). Claude Code ignores them — delegation there
-# is driven by `description` alone, so keep descriptions trigger-rich.
+# (OpenCode/Codex/Antigravity/Qwen/Kimi/skill-runtime). Claude Code ignores them —
+# delegation there is driven by `description` alone, so keep descriptions
+# trigger-rich.
 triggers:
   - pattern: "install.*agent.?brain|setup.*brain|configure.*brain"
     type: message_pattern
@@ -26,7 +27,7 @@ triggers:
 skills:
   - configuring-brainpalace
 tools: Read, Glob, Bash, Write, Edit
-last_validated: 2026-07-13
+last_validated: 2026-07-21
 ---
 
 # Setup Assistant Agent
@@ -297,7 +298,11 @@ When errors occur, provide clear recovery paths:
 
 ## Multi-Runtime Installation (v9.0+)
 
-When users want to install BrainPalace for their AI coding assistant, guide them through multi-runtime installation:
+Setup-surface parity: the CLI's `setup.sh` guided installer offers a
+multi-select ("Wire AI coding assistants for this project?") over exactly
+these runtimes in one run — `/brainpalace-setup` Step 10b mirrors it. When
+users want to install BrainPalace for their AI coding assistant, guide them
+through multi-runtime installation:
 
 ```bash
 # Install for Claude Code
@@ -306,11 +311,17 @@ brainpalace install-agent --agent claude
 # Install for OpenCode
 brainpalace install-agent --agent opencode
 
-# Install for Gemini
-brainpalace install-agent --agent gemini
+# Install for Antigravity (agy)
+brainpalace install-agent --agent antigravity
 
 # Install for Codex (skill directories + AGENTS.md)
 brainpalace install-agent --agent codex
+
+# Install for Qwen Code (skill directories + QWEN.md; also speaks MCP)
+brainpalace install-agent --agent qwen
+
+# Install for Kimi CLI (skill directories + AGENTS.md; also speaks MCP)
+brainpalace install-agent --agent kimi
 
 # Install for generic skill-based runtime
 brainpalace install-agent --agent skill-runtime --dir /path/to/skills
@@ -329,12 +340,48 @@ brainpalace install-agent --agent claude --global
 |---------|-------------|------------|
 | `claude` | `.claude/plugins/brainpalace` | `~/.claude/plugins/brainpalace` |
 | `opencode` | `.opencode/plugins/brainpalace` | `~/.config/opencode/plugins/brainpalace` |
-| `gemini` | `.gemini/plugins/brainpalace` | `~/.config/gemini/plugins/brainpalace` |
 | `codex` | `.codex/skills/brainpalace` | `~/.codex/skills/brainpalace` |
+| `antigravity` | `.agents/skills/brainpalace` | `~/.gemini/config/skills/brainpalace` |
+| `qwen` | `.qwen/skills/brainpalace` | `~/.qwen/skills/brainpalace` |
+| `kimi` | `.kimi-code/skills/brainpalace` | `~/.kimi-code/skills/brainpalace` |
 <!--/GENERATED-->
 
 `skill-runtime` is also supported for any generic skill-based runtime; it has no
 fixed install dir, so it requires `--dir /path/to/skills`.
+
+### Qwen Code + Kimi CLI (dual: skills + MCP)
+
+Unlike the skills-only runtimes above, Qwen Code and Kimi CLI **also** speak
+MCP — `setup.sh`'s multi-select wires both halves for them in one pick:
+
+```bash
+brainpalace install-agent --agent qwen    # .qwen/skills/brainpalace + QWEN.md
+brainpalace install-mcp --client qwen     # .qwen/settings.json (project)
+
+brainpalace install-agent --agent kimi    # .kimi-code/skills/brainpalace + AGENTS.md
+brainpalace install-mcp --client kimi     # ~/.kimi/mcp.json (global — separate from ~/.kimi-code/)
+```
+
+### MCP-only editors (Cursor, Windsurf, VS Code, Kilo, Cline)
+
+These editors have no skills converter — they only speak MCP — so `setup.sh`'s
+same multi-select wires them with `install-mcp --client <name>` instead of
+`install-agent`:
+
+```bash
+brainpalace install-mcp --client cursor    # ~/.cursor/mcp.json (global)
+brainpalace install-mcp --client windsurf  # ~/.codeium/windsurf/mcp_config.json (global)
+brainpalace install-mcp --client vscode    # .vscode/mcp.json (project)
+brainpalace install-mcp --client kilo      # .kilo/kilo.jsonc (project)
+brainpalace install-mcp --client cline     # VS Code extension storage (project)
+```
+
+Idempotent, never clobbers another server already in the file. A JSONC file
+(vscode, kilo) with existing comments is never rewritten — the snippet to add
+by hand is printed instead. See
+[/brainpalace-install-mcp](../commands/brainpalace-install-mcp.md) and
+[docs/MCP_SETUP.md](../../docs/MCP_SETUP.md) for details, including Cline's
+globalStorage requirement.
 
 ---
 

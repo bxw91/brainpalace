@@ -321,10 +321,13 @@ def main() -> None:
                 print(f"  {rel}")
                 print(f"    {why} (last_validated {validated})")
             new_surface = any(why == "missing from manifest" for _, why, _ in stale)
+            # Emit the TARGETED command with the stale paths spelled out. A bare
+            # `add_audit_metadata.py` re-stamps every audited doc, asserting the
+            # releaser re-read docs they never opened — so never suggest it here.
             print(
-                "\nFix (real doc): re-check each against the code, then run "
-                "`python scripts/add_audit_metadata.py` to re-stamp "
-                "last_validated + the manifest hash."
+                "\nFix (real doc): re-check each against the code, then re-stamp "
+                "last_validated + the manifest hash for ONLY those docs:\n"
+                f"  python scripts/add_audit_metadata.py {' '.join(r for r, _, _ in stale)}"
             )
             if new_surface:
                 print(

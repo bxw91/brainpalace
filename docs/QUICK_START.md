@@ -4,98 +4,84 @@ last_validated: 2026-07-18
 
 # BrainPalace Quick Start
 
-Get up and running with BrainPalace in minutes. The Claude Code plugin is the primary interface - once installed, it handles everything else for you.
+Get up and running with BrainPalace in minutes: **install once, pick your AI
+assistant(s), then init each project you work in.**
 
-## Step 1: Install the Plugin
-
-Install the BrainPalace plugin in Claude Code:
-
-```bash
-claude plugins install github:bxw91/brainpalace
-```
-
-This gives you access to 43 commands, 6 intelligent agents, and 2 skills for working with BrainPalace.
-
-## Step 2: Install the Server and CLI
-
-**Recommended (CLI + server in one shot):**
+## Step 1: Install (one command)
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/bxw91/brainpalace/main/scripts/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/bxw91/brainpalace/main/scripts/setup.sh | bash
 ```
 
-This installs `brainpalace-cli` via pipx; the CLI pulls the
-`brainpalace-rag` server into the same venv. Verify with
-`brainpalace --version`.
+This is the guided installer — interactive, asks before every action:
 
-**Via the plugin** (does the same thing through Claude Code slash
-commands):
+1. Installs the `brainpalace` binary (CLI + server, via pipx)
+2. Offers the Claude Code plugin as a free chat-summary engine, if `claude` is on PATH
+3. Configures your embedding/summarization provider globally (OpenAI, Anthropic,
+   Cohere, Gemini, Grok, or local Ollama)
+4. Optionally sets up + indexes a project — **and offers a multi-select to wire
+   your AI coding assistant(s)** (skills runtimes + MCP editors, in one merge-safe
+   step), see Step 2
+5. Verifies with `brainpalace status` and a sample query
 
-```
-/brainpalace-install
-```
+Prefer manual control, scripted CI, or no TTY? See [`INSTALL.md`](INSTALL.md)
+for the step-by-step path (same install.sh under the hood).
 
-Installed packages:
-- `brainpalace-cli` — command-line tool, primary entry point
-- `brainpalace-rag` — FastAPI server for indexing + search
+## Step 2: Pick your assistant(s)
 
-## Step 3: Configure API Keys
+During Step 4 of the installer, answer **"Wire AI coding assistants for this
+project?"** with a comma-separated pick — any combination, in one run:
 
-Configure your embedding and summarization providers:
+| Pick | Installs |
+|---|---|
+| Claude Code | The plugin, via the marketplace (global) — 43 commands, 6 agents, 2 skills |
+| Codex | `.codex/skills/brainpalace/` + `AGENTS.md` |
+| OpenCode | `.opencode/plugins/brainpalace/` |
+| Antigravity (agy) | `.agents/skills/brainpalace/` + `AGENTS.md` |
+| Qwen Code | `.qwen/skills/brainpalace/` + `QWEN.md`, **and** MCP (`.qwen/settings.json`) |
+| Kimi CLI | `.kimi-code/skills/brainpalace/` + `AGENTS.md`, **and** MCP (`~/.kimi/mcp.json`) |
+| Generic skill-runtime | SKILL.md files in a directory you choose |
+| Cursor / Windsurf / VS Code / Kilo / Cline | MCP config via `install-mcp --client <name>` |
 
-```
-/brainpalace-config
-```
+Wiring a runtime outside the wizard — later, or for a project you skipped —
+run `install-agent` directly:
 
-Choose from:
-- **Cloud providers**: OpenAI, Anthropic, Cohere, Gemini, Grok
-- **Local providers**: Ollama (fully offline mode)
-
-Or use the complete setup wizard which handles installation AND configuration:
-
-```
-/brainpalace-setup
-```
-
-## Step 4: Initialize Your Project
-
-Initialize BrainPalace for your current project:
-
-```
-/brainpalace-init
-```
-
-This creates a `.brainpalace/` directory with project-specific configuration.
-
-## Step 5: Start the Server
-
-Start the BrainPalace server:
-
-```
-/brainpalace-start
+```bash
+brainpalace install-agent --agent codex
+brainpalace install-agent --agent opencode
+brainpalace install-agent --agent antigravity
+brainpalace install-agent --agent qwen      # + brainpalace install-mcp --client qwen
+brainpalace install-agent --agent kimi      # + brainpalace install-mcp --client kimi
+brainpalace install-agent --agent skill-runtime --dir ./my-skills
 ```
 
-The server starts with automatic port allocation (no conflicts with other projects).
+Claude Code's plugin also installs from inside Claude Code (`/plugin`, add
+marketplace `bxw91/brainpalace`, install `brainpalace`) or directly:
+`claude plugins marketplace add bxw91/brainpalace && claude plugins install
+brainpalace@brainpalace-marketplace`.
 
-## Step 6: Index Your Documentation
+See the [User Guide](USER_GUIDE.md#runtime-installation) for full runtime
+installation details.
 
-Index your project's documentation and code:
+## Step 3: Initialize each project
+
+Install once, pick your assistant(s) once — then **init per project**, in
+whichever environment you're using:
+
+| Environment | Init command |
+|---|---|
+| Claude Code | `/brainpalace-init` (slash command; also wires per-project MCP) |
+| Codex / OpenCode / Antigravity | Ask the assistant to initialise, or run `brainpalace init` in the terminal — the agents shell out to the CLI |
+| CLI / terminal | `brainpalace init` |
+
+`brainpalace init` writes `.brainpalace/`, starts the server, and indexes the
+project by default (confirm each step interactively, or `--yes` to run
+non-interactively). Re-index specific paths or file types any time:
 
 ```
-/brainpalace-index ./docs
-```
-
-For code + documentation:
-
-```
-/brainpalace-index .
-```
-
-Use file type presets to index specific file categories:
-
-```
-/brainpalace-index ./src --include-type python
-/brainpalace-index ./project --include-type python,docs
+/brainpalace-index ./docs                          # docs only
+/brainpalace-index .                                # code + docs
+/brainpalace-index ./src --include-type python      # file-type presets
 ```
 
 Manage indexed folders explicitly:
@@ -112,7 +98,7 @@ Check indexing status:
 /brainpalace-status
 ```
 
-## Step 7: Search Your Knowledge Base
+## Step 4: Search Your Knowledge Base
 
 Now you can search! Use the query command (hybrid mode by default):
 
@@ -130,7 +116,7 @@ Or pick a specific search mode with `--mode`:
 
 ---
 
-## Step 8: Connect via MCP (optional)
+## Step 5: Connect via MCP (optional)
 
 **Claude Code**: `brainpalace init` already wrote a per-project `.mcp.json` and
 registered the server with Claude Code (unless you passed `--no-mcp`), so this
@@ -155,41 +141,18 @@ PATH-inheritance gotcha that bites Cursor too) live in
 
 ---
 
-## Install for Other AI Runtimes
+## Already in Claude Code? Use the plugin wizard instead
 
-BrainPalace works with multiple AI coding assistants. Use `install-agent` to set up for your runtime:
-
-```bash
-brainpalace install-agent --agent codex
-brainpalace install-agent --agent opencode
-brainpalace install-agent --agent gemini
-brainpalace install-agent --agent skill-runtime --dir ./my-skills
-```
-
-Preview what would be installed with `--dry-run`:
-
-```bash
-brainpalace install-agent --agent codex --dry-run
-```
-
-See the [User Guide](USER_GUIDE.md#runtime-installation) for full runtime installation details.
-
----
-
-## All-in-One Setup
-
-For the fastest setup, use the interactive wizard which does steps 2-6 automatically:
+If Claude Code is your only assistant, its guided plugin wizard mirrors
+`setup.sh`'s flow through slash commands — install, configure, init, start,
+index — and offers the same multi-runtime assistant wiring:
 
 ```
 /brainpalace-setup
 ```
 
-The Setup Assistant guides you through:
-1. Installing packages
-2. Configuring API keys
-3. Initializing the project
-4. Starting the server
-5. Indexing your documentation
+For everything else — CLI-only use, multiple assistants, CI — `setup.sh`
+(Step 1 above) is the canonical path.
 
 ---
 

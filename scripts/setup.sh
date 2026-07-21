@@ -16,9 +16,11 @@
 #      subscription) BEFORE the provider wizard, so the wizard words the
 #      summarization question correctly
 #   3. Configure an embedding / summarisation provider GLOBALLY
-#   4. Wire an MCP client config at user scope (optional)
-#   5. Set up + index a project (optional — last step)
-#   6. Verify with `brainpalace status` and an optional sample query
+#   4. Set up a project + wire your AI assistants (Claude / Codex / OpenCode /
+#      Antigravity / skill-runtime skills, Qwen Code / Kimi CLI — skills +
+#      MCP — plus MCP editors — Cursor / Windsurf / VS Code / Kilo / Cline —
+#      via `install-mcp --client`)
+#   5. Verify with `brainpalace status` and an optional sample query
 #
 # Requires an interactive terminal (reads from /dev/tty). Exits with a
 # clear error if stdin / tty is not attached.
@@ -187,6 +189,53 @@ pick() {
     printf '%s' "$choice"
 }
 
+pick_multi() {
+    # pick_multi "Prompt" "label1" "label2" ...
+    # Like pick, but accepts comma-separated indices (e.g. "1,3") so more than
+    # one option can be chosen in a single answer. Invalid tokens (blank,
+    # non-numeric, out of range) are warned about and skipped rather than
+    # aborting the whole selection. Prints the valid chosen indices
+    # space-separated to stdout (empty string if none chosen).
+    local prompt="$1"; shift
+    local i=1
+    for opt in "$@"; do
+        printf '   %d) %s\n' "$i" "$opt" >/dev/tty
+        i=$((i+1))
+    done
+    local n=$#
+    local raw
+    raw="$(ask "$prompt" "")"
+    local -a toks=() chosen=()
+    IFS=',' read -ra toks <<< "$raw" || true
+    local tok
+    for tok in "${toks[@]:-}"; do
+        tok="${tok//[[:space:]]/}"
+        [[ -z "$tok" ]] && continue
+        if ! [[ "$tok" =~ ^[0-9]+$ ]] || (( tok < 1 || tok > n )); then
+            warn "Invalid choice '$tok' — skipping."
+            continue
+        fi
+        chosen+=("$tok")
+    done
+    printf '%s' "${chosen[*]:-}"
+}
+
+run_timeout() {
+    # run_timeout SECS cmd [args...]
+    # Runs a command under `timeout` (GNU coreutils) or `gtimeout` (macOS via
+    # Homebrew coreutils) if either is on PATH; otherwise runs it bare — macOS
+    # ships neither by default, so this must degrade gracefully rather than
+    # error out.
+    local secs="$1"; shift
+    if command -v timeout >/dev/null 2>&1; then
+        timeout "$secs" "$@"
+    elif command -v gtimeout >/dev/null 2>&1; then
+        gtimeout "$secs" "$@"
+    else
+        "$@"
+    fi
+}
+
 # -----------------------------------------------------------------------------
 # Banner
 # -----------------------------------------------------------------------------
@@ -206,22 +255,63 @@ ${c_bold}BrainPalace — guided setup${c_reset}
 Source: $REPO_URL @ $REF
 $VERSION_LINE
 
-This script will ask before every action. Six steps (global-first):
+This script will ask before every action. Five steps (global-first):
   1. Install the brainpalace binary (pipx)
   2. Chat summaries — Claude Code plugin (free on your subscription)
   3. Configure provider globally
-  4. Wire MCP client at user scope (optional)
-  5. Set up + index a project (optional)
-  6. Verify
+  4. Set up a project + wire your AI assistants (optional)
+  5. Verify
 
 EOF
 confirm "Continue?" "y" || { say "Aborted."; exit 0; }
 
 # -----------------------------------------------------------------------------
+# Prerequisite awareness — report Python / pipx / git status and the dashboard's
+# Python 3.12+ requirement BEFORE installing, so the user knows what's missing.
+# Fatal only on Python < 3.10 (nothing runs without it); the rest are advisory.
+# -----------------------------------------------------------------------------
+check_prereqs() {
+    step "Prerequisites"
+    if command -v python3 >/dev/null 2>&1; then
+        local py_ver py_major py_minor
+        py_ver="$(python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null || echo "")"
+        py_major="${py_ver%%.*}"; py_minor="${py_ver##*.}"
+        if [[ -n "$py_ver" ]] && { (( py_major > 3 )) || { (( py_major == 3 )) && (( py_minor >= 10 )); }; }; then
+            ok "Python $py_ver detected (3.10+ required)."
+            if (( py_major == 3 && py_minor < 12 )); then
+                warn "Python < 3.12: the web dashboard is skipped (CLI + server still work fully). Install Python 3.12+ for the best experience (dashboard included)."
+            else
+                ok "Python >= 3.12: the web dashboard is available."
+            fi
+        else
+            errx "Python ${py_ver:-?} found, but BrainPalace needs Python 3.10+ (3.12+ for the dashboard). Install a newer Python and re-run."
+        fi
+    else
+        errx "python3 not found — BrainPalace needs Python 3.10+ (3.12+ for the dashboard)."
+    fi
+
+    if command -v pipx >/dev/null 2>&1; then
+        ok "pipx present."
+    else
+        warn "pipx not found — used for the isolated CLI install. Install: 'apt install pipx' (or 'brew install pipx'), then 'pipx ensurepath'."
+    fi
+
+    if command -v git >/dev/null 2>&1; then
+        ok "git present."
+    else
+        warn "git not found — only needed to install from a local source checkout (PyPI installs do not need it)."
+    fi
+
+    say "One embedding provider is required: a cloud API key (OpenAI / Anthropic / Cohere / Gemini / Grok) OR a local Ollama with an embedding model pulled. You configure this in Step 3."
+}
+
+check_prereqs
+
+# -----------------------------------------------------------------------------
 # Step 1 — install
 # -----------------------------------------------------------------------------
 
-step "Step 1/6 — Install brainpalace binary"
+step "Step 1/5 — Install brainpalace binary"
 
 # Shut everything down FIRST — before we touch the venv. A running server (or
 # dashboard) on the old code can clash with the reinstall, so ask up front.
@@ -317,7 +407,7 @@ BP_BIN="$(command -v brainpalace)"
 # (wording-only; the server still resolves the engine 'auto' at runtime).
 # -----------------------------------------------------------------------------
 
-step "Step 2/6 — Chat summaries (Claude Code plugin)"
+step "Step 2/5 — Chat summaries (Claude Code plugin)"
 
 CHAT_SUMM="provider"
 if command -v claude >/dev/null 2>&1; then
@@ -357,6 +447,7 @@ if command -v claude >/dev/null 2>&1; then
         say "session summaries run FREE on your Claude Code subscription."
         say "Until then chat summarization is OFF by default (opt in with"
         say "SESSION_DISTILL_ENABLED=true). The provider you pick next is for code only."
+        say "(Step 4/5 can install the plugin for you automatically, if you'd rather not.)"
         CHAT_SUMM="provider"
     fi
 else
@@ -372,7 +463,7 @@ fi
 # step can be deferred to the end and made optional.
 # -----------------------------------------------------------------------------
 
-step "Step 3/6 — Provider / API key (global)"
+step "Step 3/5 — Provider / API key (global)"
 
 say "Configure the embedding/summarization provider ONCE, globally."
 say "Every project you set up later inherits ~/.config/brainpalace/config.yaml."
@@ -509,181 +600,135 @@ PY
 fi
 
 # -----------------------------------------------------------------------------
-# Step 4 — MCP client wiring (optional), user scope by default so it's
-# machine-wide. Runs BEFORE the project step; project scope falls back to
-# $HOME when no project has been chosen yet.
-# -----------------------------------------------------------------------------
-
-step "Step 4/6 — Wire an MCP client (optional, global)"
-
-say "If you only use the CLI (or the Claude Code plugin), pick 'none'."
-say "Otherwise pick the MCP client you use — its config file is written with an"
-say "absolute path so GUI-launched editors do not hit the PATH gotcha."
-
-ALL_MCP_KEYS=(vscode cursor cline continue kilo zed)
-declare -A MCP_LABEL=(
-    [vscode]="VS Code (GitHub Copilot agent mode) — .vscode/mcp.json"
-    [cursor]="Cursor                              — .cursor/mcp.json"
-    [cline]="Cline                               — .cline/mcp.json"
-    [continue]="Continue                            — .continue/mcp.yaml"
-    [kilo]="Kilo Code                           — .kilo/kilo.jsonc"
-    [zed]="Zed                                 — .zed/settings.json"
-)
-
-# Best-effort detection: a client counts as present if its CLI is on PATH or its
-# config/support dir exists. Used to show only relevant clients by default.
-mcp_detected() {
-    case "$1" in
-        vscode)   command -v code   >/dev/null 2>&1 || [[ -d "$HOME/.vscode"   || -d "$HOME/.config/Code"   ]] ;;
-        cursor)   command -v cursor >/dev/null 2>&1 || [[ -d "$HOME/.cursor"   || -d "$HOME/.config/Cursor" ]] ;;
-        cline)    [[ -d "$HOME/.cline" ]] ;;
-        continue) [[ -d "$HOME/.continue" ]] ;;
-        kilo)     [[ -d "$HOME/.kilo" ]] ;;
-        zed)      command -v zed    >/dev/null 2>&1 || [[ -d "$HOME/.zed"      || -d "$HOME/.config/zed"    ]] ;;
-        *) return 1 ;;
-    esac
-}
-
-# select_mcp <show_all_hatch:0|1> <key>... -> echoes chosen key | "none" | "__all__"
-select_mcp() {
-    local hatch="$1"; shift
-    local keys=("$@") labels=() k
-    for k in "${keys[@]}"; do labels+=("${MCP_LABEL[$k]}"); done
-    local none_idx=$(( ${#keys[@]} + 1 ))
-    labels+=("none (CLI-only install)")
-    [[ "$hatch" == "1" ]] && labels+=("other — show all supported clients")
-    local idx; idx="$(pick "Choice (number)" "$none_idx" "${labels[@]}")"
-    local sel="${labels[$((idx-1))]}"
-    case "$sel" in
-        none*)  echo "none" ;;
-        other*) echo "__all__" ;;
-        *)      echo "${keys[$((idx-1))]}" ;;
-    esac
-}
-
-DETECTED_MCP=()
-for k in "${ALL_MCP_KEYS[@]}"; do mcp_detected "$k" && DETECTED_MCP+=("$k"); done
-
-if [[ ${#DETECTED_MCP[@]} -gt 0 ]]; then
-    say "Auto-detected MCP-capable clients on this machine (pick 'other' to see all):"
-    MCP_CLIENT="$(select_mcp 1 "${DETECTED_MCP[@]}")"
-    [[ "$MCP_CLIENT" == "__all__" ]] && MCP_CLIENT="$(select_mcp 0 "${ALL_MCP_KEYS[@]}")"
-else
-    say "No MCP clients auto-detected — showing all supported clients:"
-    MCP_CLIENT="$(select_mcp 0 "${ALL_MCP_KEYS[@]}")"
-fi
-
-write_file() {
-    local path="$1" content="$2"
-    if [[ -e "$path" ]]; then
-        local backup="${path}.bak.$(date +%s)"
-        warn "$path exists — backing up to $backup"
-        cp "$path" "$backup"
-    fi
-    mkdir -p "$(dirname "$path")"
-    printf '%s\n' "$content" > "$path"
-    ok "Wrote $path"
-}
-
-if [[ "$MCP_CLIENT" != "none" ]]; then
-    SCOPE_CHOICE="$(pick "Write config where?" "2" \
-        "Project scope (in the project you set up below)" \
-        "User scope  (HOME directory — recommended, applies everywhere)")"
-    if [[ "$SCOPE_CHOICE" == "1" && -n "${PROJECT:-}" ]]; then
-        BASE="$PROJECT"
-    else
-        [[ "$SCOPE_CHOICE" == "1" ]] && warn "No project selected yet — writing MCP config at user scope (HOME)."
-        BASE="$HOME"
-    fi
-
-    case "$MCP_CLIENT" in
-        vscode)
-            write_file "$BASE/.vscode/mcp.json" "$(cat <<EOF
-{
-  "servers": {
-    "brainpalace": {
-      "type": "stdio",
-      "command": "$BP_BIN",
-      "args": ["mcp", "--ensure-server"]
-    }
-  }
-}
-EOF
-)" ;;
-        cursor)
-            write_file "$BASE/.cursor/mcp.json" "$(cat <<EOF
-{
-  "mcpServers": {
-    "brainpalace": {
-      "command": "$BP_BIN",
-      "args": ["mcp", "--ensure-server"]
-    }
-  }
-}
-EOF
-)" ;;
-        cline)
-            write_file "$BASE/.cline/mcp.json" "$(cat <<EOF
-{
-  "mcpServers": {
-    "brainpalace": {
-      "command": "$BP_BIN",
-      "args": ["mcp", "--ensure-server"],
-      "disabled": false
-    }
-  }
-}
-EOF
-)"
-            warn "Cline's real config path varies — see docs/MCP_SETUP.md if Cline doesn't pick it up." ;;
-        continue)
-            write_file "$BASE/.continue/mcp.yaml" "$(cat <<EOF
-mcpServers:
-  - name: brainpalace
-    command: $BP_BIN
-    args: ["mcp", "--ensure-server"]
-EOF
-)" ;;
-        kilo)
-            write_file "$BASE/.kilo/kilo.jsonc" "$(cat <<EOF
-{
-  "mcp": {
-    "brainpalace": {
-      "type": "local",
-      "command": ["$BP_BIN", "mcp", "--ensure-server"],
-      "enabled": true,
-      "timeout": 30000
-    }
-  }
-}
-EOF
-)" ;;
-        zed)
-            write_file "$BASE/.zed/settings.json" "$(cat <<EOF
-{
-  "context_servers": {
-    "brainpalace": {
-      "command": {
-        "path": "$BP_BIN",
-        "args": ["mcp", "--ensure-server"]
-      }
-    }
-  }
-}
-EOF
-)" ;;
-    esac
-    ok "Absolute path $BP_BIN baked into the config (avoids PATH-inheritance failures)."
-fi
-
-# -----------------------------------------------------------------------------
-# Step 5 — optional project setup (init + start + index). LAST step, opt-in.
+# Step 4 — optional project setup (init + start + index). LAST step, opt-in.
 # Inherits the global provider config written in Step 3.
 # -----------------------------------------------------------------------------
 
-step "Step 5/6 — Set up a project (optional)"
+install_claude_plugin() {
+    # Guarded, timeout-wrapped Claude Code plugin install via the marketplace.
+    # Non-fatal: on absent CLI / failure / timeout, warns and prints the
+    # manual command in a red box instead of aborting the script. Returns 0
+    # on success, 1 otherwise (callers treat this as advisory).
+    if ! command -v claude >/dev/null 2>&1; then
+        warn "claude: 'claude' CLI not found — install it, then run manually:"
+        box_red "claude plugins marketplace add bxw91/brainpalace" \
+                "claude plugins install brainpalace@brainpalace-marketplace"
+        return 1
+    fi
+    say "Installing Claude Code plugin via marketplace ..."
+    if run_timeout 60 claude plugins marketplace add bxw91/brainpalace \
+        && run_timeout 60 claude plugins install brainpalace@brainpalace-marketplace; then
+        ok "claude: plugin installed."
+        return 0
+    fi
+    warn "claude: automatic plugin install failed or timed out — run manually:"
+    box_red "claude plugins marketplace add bxw91/brainpalace" \
+            "claude plugins install brainpalace@brainpalace-marketplace"
+    return 1
+}
+
+# Assistant / runtime catalogue — shared by the project and no-project paths.
+# claude = plugin (global marketplace); codex/opencode/antigravity/skill-runtime
+# = skills via install-agent; cursor/windsurf/vscode/kilo/cline = MCP config via
+# install-mcp --client (the single, merge-safe writer — no hand-rolled overwrite).
+ASSISTANT_KEYS=(claude codex opencode antigravity skill-runtime qwen kimi cursor windsurf vscode kilo cline)
+declare -A ASSISTANT_LABEL=(
+    [claude]="Claude Code           — installs the plugin via the marketplace (global)"
+    [codex]="Codex                 — .codex/skills/brainpalace + AGENTS.md"
+    [opencode]="OpenCode              — .opencode/plugins/brainpalace"
+    [antigravity]="Antigravity (agy)     — .agents/skills/brainpalace + AGENTS.md"
+    [skill-runtime]="Generic skill-runtime — writes SKILL.md files to a directory you choose"
+    [qwen]="Qwen Code — skills + MCP"
+    [kimi]="Kimi CLI — skills + MCP"
+    [cursor]="Cursor                — MCP config (install-mcp --client cursor)"
+    [windsurf]="Windsurf              — MCP config (install-mcp --client windsurf)"
+    [vscode]="GitHub Copilot/VS Code — MCP config (install-mcp --client vscode)"
+    [kilo]="Kilo Code             — MCP config (install-mcp --client kilo)"
+    [cline]="Cline                 — MCP config (install-mcp --client cline)"
+)
+
+# choose_assistants -> echoes the picked index list (space-separated) | "".
+choose_assistants() {
+    local labels=() a_key
+    for a_key in "${ASSISTANT_KEYS[@]}"; do labels+=("${ASSISTANT_LABEL[$a_key]}"); done
+    pick_multi "Assistants (comma-separated, e.g. 1,3; blank for none)" "${labels[@]}"
+}
+
+# _in_dir <dir> cmd... — run cmd in <dir> (subshell) when non-empty, else in CWD;
+# output to the tty either way.
+_in_dir() {
+    local d="$1"; shift
+    if [[ -n "$d" ]]; then (cd "$d" && "$@") >/dev/tty; else "$@" >/dev/tty; fi
+}
+
+# execute_wirings <picked_idx> — wire each picked assistant. Uses the global
+# PROJECT (may be empty); project-scoped skills fall back to --global when there
+# is no project. Appends each success to WIRED_ASSISTANTS.
+execute_wirings() {
+    local picked="$1" a_idx RUNTIME
+    if [[ -z "$picked" ]]; then say "No assistants wired."; return; fi
+    for a_idx in $picked; do
+        RUNTIME="${ASSISTANT_KEYS[$((a_idx-1))]:-}"
+        case "$RUNTIME" in
+            claude)
+                install_claude_plugin && WIRED_ASSISTANTS+=("claude")
+                ;;
+            skill-runtime)
+                local skill_dir
+                skill_dir="$(ask "Target directory for skill-runtime SKILL.md files" "${PROJECT:-$HOME}/.skills/brainpalace")"
+                if _in_dir "$PROJECT" "$BP_BIN" install-agent --agent skill-runtime --dir "$skill_dir"; then
+                    ok "skill-runtime: installed to $skill_dir."; WIRED_ASSISTANTS+=("skill-runtime")
+                else
+                    warn "skill-runtime: install-agent failed — run manually:"
+                    box_red "brainpalace install-agent --agent skill-runtime --dir $skill_dir"
+                fi
+                ;;
+            cursor|windsurf|vscode|kilo|cline)
+                if _in_dir "$PROJECT" "$BP_BIN" install-mcp --client "$RUNTIME"; then
+                    ok "$RUNTIME: MCP config written."; WIRED_ASSISTANTS+=("$RUNTIME")
+                else
+                    warn "$RUNTIME: install-mcp failed — run manually:"
+                    box_red "brainpalace install-mcp --client $RUNTIME"
+                fi
+                ;;
+            codex|opencode|antigravity)
+                local gflag=() where="project"
+                [[ -z "$PROJECT" ]] && { gflag=(--global); where="global"; }
+                if _in_dir "$PROJECT" "$BP_BIN" install-agent --agent "$RUNTIME" "${gflag[@]}"; then
+                    ok "$RUNTIME: installed ($where scope)."; WIRED_ASSISTANTS+=("$RUNTIME")
+                else
+                    warn "$RUNTIME: install-agent failed — run manually:"
+                    box_red "brainpalace install-agent --agent $RUNTIME"
+                fi
+                ;;
+            qwen|kimi)
+                # Dual wiring: skills (install-agent) AND MCP (install-mcp
+                # --client), which shipped for qwen/kimi in Phase B. Each half
+                # is independently non-fatal — one can fail without aborting
+                # the other or the rest of the loop.
+                local gflag=() where="project"
+                [[ -z "$PROJECT" ]] && { gflag=(--global); where="global"; }
+                if _in_dir "$PROJECT" "$BP_BIN" install-agent --agent "$RUNTIME" "${gflag[@]}"; then
+                    ok "$RUNTIME: skills installed ($where scope)."; WIRED_ASSISTANTS+=("$RUNTIME (skills)")
+                else
+                    warn "$RUNTIME: install-agent failed — run manually:"
+                    box_red "brainpalace install-agent --agent $RUNTIME"
+                fi
+                if _in_dir "$PROJECT" "$BP_BIN" install-mcp --client "$RUNTIME"; then
+                    ok "$RUNTIME: MCP config written."; WIRED_ASSISTANTS+=("$RUNTIME (mcp)")
+                else
+                    warn "$RUNTIME: install-mcp failed — run manually:"
+                    box_red "brainpalace install-mcp --client $RUNTIME"
+                fi
+                ;;
+        esac
+    done
+}
+
+step "Step 4/5 — Set up a project (optional)"
 
 WATCH="off"
+WIRED_ASSISTANTS=()
 if confirm "Set up and index a project now?" "n"; then
     PROJECT="$(ask "Project root" "$PWD")"
     PROJECT="${PROJECT/#\~/$HOME}"
@@ -697,17 +742,38 @@ if confirm "Set up and index a project now?" "n"; then
         WATCH_FLAG="--watch auto"
     fi
 
+    # -------------------------------------------------------------------
+    # Choose assistants BEFORE init, so init knows whether to wire Claude
+    # Code's MCP. The catalogue + wiring live in choose_assistants /
+    # execute_wirings (defined above) so the no-project path reuses them.
+    # -------------------------------------------------------------------
+    echo >/dev/tty
+    say "Wire AI coding assistants for this project?"
+    PICKED_IDX="$(choose_assistants)"
+
+    # Decide init's MCP wiring. Claude Code MCP (.mcp.json + local-scope
+    # register) is only useful when Claude Code is in play, so wire it when the
+    # user picked Claude OR the `claude` CLI is already on PATH; otherwise pass
+    # --no-mcp so a pure Codex/OpenCode/… project gets no stray Claude .mcp.json.
+    CLAUDE_PICKED=""
+    for a_idx in $PICKED_IDX; do
+        [[ "${ASSISTANT_KEYS[$((a_idx-1))]:-}" == "claude" ]] && CLAUDE_PICKED="1"
+    done
+    MCP_FLAG=""
+    if [[ -z "$CLAUDE_PICKED" ]] && ! command -v claude >/dev/null 2>&1; then
+        MCP_FLAG="--no-mcp"
+        say "Claude Code not detected and not selected — init will skip Claude MCP wiring (--no-mcp)."
+    fi
+
     # init --start inherits the global provider config written in Step 3.
-    say "Running: brainpalace init --start $WATCH_FLAG"
-    (cd "$PROJECT" && "$BP_BIN" init --start $WATCH_FLAG) >/dev/tty
+    say "Running: brainpalace init --start $WATCH_FLAG $MCP_FLAG"
+    (cd "$PROJECT" && "$BP_BIN" init --start $WATCH_FLAG $MCP_FLAG) >/dev/tty
     ok "Server initialised and started."
-    # init enables session summarization and auto-picks the engine (printed
-    # above): plugin → subagent (free on your Claude Code subscription, Haiku —
-    # no separate API bill); else → provider (your configured AI). CLI-only?
-    # Installing the Claude Code plugin is cheaper (runs on your subscription),
-    # or use a local Ollama summarizer to keep provider mode free + private.
     say "Session summarization: enabled (engine auto-picked; --no-extract to opt out)."
     say "  Chat summaries run after your FIRST prompt — in batches of up to 8 sessions (<=1 MB), 5-min cool-down (free Haiku subagent)."
+
+    # Wire the picked assistants now that PROJECT is init'd.
+    execute_wirings "$PICKED_IDX"
 
     if confirm "Index the project now?" "y"; then
         INDEX_PATH="$(ask "Path to index (relative to project root, or absolute)" ".")"
@@ -723,14 +789,19 @@ if confirm "Set up and index a project now?" "n"; then
 else
     PROJECT=""
     INDEXED_TARGET="skipped"
-    say "No project set up — see the next steps after verification."
+    say "No project set up — you can still wire assistants globally."
+    echo >/dev/tty
+    say "Wire AI coding assistants now (global scope — no project needed)?"
+    say "  Skills runtimes (codex/opencode/antigravity/qwen/kimi) install --global;"
+    say "  MCP editors write their user-scope config; Claude installs its plugin."
+    execute_wirings "$(choose_assistants)"
 fi
 
 # -----------------------------------------------------------------------------
 # Step 6 — verify
 # -----------------------------------------------------------------------------
 
-step "Step 6/6 — Verify"
+step "Step 5/5 — Verify"
 
 if [[ -n "$PROJECT" ]]; then
     (cd "$PROJECT" && "$BP_BIN" status) >/dev/tty || warn "status returned non-zero"
@@ -763,14 +834,17 @@ PLUGIN_RAW="$("$BP_BIN" plugin status 2>&1 || true)"
 PLUGIN_LINE="$(printf '%s' "$PLUGIN_RAW" | sed -n 's/^BrainPalace Claude Code plugin: //p' | head -1)"
 [[ -z "$PLUGIN_LINE" ]] && PLUGIN_LINE="unknown"
 
+WIRED_LINE="(none)"
+[[ ${#WIRED_ASSISTANTS[@]} -gt 0 ]] && WIRED_LINE="${WIRED_ASSISTANTS[*]}"
+
 cat >/dev/tty <<EOF
 
 ${c_gr}Setup complete.${c_reset}
   Binary:    $BP_BIN  ($("$BP_BIN" --version 2>/dev/null || echo "?"))
   Provider:  $PROVIDER (global — $(xdg_config_yaml))
-  MCP wire:  $MCP_CLIENT
   Dashboard: $DASH_LINE
   Plugin:    $PLUGIN_LINE
+  Wired:     $WIRED_LINE
 EOF
 
 # When the plugin line reports a newer version, repeat the update command in a

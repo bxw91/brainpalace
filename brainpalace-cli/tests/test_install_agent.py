@@ -8,7 +8,10 @@ import pytest
 from click.testing import CliRunner
 
 from brainpalace_cli.cli import cli
-from brainpalace_cli.commands.install_agent import install_agent_command
+from brainpalace_cli.commands.install_agent import (
+    _find_plugin_dir,
+    install_agent_command,
+)
 
 
 @pytest.fixture
@@ -98,14 +101,14 @@ class TestInstallAgentCommand:
         # OpenCode uses singular 'command/' directory (not 'commands/')
         assert (target / "command" / "brainpalace-search.md").exists()
 
-    def test_gemini_project_install(
+    def test_antigravity_project_install(
         self, runner: CliRunner, plugin_dir: Path, tmp_path: Path
     ) -> None:
         result = runner.invoke(
             install_agent_command,
             [
                 "--agent",
-                "gemini",
+                "antigravity",
                 "--plugin-dir",
                 str(plugin_dir),
                 "--path",
@@ -113,8 +116,10 @@ class TestInstallAgentCommand:
             ],
         )
         assert result.exit_code == 0
-        target = tmp_path / ".gemini" / "plugins" / "brainpalace"
-        assert (target / "commands" / "brainpalace-search.md").exists()
+        target = tmp_path / ".agents" / "skills" / "brainpalace"
+        assert (target / "brainpalace-search" / "SKILL.md").exists()
+        # Antigravity (like Codex) also generates AGENTS.md at project root.
+        assert (tmp_path / "AGENTS.md").exists()
 
     def test_dry_run(self, runner: CliRunner, plugin_dir: Path, tmp_path: Path) -> None:
         result = runner.invoke(
@@ -209,6 +214,46 @@ class TestInstallAgentCommand:
         content = cmd_file.read_text()
         assert ".brainpalace" in content
         assert ".claude/brainpalace" not in content
+
+
+class TestFindPluginDir:
+    """Canonical-source discovery, incl. the CLI-bundled fallback."""
+
+    def test_falls_back_to_bundled_plugin(self, tmp_path: Path) -> None:
+        # No dev-repo sibling, no ~/.claude install → the copy vendored into
+        # brainpalace_cli/data/plugin/ must be used (the standalone-install case).
+        bundled = tmp_path / "brainpalace_cli" / "data" / "plugin"
+        (bundled / "commands").mkdir(parents=True)
+        fake_install_agent = (
+            tmp_path / "brainpalace_cli" / "commands" / "install_agent.py"
+        )
+        fake_install_agent.parent.mkdir(parents=True)
+        fake_install_agent.touch()
+
+        with (
+            patch(
+                "brainpalace_cli.commands.install_agent.__file__",
+                str(fake_install_agent),
+            ),
+            patch("pathlib.Path.home", return_value=tmp_path / "no-such-home"),
+        ):
+            found = _find_plugin_dir()
+        assert found == bundled
+
+    def test_none_when_no_source_anywhere(self, tmp_path: Path) -> None:
+        fake_install_agent = (
+            tmp_path / "brainpalace_cli" / "commands" / "install_agent.py"
+        )
+        fake_install_agent.parent.mkdir(parents=True)
+        fake_install_agent.touch()
+        with (
+            patch(
+                "brainpalace_cli.commands.install_agent.__file__",
+                str(fake_install_agent),
+            ),
+            patch("pathlib.Path.home", return_value=tmp_path / "no-such-home"),
+        ):
+            assert _find_plugin_dir() is None
 
 
 class TestInstallAgentCLIIntegration:

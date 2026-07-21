@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-18
+last_validated: 2026-07-21
 ---
 
 # BrainPalace User Guide
@@ -121,7 +121,7 @@ Curated, git-tracked facts that get boosted into search results. Full guide:
 |---------|-------------|
 | `/brainpalace-setup` | Complete guided setup wizard |
 | `/brainpalace-install` | Install pip packages |
-| `/brainpalace-install-agent` | Install for different AI runtimes (Claude, OpenCode, Gemini, Codex) |
+| `/brainpalace-install-agent` | Install for different AI runtimes (Claude, OpenCode, Codex, Antigravity, Qwen Code, Kimi CLI) |
 | `/brainpalace-init` | Initialize project directory |
 | `/brainpalace-config` | View/edit configuration |
 | `/brainpalace-verify` | Verify configuration |
@@ -1155,7 +1155,19 @@ brainpalace query "search term"
 
 ## Runtime Installation
 
-BrainPalace can be installed for multiple AI runtimes. The `install-agent` command converts the canonical Claude plugin format into the target runtime's native format.
+BrainPalace can be installed for multiple AI runtimes. **The guided installer
+(`setup.sh`) is the recommended path** — after installing the binary, it offers
+a multi-select ("Wire AI coding assistants for this project?") over Claude,
+Codex, OpenCode, Antigravity, Qwen Code, Kimi CLI, and skill-runtime; pick any
+combination in one run. Qwen Code and Kimi CLI are **dual** — the multi-select
+wires both their skills converter (`install-agent`) and their MCP client
+config (`install-mcp --client`) in the same pick, unlike the other skills
+runtimes which are skills-only. See
+[QUICK_START.md → Step 2](QUICK_START.md#step-2-pick-your-assistants).
+
+The rest of this section is the manual, low-level path: the `install-agent`
+command converts the canonical Claude plugin format into the target runtime's
+native format, for wiring one runtime by hand without re-running the wizard.
 
 ### Supported Runtimes
 
@@ -1163,9 +1175,14 @@ BrainPalace can be installed for multiple AI runtimes. The `install-agent` comma
 |---------|---------|-------------------|
 | Claude Code | `--agent claude` | `.claude/plugins/brainpalace/` |
 | OpenCode | `--agent opencode` | `.opencode/plugins/brainpalace/` |
-| Gemini CLI | `--agent gemini` | `.gemini/plugins/brainpalace/` |
+| Antigravity (agy) | `--agent antigravity` | `.agents/skills/brainpalace/` |
 | Codex | `--agent codex` | `.codex/skills/brainpalace/` |
+| Qwen Code | `--agent qwen` | `.qwen/skills/brainpalace/` (+ `QWEN.md`) |
+| Kimi CLI | `--agent kimi` | `.kimi-code/skills/brainpalace/` (+ `AGENTS.md`) |
 | Any skill-based | `--agent skill-runtime --dir <path>` | (required) |
+
+Qwen Code and Kimi CLI also speak MCP — `install-mcp --client qwen|kimi` wires
+that half; see [MCP_SETUP.md](MCP_SETUP.md#qwen-code).
 
 ### Installation Examples
 
@@ -1176,7 +1193,16 @@ brainpalace install-agent --agent claude
 # Install for Codex (generates AGENTS.md at project root)
 brainpalace install-agent --agent codex
 
-# Install for any skill-based runtime (e.g., Qwen, Cursor)
+# Install for Antigravity (also generates AGENTS.md at project root)
+brainpalace install-agent --agent antigravity
+
+# Install for Qwen Code (generates QWEN.md at project root)
+brainpalace install-agent --agent qwen
+
+# Install for Kimi CLI (generates AGENTS.md at project root)
+brainpalace install-agent --agent kimi
+
+# Install for any other skill-based runtime (e.g., Cursor)
 brainpalace install-agent --agent skill-runtime --dir ./my-skills
 
 # Preview what would be installed
@@ -1199,14 +1225,40 @@ The `skill-runtime` converter flattens all plugin artifacts into skill directori
 - **Templates** are placed in `brainpalace-setup/assets/`
 - **Scripts** are placed in `brainpalace-verify/scripts/`
 
-### Codex Adapter
+### Codex, Antigravity, Qwen, and Kimi Adapters
 
-The `codex` adapter is a preset built on `skill-runtime` that also:
+`codex`, `antigravity`, `qwen`, and `kimi` are all presets built on
+`skill-runtime` that also generate/update an **instruction file** at the
+project root, add invocation guidance headers to each skill, and use HTML
+comment markers for idempotent instruction-file updates. They share one
+base class, `SkillInstructionConverter`
+(`runtime/skill_instruction_converter.py`), and differ only by three class
+attributes:
 
-- Installs to `.codex/skills/brainpalace/` by default
-- Generates/updates `AGENTS.md` at the project root
-- Adds invocation guidance headers to each skill
-- Uses HTML comment markers for idempotent AGENTS.md updates
+| Adapter | Install dir | Instruction file | Header label |
+|---------|-------------|-------------------|--------------|
+| `CodexConverter` | `.codex/skills/brainpalace/` | `AGENTS.md` | "Codex" |
+| `AntigravityConverter` | `.agents/skills/brainpalace/` | `AGENTS.md` | "Antigravity" |
+| `QwenConverter` | `.qwen/skills/brainpalace/` | `QWEN.md` | "Qwen" |
+| `KimiConverter` | `.kimi-code/skills/brainpalace/` | `AGENTS.md` | "Kimi" |
+
+No tool-name remap for any of the four (skill bodies reference the
+`brainpalace` CLI, not Claude tool names, so there's nothing to translate).
+Kimi's project-scope skill subdir (`.kimi-code/skills/brainpalace/`) mirrors
+its documented global path (`~/.kimi-code/skills/`, honouring
+`$KIMI_CODE_HOME`) — Kimi's MCP config lives separately, under `~/.kimi/`
+(see [MCP_SETUP.md](MCP_SETUP.md#kimi-cli)).
+
+### Initialising a project, per environment
+
+Once a runtime is wired, init **per project** in whichever environment you're
+using:
+
+| Environment | Init command |
+|---|---|
+| Claude Code | `/brainpalace-init` (slash command; also wires per-project MCP) |
+| Codex / OpenCode / Antigravity | Ask the assistant to initialise, or run `brainpalace init` in the terminal — the agents shell out to the CLI |
+| CLI / terminal | `brainpalace init` |
 
 ### Adding New Runtime Support
 
@@ -1225,6 +1277,14 @@ class MyConverter:
 ```
 
 Then register it in `install_agent.py`'s `CONVERTERS` dict.
+
+If the new runtime is skill-directory-based **and** wants a generated
+instruction file at the project root (the AGENTS.md/QWEN.md pattern), skip
+implementing the protocol from scratch — subclass `SkillInstructionConverter`
+(`runtime/skill_instruction_converter.py`) instead and set three class
+attributes: `runtime_type`, `instruction_filename`, `header_label`. See
+`runtime/qwen_converter.py` or `runtime/kimi_converter.py` for the ~10-line
+pattern.
 
 ---
 

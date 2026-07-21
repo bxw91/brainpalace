@@ -23,6 +23,16 @@ AI agents need persistent memory to be truly useful. BrainPalace provides the re
 
 ## Installation
 
+**Canonical path:** the guided installer installs the CLI + server, configures
+a provider, and offers to wire your AI coding assistant(s) — Claude Code,
+Codex, OpenCode, Antigravity, skill-runtime — all in one run:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/bxw91/brainpalace/main/scripts/setup.sh | bash
+```
+
+Just this package, via pip:
+
 ```bash
 pip install brainpalace-cli
 ```

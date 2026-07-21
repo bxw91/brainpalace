@@ -17,11 +17,14 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 import subprocess
 import sys
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from shutil import which
-from typing import Any, NamedTuple
+from typing import Any, Literal, NamedTuple, NoReturn
 
 import click
 
@@ -277,6 +280,30 @@ def approve_mcp_server(project_root: Path) -> tuple[bool, str | None]:
     return True, None
 
 
+def merge_server(
+    existing: dict[str, Any], top_key: str, server_key: str, entry: dict[str, Any]
+) -> tuple[dict[str, Any], bool]:
+    """Merge one server ``entry`` under ``existing[top_key][server_key]``.
+
+    Generalises the Claude-only ``.mcp.json``/``mcpServers`` merge (A10) to any
+    client's top-level key (``servers`` for VS Code, ``mcp`` for Kilo, …) and
+    server dict key. Never clobbers other servers already declared under
+    ``top_key``. Returns ``(merged, changed)``; ``changed`` is False when the
+    key was already present and identical (idempotent re-run — no duplicate,
+    no unnecessary write).
+    """
+    merged = copy.deepcopy(existing)
+    servers = merged.setdefault(top_key, {})
+    if not isinstance(servers, dict):
+        raise ValueError(
+            f"Existing {top_key!r} is not a JSON object — refusing to overwrite."
+        )
+    if servers.get(server_key) == entry:
+        return merged, False
+    servers[server_key] = copy.deepcopy(entry)
+    return merged, True
+
+
 def merge_mcp_config(existing: dict[str, Any]) -> tuple[dict[str, Any], bool]:
     """Merge the ``brainpalace`` server into an existing ``.mcp.json`` dict.
 
@@ -284,13 +311,326 @@ def merge_mcp_config(existing: dict[str, Any]) -> tuple[dict[str, Any], bool]:
     ``context7``, ``supabase``, etc. Returns ``(merged, changed)``; ``changed``
     is False when the key was already present and identical (idempotent
     re-run — no duplicate, no unnecessary write).
+
+    Thin wrapper over ``merge_server`` — kept so existing call sites and
+    Claude's exact behaviour are unchanged (A2).
     """
-    merged = copy.deepcopy(existing)
-    servers = merged.setdefault("mcpServers", {})
-    if servers.get(_SERVER_KEY) == _SERVER_CONFIG:
-        return merged, False
-    servers[_SERVER_KEY] = copy.deepcopy(_SERVER_CONFIG)
-    return merged, True
+    return merge_server(existing, "mcpServers", _SERVER_KEY, _SERVER_CONFIG)
+
+
+# ---------------------------------------------------------------------------
+# Per-client registry (B1) — the non-Claude MCP editors. Claude is NOT in this
+# registry: its path predates --ensure-server and keeps its own approval /
+# local-scope plumbing (D7), dispatched separately in install_mcp_command.
+# Shapes/paths/keys are grounded in docs/MCP_SETUP.md (see the Phase B spec's
+# "Grounded facts" table) — do not change without re-grounding there.
+# ---------------------------------------------------------------------------
+
+#: Every non-Claude client is told to autostart the server itself, since none
+#: of them has BrainPalace's SessionStart hook to do it for them (D2).
+_ENSURE_SERVER_ARGS = ["mcp", "--ensure-server"]
+
+#: VS Code extension id owning Cline's MCP settings (D5).
+_CLINE_EXTENSION_ID = "saoudrizwan.claude-dev"
+
+
+def _base_entry() -> dict[str, Any]:
+    """The shared base entry every non-Claude client wraps or reshapes (D2)."""
+    return {"command": "brainpalace", "args": list(_ENSURE_SERVER_ARGS)}
+
+
+def _vscode_entry() -> dict[str, Any]:
+    return {"type": "stdio", **_base_entry()}
+
+
+def _kilo_entry() -> dict[str, Any]:
+    return {
+        "type": "local",
+        "command": ["brainpalace", *_ENSURE_SERVER_ARGS],
+        "enabled": True,
+        "timeout": 30000,
+    }
+
+
+def _cline_entry() -> dict[str, Any]:
+    return {**_base_entry(), "disabled": False}
+
+
+def _project_relative(rel_path: str) -> Callable[[Path], Path]:
+    """A resolver rooted at ``project_root`` — for per-project config files."""
+    return lambda project_root: project_root / rel_path
+
+
+def _home_relative(rel_path: str) -> Callable[[Path], Path]:
+    """A resolver rooted at the user's home dir — ``project_root`` is ignored.
+
+    ``rel_path`` must start with ``~/``. Built from ``Path.home()`` rather
+    than ``Path(rel_path).expanduser()`` — ``expanduser()`` reads
+    ``$HOME``/the password database directly and does NOT go through
+    ``Path.home()``, so it would silently ignore the
+    ``patch("...install_mcp.Path.home", ...)`` isolation this codebase's own
+    tests already rely on (see ``local_scope_has_server``'s tests) and hit
+    the real home directory instead.
+    """
+    if not rel_path.startswith("~/"):
+        raise ValueError(f"expected a '~/'-relative path, got {rel_path!r}")
+    tail = rel_path[len("~/") :]
+
+    def _resolve(_project_root: Path) -> Path:
+        return Path.home() / tail
+
+    return _resolve
+
+
+def cline_settings_path(_project_root: Path) -> Path:
+    """Resolve Cline's ``cline_mcp_settings.json`` inside VS Code's per-OS
+    extension globalStorage (D5). Same file regardless of scope — Cline has
+    no separate per-project location, so ``project_path`` and ``global_path``
+    both point here.
+    """
+    if sys.platform == "darwin":
+        code_user = Path.home() / "Library" / "Application Support" / "Code" / "User"
+    elif sys.platform.startswith("win"):
+        appdata = os.environ.get("APPDATA")
+        base = Path(appdata) if appdata else Path.home() / "AppData" / "Roaming"
+        code_user = base / "Code" / "User"
+    else:
+        code_user = Path.home() / ".config" / "Code" / "User"
+    ext_dir = code_user / "globalStorage" / _CLINE_EXTENSION_ID
+    return ext_dir / "settings" / "cline_mcp_settings.json"
+
+
+@dataclass(frozen=True)
+class ClientDescriptor:
+    """One non-Claude MCP client's config shape, location, and merge rules.
+
+    ``project_path``/``global_path`` are callables taking ``project_root:
+    Path -> Path``; a client with only one location (e.g. Cline, whose config
+    lives in a per-user VS Code extension dir, not per-project) points both
+    at the same resolver — ``--scope`` then selects the same file either way.
+    """
+
+    project_path: Callable[[Path], Path]
+    global_path: Callable[[Path], Path]
+    top_key: str
+    entry_builder: Callable[[], dict[str, Any]]
+    fmt: Literal["json", "jsonc"]
+    default_scope: Literal["project", "global"]
+    merge_strategy: Literal["standard", "cline-global-storage"] = "standard"
+
+
+#: Registry of every non-Claude MCP client `install-mcp --client` can write.
+#: Mirrors ``INSTALL_DIRS`` in install_agent.py: one code path, per-client data.
+MCP_CLIENTS: dict[str, ClientDescriptor] = {
+    "cursor": ClientDescriptor(
+        project_path=_project_relative(".cursor/mcp.json"),
+        global_path=_home_relative("~/.cursor/mcp.json"),
+        top_key="mcpServers",
+        entry_builder=_base_entry,
+        fmt="json",
+        default_scope="global",
+    ),
+    "windsurf": ClientDescriptor(
+        # Global only (docs/MCP_SETUP.md) — no project-scoped config exists.
+        project_path=_home_relative("~/.codeium/windsurf/mcp_config.json"),
+        global_path=_home_relative("~/.codeium/windsurf/mcp_config.json"),
+        top_key="mcpServers",
+        entry_builder=_base_entry,
+        fmt="json",
+        default_scope="global",
+    ),
+    "vscode": ClientDescriptor(
+        # Project only (docs/MCP_SETUP.md) — no global variant documented.
+        project_path=_project_relative(".vscode/mcp.json"),
+        global_path=_project_relative(".vscode/mcp.json"),
+        top_key="servers",
+        entry_builder=_vscode_entry,
+        fmt="jsonc",
+        default_scope="project",
+    ),
+    "kilo": ClientDescriptor(
+        project_path=_project_relative(".kilo/kilo.jsonc"),
+        global_path=_home_relative("~/.config/kilo/kilo.jsonc"),
+        top_key="mcp",
+        entry_builder=_kilo_entry,
+        fmt="jsonc",
+        default_scope="project",
+    ),
+    "cline": ClientDescriptor(
+        project_path=cline_settings_path,
+        global_path=cline_settings_path,
+        top_key="mcpServers",
+        entry_builder=_cline_entry,
+        fmt="json",
+        default_scope="project",
+        merge_strategy="cline-global-storage",
+    ),
+    "qwen": ClientDescriptor(
+        project_path=_project_relative(".qwen/settings.json"),
+        global_path=_home_relative("~/.qwen/settings.json"),
+        top_key="mcpServers",
+        entry_builder=_base_entry,
+        fmt="json",
+        default_scope="project",
+    ),
+    "kimi": ClientDescriptor(
+        # Global only (docs/MCP_SETUP.md) — no project-scoped config exists.
+        project_path=_home_relative("~/.kimi/mcp.json"),
+        global_path=_home_relative("~/.kimi/mcp.json"),
+        top_key="mcpServers",
+        entry_builder=_base_entry,
+        fmt="json",
+        default_scope="global",
+    ),
+}
+
+
+def _jsonc_has_comments(text: str) -> bool:
+    """True if ``text`` contains a ``//`` or ``/* */`` comment outside a
+    JSON string (D4).
+
+    A comment-free JSONC file is valid JSON and round-trips losslessly
+    through ``json.loads``/``json.dumps``; only a file that genuinely has
+    comments needs the print-fallback, so this is the only thing that
+    decides which path ``write_client_config`` takes.
+    """
+    in_string = False
+    escape = False
+    i = 0
+    n = len(text)
+    while i < n:
+        c = text[i]
+        if in_string:
+            if escape:
+                escape = False
+            elif c == "\\":
+                escape = True
+            elif c == '"':
+                in_string = False
+            i += 1
+            continue
+        if c == '"':
+            in_string = True
+            i += 1
+            continue
+        if c == "/" and i + 1 < n and text[i + 1] in "/*":
+            return True
+        i += 1
+    return False
+
+
+def _manual_snippet(top_key: str, entry: dict[str, Any]) -> str:
+    """The exact JSON to hand the user when a file can't be safely rewritten."""
+    return json.dumps({top_key: {_SERVER_KEY: entry}}, indent=2)
+
+
+class ClientWriteResult(NamedTuple):
+    """Outcome of one ``write_client_config`` call.
+
+    ``wrote`` is True only when THIS call wrote the file — mirrors
+    ``InstallResult.changed``'s idempotent-rerun contract (a re-run reports
+    False, no duplicate). ``needs_manual`` is True when the safe move was to
+    leave the file untouched (a JSONC file with comments we cannot safely
+    round-trip (D4), or Cline's extension globalStorage dir absent (D5)) — the
+    caller must print ``snippet`` + ``path`` for the user to paste in by hand.
+    """
+
+    client: str
+    path: Path
+    wrote: bool
+    top_key: str
+    needs_manual: bool = False
+    snippet: str | None = None
+
+
+def write_client_config(client: str, scope: str | None = None) -> ClientWriteResult:
+    """Write/merge the BrainPalace MCP server into ``client``'s config file.
+
+    The non-Claude counterpart to ``install_mcp``: no approval or local-scope
+    step (D7) — approval/trust is Claude-Code-specific plumbing, other clients
+    trust their own config file. Just the file write, idempotent and never
+    clobbering other keys/servers already in the file (A10-equivalent).
+
+    ``scope`` picks project vs. global config; ``None`` defaults to the
+    client's own ``default_scope``.
+
+    JSON clients (D3): full idempotent deep-merge via ``merge_server``, write
+    only if changed.
+
+    JSONC clients — vscode, kilo (D4): if the file is absent or has no
+    comments, merge and write normally (comment-free JSONC parses as plain
+    JSON). If it has comments we cannot safely round-trip, do NOT rewrite —
+    return ``wrote=False, needs_manual=True`` with the snippet to paste in by
+    hand, so a user's JSONC comments are never corrupted.
+
+    Cline (D5): its config lives inside a VS Code extension's globalStorage
+    dir. If that dir does not exist (the extension is not installed), do NOT
+    create it — return ``wrote=False, needs_manual=True`` instead of
+    fabricating an uninstalled extension's storage.
+
+    Raises ``ValueError`` for an unknown client, an unknown scope, or an
+    existing file that cannot be parsed (never silently overwritten).
+    """
+    if client not in MCP_CLIENTS:
+        raise ValueError(
+            f"unknown client {client!r} — use one of {sorted(MCP_CLIENTS)}"
+        )
+    descriptor = MCP_CLIENTS[client]
+    resolved_scope = scope or descriptor.default_scope
+    if resolved_scope not in ("project", "global"):
+        raise ValueError(f"unknown scope {resolved_scope!r} — use project or global")
+
+    project_root = Path.cwd()
+    path = (
+        descriptor.global_path(project_root)
+        if resolved_scope == "global"
+        else descriptor.project_path(project_root)
+    )
+    entry = descriptor.entry_builder()
+
+    if descriptor.merge_strategy == "cline-global-storage":
+        # D5 — locate, don't fabricate: an uninstalled extension gets no dir.
+        ext_dir = path.parent.parent
+        if not ext_dir.exists():
+            return ClientWriteResult(
+                client,
+                path,
+                False,
+                descriptor.top_key,
+                needs_manual=True,
+                snippet=_manual_snippet(descriptor.top_key, entry),
+            )
+
+    if descriptor.fmt == "jsonc" and path.exists():
+        raw = path.read_text(encoding="utf-8")
+        if _jsonc_has_comments(raw):
+            # D4 — never corrupt a user's JSONC comments; print instead.
+            return ClientWriteResult(
+                client,
+                path,
+                False,
+                descriptor.top_key,
+                needs_manual=True,
+                snippet=_manual_snippet(descriptor.top_key, entry),
+            )
+
+    existing: dict[str, Any] = {}
+    if path.exists():
+        try:
+            existing = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as e:
+            raise ValueError(f"Could not parse existing {path}: {e}") from e
+        if not isinstance(existing, dict):
+            raise ValueError(
+                f"Existing {path} does not contain a JSON object at the top "
+                "level — refusing to overwrite."
+            )
+
+    merged, changed = merge_server(existing, descriptor.top_key, _SERVER_KEY, entry)
+    if changed:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(merged, indent=2) + "\n", encoding="utf-8")
+    return ClientWriteResult(client, path, changed, descriptor.top_key)
 
 
 class InstallResult(NamedTuple):
@@ -437,35 +777,47 @@ def restart_notice(
     return _RESTART_NOTICE if is_tty else _MCP_RESTART_DIRECTIVE
 
 
+#: --client choices, Claude first (it's the default and predates the rest).
+_CLIENT_CHOICES = ["claude", *MCP_CLIENTS]
+
+
 @click.command("install-mcp")
 @click.option("--json", "json_output", is_flag=True, help="Output as JSON.")
 @click.option(
     "--no-approve",
     is_flag=True,
     help=(
-        "Declare the server in .mcp.json but do not approve it. Claude Code "
-        "will hold it at 'Pending approval' until you approve it yourself."
+        "Claude only: declare the server in .mcp.json but do not approve it. "
+        "Claude Code will hold it at 'Pending approval' until you approve it "
+        "yourself."
     ),
 )
 @click.option(
-    "--scope",
-    type=click.Choice(["auto", "local", "project"]),
-    default="auto",
+    "--client",
+    type=click.Choice(_CLIENT_CHOICES),
+    default="claude",
     show_default=True,
+    help="Target MCP client to write the server entry for.",
+)
+@click.option(
+    "--scope",
+    type=click.Choice(["auto", "local", "project", "global"]),
+    default=None,
     help=(
-        "How to grant the connection. 'local' registers with Claude Code's "
-        "local scope (no approval, no folder trust). 'project' allowlists the "
-        ".mcp.json entry instead (no `claude` CLI needed, but folder trust "
-        "still applies). 'auto' uses local and falls back to project."
+        "For --client claude: 'auto' (default), 'local', or 'project' — see "
+        "below. For every other --client: 'project' or 'global', defaulting "
+        "to that client's usual config location."
     ),
 )
-def install_mcp_command(json_output: bool, no_approve: bool, scope: str) -> None:
-    """Write BrainPalace's MCP server into the project's ``.mcp.json``.
+def install_mcp_command(
+    json_output: bool, no_approve: bool, client: str, scope: str | None
+) -> None:
+    """Write BrainPalace's MCP server into an MCP client's config file.
 
-    Merges a single ``mcpServers.brainpalace`` entry into any existing
-    ``.mcp.json`` at the project root, preserving every other server already
-    declared there. Idempotent: re-running does not duplicate or corrupt the
-    file.
+    With the default ``--client claude``, merges a single
+    ``mcpServers.brainpalace`` entry into any existing ``.mcp.json`` at the
+    project root, preserving every other server already declared there.
+    Idempotent: re-running does not duplicate or corrupt the file.
 
     Declaring the server is not enough on its own: Claude Code holds a
     ``.mcp.json`` server at "Pending approval" until it is granted. By default
@@ -481,44 +833,108 @@ def install_mcp_command(json_output: bool, no_approve: bool, scope: str) -> None
     load at session start. On a re-run that finds the entry already present,
     this command cannot tell whether your current session already has the
     tools loaded, so it says so conditionally instead of asserting either way.
-    """
-    project_root = Path.cwd()
-    try:
-        result = install_mcp(project_root, approve=not no_approve, scope=scope)
-    except ValueError as e:
-        if json_output:
-            click.echo(json.dumps({"error": str(e)}))
-        else:
-            click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1) from e
 
-    is_tty = sys.stdout.isatty()
-    notice = restart_notice(
-        changed=result.changed,
-        is_tty=is_tty,
-        approved=result.approved,
-        scope=result.scope,
-    )
+    With any other ``--client`` (cursor, windsurf, vscode, kilo, cline, qwen,
+    kimi), writes/merges the server into that client's own config file
+    instead — idempotently, never touching other keys or servers already
+    there. These clients have no approval step of their own, so there is
+    nothing further to grant. A JSONC file (vscode, kilo) that already has
+    comments is never rewritten — the exact snippet to add by hand is printed
+    instead, so your comments are never corrupted. Cline's config lives
+    inside a VS Code extension's storage; if that extension is not installed,
+    the snippet is printed instead of fabricating its directory.
+    """
+    if client == "claude":
+        claude_scope = scope or "auto"
+        if claude_scope not in ("auto", "local", "project"):
+            _fail(
+                json_output,
+                f"--scope {claude_scope!r} is not valid for --client claude "
+                "— use auto, local, or project.",
+            )
+        project_root = Path.cwd()
+        try:
+            result = install_mcp(
+                project_root, approve=not no_approve, scope=claude_scope
+            )
+        except ValueError as e:
+            _fail(json_output, str(e))
+
+        is_tty = sys.stdout.isatty()
+        notice = restart_notice(
+            changed=result.changed,
+            is_tty=is_tty,
+            approved=result.approved,
+            scope=result.scope,
+        )
+
+        if json_output:
+            payload: dict[str, Any] = {
+                "status": "installed" if result.changed else "already_installed",
+                "mcp_json": str(project_root / ".mcp.json"),
+                "servers": sorted(result.config.get("mcpServers", {})),
+                "approved": result.approved,
+                "scope": result.scope,
+                "notice": notice,
+            }
+            if result.skip_reason:
+                payload["approval_skipped"] = result.skip_reason
+            if result.fallback_reason:
+                payload["local_scope_unavailable"] = result.fallback_reason
+            click.echo(json.dumps(payload, indent=2))
+        else:
+            verb = "Installed" if result.changed else "Already installed"
+            click.echo(
+                f"{verb} BrainPalace MCP server into {project_root / '.mcp.json'}"
+            )
+            if result.fallback_reason:
+                click.echo(f"Local scope unavailable ({result.fallback_reason}).")
+            if result.skip_reason:
+                click.echo(f"Approval skipped: {result.skip_reason}")
+            click.echo(notice)
+        return
+
+    if scope is not None and scope not in ("project", "global"):
+        _fail(
+            json_output,
+            f"--scope {scope!r} is not valid for --client {client} — use "
+            "project or global.",
+        )
+
+    try:
+        write_result = write_client_config(client, scope)
+    except ValueError as e:
+        _fail(json_output, str(e))
 
     if json_output:
-        payload: dict[str, Any] = {
-            "status": "installed" if result.changed else "already_installed",
-            "mcp_json": str(project_root / ".mcp.json"),
-            "servers": sorted(result.config.get("mcpServers", {})),
-            "approved": result.approved,
-            "scope": result.scope,
-            "notice": notice,
+        payload = {
+            "client": write_result.client,
+            "path": str(write_result.path),
+            "wrote": write_result.wrote,
+            "top_key": write_result.top_key,
         }
-        if result.skip_reason:
-            payload["approval_skipped"] = result.skip_reason
-        if result.fallback_reason:
-            payload["local_scope_unavailable"] = result.fallback_reason
+        if write_result.needs_manual:
+            payload["needs_manual"] = True
+            payload["snippet"] = write_result.snippet
         click.echo(json.dumps(payload, indent=2))
+    elif write_result.needs_manual:
+        click.echo(f"Could not safely write {write_result.path} — add this by hand:")
+        click.echo(write_result.snippet)
+        click.echo(f"(path: {write_result.path})")
     else:
-        verb = "Installed" if result.changed else "Already installed"
-        click.echo(f"{verb} BrainPalace MCP server into {project_root / '.mcp.json'}")
-        if result.fallback_reason:
-            click.echo(f"Local scope unavailable ({result.fallback_reason}).")
-        if result.skip_reason:
-            click.echo(f"Approval skipped: {result.skip_reason}")
-        click.echo(notice)
+        verb = "Wrote" if write_result.wrote else "Already up to date:"
+        click.echo(f"{verb} BrainPalace MCP server in {write_result.path}")
+
+
+def _fail(json_output: bool, message: str) -> NoReturn:
+    """Report an error the same way on both output channels and exit(1).
+
+    Shared by both the Claude and generic-client branches so a bad
+    ``--scope``/``--client`` combination or an unparseable existing file fails
+    identically regardless of which path caught it.
+    """
+    if json_output:
+        click.echo(json.dumps({"error": message}))
+    else:
+        click.echo(f"Error: {message}", err=True)
+    raise SystemExit(1)

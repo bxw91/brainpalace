@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-18
+last_validated: 2026-07-21
 ---
 
 # BrainPalace Plugin Guide
@@ -27,10 +27,21 @@ Complete reference for the BrainPalace Claude Code plugin - 43 commands, 6 agent
 
 ## Installation
 
-Install the BrainPalace plugin in Claude Code:
+**CLI-first:** this plugin is one frontend among several — Claude Code, Codex,
+OpenCode, Antigravity, Qwen Code, Kimi CLI, and skill-runtime all consume the
+same canonical BrainPalace plugin content, converted to each runtime's native
+format. The
+[guided installer](../README.md#install) (`setup.sh`) installs the
+`brainpalace` binary once, then offers a multi-select to wire whichever
+assistant(s) you use — including this plugin, via the Claude Code marketplace
+— in the same run. That's the recommended path for first-time setup.
+
+Already have the binary and just want the plugin? Install it directly inside
+Claude Code — the same marketplace shortcut `setup.sh` runs for you:
 
 ```bash
-claude plugins install github:bxw91/brainpalace
+claude plugins marketplace add bxw91/brainpalace
+claude plugins install brainpalace@brainpalace-marketplace
 ```
 
 This provides:
@@ -337,7 +348,7 @@ Install BrainPalace plugin for a specific AI coding runtime. Converts the canoni
 ```
 /brainpalace-install-agent --agent claude
 /brainpalace-install-agent --agent opencode --project
-/brainpalace-install-agent --agent gemini --global
+/brainpalace-install-agent --agent antigravity --global
 /brainpalace-install-agent --agent claude --dry-run
 ```
 
@@ -348,8 +359,10 @@ Install BrainPalace plugin for a specific AI coding runtime. Converts the canoni
 |---------|-------------|------------|
 | `claude` | `.claude/plugins/brainpalace` | `~/.claude/plugins/brainpalace` |
 | `opencode` | `.opencode/plugins/brainpalace` | `~/.config/opencode/plugins/brainpalace` |
-| `gemini` | `.gemini/plugins/brainpalace` | `~/.config/gemini/plugins/brainpalace` |
 | `codex` | `.codex/skills/brainpalace` | `~/.codex/skills/brainpalace` |
+| `antigravity` | `.agents/skills/brainpalace` | `~/.gemini/config/skills/brainpalace` |
+| `qwen` | `.qwen/skills/brainpalace` | `~/.qwen/skills/brainpalace` |
+| `kimi` | `.kimi-code/skills/brainpalace` | `~/.kimi-code/skills/brainpalace` |
 <!--/GENERATED-->
 
 Use `--dry-run` to preview files that would be created without writing them.
@@ -671,7 +684,7 @@ Provides Claude with knowledge about:
 
 Provides Claude with knowledge about:
 - Installation procedures for packages and plugins
-- Multi-runtime installation (Claude Code, OpenCode, Gemini CLI) via `install-agent`
+- Multi-runtime installation (Claude Code, OpenCode, Antigravity) via `install-agent`
 - Provider configuration (7 providers: OpenAI, Anthropic, Ollama, Cohere, Gemini, Grok, SentenceTransformers)
 - Embedding cache configuration and tuning
 - GraphRAG setup and graph store selection

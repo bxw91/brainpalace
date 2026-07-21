@@ -1,4 +1,4 @@
-"""Tests for runtime converters (Claude, OpenCode, Gemini)."""
+"""Tests for runtime converters (Claude, OpenCode)."""
 
 import json
 from pathlib import Path
@@ -6,8 +6,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from brainpalace_cli.runtime.antigravity_converter import AntigravityConverter
 from brainpalace_cli.runtime.claude_converter import ClaudeConverter
-from brainpalace_cli.runtime.gemini_converter import GeminiConverter
 from brainpalace_cli.runtime.opencode_converter import (
     OpenCodeConverter,
     _color_to_hex,
@@ -412,58 +412,6 @@ class TestOpenCodeConverter:
         assert map_tool_name("mcp__server__tool", "opencode") == "mcp__server__tool"
 
 
-class TestGeminiConverter:
-    """Tests for Gemini runtime converter."""
-
-    def test_runtime_type(self) -> None:
-        converter = GeminiConverter()
-        assert converter.runtime_type == RuntimeType.GEMINI
-
-    def test_convert_skill_maps_tools(self, sample_skill: PluginSkill) -> None:
-        converter = GeminiConverter()
-        result = converter.convert_skill(sample_skill)
-        _, fm_text = result.split("---\n", 1)
-        fm_text = fm_text.split("---\n", 1)[0]
-        parsed = yaml.safe_load(fm_text)
-        tools = parsed["allowed-tools"]
-        assert "run_shell_command" in tools  # Bash -> run_shell_command
-        assert "read_file" in tools  # Read -> read_file
-
-    def test_convert_skill_removes_color(self) -> None:
-        skill = PluginSkill(
-            name="test",
-            description="Test",
-            allowed_tools=["Bash"],
-            metadata={"version": "1.0", "color": "red"},
-            body="Content",
-        )
-        converter = GeminiConverter()
-        result = converter.convert_skill(skill)
-        _, fm_text = result.split("---\n", 1)
-        fm_text = fm_text.split("---\n", 1)[0]
-        parsed = yaml.safe_load(fm_text)
-        assert "color" not in parsed.get("metadata", {})
-
-    def test_convert_command_replaces_paths(
-        self, sample_command: PluginCommand
-    ) -> None:
-        converter = GeminiConverter()
-        result = converter.convert_command(sample_command)
-        assert ".brainpalace" in result
-        assert ".claude/brainpalace" not in result
-
-    def test_install_creates_files(
-        self, tmp_path: Path, sample_bundle: PluginBundle
-    ) -> None:
-        converter = GeminiConverter()
-        target = tmp_path / "output"
-        files = converter.install(sample_bundle, target, Scope.PROJECT)
-        assert len(files) > 0
-        assert (target / "commands" / "test-search.md").exists()
-        assert (target / "agents" / "search-helper.md").exists()
-        assert (target / "skills" / "using-brainpalace" / "SKILL.md").exists()
-
-
 class TestRoundTrip:
     """Round-trip tests: parse canonical → convert → verify structure."""
 
@@ -492,12 +440,11 @@ class TestRoundTrip:
             result = converter.convert_skill(skill)
             assert "tools:" in result
 
-    def test_gemini_round_trip(self, real_plugin_dir: Path | None) -> None:
+    def test_antigravity_round_trip(self, real_plugin_dir: Path | None) -> None:
         if real_plugin_dir is None:
             pytest.skip("Real plugin dir not found")
         bundle = parse_plugin_dir(real_plugin_dir)
-        converter = GeminiConverter()
+        converter = AntigravityConverter()
         for skill in bundle.skills:
             result = converter.convert_skill(skill)
-            # Bash should become run_shell_command
-            assert "run_shell_command" in result
+            assert ".claude/brainpalace" not in result

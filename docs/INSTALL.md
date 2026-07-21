@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-17
+last_validated: 2026-07-21
 ---
 
 # Install — alternative paths
@@ -215,8 +215,10 @@ Per-client snippets for Cursor, Cline, Continue, Kilo Code, Zed, and
 an opt-in Claude Code MCP config — plus the VS Code PATH-inheritance
 gotcha that bites Cursor too — live in [`MCP_SETUP.md`](MCP_SETUP.md).
 
-Read-only v1 tool surface: `query`, `status`, `whoami`, `folders_list`,
-`jobs_list`.
+MCP tool surface (12 tools): the read-only core — `query`, `status`, `whoami`,
+`folders_list`, `jobs_list`, `recall`, `session_context`, `ai_guide`,
+`extraction_fetch` — plus write tools `memorize`, `extraction_submit`, and
+`jobs_approve` (the last spends embedding tokens and requires explicit consent).
 
 ---
 
@@ -240,6 +242,17 @@ retry per step.
 
 ## Install for other AI runtimes
 
+**The guided installer already covers this.** After the binary installs,
+`setup.sh` offers a multi-select — "Wire AI coding assistants for this
+project?" — over Claude, Codex, OpenCode, Antigravity, Qwen Code, Kimi CLI,
+and skill-runtime; pick any combination in one run. Claude gets the
+timeout-guarded marketplace install; Codex/OpenCode/Antigravity/skill-runtime
+get project-scoped `install-agent` runs; **Qwen Code and Kimi CLI get BOTH** —
+`install-agent` (skills) **and** `install-mcp --client` (MCP) — since they
+speak both. That's the recommended path; this section is the manual
+low-level command for wiring one runtime by hand, without re-running the
+wizard.
+
 `brainpalace install-agent` converts the canonical Claude Code plugin
 layout into the target runtime's native format. Run after the binary
 is installed:
@@ -247,12 +260,29 @@ is installed:
 ```bash
 brainpalace install-agent --agent codex
 brainpalace install-agent --agent opencode
-brainpalace install-agent --agent gemini
+brainpalace install-agent --agent antigravity
+brainpalace install-agent --agent qwen     # .qwen/skills/brainpalace + QWEN.md
+brainpalace install-agent --agent kimi     # .kimi-code/skills/brainpalace + AGENTS.md
 brainpalace install-agent --agent skill-runtime --dir ./my-skills
+
+# Qwen and Kimi also speak MCP — wire that half too:
+brainpalace install-mcp --client qwen
+brainpalace install-mcp --client kimi
 
 # Preview only:
 brainpalace install-agent --agent codex --dry-run
 ```
+
+### Initialising a project, per environment
+
+Install once (`setup.sh`, or the manual steps above), pick your assistant(s),
+then init **per project** in whichever environment you're using:
+
+| Environment | Init command |
+|---|---|
+| Claude Code | `/brainpalace-init` (slash command; also wires per-project MCP) |
+| Codex / OpenCode / Antigravity | Ask the assistant to initialise, or run `brainpalace init` in the terminal — the agents shell out to the CLI |
+| CLI / terminal | `brainpalace init` |
 
 Full reference: [USER_GUIDE.md → Runtime installation](USER_GUIDE.md#runtime-installation).
 
@@ -366,8 +396,10 @@ global scope:
 ```bash
 rm -rf .claude/plugins/brainpalace    ~/.claude/plugins/brainpalace
 rm -rf .opencode/plugins/brainpalace  ~/.config/opencode/plugins/brainpalace
-rm -rf .gemini/plugins/brainpalace    ~/.config/gemini/plugins/brainpalace
+rm -rf .agents/skills/brainpalace     ~/.gemini/config/skills/brainpalace
 rm -rf .codex/skills/brainpalace      ~/.codex/skills/brainpalace
+rm -rf .qwen/skills/brainpalace       ~/.qwen/skills/brainpalace
+rm -rf .kimi-code/skills/brainpalace  ~/.kimi-code/skills/brainpalace
 ```
 
 (Run the project-scope paths from each project root; the `~/...` paths are the
@@ -426,10 +458,13 @@ into any of these. Delete the entry or the file:
 ```
 .mcp.json            .vscode/mcp.json     .cursor/mcp.json
 .zed/settings.json   .cline/mcp.json      .continue/mcp.yaml   .kilo/kilo.jsonc
+.qwen/settings.json  ~/.kimi/mcp.json
 ```
 
 `.mcp.json` (Claude Code) is project scope only. The rest can live at project
-scope **and** at `$HOME` (user scope) — check both.
+scope **and** at `$HOME` (user scope) — check both. Kimi is global-only
+(`~/.kimi/mcp.json`, listed above with the full path since there is no
+project-scope variant).
 
 #### 7. Revert shell rc + PATH
 

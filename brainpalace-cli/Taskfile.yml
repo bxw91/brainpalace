@@ -111,9 +111,17 @@ tasks:
       - rm -rf htmlcov .coverage coverage.xml
       - find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 
+  vendor-plugin:
+    desc: >-
+      Vendor the canonical plugin into brainpalace_cli/data/plugin/ so the wheel
+      can ship it (gitignored generated output). Required for `install-agent` to
+      work on a standalone install with no repo checkout.
+    cmds:
+      - python3 ../scripts/vendor_plugin.py
+
   build:
     desc: Build the package
-    deps: [clean]
+    deps: [clean, vendor-plugin]
     cmds:
       - "{{.POETRY}} build"
 

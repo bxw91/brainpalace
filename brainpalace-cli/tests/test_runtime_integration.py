@@ -5,9 +5,9 @@ from pathlib import Path
 import pytest
 import yaml
 
+from brainpalace_cli.runtime.antigravity_converter import AntigravityConverter
 from brainpalace_cli.runtime.claude_converter import ClaudeConverter
 from brainpalace_cli.runtime.codex_converter import CodexConverter
-from brainpalace_cli.runtime.gemini_converter import GeminiConverter
 from brainpalace_cli.runtime.opencode_converter import OpenCodeConverter
 from brainpalace_cli.runtime.parser import parse_plugin_dir
 from brainpalace_cli.runtime.skill_runtime_converter import SkillRuntimeConverter
@@ -55,22 +55,36 @@ class TestAllConvertersIntegration:
                 assert "tools:" in content
         assert len(files) > 30
 
-    def test_gemini_maps_tool_names(
+    def test_antigravity_creates_skills_and_agents_md(
         self, real_plugin_dir: Path, tmp_path: Path
     ) -> None:
         bundle = parse_plugin_dir(real_plugin_dir)
-        converter = GeminiConverter()
-        target = tmp_path / "gemini"
-        files = converter.install(bundle, target, Scope.PROJECT)
+        converter = AntigravityConverter()
+        target = tmp_path / ".agents" / "skills" / "brainpalace"
+        files = converter.install(bundle, target, Scope.PROJECT, project_root=tmp_path)
 
-        # Check skills use Gemini tool names
-        for skill in bundle.skills:
-            skill_file = target / "skills" / skill.name / "SKILL.md"
+        skill_dirs = [d for d in target.iterdir() if d.is_dir()]
+        assert len(skill_dirs) >= (
+            len(bundle.commands) + len(bundle.agents) + len(bundle.skills)
+        )
+
+        agents_md = tmp_path / "AGENTS.md"
+        assert agents_md.exists()
+        content = agents_md.read_text()
+        assert "BrainPalace" in content
+        assert "brainpalace:start" in content
+
+        for cmd in bundle.commands[:3]:  # Check first 3
+            from brainpalace_cli.runtime.skill_runtime_converter import (
+                _skill_dir_name,
+            )
+
+            skill_name = _skill_dir_name(cmd.name)
+            skill_file = target / skill_name / "SKILL.md"
             if skill_file.exists():
-                content = skill_file.read_text()
-                if "Bash" in str(skill.allowed_tools):
-                    assert "run_shell_command" in content
-        assert len(files) > 30
+                assert "Antigravity Skill:" in skill_file.read_text()
+
+        assert len(files) >= 30
 
     def test_skill_runtime_flattens_to_skill_dirs(
         self, real_plugin_dir: Path, tmp_path: Path
@@ -137,10 +151,13 @@ class TestAllConvertersIntegration:
         """Verify no converter leaves .claude/brainpalace paths."""
         bundle = parse_plugin_dir(real_plugin_dir)
 
+        # Codex and Antigravity take a different install() signature
+        # (project_root for AGENTS.md) and are intentionally excluded here —
+        # their own converter test modules cover legacy-path replacement via
+        # the shared SkillRuntimeConverter base they delegate to.
         converters = [
             ("claude", ClaudeConverter()),
             ("opencode", OpenCodeConverter()),
-            ("gemini", GeminiConverter()),
             ("skill-runtime", SkillRuntimeConverter()),
         ]
 

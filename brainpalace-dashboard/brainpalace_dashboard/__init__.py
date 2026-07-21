@@ -5,7 +5,7 @@ import subprocess
 from importlib.metadata import distribution
 from urllib.parse import unquote, urlparse
 
-__version__ = "26.7.8"
+__version__ = "26.7.9"
 
 
 def _direct_url_is_file(raw: str | None) -> bool:

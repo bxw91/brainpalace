@@ -6,7 +6,7 @@ context: brainpalace
 agent: setup-assistant
 skills:
   - configuring-brainpalace
-last_validated: 2026-07-17
+last_validated: 2026-07-21
 ---
 
 # Complete BrainPalace Setup
@@ -649,6 +649,44 @@ Write or update `storage.postgres.port` in the active config.yaml to use the dis
 docker exec brainpalace-postgres pg_isready -U brainpalace -d brainpalace
 ```
 
+### Step 10b: Wire Additional AI Assistants (optional)
+
+Setup-surface parity with the CLI's `setup.sh` guided installer: after the
+project is configured, offer to wire other AI coding assistants for it too —
+this plugin already covers Claude Code, but the user may also use Codex,
+OpenCode, Antigravity, Qwen Code, Kimi CLI, or a generic skill-runtime editor.
+
+Use AskUserQuestion (multi-select — any combination):
+
+```
+Wire this project into other AI coding assistants too?
+
+Options:
+1. Codex — writes .codex/skills/brainpalace/ + AGENTS.md
+2. OpenCode — writes .opencode/plugins/brainpalace/
+3. Antigravity (agy) — writes .agents/skills/brainpalace/ + AGENTS.md
+4. Qwen Code — writes .qwen/skills/brainpalace/ + QWEN.md
+5. Kimi CLI — writes .kimi-code/skills/brainpalace/ + AGENTS.md
+6. Generic skill-runtime — writes SKILL.md files to a directory you choose
+7. None — skip, this plugin already covers Claude Code
+```
+
+For each runtime picked (except "None"), run:
+
+```bash
+brainpalace install-agent --agent <runtime>
+```
+
+For skill-runtime, first ask the target directory, then:
+
+```bash
+brainpalace install-agent --agent skill-runtime --dir <chosen-dir>
+```
+
+Report each result (installed / failed) — this step is non-fatal; continue
+regardless of outcome. If a runtime's `install-agent` call fails, tell the
+user the manual command so they can retry later.
+
 ### Step 11: Verify and hand off (only if a project was set up)
 
 If a project was initialised in Step 10:
@@ -689,6 +727,7 @@ BrainPalace Setup
 [8]    Connectivity .... OK
 [9]    MCP client ...... <client or "skipped">
 [10]   Project ......... <configured (not started) at <path>, or "skipped — run `brainpalace init` later">
+[10b]  Other assistants  <list of wired runtimes, or "skipped">
 [11]   Verify .......... <configured, NOT running — start it yourself: `brainpalace start`>
 
 Setup complete.

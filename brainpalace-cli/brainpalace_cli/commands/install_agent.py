@@ -8,11 +8,16 @@ import click
 from rich.console import Console
 from rich.panel import Panel
 
+from brainpalace_cli.runtime.antigravity_converter import AntigravityConverter
 from brainpalace_cli.runtime.claude_converter import ClaudeConverter
 from brainpalace_cli.runtime.codex_converter import CodexConverter
-from brainpalace_cli.runtime.gemini_converter import GeminiConverter
+from brainpalace_cli.runtime.kimi_converter import KimiConverter
 from brainpalace_cli.runtime.opencode_converter import OpenCodeConverter
 from brainpalace_cli.runtime.parser import parse_plugin_dir
+from brainpalace_cli.runtime.qwen_converter import QwenConverter
+from brainpalace_cli.runtime.skill_instruction_converter import (
+    SkillInstructionConverter,
+)
 from brainpalace_cli.runtime.skill_runtime_converter import SkillRuntimeConverter
 from brainpalace_cli.runtime.types import Scope
 
@@ -28,13 +33,21 @@ INSTALL_DIRS: dict[str, dict[str, str]] = {
         "project": ".opencode/plugins/brainpalace",
         "global": "~/.config/opencode/plugins/brainpalace",
     },
-    "gemini": {
-        "project": ".gemini/plugins/brainpalace",
-        "global": "~/.config/gemini/plugins/brainpalace",
-    },
     "codex": {
         "project": ".codex/skills/brainpalace",
         "global": "~/.codex/skills/brainpalace",
+    },
+    "antigravity": {
+        "project": ".agents/skills/brainpalace",
+        "global": "~/.gemini/config/skills/brainpalace",
+    },
+    "qwen": {
+        "project": ".qwen/skills/brainpalace",
+        "global": "~/.qwen/skills/brainpalace",
+    },
+    "kimi": {
+        "project": ".kimi-code/skills/brainpalace",
+        "global": "~/.kimi-code/skills/brainpalace",
     },
 }
 
@@ -44,17 +57,21 @@ DIR_REQUIRED_RUNTIMES = {"skill-runtime"}
 ConverterType = type[
     ClaudeConverter
     | OpenCodeConverter
-    | GeminiConverter
     | SkillRuntimeConverter
     | CodexConverter
+    | AntigravityConverter
+    | QwenConverter
+    | KimiConverter
 ]
 
 CONVERTERS: dict[str, ConverterType] = {
     "claude": ClaudeConverter,
     "opencode": OpenCodeConverter,
-    "gemini": GeminiConverter,
     "skill-runtime": SkillRuntimeConverter,
     "codex": CodexConverter,
+    "antigravity": AntigravityConverter,
+    "qwen": QwenConverter,
+    "kimi": KimiConverter,
 }
 
 
@@ -73,6 +90,13 @@ def _find_plugin_dir() -> Path | None:
     installed = Path.home() / ".claude" / "plugins" / "brainpalace"
     if installed.is_dir() and (installed / "commands").is_dir():
         return installed
+
+    # Fall back to the copy vendored into the CLI wheel at build time. This is
+    # what makes `install-agent` work on a standalone `pipx install brainpalace`
+    # — no repo checkout and no Claude Code required. See scripts/vendor_plugin.py.
+    bundled = Path(__file__).parent.parent / "data" / "plugin"
+    if bundled.is_dir() and (bundled / "commands").is_dir():
+        return bundled
 
     return None
 
@@ -94,7 +118,15 @@ def _resolve_target_dir(
     return project_root / dir_template
 
 
-RUNTIME_CHOICES = ["claude", "opencode", "gemini", "skill-runtime", "codex"]
+RUNTIME_CHOICES = [
+    "claude",
+    "opencode",
+    "skill-runtime",
+    "codex",
+    "antigravity",
+    "qwen",
+    "kimi",
+]
 
 
 @click.command("install-agent")
@@ -164,7 +196,7 @@ def install_agent_command(
     Examples:
       brainpalace install-agent --agent claude --project
       brainpalace install-agent --agent opencode --global
-      brainpalace install-agent --agent gemini --dry-run
+      brainpalace install-agent --agent antigravity --dry-run
       brainpalace install-agent --agent skill-runtime --dir ./my-skills
       brainpalace install-agent --agent codex
     """
@@ -233,10 +265,10 @@ def install_agent_command(
             return
 
         # Actually install
-        if isinstance(converter, CodexConverter):
-            codex_root = Path(path) if path else Path.cwd()
+        if isinstance(converter, SkillInstructionConverter):
+            agents_md_root = Path(path) if path else Path.cwd()
             files = converter.install(
-                bundle, target, scope_enum, project_root=codex_root
+                bundle, target, scope_enum, project_root=agents_md_root
             )
         else:
             files = converter.install(bundle, target, scope_enum)
@@ -278,9 +310,11 @@ def _handle_dry_run(
     converter: (
         ClaudeConverter
         | OpenCodeConverter
-        | GeminiConverter
         | SkillRuntimeConverter
         | CodexConverter
+        | AntigravityConverter
+        | QwenConverter
+        | KimiConverter
     ),
     bundle: Any,
     target: Path,
@@ -294,8 +328,10 @@ def _handle_dry_run(
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp_target = Path(tmp)
-        # For Codex, pass tmp as project_root so AGENTS.md lands in tmpdir
-        if isinstance(converter, CodexConverter):
+        # For skill+instruction-file runtimes (Codex/Antigravity/Qwen/Kimi),
+        # pass tmp as project_root so the instruction file lands in tmpdir
+        # instead of the real project root.
+        if isinstance(converter, SkillInstructionConverter):
             files = converter.install(
                 bundle, tmp_target, scope_enum, project_root=Path(tmp)
             )

@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-18
+last_validated: 2026-07-21
 ---
 
 # BrainPalace Plugin
@@ -15,28 +15,34 @@ A Claude Code plugin for document search with hybrid BM25/semantic retrieval. In
 
 ## Installation
 
-### 1. Install Claude Code Plugin
+**CLI-first, canonical path:** one command installs the CLI + server,
+configures a provider, and offers to wire this plugin — alongside other AI
+assistants (Codex, OpenCode, Antigravity, Qwen Code, Kimi CLI, skill-runtime) —
+in one run:
 
 ```bash
-# From GitHub
-claude plugins install github:bxw91/brainpalace
+curl -sSL https://raw.githubusercontent.com/bxw91/brainpalace/main/scripts/setup.sh | bash
 ```
 
-### 2. Install BrainPalace Packages
+Full reference: [`docs/INSTALL.md`](../docs/INSTALL.md).
+
+### Marketplace shortcut (Claude Code only)
+
+Already have Claude Code and just want this plugin?
+
+```bash
+claude plugins marketplace add bxw91/brainpalace
+claude plugins install brainpalace@brainpalace-marketplace
+```
+
+This installs the plugin only — pair it with the CLI + server install below
+(or `/brainpalace-install`) for a working setup.
+
+### Manual steps
 
 ```bash
 pip install brainpalace-rag brainpalace-cli
-```
-
-### 3. Configure API Key
-
-```bash
 export OPENAI_API_KEY="sk-proj-..."
-```
-
-### 4. Initialize and Start
-
-```bash
 brainpalace init
 brainpalace start
 brainpalace index /path/to/docs

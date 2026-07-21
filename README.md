@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-18
+last_validated: 2026-07-21
 ---
 
 <div align="center">
@@ -32,12 +32,13 @@ last_validated: 2026-07-18
 
 **Universal Vector + Graph RAG with a memory store.**
 
-Talk to your code, docs, chat history, or any text files. BrainPalace will index all your files and chat sessions - not just current session.
-Explore it with Vector, BM25, Hybrid, Temporal Graph, Multi, Compute, Scan, Absence, Timeline, and Salience modes.
-
 Built for :
-- code & docs repos with permanent chat-session memory,
+- code & docs repos
 - and for any text project like personal life or work memory projects with option to index content of external sources.
+
+Talk to your code, docs, chat session history (Claude Code only for now), or any text files.
+
+Explore it with Vector, BM25, Hybrid, Temporal Graph, Multi, Compute, Scan, Absence, Timeline, and Salience modes.
 
 For text memory like projects - you are free to organize folders and files as you like. Write facts and details into text files like you are explaning to someone. All text will be indexed and re-indexed on changes. Everything you write your LLM model will know when asked.
 
@@ -65,75 +66,40 @@ Make The Context Window Unlimited.
 
 ## Install
 
-Pick the path that matches how you'll use BrainPalace. All paths share the
-same prerequisites and end with the same `brainpalace` CLI on your `PATH`.
+**You'll need one embedding provider** — a cloud key (`OPENAI_API_KEY`,
+`ANTHROPIC_API_KEY`, `COHERE_API_KEY`, `GEMINI_API_KEY`, or `XAI_API_KEY`) **or** a
+local Ollama with an embedding model.
 
-### Prerequisites
+### Install — one line for all coding assistants
 
-| Need | Why |
-|---|---|
-| Python 3.10+ | CLI + server runtime |
-| Python 3.12+ | **Only for the web dashboard** — it's auto-included on 3.12+; on 3.10/3.11 the dashboard is skipped and the CLI/server still install and run |
-| `pipx` | Isolated install for the CLI (`apt install pipx` or `brew install pipx`, then `pipx ensurepath`) |
-| `git` | The installer fetches BrainPalace from GitHub |
-| One provider — cloud key **or** Ollama | Cloud: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `COHERE_API_KEY`, `GEMINI_API_KEY`, `XAI_API_KEY`. Local-only: a running Ollama with an embedding model pulled |
-| Claude Code CLI | **Only** for the Claude Code plugin path below |
+Open terminal and run:
 
----
-
-### Install as a Claude Code plugin + deferred MCP
-
-> **Recommended if you use Claude Code.** Richest UX and it summarises your chat
-> sessions for through your Claude Code subscription (subagent calls to Haiku).
-> 43 slash commands, 6 agents, 2 skills.
-
-**Install the plugin:**
-
-   ```bash
-   claude plugins marketplace add bxw91/brainpalace
-   claude plugins install brainpalace@brainpalace-marketplace
-   ```
-
-   Then **restart Claude Code** (or start a new session) and follow instructions.
-
-**Got more projects to index later?** Go to project folder, start Claude Code and type :
-
-```bash
-/brainpalace-init
-```
-
-Initializing a project this way also wires the **MCP tools** automatically for this project only. MCP is deferred and uses only 1100 tokens.
-
-Full BrainPalace plugin reference : [`docs/PLUGIN_GUIDE.md`](docs/PLUGIN_GUIDE.md).
-
----
-
-### Install as a CLI or MCP server
-
-Go to project where you want your first BrainPalace instance and copy :
 ```bash
 curl -sSL https://raw.githubusercontent.com/bxw91/brainpalace/main/scripts/setup.sh | bash
 ```
 
-**Got more projects to index later?** Go to project folder and type :
-
-```bash
-brainpalace init
-```
-
-`init` also wires Claude Code's MCP by default (`--no-mcp` to skip it): it writes a
-per-project `.mcp.json` and registers the server with Claude Code's local scope, which
-needs no approval — restart Claude Code to use typed `query`/`status`/… tool calls
-instead of skill-mediated CLI. Already initialized a project before? `brainpalace
-install-mcp` adopts it without re-running `init`. Other MCP clients (VS Code, Cursor,
-…): [`docs/MCP_SETUP.md`](docs/MCP_SETUP.md).
+It installs the `brainpalace` binary, configures a provider, and asks which AI
+assistants to connect — skills runtimes (**Claude Code, Codex, OpenCode,
+Antigravity, Qwen, Kimi, skill-runtime**) and MCP editors (**Cursor, Windsurf,
+VS Code / Copilot, Kilo, Cline**).
 
 ---
 
-### Install for other AI runtimes
+### Init a project
 
-Install for other AI runtimes (Codex, OpenCode, Gemini CLI), Windows / WSL2
-notes — all in [`docs/INSTALL.md`](docs/INSTALL.md).
+Install once (above), then initialise each project you want indexed — the verb
+depends on your assistant:
+
+| Environment | Init a project |
+|---|---|
+| Claude Code | `/brainpalace-init` (also wires per-project MCP) |
+| Codex / OpenCode / Antigravity / Qwen / Kimi | ask the assistant, or terminal `brainpalace init` |
+| CLI / terminal | `brainpalace init` |
+
+`brainpalace init` wires Claude Code's MCP by default (`--no-mcp` to skip); other
+MCP clients (VS Code, Cursor, …): [`docs/MCP_SETUP.md`](docs/MCP_SETUP.md). Other
+runtimes and Windows / WSL2 notes: [`docs/INSTALL.md`](docs/INSTALL.md). Full
+plugin reference: [`docs/PLUGIN_GUIDE.md`](docs/PLUGIN_GUIDE.md).
 
 ---
 

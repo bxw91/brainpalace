@@ -277,6 +277,13 @@ jobs:
         with:
           version: 2.4.1
 
+      - name: Vendor canonical plugin into the CLI package
+        # data/plugin/ is gitignored generated output (like the dashboard's
+        # built static/). Vendor it from brainpalace-plugin/ here so `poetry
+        # build` below force-packages it into the wheel — this is what makes
+        # `install-agent` work on a standalone `pipx install brainpalace`.
+        run: python3 scripts/vendor_plugin.py
+
       - name: Build package
         run: poetry build
         working-directory: brainpalace-cli

@@ -129,6 +129,9 @@ data/
 !brainpalace-cli/brainpalace_cli/data/hooks/
 !brainpalace-cli/brainpalace_cli/data/hooks/**
 brainpalace-cli/brainpalace_cli/data/hooks/__pycache__/
+# Canonical plugin vendored into the CLI wheel at build time (generated output —
+# rebuilt by scripts/vendor_plugin.py, force-packaged via pyproject include).
+brainpalace-cli/brainpalace_cli/data/plugin/
 indexed_docs/
 test_output/
 e2e_workdir/

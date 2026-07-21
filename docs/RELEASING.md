@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-18
+last_validated: 2026-07-21
 ---
 
 # Releasing BrainPalace
@@ -118,10 +118,21 @@ The version lives in **one place per package**: `pyproject.toml`.
 6. **Refresh doc freshness** — any audited doc whose content changed this
    release must be re-read against the code and re-stamped. List stale docs with
    `python scripts/check_doc_freshness.py`; after re-reading, stamp them
-   (`python scripts/add_audit_metadata.py` re-stamps `last_validated` to today +
-   re-records the hash in `scripts/doc_freshness.json`). The gate in step 8
+   (`python scripts/add_audit_metadata.py <paths>` re-stamps `last_validated` to
+   today + re-records the hash in `scripts/doc_freshness.json`). The gate in step 8
    enforces this — a doc whose authored content no longer matches its manifest
    hash fails the build. The rule's meaning lives in [DEVELOPERS_GUIDE.md](DEVELOPERS_GUIDE.md#documentation-freshness-last_validated).
+
+   > **Always pass explicit paths — a bare `add_audit_metadata.py` re-stamps
+   > EVERY audited doc.** `last_validated` means "a human confirmed this against
+   > the code today"; blanket-stamping asserts that for docs nobody read this
+   > release, which is a false attestation and destroys the signal the field
+   > exists to carry. Stamp only what you actually re-read:
+   > `python scripts/add_audit_metadata.py docs/CHANGELOG.md docs/MCP_SETUP.md`.
+   > Targeting also preserves every other doc's manifest entry instead of
+   > rebuilding the whole manifest. If you blanket-stamp by accident, revert the
+   > stamp **per file** — a wide `git checkout -- docs/ scripts/ …` also throws
+   > away the changelog roll and version-bump sites, and the loss is silent.
 7. **Dashboard parity** — confirm every new config option / CLI command /
    server endpoint this release is surfaced in the control-plane dashboard or
    allowlisted with a reason. Enforced by `task lint:dashboard-parity` (part of
@@ -138,8 +149,21 @@ The version lives in **one place per package**: `pyproject.toml`.
    per-diff marker. The net-diff base is the previous `release:` commit (not
    `main` — `stable`/`main` have unrelated histories). Broader latent drift in
    docs this release didn't touch stays on the WEEKLY `--all` sweep.
+
+   > **Steps 5–8 are a LOOP, not a line — verify LAST.** The marker keys on the
+   > current diff, so *any* doc write invalidates it: the changelog roll (step 5),
+   > a freshness re-stamp (step 6), or a prose fix the step-8 gate itself demands
+   > (`lint:changelog` style caps, `lint:doc-freshness`). Each invalidation costs
+   > a full doc-verifier pass. Land **every** doc edit first, then verify, then
+   > gate — and whenever a gate failure sends you back to edit a doc, re-run the
+   > verifier before the next gate attempt. Budget for this: a release that
+   > touches changelog prose needs the verifier at least twice.
    - [ ] `/brainpalace-verify-docs --changed` run; per-diff marker recorded.
-8. **Gate**: `task before-push` must exit 0. **Necessary, not sufficient** — the
+8. **Gate**: `task before-push` must exit 0 — read that status **directly**
+   (`BRAINPALACE_RELEASE=1 task before-push; echo "EXIT=$?"`), never through a
+   pipe. `task before-push | tail -40` reports *`tail`'s* status, so a red gate
+   reads green and you publish on a failing build. Redirect to a log and grep it
+   instead. **Necessary, not sufficient** — the
    `publish-to-pypi.yml` workflow re-runs the gate (`task test`) in a *pristine
    CI env* that has **no Claude Code plugin installed** and may resolve a
    different Click version. So a test whose behavior depends on the host
