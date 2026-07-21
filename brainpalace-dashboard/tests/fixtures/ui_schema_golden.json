@@ -798,6 +798,15 @@
           "widget": "int"
         },
         {
+          "default": null,
+          "dotpath": "session_indexing.tools",
+          "help": "Tools to archive sessions from (claude-code, codex, antigravity); empty auto-detects installed ones.",
+          "key": "tools",
+          "label": "Session tools",
+          "secret": false,
+          "widget": "stringlist"
+        },
+        {
           "default": 30000,
           "dotpath": "session_indexing.watch_debounce_ms",
           "key": "watch_debounce_ms",
