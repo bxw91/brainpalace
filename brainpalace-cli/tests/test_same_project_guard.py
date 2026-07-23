@@ -85,7 +85,7 @@ def test_launch_server_spawns_when_no_duplicate(tmp_path, monkeypatch):
 
     monkeypatch.setattr(start_mod, "find_same_project_server", lambda *a, **k: None)
     monkeypatch.setattr(start_mod.subprocess, "Popen", lambda *a, **k: FakeProc())
-    monkeypatch.setattr(start_mod, "check_health", lambda url, timeout=3.0: True)
+    monkeypatch.setattr(start_mod, "probe", lambda url, root, timeout=2.0: "mine")
     monkeypatch.setattr(start_mod, "update_registry", lambda *a, **k: None)
 
     runtime = start_mod.launch_server(

@@ -150,6 +150,29 @@ def test_apply_extract_engine_no_plugin_installs_reminder(tmp_path, monkeypatch)
     assert script.is_file()
 
 
+def test_apply_extract_engine_no_plugin_not_claude_skips_reminder(
+    tmp_path, monkeypatch
+):
+    # Claude not in play for this project (e.g. --no-mcp / a non-Claude tool
+    # picked it): init must NOT drop a Claude Code SessionStart hook into
+    # ~/.claude, even though no plugin is present.
+    monkeypatch.setattr(
+        "brainpalace_cli.commands.init.claude_plugin_installed", lambda **kw: False
+    )
+    home = tmp_path / "home"
+    state = tmp_path / ".brainpalace"
+    state.mkdir()
+
+    mode = apply_extract_engine(
+        state, tmp_path, enabled=True, home=home, claude_in_play=False
+    )
+
+    assert mode == "subagent"
+    # ~/.claude left entirely untouched — no settings.json, no hook script.
+    assert not (home / ".claude" / "settings.json").exists()
+    assert not (home / ".claude" / "hooks" / "brainpalace-sessionstart.sh").exists()
+
+
 # --------------------------------------------------------------------------- #
 # Task 4e — prefill extraction.provider_context_tokens on model selection     #
 # --------------------------------------------------------------------------- #

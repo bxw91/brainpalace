@@ -167,6 +167,14 @@ async def ingest_chunks(
     )
 
 
+@router.delete("/ingest/source/{source_id}")
+async def ingest_forget(id_: str, source_id: str) -> Any:
+    # Full forget: cascade-delete a source_id across chunks + records +
+    # references (the server's `/ingest/source/{id}` = `ingest --forget`), so a
+    # dashboard delete leaves no leftover tier behind.
+    return await _call(id_, "DELETE", f"/ingest/source/{source_id}")
+
+
 @router.get("/graph")
 async def graph(id_: str) -> Any:
     # graph stats live inside /health/status; expose a focused view client-side.

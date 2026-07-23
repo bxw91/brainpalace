@@ -21,6 +21,42 @@ _Entries accumulate here between releases. The release step renames this to
 `## [YY.M.N] - DATE` and adds a fresh empty `## [Unreleased]` above it — never
 hand-number an unreleased section._
 
+## [26.7.12] - 2026-07-23
+
+### Added
+- **Dashboard Ingest tab can now delete ingested sources.** The previously
+  read-only tab gains a per-row **Delete** and a **Delete all** (respecting the
+  active filter), each a full forget (chunks + typed records + references) via
+  `DELETE /ingest/source/{id}`, behind a confirm. The chunk drawer now labels
+  Content vs Details so the ingested text is distinguishable from provenance.
+
+### Changed
+- **Guided setup's assistant-wiring menu now shows where each detected tool
+  lives.** Every auto-detected assistant gets a dim `↳ found: <path>` sub-line
+  under its name (the CLI on PATH or the config dir that matched), a blank line
+  precedes the list, and the "added to previously selected tools" note only
+  shows when BrainPalace already existed on the machine before this run.
+- **Guided setup's Claude Code box is now self-contained and full-width.** The
+  green plugin box matches the full-width Rich panels the CLI prints for the
+  other tools, states what to do and where to run it (terminal vs. inside Claude
+  Code), and sets the copy-paste command off with a blank line — instead of
+  splitting the guidance across `==>` log lines above a narrow box.
+
+### Fixed
+- **Concurrent `bp start` for two projects no longer collide on one port.**
+  Port selection was a bind-close-return TOCTOU, and the post-spawn wait only
+  checked reachability — so a second start racing the first could pick the same
+  port, lose the bind, yet see the *other* project's 200 and falsely report
+  success (leaving only one server alive). The wait is now identity-checked
+  (accepts only its own project) and retries the next free port on a lost race,
+  so both projects come up on distinct ports.
+- **Guided `setup.sh` now restarts the servers it stopped for an upgrade.**
+  Step 1 stops every running server + the dashboard so the pipx venv can be
+  swapped, but previously never brought them back — after an upgrade every
+  project was left down. The script now records the stopped roots and, at the
+  end, offers (single confirm, default yes) to restart each on the new version,
+  skipping the project Step 4 already started.
+
 ## [26.7.11] - 2026-07-23
 
 ### Added
@@ -31,53 +67,19 @@ hand-number an unreleased section._
   `/ingest/text/{source_id}` from unsurfaced to surfaced.
 
 ### Changed
-- **`scripts/install.sh --local` now builds the dashboard from source too.** It
-  previously installed CLI + server from a checkout but pulled the dashboard from
-  PyPI (stale), so `scripts/setup.sh` from a clone couldn't fully test local UI
-  work. Now `--local` rebuilds the dashboard SPA (`npm ci && npm run build`, needs
-  Node) and injects the local dashboard, so a local setup ships all three packages
-  from the working tree.
 - **Dashboard Queries tab mode filter now lists every query mode.** The filter
   dropdown was a stale 6-mode subset (missing compute/scan/absence/timeline); it
   now derives from the canonical `RUN_MODES` list, so a newly-supported mode
   appears automatically, and additionally unions in any mode observed in the
   loaded rows that the frontend doesn't yet know about.
-- **Dashboard Queries tab history now paginates (100 per page).** The history
-  table fetches one server-offset page at a time (charts still bucket the full
-  window), with Prev/Next controls and an "X–Y" range counter; the page resets to
-  1 whenever the time range, mode, or contains-filter changes. Default range stays
-  24h.
-- **Dashboard Documents tab now paginates (100 per page).** Instead of one long
-  list it fetches a page at a time via the server's existing `limit`/`offset`,
-  with Prev/Next controls and an "X–Y of N" counter; the existing filter box
-  (case-insensitive match on filename or folder path) resets to page 1 on change.
-- **Dashboard Usage "Queue backlog" is now self-explanatory.** Clearer subtitle
-  and per-source tooltips make explicit that each number is already-indexed items
-  awaiting their background pass (graph extraction for documents/git,
-  summarization for sessions) — e.g. "Documents 1,272" is the doc-chunk
-  extraction backlog, not the total indexed-document count.
 - **`bp status` lines are now produced by one server-side builder and rendered by
   both the terminal and the dashboard Status tab.** A new `status_report.py`
   emits presentation-neutral rows + typed alerts embedded in the `/status`
   payload (`report`); the CLI table and the web tab both render it, so the
   dashboard no longer reimplements (and drifts from) the rows — any row added to
   the builder appears in both. `bp status --json` gains an additive `report` key.
-- **The dashboard config prompt now explains what "No" does.** `init`/wizard's
-  "Configure the web dashboard (autostart/port)?" is preceded by a note that N
-  keeps defaults — the dashboard still auto-starts on port 8787 and nothing is
-  disabled; Y is only to change autostart/port (also editable later on the
-  Settings tab or via `config wizard --global`).
-- **`init`/config-wizard overview is now colour-coded and compact.** Section
-  headers render bold-cyan, field names green, and the one-line description grey
-  (`bright_black`); the blank line after every section is dropped so the whole
-  config reads as a dense, scannable block instead of a long sparse list.
 
 ### Fixed
-- **`setup.sh` no longer hangs installing the Claude Code plugin.** The assistant
-  picker's Claude option drove `claude plugins marketplace add` / `install` under
-  `timeout` (no `--foreground`), which blocked on the git HTTPS auth prompt / trust
-  scan and couldn't be Ctrl+C'd. It now only PRINTS the `/plugin` install commands
-  (run inside Claude Code) — matching the CLI/MCP surfaces and Step 3.
 - **`config migrate` now clears stranded pre-rename keys**, and the config
   wizard (`config wizard` / `init`, hence `setup.sh`) auto-migrates before
   validating instead of only warning. The dead top-level `api:` block and the

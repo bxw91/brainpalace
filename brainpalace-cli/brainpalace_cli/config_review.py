@@ -186,7 +186,7 @@ def render_overview(
             vals = " | ".join(_fmt(_eff(g, merged, edits)) for g in gates)
             click.echo(f"{head} {vals}")
             if desc:
-                click.echo(click.style(_one_line_desc(desc), fg="bright_black"))
+                click.echo(click.style(_one_line_desc(desc), fg=252))
             continue
         parts = []
         specs = cf.group_fields(group)
@@ -212,7 +212,7 @@ def render_overview(
             parts.append(f"{name} = {_truncate_overview(_fmt(val))}")
         click.echo(f"{head} {' | '.join(parts)}" if parts else head)
         if desc:
-            click.echo(click.style(_one_line_desc(desc), fg="bright_black"))
+            click.echo(click.style(_one_line_desc(desc), fg=252))
     click.echo("")
 
 

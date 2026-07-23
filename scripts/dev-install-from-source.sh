@@ -111,7 +111,7 @@ FRONTEND_DIR="$DASH_DIR/frontend"
 STATIC_DIR="$DASH_DIR/brainpalace_dashboard/static"
 log "Rebuilding dashboard SPA from current source ($FRONTEND_DIR)…"
 if [ "$DRY_RUN" -eq 1 ]; then
-  printf '  + (cd %s && rm -rf static node_modules/.vite *.tsbuildinfo && npm ci && npm run build)\n' "$FRONTEND_DIR"
+  printf '  + (cd %s && rm -rf static node_modules/.vite *.tsbuildinfo && npm ci --no-audit --no-fund --loglevel=error && npm run build)\n' "$FRONTEND_DIR"
 else
   # Purge every build cache first so `tsc -b` / vite cannot reuse a stale
   # incremental artifact — the compile must come only from current frontend/src:
@@ -121,7 +121,18 @@ else
   rm -rf "$STATIC_DIR" "$FRONTEND_DIR"/node_modules/.vite "$FRONTEND_DIR"/*.tsbuildinfo
   # `npm ci` installs registry deps strictly from package-lock.json into a clean
   # node_modules (it deletes any existing one) — reproducible, lockfile-pinned.
-  ( cd "$FRONTEND_DIR" && npm ci && npm run build )
+  # --no-audit/--no-fund + loglevel=error mute npm's deprecation warnings, vuln
+  # report, and funding notice (all dev-only noise; real errors stay).
+  ( cd "$FRONTEND_DIR" && npm ci --no-audit --no-fund --loglevel=error )
+  # Quiet build: on success show only vite's "building for production" banner;
+  # on failure dump the full log and abort (keep the exit code).
+  _vite_log="$(mktemp)"
+  if ( cd "$FRONTEND_DIR" && npm run build ) >"$_vite_log" 2>&1; then
+    grep -F 'building for production' "$_vite_log" || true
+  else
+    _st=$?; cat "$_vite_log" >&2; rm -f "$_vite_log"; exit "$_st"
+  fi
+  rm -f "$_vite_log"
   # Freshness guard: the build must have produced static/ assets newer than every
   # frontend/src file. If not, the build silently no-op'd (or wrote elsewhere) and
   # we'd ship a stale UI — fail loud now instead of injecting the old bundle.

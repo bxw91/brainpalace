@@ -91,6 +91,7 @@ export function IngestChunkDrawer({
             data-testid={`ingest-chunk-${c.chunk_id}`}
             className="rounded-lg border border-line/60 bg-ink-700/30 p-3"
           >
+            <p className="eyebrow mb-1">Details</p>
             <p className="mb-2 flex flex-wrap items-center gap-1.5 text-[0.65rem]">
               <span className="font-mono text-fg-faint">#{i + 1}</span>
               {["domain", "source", "sensitivity"].map((k) =>
@@ -107,7 +108,8 @@ export function IngestChunkDrawer({
                 {c.text.length} chars
               </span>
             </p>
-            <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words font-mono text-xs text-fg-muted">
+            <p className="eyebrow mb-1">Content</p>
+            <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded border border-line/60 bg-ink-800/40 p-2 font-mono text-xs text-fg">
               {c.text}
             </pre>
           </div>

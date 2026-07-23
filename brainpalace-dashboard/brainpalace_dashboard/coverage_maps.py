@@ -135,9 +135,8 @@ ENDPOINT_SURFACES: dict[str, str] = {
         "(`brainpalace ingest --delete`) stays CLI-only"
     ),
     "/ingest/source/{source_id}": (
-        "unsurfaced: full forget (chunks + records + references cascade) for "
-        "a source_id, driven by `brainpalace ingest --forget`; no dashboard "
-        "panel yet"
+        "Ingest (delete a source — full forget: chunks + records + references "
+        "cascade; the tab's per-row Delete + Delete all)"
     ),
     "/ingest/records": (
         "unsurfaced: HTTP write of caller-asserted typed records, driven by "

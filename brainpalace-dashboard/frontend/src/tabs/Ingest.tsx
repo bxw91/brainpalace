@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Search, ChevronLeft, ChevronRight } from "lucide-react";
-import { getIngestSources } from "../api/client";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Search, ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
+import { getIngestSources, forgetIngestSource } from "../api/client";
 import type { IngestSourceRow } from "../api/types";
 import { DataTable, type Column } from "../components/DataTable";
 import { IngestChunkDrawer } from "../components/IngestChunkDrawer";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { useOptionalSelectedInstance } from "../state/selectedInstance";
 import {
   NoInstance,
@@ -63,6 +64,57 @@ export function Ingest({ instanceId }: { instanceId?: string }) {
   const shownTo = page * PAGE_SIZE + pageRows.length;
   const canPrev = page > 0;
   const canNext = shownTo < total;
+
+  const qc = useQueryClient();
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [deleteAllOpen, setDeleteAllOpen] = useState(false);
+
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["ingest-sources", id] });
+    qc.invalidateQueries({ queryKey: ["status", id] });
+  };
+
+  // Single-source delete = full forget (chunks + records + references).
+  const forgetM = useMutation({
+    mutationFn: (sourceId: string) => forgetIngestSource(id!, sourceId),
+    onSuccess: (_r, sourceId) => {
+      if (openSource === sourceId) setOpenSource(null);
+    },
+    onSettled: () => {
+      setDeleteTarget(null);
+      invalidate();
+    },
+  });
+
+  // "Delete all" = full forget of every source in the current (filtered) view;
+  // no bulk server endpoint exists, so loop and report partial failures.
+  const deleteAllM = useMutation({
+    mutationFn: async () => {
+      const ids = filtered.map((s) => s.source_id);
+      const failed: string[] = [];
+      for (const sid of ids) {
+        try {
+          await forgetIngestSource(id!, sid);
+        } catch {
+          failed.push(sid);
+        }
+      }
+      if (failed.length) {
+        throw new Error(
+          `Deleted ${ids.length - failed.length} of ${ids.length}; ` +
+            `${failed.length} failed (e.g. ${failed.slice(0, 2).join(", ")}).`,
+        );
+      }
+    },
+    onSuccess: () => {
+      setOpenSource(null);
+      setPage(0);
+    },
+    onSettled: () => {
+      setDeleteAllOpen(false);
+      invalidate();
+    },
+  });
 
   const columns: Column<IngestSourceRow>[] = [
     {
@@ -142,9 +194,10 @@ export function Ingest({ instanceId }: { instanceId?: string }) {
           Free text pushed in via <span className="font-mono">brainpalace ingest</span>
         </h2>
         <p className="mt-1 text-xs text-fg-faint">
-          Programmatically-ingested sources, grouped by <code>source_id</code>. Writing
-          and deleting stay on the CLI (<span className="font-mono">ingest</span> /{" "}
-          <span className="font-mono">ingest --delete</span>); this view is read-only.
+          Programmatically-ingested sources, grouped by <code>source_id</code>. Push
+          new text in with <span className="font-mono">brainpalace ingest</span>;
+          delete a source here to fully forget it (chunks, typed records &amp;
+          references).
         </p>
       </div>
 
@@ -153,6 +206,17 @@ export function Ingest({ instanceId }: { instanceId?: string }) {
           {total.toLocaleString("en-US")} source{total === 1 ? "" : "s"}
           {contains.trim() ? " (filtered)" : ""}
         </span>
+        <button
+          type="button"
+          data-testid="ingest-delete-all"
+          onClick={() => setDeleteAllOpen(true)}
+          disabled={total === 0 || deleteAllM.isPending}
+          className="btn-danger btn-sm"
+          aria-label={contains.trim() ? "Delete filtered sources" : "Delete all sources"}
+        >
+          <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+          {contains.trim() ? "Delete filtered" : "Delete all"}
+        </button>
         <div className="relative ml-auto">
           <Search
             className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-faint"
@@ -173,6 +237,12 @@ export function Ingest({ instanceId }: { instanceId?: string }) {
         </div>
       </div>
 
+      {(forgetM.isError || deleteAllM.isError) && (
+        <p className="text-xs text-warn" data-testid="ingest-delete-error">
+          {((forgetM.error ?? deleteAllM.error) as Error)?.message ?? "Delete failed."}
+        </p>
+      )}
+
       <DataTable<IngestSourceRow>
         rows={pageRows}
         columns={columns}
@@ -180,6 +250,23 @@ export function Ingest({ instanceId }: { instanceId?: string }) {
         rowTestId={(r) => `ingest-row-${r.source_id}`}
         onRowClick={(r) => setOpenSource(r.source_id)}
         empty="No ingested sources. Push text in with `brainpalace ingest FILE --domain … --source … --source-id …`."
+        trailing={{
+          header: "",
+          cell: (r) => (
+            <button
+              type="button"
+              data-testid={`ingest-delete-${r.source_id}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                setDeleteTarget(r.source_id);
+              }}
+              className="btn-danger btn-sm"
+              aria-label={`Delete ${r.source_id}`}
+            >
+              <Trash2 className="h-3.5 w-3.5" aria-hidden="true" /> Delete
+            </button>
+          ),
+        }}
       />
 
       {total > 0 && (
@@ -225,6 +312,40 @@ export function Ingest({ instanceId }: { instanceId?: string }) {
         instanceId={id}
         sourceId={openSource}
         onClose={() => setOpenSource(null)}
+      />
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="Delete this ingested source?"
+        message={
+          <>
+            Full forget of{" "}
+            <span className="font-mono text-fg">{deleteTarget}</span> — removes its
+            chunks, typed records and references. Cannot be undone.
+          </>
+        }
+        confirmLabel="Delete"
+        tone="danger"
+        busy={forgetM.isPending}
+        onConfirm={() => deleteTarget && forgetM.mutate(deleteTarget)}
+        onCancel={() => setDeleteTarget(null)}
+      />
+
+      <ConfirmDialog
+        open={deleteAllOpen}
+        title={contains.trim() ? "Delete all filtered sources?" : "Delete ALL ingested sources?"}
+        message={
+          <>
+            Full forget of <span className="font-mono text-fg">{total}</span> source
+            {total === 1 ? "" : "s"} — removes chunks, typed records and references for
+            each. Cannot be undone.
+          </>
+        }
+        confirmLabel={`Delete ${total}`}
+        tone="danger"
+        busy={deleteAllM.isPending}
+        onConfirm={() => deleteAllM.mutate()}
+        onCancel={() => setDeleteAllOpen(false)}
       />
     </div>
   );

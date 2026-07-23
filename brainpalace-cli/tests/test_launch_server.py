@@ -36,7 +36,7 @@ def test_launch_server_is_callable_and_returns_runtime(tmp_path, monkeypatch):
         return FakeProc()
 
     monkeypatch.setattr(start_mod.subprocess, "Popen", fake_popen)
-    monkeypatch.setattr(start_mod, "check_health", lambda url, timeout=3.0: True)
+    monkeypatch.setattr(start_mod, "probe", lambda url, root, timeout=2.0: "mine")
     monkeypatch.setattr(start_mod, "update_registry", lambda *a, **k: None)
     # Stub read_bind: avoids the BindConfig → providers → MCP import chain that
     # fails on Python 3.12 when subprocess.Popen is replaced by a plain callable
@@ -86,7 +86,7 @@ def test_launch_server_sets_strict_env(tmp_path, monkeypatch):
         "Popen",
         lambda cmd, **kw: calls.update(env=kw.get("env")) or FakeProc(),
     )
-    monkeypatch.setattr(start_mod, "check_health", lambda url, timeout=3.0: True)
+    monkeypatch.setattr(start_mod, "probe", lambda url, root, timeout=2.0: "mine")
     monkeypatch.setattr(start_mod, "update_registry", lambda *a, **k: None)
     monkeypatch.setattr(start_mod, "read_bind", _stub_read_bind(_DEFAULT_BIND))
 
@@ -115,7 +115,7 @@ def test_launch_server_sets_no_dashboard_env(tmp_path, monkeypatch):
         "Popen",
         lambda cmd, **kw: calls.update(env=kw.get("env")) or FakeProc(),
     )
-    monkeypatch.setattr(start_mod, "check_health", lambda url, timeout=3.0: True)
+    monkeypatch.setattr(start_mod, "probe", lambda url, root, timeout=2.0: "mine")
     monkeypatch.setattr(start_mod, "update_registry", lambda *a, **k: None)
     monkeypatch.setattr(start_mod, "read_bind", _stub_read_bind(_DEFAULT_BIND))
 
@@ -143,7 +143,7 @@ def test_launch_server_raises_on_unhealthy(tmp_path, monkeypatch):
             return 1  # process already exited
 
     monkeypatch.setattr(start_mod.subprocess, "Popen", lambda cmd, **kw: FakeProc())
-    monkeypatch.setattr(start_mod, "check_health", lambda url, timeout=3.0: False)
+    monkeypatch.setattr(start_mod, "probe", lambda url, root, timeout=2.0: "down")
     monkeypatch.setattr(start_mod, "update_registry", lambda *a, **k: None)
     monkeypatch.setattr(start_mod, "read_bind", _stub_read_bind(_DEFAULT_BIND))
 

@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-17
+last_validated: 2026-07-23
 ---
 
 # Server Discovery Guide

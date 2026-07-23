@@ -47,6 +47,7 @@ fi
 c_bold=$(printf '\033[1m');     c_reset=$(printf '\033[0m')
 c_cyan=$(printf '\033[1;36m');  c_yel=$(printf '\033[1;33m')
 c_red=$(printf '\033[1;31m');   c_gr=$(printf '\033[1;32m')
+c_dim=$(printf '\033[2m')
 
 say()  { printf '%s==>%s %s\n' "$c_bold" "$c_reset" "$*" >/dev/tty; }
 step() { printf '\n%s--- %s ---%s\n' "$c_cyan" "$*" "$c_reset" >/dev/tty; }
@@ -54,20 +55,47 @@ warn() { printf '%sWARN:%s %s\n' "$c_yel" "$c_reset" "$*" >/dev/tty; }
 ok()   { printf '%s%s%s\n' "$c_gr" "$*" "$c_reset" >/dev/tty; }
 errx() { printf '%sERROR:%s %s\n' "$c_red" "$c_reset" "$*" >/dev/tty; exit 2; }
 
-# box_red "line" ["line" ...] — draw a red-bordered box around the given lines so
-# an action the user must run by hand (e.g. the plugin update command) stands out
-# from the surrounding `==>` log. Lines must be plain (no embedded ANSI) so the
-# byte length matches the rendered width.
-box_red() {
+# _box <color> <full> <title> <line>... — draw a titled box in <color> around the
+# given lines so an action/result stands out from the surrounding `==>` log. The
+# title (may be empty) is embedded in the top border and inherits the border
+# color. <full>=1 stretches the box to the terminal width so it matches the
+# full-width Rich panels the CLI's `install-agent` prints for the other tools;
+# <full>=0 sizes it to its content. Lines must be plain ASCII (no embedded ANSI,
+# no multi-byte) so their byte length matches the padded column width.
+_box() {
+    local color="$1" full="$2" title="$3"; shift 3
     local line maxw=0
     for line in "$@"; do (( ${#line} > maxw )) && maxw=${#line}; done
-    local border; border=$(printf '─%.0s' $(seq 1 $((maxw + 2))))
-    printf '%s┌%s┐%s\n' "$c_red" "$border" "$c_reset" >/dev/tty
+    # Widen so a "─ title ─…" top border always fits (leaves ≥1 trailing dash).
+    (( ${#title} + 2 > maxw )) && maxw=$(( ${#title} + 2 ))
+    if [[ "$full" == "1" ]]; then
+        # Fill the terminal: content width = columns - 4 (the "│ " … " │" frame).
+        local cols target
+        cols="$(stty size </dev/tty 2>/dev/null | awk '{print $2}')"
+        [[ "$cols" =~ ^[0-9]+$ ]] || cols="${COLUMNS:-100}"
+        target=$(( cols - 4 ))
+        (( target > maxw )) && maxw=$target
+    fi
+    local inner=$(( maxw + 2 )) top
+    if [[ -n "$title" ]]; then
+        local dashes=$(( inner - ${#title} - 3 ))
+        (( dashes < 0 )) && dashes=0
+        top="$(printf '─ %s ' "$title")$(printf '─%.0s' $(seq 1 "$dashes"))"
+    else
+        top="$(printf '─%.0s' $(seq 1 "$inner"))"
+    fi
+    printf '%s┌%s┐%s\n' "$color" "$top" "$c_reset" >/dev/tty
     for line in "$@"; do
-        printf '%s│%s %-*s %s│%s\n' "$c_red" "$c_reset" "$maxw" "$line" "$c_red" "$c_reset" >/dev/tty
+        printf '%s│%s %-*s %s│%s\n' "$color" "$c_reset" "$maxw" "$line" "$color" "$c_reset" >/dev/tty
     done
-    printf '%s└%s┘%s\n' "$c_red" "$border" "$c_reset" >/dev/tty
+    printf '%s└%s┘%s\n' "$color" "$(printf '─%.0s' $(seq 1 "$inner"))" "$c_reset" >/dev/tty
 }
+
+# box_red <line>...            — compact untitled red box (manual-command / error callouts).
+# box_green <title> <line>...  — full-width titled green box (success / install steps),
+#                                matching the CLI's full-width tool panels.
+box_red()   { _box "$c_red" 0 "" "$@"; }
+box_green() { _box "$c_gr" 1 "$@"; }
 
 ask() {
     # ask "Prompt" "default" -> echoes user answer (or default if blank)
@@ -128,12 +156,15 @@ stop_all_brainpalace() {
     # currently-installed binary, BEFORE its pipx venv gets replaced. A live
     # server still holding the old venv/code can clash with the reinstall.
     # Best-effort, never fatal. No jq dependency — pull roots out of list --json.
+    # Each stopped root is recorded in the global STOPPED_ROOTS so the end of the
+    # script can offer to restart them on the freshly-installed version.
     local bin="$1" roots root any=0
     if roots="$("$bin" list --json 2>/dev/null)"; then
         while IFS= read -r root; do
             [[ -z "$root" ]] && continue
             say "stopping server: $root"
             "$bin" stop --path "$root" >/dev/tty 2>&1 || true
+            STOPPED_ROOTS+=("$root")
             any=1
         done < <(printf '%s' "$roots" \
             | grep -oE '"project_root"[[:space:]]*:[[:space:]]*"[^"]+"' \
@@ -256,16 +287,17 @@ confirm "Continue?" "y" || { say "Aborted."; exit 0; }
 # -----------------------------------------------------------------------------
 check_prereqs() {
     step "Prerequisites"
+    local summary=""
     if command -v python3 >/dev/null 2>&1; then
         local py_ver py_major py_minor
         py_ver="$(python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null || echo "")"
         py_major="${py_ver%%.*}"; py_minor="${py_ver##*.}"
         if [[ -n "$py_ver" ]] && { (( py_major > 3 )) || { (( py_major == 3 )) && (( py_minor >= 10 )); }; }; then
-            ok "Python $py_ver detected (3.10+ required)."
+            summary="Python : $py_ver detected."
             if (( py_major == 3 && py_minor < 12 )); then
                 warn "Python < 3.12: the web dashboard is skipped (CLI + server still work fully). Install Python 3.12+ for the best experience (dashboard included)."
             else
-                ok "Python >= 3.12: the web dashboard is available."
+                summary="$summary Web dashboard : available."
             fi
         else
             errx "Python ${py_ver:-?} found, but BrainPalace needs Python 3.10+ (3.12+ for the dashboard). Install a newer Python and re-run."
@@ -275,18 +307,19 @@ check_prereqs() {
     fi
 
     if command -v pipx >/dev/null 2>&1; then
-        ok "pipx present."
+        summary="$summary PIPX: present."
     else
         warn "pipx not found — used for the isolated CLI install. Install: 'apt install pipx' (or 'brew install pipx'), then 'pipx ensurepath'."
     fi
 
     if command -v git >/dev/null 2>&1; then
-        ok "git present."
+        summary="$summary GIT: present."
     else
         warn "git not found — only needed to install from a local source checkout (PyPI installs do not need it)."
     fi
 
-    say "One embedding provider is required: a cloud API key (OpenAI / Anthropic / Cohere / Gemini / Grok) OR a local Ollama with an embedding model pulled. You configure this in Step 3."
+    [[ -n "$summary" ]] && ok "$summary"
+    say "One embedding provider is required: a cloud API key OR a local Ollama with an embedding model pulled."
 }
 
 check_prereqs
@@ -296,6 +329,16 @@ check_prereqs
 # -----------------------------------------------------------------------------
 
 step "Step 1/5 — Install brainpalace binary"
+
+# Project roots whose servers we stop for the upgrade (populated by
+# stop_all_brainpalace). The final step offers to restart them on the new build.
+STOPPED_ROOTS=()
+
+# Did brainpalace already exist on this machine BEFORE this run? Captured now,
+# before any install, so the assistant menu can note that new selections add to
+# tools wired by an earlier BrainPalace install (gates that note in Step 4).
+BP_PREEXISTING=""
+command -v brainpalace >/dev/null 2>&1 && BP_PREEXISTING=1
 
 # Shut everything down FIRST — before we touch the venv. A running server (or
 # dashboard) on the old code can clash with the reinstall, so ask up front.
@@ -350,10 +393,6 @@ if [[ "$DO_INSTALL" -eq 1 ]]; then
         USE_LOCAL="$local_root"
     fi
 
-    say "Running install.sh ..."
-    say "This installs the CLI + server (full RAG/ML stack) into an isolated pipx"
-    say "venv. The first install downloads several large packages — expect it to"
-    say "take a few minutes."
     # Tell install.sh it runs inside guided setup so it suppresses its own
     # "Next steps" block — this script gives the (simpler) guidance at the end.
     export BRAINPALACE_GUIDED_SETUP=1
@@ -391,7 +430,7 @@ BP_BIN="$(command -v brainpalace)"
 # (wording-only; the server still resolves the engine 'auto' at runtime).
 # -----------------------------------------------------------------------------
 
-step "Step 2/5 — Chat summaries (Claude Code plugin)"
+step "Step 2/5 — Chat summaries"
 
 CHAT_SUMM="provider"
 if command -v claude >/dev/null 2>&1; then
@@ -403,8 +442,6 @@ if command -v claude >/dev/null 2>&1; then
         esac
     fi
     if [[ "$PLUGIN_INSTALLED" == "true" ]]; then
-        say "Claude Code plugin detected — chat/session summaries run FREE on your"
-        say "Claude Code subscription. The provider you pick next is for code only."
         CHAT_SUMM="plugin"
         # Surface installed-vs-latest plugin version (parity with the
         # `brainpalace update` tail). The version/latest/update_available keys are
@@ -413,10 +450,14 @@ if command -v claude >/dev/null 2>&1; then
         # script can hang on its process scan, so Claude Code runs it itself.
         PLUGIN_VER="$(printf '%s' "$PLUGIN_JSON" | sed -n 's/.*"version": *"\([^"]*\)".*/\1/p')"
         PLUGIN_LATEST="$(printf '%s' "$PLUGIN_JSON" | sed -n 's/.*"latest": *"\([^"]*\)".*/\1/p')"
-        [[ -n "$PLUGIN_VER" ]] && say "Plugin version: $PLUGIN_VER"
+        if [[ -n "$PLUGIN_VER" ]]; then
+            say "Claude Code plugin detected version: $PLUGIN_VER"
+        else
+            say "Claude Code plugin detected."
+        fi
         case "$PLUGIN_JSON" in
             *'"update_available": true'*|*'"update_available":true'*)
-                say "Plugin update available: ${PLUGIN_LATEST:-newer} — run this inside Claude Code:"
+                say "Plugin update available: ${PLUGIN_LATEST:-newer} — run this in your terminal:"
                 box_red "claude plugin update brainpalace@brainpalace-marketplace"
                 say "(then restart Claude Code to load the new plugin)."
                 ;;
@@ -588,19 +629,46 @@ fi
 # Inherits the global provider config written in Step 3.
 # -----------------------------------------------------------------------------
 
+# plugin_installed — true when the Claude Code plugin is already installed.
+# Uses the CLI's own detection surfaced as JSON (same source as Step 2), so it
+# needs no `claude` binary and never drives Claude Code.
+plugin_installed() {
+    local j
+    j="$("$BP_BIN" plugin status --json 2>/dev/null)" || return 1
+    case "$j" in *'"installed": true'*|*'"installed":true'*) return 0 ;; esac
+    return 1
+}
+
 install_claude_plugin() {
-    # PRINT the plugin-install commands — never drive `claude plugins …` from the
-    # script. Driving it hangs: `marketplace add` git-clones over HTTPS (an
-    # interactive auth prompt when the keyring is locked) and `plugins install`
-    # blocks on its process/trust scan, with no way to Ctrl+C out (same reason
-    # Step 3 only prints — see the plugin-not-installed branch above). Claude Code
-    # manages its own plugins, so the user runs these from INSIDE Claude Code.
-    say "Claude Code plugin: run these from INSIDE Claude Code to install it"
-    say "(it manages its own plugins; chat/session summaries then run FREE):"
-    box_red "/plugin marketplace add bxw91/brainpalace" \
+    # PRINT the plugin commands — never drive `claude plugins …` from the script.
+    # Driving it hangs: `marketplace add` git-clones over HTTPS (an interactive
+    # auth prompt when the keyring is locked) and `plugins install` blocks on its
+    # process/trust scan, with no way to Ctrl+C out (same reason Step 3 only
+    # prints). We detect install state and show only the relevant box. Framing
+    # differs by surface: `claude plugin update` is a TERMINAL command (the
+    # `claude` binary), whereas `/plugin …` are slash commands run INSIDE the
+    # Claude Code REPL — so each branch says where its command runs.
+    if plugin_installed; then
+        local pstate lines=()
+        pstate="$(printf '%s' "$("$BP_BIN" plugin status 2>&1 || true)" | sed -n 's/^BrainPalace Claude Code plugin: //p' | head -1)"
+        [[ -n "$pstate" ]] && lines+=("Plugin: $pstate" "")
+        # Self-contained box: says WHAT to do, WHERE to run it, then a blank line
+        # before the copy-paste command so it stands out.
+        lines+=(
+            "Update available. Update the plugin, then restart Claude Code."
+            "Run this in your TERMINAL (qualified name - the bare name fails):"
+            ""
+            "claude plugin update brainpalace@brainpalace-marketplace"
+        )
+        box_green "Claude Code" "${lines[@]}"
+    else
+        box_green "Claude Code" \
+            "Plugin not installed. Run these INSIDE Claude Code (it manages its" \
+            "own plugins; chat/session summaries then run FREE on your plan):" \
+            "" \
+            "/plugin marketplace add bxw91/brainpalace" \
             "/plugin install brainpalace"
-    say "Already installed? Update with the QUALIFIED name (bare name fails):"
-    box_red "claude plugin update brainpalace@brainpalace-marketplace"
+    fi
     return 0
 }
 
@@ -625,10 +693,89 @@ declare -A ASSISTANT_LABEL=(
     [cline]="Cline                 — MCP config (install-mcp --client cline)"
 )
 
+# _vscode_ext_present <substr>... — echo the path of the first installed VS Code
+# extension whose directory name contains one of the substrings (VS Code, OSS,
+# and server dirs) and return 0; return 1 if none. Used for editor-extension
+# assistants (Kilo, Cline) that ship no PATH binary.
+_vscode_ext_present() {
+    local d pat hit
+    for d in "$HOME/.vscode/extensions" "$HOME/.vscode-oss/extensions" \
+             "$HOME/.vscode-server/extensions" "$HOME/.cursor/extensions"; do
+        [[ -d "$d" ]] || continue
+        for pat in "$@"; do
+            hit="$(compgen -G "$d/*${pat}*" 2>/dev/null | head -1)" || true
+            [[ -n "$hit" ]] && { printf '%s\n' "$hit"; return 0; }
+        done
+    done
+    return 1
+}
+
+# _bin_path <name>... — echo the PATH of the first binary that resolves and
+# return 0; return 1 if none resolve.
+_bin_path() {
+    local b
+    for b in "$@"; do
+        command -v "$b" 2>/dev/null && return 0
+    done
+    return 1
+}
+
+# _dir_path <dir>... — echo the first existing directory and return 0; else 1.
+_dir_path() {
+    local d
+    for d in "$@"; do
+        [[ -d "$d" ]] && { printf '%s\n' "$d"; return 0; }
+    done
+    return 1
+}
+
+# assistant_detected <key> — best-effort: is this tool present on the machine?
+# On a hit, ECHOES the location it was found at (a CLI on PATH, or a well-known
+# config/home dir — covers GUI editors with no PATH binary) and returns 0; on a
+# miss echoes nothing and returns 1. skill-runtime is a generic "pick a
+# directory" target — never auto-detected. Non-fatal: a miss just means the
+# name is neither highlighted nor annotated with a location.
+assistant_detected() {
+    case "$1" in
+        claude)       _bin_path claude          || _dir_path "$HOME/.claude" ;;
+        codex)        _bin_path codex           || _dir_path "$HOME/.codex" ;;
+        opencode)     _bin_path opencode        || _dir_path "$HOME/.opencode" "$HOME/.config/opencode" ;;
+        antigravity)  _bin_path agy antigravity || _dir_path "$HOME/.antigravity" "$HOME/.agents" ;;
+        qwen)         _bin_path qwen            || _dir_path "$HOME/.qwen" ;;
+        kimi)         _bin_path kimi            || _dir_path "$HOME/.kimi" ;;
+        cursor)       _bin_path cursor          || _dir_path "$HOME/.cursor" "$HOME/.config/Cursor" "$HOME/Library/Application Support/Cursor" ;;
+        windsurf)     _bin_path windsurf        || _dir_path "$HOME/.codeium/windsurf" "$HOME/.config/Windsurf" "$HOME/Library/Application Support/Windsurf" ;;
+        vscode)       _bin_path code            || _dir_path "$HOME/.vscode" "$HOME/.config/Code" "$HOME/Library/Application Support/Code" ;;
+        kilo)         _vscode_ext_present kilocode kilo-code ;;
+        cline)        _vscode_ext_present saoudrizwan.claude-dev cline ;;
+        *)            return 1 ;;
+    esac
+}
+
 # choose_assistants -> echoes the picked index list (space-separated) | "".
+# Tools detected on this machine are highlighted green (name only) and get a
+# dim sub-line naming WHERE they were found, printed under the tool.
 choose_assistants() {
-    local labels=() a_key
-    for a_key in "${ASSISTANT_KEYS[@]}"; do labels+=("${ASSISTANT_LABEL[$a_key]}"); done
+    local labels=() a_key lbl name rest loc
+    for a_key in "${ASSISTANT_KEYS[@]}"; do
+        lbl="${ASSISTANT_LABEL[$a_key]}"
+        if loc="$(assistant_detected "$a_key")"; then
+            # Color only the tool name — everything up to the em-dash separator.
+            # Trailing pad spaces are zero-width, so column alignment is kept.
+            name="${lbl%%—*}"; rest="${lbl#"$name"}"
+            lbl="${c_gr}${name}${c_reset}${rest}"
+            # Append the detected location as an indented dim sub-line (embedded
+            # newline; pick_multi prints the label verbatim, so it lands under
+            # the tool name without its own list number).
+            [[ -n "$loc" ]] && lbl="${lbl}"$'\n'"      ${c_dim}↳ found: ${loc}${c_reset}"
+        fi
+        labels+=("$lbl")
+    done
+    # Only when BrainPalace already existed on this machine before this run do
+    # earlier wirings persist — so the "added to previous" note is relevant then.
+    [[ -n "${BP_PREEXISTING:-}" ]] && \
+        say "${c_dim}Selections are added to previously selected tools.${c_reset}"
+    printf '\n' >/dev/tty   # blank line before the first tool in the list
     pick_multi "Assistants (comma-separated, e.g. 1,3; blank for none)" "${labels[@]}"
 }
 
@@ -655,26 +802,30 @@ execute_wirings() {
             skill-runtime)
                 local skill_dir
                 skill_dir="$(ask "Target directory for skill-runtime SKILL.md files" "${PROJECT:-$HOME}/.skills/brainpalace")"
+                # install-agent prints its own titled panel (name + target dir).
                 if _in_dir "$PROJECT" "$BP_BIN" install-agent --agent skill-runtime --dir "$skill_dir"; then
-                    ok "skill-runtime: installed to $skill_dir."; WIRED_ASSISTANTS+=("skill-runtime")
+                    WIRED_ASSISTANTS+=("skill-runtime")
                 else
                     warn "skill-runtime: install-agent failed — run manually:"
                     box_red "brainpalace install-agent --agent skill-runtime --dir $skill_dir"
                 fi
                 ;;
             cursor|windsurf|vscode|kilo|cline)
+                # install-mcp prints its own titled panel (tool name + target).
                 if _in_dir "$PROJECT" "$BP_BIN" install-mcp --client "$RUNTIME"; then
-                    ok "$RUNTIME: MCP config written."; WIRED_ASSISTANTS+=("$RUNTIME")
+                    WIRED_ASSISTANTS+=("$RUNTIME")
                 else
                     warn "$RUNTIME: install-mcp failed — run manually:"
                     box_red "brainpalace install-mcp --client $RUNTIME"
                 fi
                 ;;
             codex|opencode|antigravity)
-                local gflag=() where="project"
-                [[ -z "$PROJECT" ]] && { gflag=(--global); where="global"; }
+                local gflag=()
+                [[ -z "$PROJECT" ]] && gflag=(--global)
+                # install-agent prints its own titled result panel (tool name +
+                # scope), so we don't echo a duplicate status line here.
                 if _in_dir "$PROJECT" "$BP_BIN" install-agent --agent "$RUNTIME" "${gflag[@]}"; then
-                    ok "$RUNTIME: installed ($where scope)."; WIRED_ASSISTANTS+=("$RUNTIME")
+                    WIRED_ASSISTANTS+=("$RUNTIME")
                 else
                     warn "$RUNTIME: install-agent failed — run manually:"
                     box_red "brainpalace install-agent --agent $RUNTIME"
@@ -685,16 +836,18 @@ execute_wirings() {
                 # --client), which shipped for qwen/kimi in Phase B. Each half
                 # is independently non-fatal — one can fail without aborting
                 # the other or the rest of the loop.
-                local gflag=() where="project"
-                [[ -z "$PROJECT" ]] && { gflag=(--global); where="global"; }
+                local gflag=()
+                [[ -z "$PROJECT" ]] && gflag=(--global)
+                # skills: install-agent prints its own titled panel — no dup line.
                 if _in_dir "$PROJECT" "$BP_BIN" install-agent --agent "$RUNTIME" "${gflag[@]}"; then
-                    ok "$RUNTIME: skills installed ($where scope)."; WIRED_ASSISTANTS+=("$RUNTIME (skills)")
+                    WIRED_ASSISTANTS+=("$RUNTIME (skills)")
                 else
                     warn "$RUNTIME: install-agent failed — run manually:"
                     box_red "brainpalace install-agent --agent $RUNTIME"
                 fi
+                # mcp: install-mcp prints its own titled panel — no dup line.
                 if _in_dir "$PROJECT" "$BP_BIN" install-mcp --client "$RUNTIME"; then
-                    ok "$RUNTIME: MCP config written."; WIRED_ASSISTANTS+=("$RUNTIME (mcp)")
+                    WIRED_ASSISTANTS+=("$RUNTIME (mcp)")
                 else
                     warn "$RUNTIME: install-mcp failed — run manually:"
                     box_red "brainpalace install-mcp --client $RUNTIME"
@@ -730,26 +883,26 @@ if confirm "Set up and index a project now?" "n"; then
     say "Wire AI coding assistants for this project?"
     PICKED_IDX="$(choose_assistants)"
 
-    # Decide init's MCP wiring. Claude Code MCP (.mcp.json + local-scope
-    # register) is only useful when Claude Code is in play, so wire it when the
-    # user picked Claude OR the `claude` CLI is already on PATH; otherwise pass
-    # --no-mcp so a pure Codex/OpenCode/… project gets no stray Claude .mcp.json.
+    # Decide init's Claude Code integration. Root .mcp.json AND the ~/.claude
+    # SessionStart hook are read only by Claude Code, so wire them only when the
+    # user actually PICKED Claude this run; otherwise pass --no-mcp so a project
+    # wired for other tools gets no stray Claude .mcp.json/hook. (Merely having
+    # the `claude` CLI installed no longer counts — pick it to wire it. Existing
+    # Claude wiring from a prior run is left untouched; this only gates new writes.)
     CLAUDE_PICKED=""
     for a_idx in $PICKED_IDX; do
         [[ "${ASSISTANT_KEYS[$((a_idx-1))]:-}" == "claude" ]] && CLAUDE_PICKED="1"
     done
     MCP_FLAG=""
-    if [[ -z "$CLAUDE_PICKED" ]] && ! command -v claude >/dev/null 2>&1; then
+    if [[ -z "$CLAUDE_PICKED" ]]; then
         MCP_FLAG="--no-mcp"
-        say "Claude Code not detected and not selected — init will skip Claude MCP wiring (--no-mcp)."
+        say "Claude Code not selected — init will skip Claude MCP + hook wiring (--no-mcp)."
     fi
 
     # init --start inherits the global provider config written in Step 3.
     say "Running: brainpalace init --start $WATCH_FLAG $MCP_FLAG"
     (cd "$PROJECT" && "$BP_BIN" init --start $WATCH_FLAG $MCP_FLAG) >/dev/tty
     ok "Server initialised and started."
-    say "Session summarization: enabled (engine auto-picked; --no-extract to opt out)."
-    say "  Chat summaries run after your FIRST prompt — in batches of up to 8 sessions (<=1 MB), 5-min cool-down (free Haiku subagent)."
 
     # Wire the picked assistants now that PROJECT is init'd.
     execute_wirings "$PICKED_IDX"
@@ -771,8 +924,6 @@ else
     say "No project set up — you can still wire assistants globally."
     echo >/dev/tty
     say "Wire AI coding assistants now (global scope — no project needed)?"
-    say "  Skills runtimes (codex/opencode/antigravity/qwen/kimi) install --global;"
-    say "  MCP editors write their user-scope config; Claude installs its plugin."
     execute_wirings "$(choose_assistants)"
 fi
 
@@ -790,9 +941,43 @@ if [[ -n "$PROJECT" ]]; then
         (cd "$PROJECT" && "$BP_BIN" query "$Q" --mode hybrid) >/dev/tty \
             || warn "Query failed — check provider config and index status."
     fi
-else
-    say "No project set up — skipping status/query checks."
-    say "Global config: $(xdg_config_yaml)"
+fi
+
+# -----------------------------------------------------------------------------
+# Restart previously-running servers
+#
+# Step 1 stopped every running server (and the dashboard) so the pipx venv could
+# be swapped safely — but it never brought them back. Restart each one on the
+# freshly-installed version, behind a single confirm, so an upgrade restores the
+# prior running state instead of silently leaving every project down. The one
+# project Step 4 just started (if any) is skipped — it is already up — and the
+# dashboard autostarts with the first restart.
+# -----------------------------------------------------------------------------
+
+if (( ${#STOPPED_ROOTS[@]} > 0 )); then
+    RESTART_ROOTS=()
+    for root in "${STOPPED_ROOTS[@]}"; do
+        [[ -n "$PROJECT" && "$root" == "$PROJECT" ]] && continue  # already started
+        RESTART_ROOTS+=("$root")
+    done
+    if (( ${#RESTART_ROOTS[@]} > 0 )); then
+        step "Restart previously-running servers"
+        say "These servers were stopped for the upgrade:"
+        for root in "${RESTART_ROOTS[@]}"; do say "  $root"; done
+        if confirm "Restart them now (on the new version)?" "y"; then
+            for root in "${RESTART_ROOTS[@]}"; do
+                if [[ -d "$root" ]]; then
+                    say "Starting: $root"
+                    "$BP_BIN" start --path "$root" >/dev/tty 2>&1 \
+                        || warn "Could not restart $root — start it manually with 'brainpalace start'."
+                else
+                    warn "Skipping $root — directory no longer exists."
+                fi
+            done
+        else
+            say "Left stopped — restart any later with 'brainpalace start' in the project."
+        fi
+    fi
 fi
 
 # -----------------------------------------------------------------------------
@@ -807,36 +992,13 @@ case "$DASH_RAW" in
     *"Dashboard running"*) DASH_LINE="installed (running)" ;;
     *)                     DASH_LINE="installed (stopped)" ;;
 esac
-# Plugin install state + installed-vs-latest version, straight from the CLI's
-# own `plugin status` (strip its label; blank -> unknown).
-PLUGIN_RAW="$("$BP_BIN" plugin status 2>&1 || true)"
-PLUGIN_LINE="$(printf '%s' "$PLUGIN_RAW" | sed -n 's/^BrainPalace Claude Code plugin: //p' | head -1)"
-[[ -z "$PLUGIN_LINE" ]] && PLUGIN_LINE="unknown"
-
-WIRED_LINE="(none)"
-[[ ${#WIRED_ASSISTANTS[@]} -gt 0 ]] && WIRED_LINE="${WIRED_ASSISTANTS[*]}"
-
 cat >/dev/tty <<EOF
 
 ${c_gr}Setup complete.${c_reset}
   Binary:    $BP_BIN  ($("$BP_BIN" --version 2>/dev/null || echo "?"))
   Provider:  $PROVIDER (global — $(xdg_config_yaml))
   Dashboard: $DASH_LINE
-  Plugin:    $PLUGIN_LINE
-  Wired:     $WIRED_LINE
 EOF
-
-# When the plugin line reports a newer version, repeat the update command in a
-# red box here at the end so it survives a long install scroll and the user can
-# act on it without hunting back up to Step 2.
-case "$PLUGIN_LINE" in
-    *available*)
-        printf '\n' >/dev/tty
-        say "Plugin update available — run this inside Claude Code:"
-        box_red "claude plugin update brainpalace@brainpalace-marketplace"
-        say "(then restart Claude Code to load the new plugin)."
-        ;;
-esac
 
 if [[ -n "$PROJECT" ]]; then
     cat >/dev/tty <<EOF
@@ -851,15 +1013,8 @@ EOF
 else
     cat >/dev/tty <<EOF
 
-${c_bold}Next${c_reset} — set up a project (the binary + provider are ready):
-
+BrainPalace is configured globally. To index your project:
   cd /path/to/your/project
   brainpalace init
 EOF
 fi
-
-cat >/dev/tty <<EOF
-
-The provider is configured globally — every 'brainpalace init' inherits it.
-Each project gets its own server on a separate auto-allocated port.
-EOF

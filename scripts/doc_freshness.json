@@ -1,4 +1,5 @@
 {
+  "AGENTS.md": "dc48e33c251314a71034a3aa7248e5831277889bf6b39228be57ffacfb8173e4",
   "CLAUDE.md": "39cde85d96b1434e90174ae80031ae726bc69dd044737e2057b14582bf6e07d3",
   "README.md": "6100e5776c3f8ff5b6e226c3a64c4e331edb3120dae3119247721c1a12b2b1e9",
   "brainpalace-plugin/README.md": "2fcd2649a14551106a5ba8a63906d6c55664aac076f44a56db25a14154d8e88a",
@@ -22,7 +23,7 @@
   "brainpalace-plugin/commands/brainpalace-graph.md": "4c4f6e91bf9b0004f2c5d111223a8cbb55ecbb5cf5123831667c8174e2d408f2",
   "brainpalace-plugin/commands/brainpalace-index.md": "60fee67e0c3cde37bcb2dd5d34a06d2abb3ec47a8cfd040a9f23c12eb89a8989",
   "brainpalace-plugin/commands/brainpalace-ingest.md": "95fe68eb7d9d1e506a862cf08ad78e8c9e985871427d9f1fd6620a047c06e292",
-  "brainpalace-plugin/commands/brainpalace-init.md": "42f5ae21bd05ce1a7e82709fd9c3370db2a274223699c9b585317fe4daf437c0",
+  "brainpalace-plugin/commands/brainpalace-init.md": "dc5e7909017787a8fb884d1c7cabdb11db008468167ac03fd6aa901fd6c8a38f",
   "brainpalace-plugin/commands/brainpalace-inject.md": "42408fa6cfc9a0b459c89aba7108ee47d7d7af7f46461b1473f8c63fa6c37092",
   "brainpalace-plugin/commands/brainpalace-install-agent.md": "517baa9dfb5b593c27979af319b8bb94be2d0bd56f563e5ecfa895302b9508d7",
   "brainpalace-plugin/commands/brainpalace-install-mcp.md": "1663eb45d4f5332d11c06e6a1a7a75186675d4b6a6235cac99d23528a12f0d20",
@@ -74,7 +75,7 @@
   "docs/ARCHITECTURE.md": "3b98f55694998aa85c40ef5ba965b3c4a097f61e8504a40e897846ca7d40cf1a",
   "docs/BENCHMARKS.md": "c21a79a6af72113e5f32af8bab840735f2dcc9243d9866789e559b6f5a3967fc",
   "docs/BUILDING_ON_BRAINPALACE.md": "556b3d83e401325c01be05e00426a4770343e119989ae8ce432321424b21dbfc",
-  "docs/CHANGELOG.md": "4975944d8e7dc06228d504e972d8153ffdf7a76c4f6ed1202d8f12db38ad83f4",
+  "docs/CHANGELOG.md": "dc5aa9fad3a54b4d8d0854295fcc49e4d3334a1d768caeeb844bbe951901d9af",
   "docs/CODE_INDEXING.md": "b40c6c95b5fb3a87c38522f51d6b9793a4d3cf963074ebf785135c4769bae6ba",
   "docs/COMPUTE.md": "49207aeba9a5755ce12d3a795a1978e20cf736531584a5f5d7d8649fe586a4b0",
   "docs/CONFIGURATION.md": "ce0ff55755f14b62547b849af874a0495b36809968a56c631677184deae3ff57",

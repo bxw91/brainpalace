@@ -390,6 +390,11 @@ export const getIngestChunks = (
   return getData<IngestChunksPayload>(`/instances/${id}/ingest/chunks?${p.toString()}`);
 };
 
+/** Full forget: cascade-delete one ingested source_id (chunks + records +
+ * references) via the server's `/ingest/source/{id}` (= `ingest --forget`). */
+export const forgetIngestSource = (id: string, sourceId: string): Promise<unknown> =>
+  actData(`/instances/${id}/ingest/source/${encodeURIComponent(sourceId)}`, "DELETE");
+
 export function getQueries(
   id: string,
   q: {

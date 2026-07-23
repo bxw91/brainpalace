@@ -377,6 +377,80 @@ def build_server_command(bind_host: str, bind_port: int) -> list[str]:
     ]
 
 
+def _sigterm_quietly(process: Any) -> None:
+    """SIGTERM a spawned child if it's still alive, tolerating the reap race
+    (it may exit between the poll and the kill → ProcessLookupError)."""
+    try:
+        if process.poll() is None:
+            os.kill(process.pid, signal.SIGTERM)
+    except (ProcessLookupError, OSError):
+        pass
+
+
+def _child_hit_addr_in_use(stderr_log: Path, offset: int) -> bool:
+    """True when the just-exited server child failed because its port was already
+    bound. uvicorn/asyncio prints ``[Errno 98] ... address already in use`` on
+    that path. Reads only from ``offset`` (the log size captured just before THIS
+    attempt's spawn) so a *previous* attempt's message isn't mistaken for this
+    child's — distinguishing a lost port race (retry elsewhere) from a genuine
+    startup crash (retrying won't help)."""
+    try:
+        with stderr_log.open("r", errors="replace") as f:
+            f.seek(offset)
+            tail = f.read().lower()
+    except OSError:
+        return False
+    return "address already in use" in tail or "errno 98" in tail
+
+
+def _wait_until_owned(
+    base_url: str,
+    project_root: str | Path,
+    process: Any,
+    stderr_log: Path,
+    err_offset: int,
+    timeout: int,
+    *,
+    probe_fn: Any = None,
+) -> str:
+    """Wait until *this project* owns ``base_url``. Identity-checked, unlike a
+    bare reachability poll: a 200 from a DIFFERENT project's server on the same
+    port is a lost race, not success.
+
+    Returns:
+        ``"mine"``     — our server is up and answers for ``project_root``.
+        ``"conflict"`` — another project won this port (identity ``"other"``, or
+                         our child died binding it with EADDRINUSE); the caller
+                         should retry on the next free port.
+
+    Raises:
+        RuntimeError — our child crashed for a NON-port reason (bad config,
+            import error), or nothing became healthy within ``timeout`` and no
+            other owner appeared. Retrying another port would not help.
+    """
+    _probe = probe_fn if probe_fn is not None else probe
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        result = _probe(base_url, project_root, timeout=2.0)
+        if result == "mine":
+            return "mine"
+        if result == "other":
+            return "conflict"  # a different project answered — we lost the race
+        # result == "down": not listening yet, or our child already exited.
+        if process.poll() is not None:
+            if _child_hit_addr_in_use(stderr_log, err_offset):
+                return "conflict"
+            raise RuntimeError(
+                f"Server process exited during startup; check {stderr_log}"
+            )
+        time.sleep(0.5)
+    _sigterm_quietly(process)
+    raise RuntimeError(
+        f"Server did not become healthy within {timeout}s at {base_url}; "
+        f"check {stderr_log}"
+    )
+
+
 def launch_server(
     project_root: Path,
     state_dir: Path,
@@ -411,11 +485,6 @@ def launch_server(
     if existing:
         raise ServerAlreadyRunningError(existing)
 
-    bind_port = resolve_bind_port(config, bind_host, port)
-    base_url = f"http://{bind_host}:{bind_port}"
-
-    server_cmd = build_server_command(bind_host, bind_port)
-
     env = os.environ.copy()
     env["BRAINPALACE_PROJECT_ROOT"] = str(project_root)
     env["BRAINPALACE_STATE_DIR"] = str(state_dir)
@@ -436,59 +505,90 @@ def launch_server(
     _rotate_if_oversized(stdout_log, max_bytes=5_000_000, backups=2)
     _rotate_if_oversized(stderr_log, max_bytes=5_000_000, backups=2)
 
-    with (
-        open(stdout_log, "a") as stdout_f,
-        open(stderr_log, "a") as stderr_f,
-    ):
-        process = subprocess.Popen(
-            server_cmd,
-            env=env,
-            stdout=stdout_f,
-            stderr=stderr_f,
-            start_new_session=True,
-        )
+    # Port selection is inherently racy: find_available_port binds a probe
+    # socket, closes it, and returns the number, but uvicorn only binds ~1-2s
+    # later — so two concurrent `bp start` for different projects can both pick
+    # the same port. The wait below is IDENTITY-checked (accepts only "mine"),
+    # and on a lost race (another project owns the port, or our child died with
+    # EADDRINUSE) we retry on the next free port instead of falsely adopting the
+    # foreign server. An explicit --port (or auto_port off) is honored exactly
+    # once — a conflict there is a hard error, not a scan.
+    auto_port = bool(config.get("auto_port", True)) and port is None
+    scan_from = scan_start
+    max_attempts = 5 if auto_port else 1
+    for _attempt in range(max_attempts):
+        if auto_port:
+            bind_port_opt = find_available_port(bind_host, scan_from, scan_end)
+            if bind_port_opt is None:
+                raise RuntimeError(
+                    f"No available port in range {scan_start}-{scan_end}"
+                )
+            bind_port = bind_port_opt
+        else:
+            bind_port = resolve_bind_port(config, bind_host, port)
+        base_url = f"http://{bind_host}:{bind_port}"
+        server_cmd = build_server_command(bind_host, bind_port)
 
-    runtime: dict[str, Any] = {
-        "schema_version": "1.0",
-        "mode": "project",
-        "project_root": str(project_root),
-        "instance_id": uuid4().hex[:12],
-        "base_url": base_url,
-        "bind_host": bind_host,
-        "port": bind_port,
-        "pid": process.pid,
-        "started_at": datetime.now(timezone.utc).isoformat(),
-        "log_file": str(stdout_log),
-    }
-    write_runtime(state_dir, runtime)
-    update_registry(project_root, state_dir)
-    # Record in the durable known-projects store so the project stays listed
-    # (and Start-able) in the dashboard fleet after it stops — "every project
-    # ever started" persists until its directory is deleted from disk.
-    try:
-        from brainpalace_cli import known_projects
+        # Record the log size BEFORE spawning so _wait_until_owned can tell this
+        # child's EADDRINUSE from a previous attempt's (the file is appended).
+        err_offset = stderr_log.stat().st_size if stderr_log.exists() else 0
 
-        known_projects.remember(project_root, state_dir, project_root.name)
-    except OSError:
-        pass  # never fail a server launch over the known-projects bookkeeping
-
-    start_time = time.time()
-    while time.time() - start_time < timeout:
-        if check_health(base_url, timeout=2.0):
-            return runtime
-        if process.poll() is not None:
-            delete_runtime(state_dir)
-            raise RuntimeError(
-                f"Server process exited during startup; check {stderr_log}"
+        with (
+            open(stdout_log, "a") as stdout_f,
+            open(stderr_log, "a") as stderr_f,
+        ):
+            process = subprocess.Popen(
+                server_cmd,
+                env=env,
+                stdout=stdout_f,
+                stderr=stderr_f,
+                start_new_session=True,
             )
-        time.sleep(0.5)
 
-    if process.poll() is None:
-        os.kill(process.pid, signal.SIGTERM)
-    delete_runtime(state_dir)
+        runtime: dict[str, Any] = {
+            "schema_version": "1.0",
+            "mode": "project",
+            "project_root": str(project_root),
+            "instance_id": uuid4().hex[:12],
+            "base_url": base_url,
+            "bind_host": bind_host,
+            "port": bind_port,
+            "pid": process.pid,
+            "started_at": datetime.now(timezone.utc).isoformat(),
+            "log_file": str(stdout_log),
+        }
+        write_runtime(state_dir, runtime)
+        update_registry(project_root, state_dir)
+        # Record in the durable known-projects store so the project stays listed
+        # (and Start-able) in the dashboard fleet after it stops — "every project
+        # ever started" persists until its directory is deleted from disk.
+        try:
+            from brainpalace_cli import known_projects
+
+            known_projects.remember(project_root, state_dir, project_root.name)
+        except OSError:
+            pass  # never fail a server launch over the known-projects bookkeeping
+
+        outcome = _wait_until_owned(
+            base_url, project_root, process, stderr_log, err_offset, timeout
+        )
+        if outcome == "mine":
+            return runtime
+
+        # Lost the port race. Reap our (usually already-dead) child, drop the
+        # stale runtime.json, and — auto-port only — retry on the next port up.
+        _sigterm_quietly(process)
+        delete_runtime(state_dir)
+        if not auto_port:
+            raise RuntimeError(
+                f"Port {bind_port} on {bind_host} was taken by another server "
+                f"during startup; check {stderr_log}"
+            )
+        scan_from = bind_port + 1
+
     raise RuntimeError(
-        f"Server did not become healthy within {timeout}s at {base_url}; "
-        f"check {stderr_log}"
+        f"Could not claim a free port after {max_attempts} attempts "
+        f"(a concurrent start may be racing); check {stderr_log}"
     )
 
 

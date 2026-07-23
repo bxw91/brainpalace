@@ -51,6 +51,17 @@ INSTALL_DIRS: dict[str, dict[str, str]] = {
     },
 }
 
+# Human-facing runtime names for result panels (fall back to the raw key).
+DISPLAY_NAMES: dict[str, str] = {
+    "claude": "Claude Code",
+    "opencode": "OpenCode",
+    "codex": "Codex",
+    "antigravity": "Antigravity",
+    "qwen": "Qwen Code",
+    "kimi": "Kimi CLI",
+    "skill-runtime": "Generic skill-runtime",
+}
+
 # Runtimes that require --dir (no default directory)
 DIR_REQUIRED_RUNTIMES = {"skill-runtime"}
 
@@ -286,12 +297,10 @@ def install_agent_command(
         else:
             console.print(
                 Panel(
-                    f"[green]Plugin installed successfully![/]\n\n"
-                    f"[bold]Runtime:[/] {agent}\n"
-                    f"[bold]Scope:[/] {scope}\n"
+                    f"[green]{agent}: installed ({scope} scope).[/]\n\n"
                     f"[bold]Target:[/] {target}\n"
                     f"[bold]Files:[/] {len(files)}",
-                    title="BrainPalace Installed",
+                    title=DISPLAY_NAMES.get(agent, agent),
                     border_style="green",
                 )
             )

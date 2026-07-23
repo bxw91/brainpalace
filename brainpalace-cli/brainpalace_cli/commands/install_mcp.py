@@ -27,6 +27,24 @@ from shutil import which
 from typing import Any, Literal, NamedTuple, NoReturn
 
 import click
+from rich.console import Console
+from rich.panel import Panel
+
+console = Console()
+
+#: Human-facing client names for the result panel (fall back to the raw key).
+#: Mirrors ``DISPLAY_NAMES`` in install_agent.py so both commands title their
+#: green result boxes with the same tool name.
+CLIENT_DISPLAY: dict[str, str] = {
+    "claude": "Claude Code",
+    "cursor": "Cursor",
+    "windsurf": "Windsurf",
+    "vscode": "GitHub Copilot/VS Code",
+    "kilo": "Kilo Code",
+    "cline": "Cline",
+    "qwen": "Qwen Code",
+    "kimi": "Kimi CLI",
+}
 
 #: The exact server declaration this command merges into .mcp.json. Source
 #: of truth is brainpalace-plugin/templates/mcp-config-claude-code.json,
@@ -922,8 +940,15 @@ def install_mcp_command(
         click.echo(write_result.snippet)
         click.echo(f"(path: {write_result.path})")
     else:
-        verb = "Wrote" if write_result.wrote else "Already up to date:"
-        click.echo(f"{verb} BrainPalace MCP server in {write_result.path}")
+        status = "written" if write_result.wrote else "already up to date"
+        console.print(
+            Panel(
+                f"[green]{write_result.client}: MCP config {status}.[/]\n\n"
+                f"[bold]Target:[/] {write_result.path}",
+                title=CLIENT_DISPLAY.get(write_result.client, write_result.client),
+                border_style="green",
+            )
+        )
 
 
 def _fail(json_output: bool, message: str) -> NoReturn:

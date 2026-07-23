@@ -54,6 +54,7 @@ describe("Ingest tab", () => {
       total: sources.length,
     });
     vi.mocked(client.getIngestChunks).mockResolvedValue(chunks);
+    vi.mocked(client.forgetIngestSource).mockResolvedValue({});
   });
 
   it("lists ingested sources with chunk counts", async () => {
@@ -93,5 +94,28 @@ describe("Ingest tab", () => {
     vi.mocked(client.getIngestSources).mockResolvedValue({ sources: [], total: 0 });
     mount();
     expect(await screen.findByText(/No ingested sources/)).toBeInTheDocument();
+  });
+
+  it("deletes a single source (full forget) after confirm", async () => {
+    mount();
+    await screen.findByText("email-2024");
+    fireEvent.click(screen.getByTestId("ingest-delete-email-2024"));
+    // Dialog confirm button (its accessible name is exactly "Delete"; the row
+    // buttons are "Delete email-2024" / "Delete all sources").
+    fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
+    await waitFor(() =>
+      expect(client.forgetIngestSource).toHaveBeenCalledWith("i1", "email-2024"),
+    );
+  });
+
+  it("deletes all sources after confirm", async () => {
+    mount();
+    await screen.findByText("email-2024");
+    fireEvent.click(screen.getByTestId("ingest-delete-all"));
+    fireEvent.click(await screen.findByRole("button", { name: "Delete 2" }));
+    await waitFor(() => {
+      expect(client.forgetIngestSource).toHaveBeenCalledWith("i1", "email-2024");
+      expect(client.forgetIngestSource).toHaveBeenCalledWith("i1", "notes-alpha");
+    });
   });
 });

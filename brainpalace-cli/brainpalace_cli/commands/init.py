@@ -937,16 +937,13 @@ def _global_dashboard_settings_step(xdg_dir: Path) -> None:
     from brainpalace_cli.config_resolve import read_yaml
 
     gcfg = xdg_dir / "config.yaml"
+    console.print()
     console.print(
-        "[dim]The dashboard is a local web control-plane (config, status, jobs, "
-        "memory). Answer N to keep the defaults — it still auto-starts with "
-        "'brainpalace start' on port 8787 (scanning up to 8887); nothing is "
-        "disabled. Answer Y only to change autostart or the port now. Either way "
-        "you can adjust these later on the dashboard Settings tab or by re-running "
-        "'brainpalace config wizard --global'.[/]"
+        "[dim]The dashboard runs on port 8787 and auto-starts with the "
+        "BrainPalace server.[/]"
     )
     if not click.confirm(
-        "Configure the web dashboard (autostart/port)?", default=False
+        "Reconfigure the web dashboard (autostart/port)?", default=False
     ):
         return
     cur = read_yaml(gcfg).get("dashboard", {}) or {}
@@ -1108,6 +1105,7 @@ def apply_extract_engine(
     *,
     graphrag_extract: bool = False,
     graphrag_mode: str | None = None,
+    claude_in_play: bool = True,
 ) -> str:
     """Persist the extraction mode + reconcile Claude Code hooks.
 
@@ -1119,12 +1117,19 @@ def apply_extract_engine(
     is set to ``subagent`` when EITHER signal is on without an explicit engine,
     and to ``off`` only when both are off.
 
-    Hook reconciliation follows the plugin-presence rule:
+    Hook reconciliation follows the plugin-presence rule, gated by
+    ``claude_in_play`` (the project's Claude Code integration signal — the same
+    ``--mcp``/``--no-mcp`` intent that decides ``.mcp.json``):
     - **Plugin present** → the plugin owns all 3 hooks. We only prune old
       CLI-installed extraction hooks and do NOT install the reminder (avoids a
       double SessionStart).
-    - **Plugin absent** (CLI/MCP only) → install the SessionStart reminder via
-      :func:`install_session_hooks` (which also prunes old extraction hooks).
+    - **Plugin absent, ``claude_in_play``** (CLI/MCP only) → install the
+      SessionStart reminder via :func:`install_session_hooks` (which also prunes
+      old extraction hooks).
+    - **Plugin absent, NOT ``claude_in_play``** (e.g. a non-Claude tool picked
+      it, ``--no-mcp``) → leave ``~/.claude`` untouched: never drop a Claude Code
+      hook into a project that isn't using Claude, and don't prune hooks a prior
+      Claude wiring installed (wirings are additive, not torn down here).
 
     Returns the resolved mode (``off`` | ``subagent`` | ``auto`` | ``provider``).
     """
@@ -1139,8 +1144,10 @@ def apply_extract_engine(
     home = home or Path.home()
     if claude_plugin_installed(project=project_root):
         _prune_old_extraction_hooks(home)
-    else:
+    elif claude_in_play:
         install_session_hooks(home)
+    # else: Claude not in play for this project — neither install a Claude Code
+    # SessionStart hook nor prune one a prior Claude wiring left (additive).
     return mode
 
 
@@ -1976,7 +1983,9 @@ def _start_and_watch(
         "BrainPalace. Pass --no-mcp to opt out. Written on every init path, "
         "including --defer-activation: .mcp.json is configuration, not "
         "activation, so it starts nothing. Tools appear next session, after "
-        "you approve the project's MCP servers."
+        "you approve the project's MCP servers. --no-mcp also skips the Claude "
+        "Code SessionStart hook — both are Claude-only integrations, so a "
+        "project wired for other tools gets neither."
     ),
 )
 @click.option(
@@ -2597,6 +2606,7 @@ def init_command(
                         plan.extract,
                         graphrag_extract=bool(_reinit_graphrag_ans),
                         graphrag_mode=graphrag_extract_mode,
+                        claude_in_play=enable_mcp,
                     )
                 else:
                     write_session_config(
@@ -2610,6 +2620,7 @@ def init_command(
                             project_root,
                             plan.extract,
                             graphrag_extract=bool(_reinit_graphrag_ans),
+                            claude_in_play=enable_mcp,
                         )
                 # extraction.mode auto/provider => the server distiller (not the
                 # plugin subagent) will summarize+embed; those keys are
@@ -2664,6 +2675,7 @@ def init_command(
                     project_root,
                     plan.extract,
                     graphrag_extract=bool(_reinit_graphrag_ans),
+                    claude_in_play=enable_mcp,
                 )
             if json_output:
                 click.echo(
@@ -2869,6 +2881,7 @@ def init_command(
                 plan.extract,
                 graphrag_extract=bool(_fresh_graphrag_ans),
                 graphrag_mode=graphrag_extract_mode,
+                claude_in_play=enable_mcp,
             )
             if not json_output and extract_mode == "subagent":
                 console.print(

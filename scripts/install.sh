@@ -59,11 +59,33 @@ run() {
     fi
 }
 
+# Log every quiet command's captured output here so the final install summary
+# can mine the installed version out of it. Cleaned up after the summary prints.
+INSTALL_LOG="$(mktemp)"
+
+# Quiet variant of `run`: hide the command echo AND its output on success (only
+# the caller's `==>` header stays); on failure dump the captured log to stderr
+# and abort with the command's exit code (safe under `set -euo pipefail`).
+run_quiet() {
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        printf '   [dry-run] %s\n' "$*"
+        return 0
+    fi
+    local log; log="$(mktemp)"
+    if eval "$@" >"$log" 2>&1; then
+        cat "$log" >>"$INSTALL_LOG"
+        rm -f "$log"
+    else
+        local st=$?
+        cat "$log" >&2
+        rm -f "$log"
+        exit "$st"
+    fi
+}
+
 # -----------------------------------------------------------------------------
 # Pre-flight
 # -----------------------------------------------------------------------------
-
-say "Pre-flight checks"
 
 for cmd in python3 pipx; do
     if ! command -v "$cmd" >/dev/null 2>&1; then
@@ -77,7 +99,16 @@ for cmd in python3 pipx; do
 done
 
 PIPX_PYTHON_VERSION="$(python3 -c 'import sys; print(".".join(str(x) for x in sys.version_info[:2]))')"
-say "Using python3 ${PIPX_PYTHON_VERSION}"
+
+# Summarise what actually gets installed. The dashboard ships only on a local
+# checkout (injected explicitly below) or on PyPI with Python >=3.12 (its
+# Requires-Python); older Pythons get CLI + server only.
+if [[ -n "$LOCAL_PATH" ]] || python3 -c 'import sys; sys.exit(0 if sys.version_info[:2] >= (3, 12) else 1)'; then
+    COMPONENTS="CLI + server + dashboard"
+else
+    COMPONENTS="CLI + server"
+fi
+say "installing ${COMPONENTS}"
 
 # -----------------------------------------------------------------------------
 # Resolve install spec
@@ -136,6 +167,8 @@ else
     say "Installing ${CLI_SPEC} from PyPI"
 fi
 
+say "take a few minutes"
+
 # -----------------------------------------------------------------------------
 # Build the dashboard SPA (local install only)
 #
@@ -148,14 +181,24 @@ fi
 if [[ -n "$LOCAL_PATH" ]]; then
     FRONTEND_DIR="${DASH_SPEC}/frontend"
     STATIC_DIR="${DASH_SPEC}/brainpalace_dashboard/static"
-    say "Rebuilding dashboard SPA from local source (${FRONTEND_DIR})"
     if [[ "$DRY_RUN" -eq 1 ]]; then
-        printf '   [dry-run] (cd %s && rm -rf static node_modules/.vite *.tsbuildinfo && npm ci && npm run build)\n' "$FRONTEND_DIR"
+        printf '   [dry-run] (cd %s && rm -rf static node_modules/.vite *.tsbuildinfo && npm ci --no-audit --no-fund --loglevel=error && npm run build)\n' "$FRONTEND_DIR"
     else
         # Purge stale caches first so tsc -b / vite cannot reuse an incremental
         # artifact — the compile must come only from the current frontend/src.
         rm -rf "$STATIC_DIR" "$FRONTEND_DIR"/node_modules/.vite "$FRONTEND_DIR"/*.tsbuildinfo
-        ( cd "$FRONTEND_DIR" && npm ci && npm run build )
+        # --no-audit/--no-fund + loglevel=error mute npm's deprecation warnings,
+        # vuln report, and funding notice (all dev-only noise; real errors stay).
+        ( cd "$FRONTEND_DIR" && npm ci --no-audit --no-fund --loglevel=error )
+        # Quiet build: on success show only vite's "building for production"
+        # banner; on failure dump the full log and abort (keep the exit code).
+        _vite_log="$(mktemp)"
+        if ( cd "$FRONTEND_DIR" && npm run build ) >"$_vite_log" 2>&1; then
+            grep -F 'building for production' "$_vite_log" || true
+        else
+            _st=$?; cat "$_vite_log" >&2; rm -f "$_vite_log"; exit "$_st"
+        fi
+        rm -f "$_vite_log"
         # We wiped static/ above; if the build no-op'd (or wrote elsewhere),
         # index.html is absent — fail before injecting a missing/stale UI.
         [[ -f "${STATIC_DIR}/index.html" ]] || {
@@ -170,7 +213,7 @@ fi
 # -----------------------------------------------------------------------------
 
 say "Installing brainpalace-cli via pipx (force-replacing any existing copy)"
-run "pipx install --force ${PIPX_PIP_ARGS} '${CLI_SPEC}'"
+run_quiet "pipx install --force ${PIPX_PIP_ARGS} '${CLI_SPEC}'"
 
 if [[ -n "$LOCAL_PATH" ]]; then
     # `pipx install` above pulled the PyPI server + dashboard into the venv as CLI
@@ -181,14 +224,24 @@ if [[ -n "$LOCAL_PATH" ]]; then
     #   (cd / && ...)    run from a neutral CWD so the literal name "brainpalace-cli"
     #                    isn't mistaken for the ./brainpalace-cli dir under the repo
     say "Injecting local brainpalace-server + brainpalace-dashboard into the CLI venv"
-    run "(cd / && pipx inject --force --pip-args=--no-cache-dir brainpalace-cli '${SERVER_SPEC}' '${DASH_SPEC}')"
+    run_quiet "(cd / && pipx inject --force --pip-args=--no-cache-dir brainpalace-cli '${SERVER_SPEC}' '${DASH_SPEC}')"
     # The inject re-resolves brainpalace-cli as a dep of the server/dashboard; if
     # that pulls the PyPI CLI it would shadow the local one. Re-pin the LOCAL CLI
     # LAST with --no-deps (leaves the injected server/dashboard untouched) so the
     # venv always ends on the local build regardless of what inject resolved.
     say "Pinning local brainpalace-cli last so the inject can't downgrade it"
-    run "(cd / && pipx runpip brainpalace-cli install --no-deps --force-reinstall --no-cache-dir '${CLI_SPEC}')"
+    run_quiet "(cd / && pipx runpip brainpalace-cli install --no-deps --force-reinstall --no-cache-dir '${CLI_SPEC}')"
 fi
+
+# One-line summary in place of the suppressed pipx chatter: mine the installed
+# CLI version out of the captured logs ("Successfully installed brainpalace-cli-
+# X.Y.Z" / "installed package brainpalace-cli X.Y.Z") and echo pipx's done glyph.
+if [[ "$DRY_RUN" -ne 1 ]]; then
+    _bp_ver="$(grep -oE 'brainpalace[_-]cli[- ][0-9]+\.[0-9]+\.[0-9]+' "$INSTALL_LOG" \
+        | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | tail -1)"
+    printf 'done! ✨ 🌟 ✨ Successfully installed brainpalace-cli-%s\n' "${_bp_ver:-installed}"
+fi
+rm -f "$INSTALL_LOG"
 
 # -----------------------------------------------------------------------------
 # Verify
