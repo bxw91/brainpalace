@@ -74,4 +74,56 @@ describe("Documents tab", () => {
     expect(await screen.findByTestId("chunk-drawer")).toBeInTheDocument();
     expect(await screen.findByTestId("chunk-c1")).toBeInTheDocument();
   });
+
+  it("requests 100 files per page and pages via offset", async () => {
+    // 250 files across 3 pages; the tab must fetch a page of 100 at a time.
+    vi.mocked(client.getDocuments).mockResolvedValue({
+      folder: "/proj",
+      total: 250,
+      files: docs.files,
+    });
+    mount();
+    await screen.findByText("/proj/a.py");
+    await waitFor(() =>
+      expect(client.getDocuments).toHaveBeenCalledWith(
+        "i1",
+        expect.objectContaining({ folder: "/proj", limit: 100, offset: 0 }),
+      ),
+    );
+    expect(screen.getByTestId("doc-pager")).toHaveTextContent("Page 1 of 3");
+
+    fireEvent.click(screen.getByTestId("doc-next"));
+    await waitFor(() =>
+      expect(client.getDocuments).toHaveBeenCalledWith(
+        "i1",
+        expect.objectContaining({ folder: "/proj", limit: 100, offset: 100 }),
+      ),
+    );
+  });
+
+  it("resets to the first page when the filter changes", async () => {
+    vi.mocked(client.getDocuments).mockResolvedValue({
+      folder: "/proj",
+      total: 250,
+      files: docs.files,
+    });
+    mount();
+    await screen.findByText("/proj/a.py");
+    fireEvent.click(screen.getByTestId("doc-next")); // page 2 (offset 100)
+    await waitFor(() =>
+      expect(client.getDocuments).toHaveBeenLastCalledWith(
+        "i1",
+        expect.objectContaining({ offset: 100 }),
+      ),
+    );
+    fireEvent.change(screen.getByTestId("input-doc-contains"), {
+      target: { value: "a.py" },
+    });
+    await waitFor(() =>
+      expect(client.getDocuments).toHaveBeenLastCalledWith(
+        "i1",
+        expect.objectContaining({ contains: "a.py", offset: 0 }),
+      ),
+    );
+  });
 });

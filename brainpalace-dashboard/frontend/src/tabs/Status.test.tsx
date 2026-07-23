@@ -34,14 +34,7 @@ describe("Status tab", () => {
       indexed_folders: ["/a", "/b"],
       supported_languages: ["python", "typescript"],
       git_commits: 42,
-      graph_index: {
-        enabled: true,
-        entity_count: 7,
-        relationship_count: 9,
-        store_type: "sqlite",
-      },
-      embedding_cache: { hit_rate: 0.9 },
-      file_watcher: { running: true },
+      features: { git_index: { enabled: true, commit_count: 42 } },
     } as never);
 
     wrap(<Status instanceId="inst-1" />);
@@ -63,69 +56,99 @@ describe("Status tab", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows the read-only banner and a non-alarming self-heal row in read-only mode", async () => {
+  it("renders rows and alerts from the server report", async () => {
     vi.mocked(client.getInstanceStatus).mockResolvedValue({
       total_documents: 1,
-      code_documents: 1,
-      doc_documents: 0,
       total_chunks: 1,
-      total_code_chunks: 1,
-      total_doc_chunks: 0,
       indexed_folders: ["/a"],
-      git_commits: 0,
-      features: {
-        read_only: true,
-        self_heal: {
-          last: {
-            restored: 4878,
-            recoverable: 4878,
-            incomplete_reason: "read-only mode",
+      report: {
+        rows: [
+          {
+            key: "session_queue",
+            label: "Session Queue",
+            value: "330 pending",
+            tone: "warn",
           },
-        },
+          {
+            key: "read_only",
+            label: "Read-Only",
+            value: "ON — provider calls disabled",
+            tone: "bad",
+          },
+        ],
+        alerts: [
+          {
+            kind: "index_drift",
+            severity: "warn",
+            title: "Index drift",
+            lines: ["embedding model changed"],
+          },
+        ],
       },
     } as never);
 
     wrap(<Status instanceId="inst-1" />);
 
-    const banner = await screen.findByTestId("readonly-banner");
-    expect(banner).toHaveTextContent(/read-only mode is on/i);
-
-    const tab = screen.getByTestId("tab-status");
-    // Self-heal renders the calm read-only copy, NOT the scary "fix + restart".
-    expect(tab).toHaveTextContent(/stage 2 skipped — read-only \(no deletes\)/i);
-    expect(tab).not.toHaveTextContent(/fix \+ restart/i);
-    expect(tab).not.toHaveTextContent(/incomplete/i);
+    expect(await screen.findByText("Session Queue")).toBeInTheDocument();
+    expect(screen.getByText("330 pending")).toBeInTheDocument();
+    expect(screen.getByText("Index drift")).toBeInTheDocument(); // alert → banner
+    expect(screen.getByText("embedding model changed")).toBeInTheDocument();
+    // read_only → banner (BANNER_KEYS), not a plain row
+    expect(screen.getByText("ON — provider calls disabled")).toBeInTheDocument();
   });
 
-  it("shows the index-drift banner when the server reports index_warnings", async () => {
+  it("promotes read_only/self_heal/index_health rows to banners, keeps other rows in the list", async () => {
     vi.mocked(client.getInstanceStatus).mockResolvedValue({
-      total_documents: 5,
-      total_chunks: 50,
+      total_documents: 1,
+      total_chunks: 1,
       indexed_folders: ["/a"],
-      index_warnings: [
-        "Embedding provider mismatch: index was created with openai/text-embedding-3-large.",
-        "Storage backend changed: the index was built under 'chroma'.",
-      ],
+      report: {
+        rows: [
+          {
+            key: "self_heal",
+            label: "Self-Heal",
+            value:
+              "recovered 4878/4878 chunk(s) from cache+dead (no re-embed); stage 2 skipped — read-only (no deletes)",
+            tone: "good",
+          },
+          {
+            key: "index_health",
+            label: "Index Health",
+            value: "⚠ 2 heal event(s), ~40 vectors shed",
+            tone: "warn",
+          },
+          {
+            key: "bm25_language",
+            label: "BM25 Language",
+            value: "en (engine: stem)",
+            tone: "default",
+          },
+        ],
+        alerts: [],
+      },
     } as never);
 
     wrap(<Status instanceId="inst-1" />);
 
-    const banner = await screen.findByTestId("index-drift-banner");
-    expect(banner).toHaveTextContent(/index drift/i);
-    expect(banner).toHaveTextContent(/embedding provider mismatch/i);
-    expect(banner).toHaveTextContent(/storage backend changed/i);
+    expect(await screen.findByText("Self-Heal")).toBeInTheDocument();
+    expect(screen.getByText(/stage 2 skipped/)).toBeInTheDocument();
+    expect(screen.getByText("Index Health")).toBeInTheDocument();
+    // A non-banner row still renders in the generic server-status list.
+    expect(screen.getByText("BM25 Language")).toBeInTheDocument();
+    expect(screen.getByText("en (engine: stem)")).toBeInTheDocument();
   });
 
-  it("does NOT show the index-drift banner when there are no warnings", async () => {
+  it("does NOT show any alert banner when the report has none", async () => {
     vi.mocked(client.getInstanceStatus).mockResolvedValue({
       total_documents: 5,
       total_chunks: 50,
       indexed_folders: ["/a"],
-      index_warnings: [],
+      report: { rows: [], alerts: [] },
     } as never);
     wrap(<Status instanceId="inst-1" />);
     await screen.findByTestId("stat-documents");
-    expect(screen.queryByTestId("index-drift-banner")).toBeNull();
+    expect(screen.queryByText("Index drift")).toBeNull();
+    expect(screen.queryByText("Indexing paused")).toBeNull();
   });
 
   it("shows the stopped state when the instance is unreachable", async () => {

@@ -937,6 +937,14 @@ def _global_dashboard_settings_step(xdg_dir: Path) -> None:
     from brainpalace_cli.config_resolve import read_yaml
 
     gcfg = xdg_dir / "config.yaml"
+    console.print(
+        "[dim]The dashboard is a local web control-plane (config, status, jobs, "
+        "memory). Answer N to keep the defaults — it still auto-starts with "
+        "'brainpalace start' on port 8787 (scanning up to 8887); nothing is "
+        "disabled. Answer Y only to change autostart or the port now. Either way "
+        "you can adjust these later on the dashboard Settings tab or by re-running "
+        "'brainpalace config wizard --global'.[/]"
+    )
     if not click.confirm(
         "Configure the web dashboard (autostart/port)?", default=False
     ):

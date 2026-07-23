@@ -7,6 +7,8 @@ import {
   type FoldersPayload,
   type DocumentsPayload,
   type DocumentChunksPayload,
+  type IngestSourcesPayload,
+  type IngestChunksPayload,
   type JobsPayload,
   type JobDetail,
   type CachePayload,
@@ -373,9 +375,30 @@ export const getDocumentChunks = (
   );
 };
 
+export const getIngestSources = (id: string): Promise<IngestSourcesPayload> =>
+  getData<IngestSourcesPayload>(`/instances/${id}/ingest/sources`);
+
+export const getIngestChunks = (
+  id: string,
+  q: { source_id: string; offset?: number; limit?: number },
+): Promise<IngestChunksPayload> => {
+  const p = new URLSearchParams(
+    Object.entries(q)
+      .filter(([, v]) => v != null && v !== "")
+      .map(([k, v]) => [k, String(v)]),
+  );
+  return getData<IngestChunksPayload>(`/instances/${id}/ingest/chunks?${p.toString()}`);
+};
+
 export function getQueries(
   id: string,
-  q: { mode?: string; contains?: string; since?: number; limit?: number } = {},
+  q: {
+    mode?: string;
+    contains?: string;
+    since?: number;
+    limit?: number;
+    offset?: number;
+  } = {},
 ): Promise<QueryRow[]> {
   const p = new URLSearchParams(
     Object.entries(q)

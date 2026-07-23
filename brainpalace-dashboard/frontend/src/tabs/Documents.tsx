@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Search } from "lucide-react";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
+import { Search, ChevronLeft, ChevronRight } from "lucide-react";
 import { getFolders, getDocuments } from "../api/client";
 import type { DocumentRow } from "../api/types";
 import { DataTable, type Column } from "../components/DataTable";
@@ -13,6 +13,8 @@ import {
   TabSkeleton,
   isUnreachable,
 } from "../components/TabState";
+
+const PAGE_SIZE = 100;
 
 const fmtBytes = (n: number) =>
   n >= 1024 * 1024
@@ -27,7 +29,18 @@ export function Documents({ instanceId }: { instanceId?: string }) {
 
   const [folder, setFolder] = useState<string | null>(null);
   const [contains, setContains] = useState("");
+  const [page, setPage] = useState(0);
   const [openPath, setOpenPath] = useState<string | null>(null);
+
+  // Any change to the folder or the filter invalidates the current page number.
+  const selectFolder = (f: string) => {
+    setFolder(f);
+    setPage(0);
+  };
+  const changeContains = (v: string) => {
+    setContains(v);
+    setPage(0);
+  };
 
   const foldersQ = useQuery({
     queryKey: ["folders", id],
@@ -40,15 +53,26 @@ export function Documents({ instanceId }: { instanceId?: string }) {
     folder ?? foldersQ.data?.folders[0]?.folder_path ?? null;
 
   const docsQ = useQuery({
-    queryKey: ["documents", id, activeFolder, contains],
+    queryKey: ["documents", id, activeFolder, contains, page],
     queryFn: () =>
       getDocuments(id!, {
         folder: activeFolder!,
         ...(contains.trim() ? { contains: contains.trim() } : {}),
+        limit: PAGE_SIZE,
+        offset: page * PAGE_SIZE,
       }),
     enabled: !!id && !!activeFolder,
     retry: false,
+    // Keep the current page visible while the next one loads (no skeleton flash).
+    placeholderData: keepPreviousData,
   });
+
+  const total = docsQ.data?.total ?? 0;
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const shownFrom = total === 0 ? 0 : page * PAGE_SIZE + 1;
+  const shownTo = page * PAGE_SIZE + (docsQ.data?.files.length ?? 0);
+  const canPrev = page > 0;
+  const canNext = shownTo < total;
 
   const columns: Column<DocumentRow>[] = [
     {
@@ -129,7 +153,7 @@ export function Documents({ instanceId }: { instanceId?: string }) {
           id="select-doc-folder"
           data-testid="select-doc-folder"
           value={activeFolder ?? ""}
-          onChange={(e) => setFolder(e.target.value)}
+          onChange={(e) => selectFolder(e.target.value)}
           className="max-w-md truncate rounded-lg border border-line bg-ink-700/50 px-3 py-1.5 text-sm text-fg focus:border-accent/60 focus:outline-none focus:ring-2 focus:ring-accent/30"
         >
           {(foldersQ.data?.folders ?? []).map((f) => (
@@ -139,8 +163,9 @@ export function Documents({ instanceId }: { instanceId?: string }) {
           ))}
         </select>
         {docsQ.data && (
-          <span className="text-xs text-fg-faint">
-            {docsQ.data.total} file{docsQ.data.total === 1 ? "" : "s"}
+          <span className="text-xs text-fg-faint" data-testid="doc-count">
+            {total.toLocaleString("en-US")} file{total === 1 ? "" : "s"}
+            {contains.trim() ? " (filtered)" : ""}
           </span>
         )}
         <div className="relative ml-auto">
@@ -156,8 +181,8 @@ export function Documents({ instanceId }: { instanceId?: string }) {
             data-testid="input-doc-contains"
             type="text"
             value={contains}
-            onChange={(e) => setContains(e.target.value)}
-            placeholder="Filter by path…"
+            onChange={(e) => changeContains(e.target.value)}
+            placeholder="Filter by filename or folder…"
             className="w-64 rounded-lg border border-line bg-ink-700/50 py-1.5 pl-9 pr-3 text-sm text-fg placeholder:text-fg-faint focus:border-accent/60 focus:outline-none focus:ring-2 focus:ring-accent/30"
           />
         </div>
@@ -171,6 +196,45 @@ export function Documents({ instanceId }: { instanceId?: string }) {
         onRowClick={(r) => setOpenPath(r.path)}
         empty="No indexed files in this folder."
       />
+
+      {total > 0 && (
+        <div
+          data-testid="doc-pager"
+          className="flex items-center justify-between gap-3 text-xs text-fg-muted"
+        >
+          <span className="tabular-nums">
+            {shownFrom.toLocaleString("en-US")}–{shownTo.toLocaleString("en-US")} of{" "}
+            {total.toLocaleString("en-US")}
+          </span>
+          <div className="flex items-center gap-2">
+            <span className="tabular-nums text-fg-faint">
+              Page {page + 1} of {pageCount.toLocaleString("en-US")}
+            </span>
+            <button
+              type="button"
+              data-testid="doc-prev"
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              disabled={!canPrev}
+              aria-label="Previous page"
+              className="flex items-center gap-1 rounded-lg border border-line bg-ink-700/50 px-2.5 py-1 text-fg enabled:hover:border-accent/60 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+              Prev
+            </button>
+            <button
+              type="button"
+              data-testid="doc-next"
+              onClick={() => setPage((p) => p + 1)}
+              disabled={!canNext}
+              aria-label="Next page"
+              className="flex items-center gap-1 rounded-lg border border-line bg-ink-700/50 px-2.5 py-1 text-fg enabled:hover:border-accent/60 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Next
+              <ChevronRight className="h-4 w-4" aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {activeFolder && (
         <ChunkDrawer

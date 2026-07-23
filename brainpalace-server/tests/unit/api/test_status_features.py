@@ -470,3 +470,14 @@ def test_session_archive_tools_defaults_to_empty():
     client = _client_with_extraction()
     features = client.get("/status").json()["features"]
     assert features["session_archive"]["tools"] == []
+
+
+def test_status_includes_report():
+    client = _client(
+        session_enabled=False, session_running=False, curated=0, session_chunks=0
+    )
+    data = client.get("/status").json()
+    assert "report" in data
+    keys = {row["key"] for row in data["report"]["rows"]}
+    assert {"server_version", "total_documents", "total_chunks"} <= keys
+    assert isinstance(data["report"]["alerts"], list)

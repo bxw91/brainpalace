@@ -1,6 +1,19 @@
 import { useMemo, useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Search, Plus, Play, Loader2, X } from "lucide-react";
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+  keepPreviousData,
+} from "@tanstack/react-query";
+import {
+  Search,
+  Plus,
+  Play,
+  Loader2,
+  X,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 import { getQueries, replayQuery } from "../api/client";
 import type { QueryRow } from "../api/types";
 import { DataTable, type Column } from "../components/DataTable";
@@ -39,7 +52,13 @@ const RERANK_OPTIONS = [
   { value: "off", label: "reranker: off" },
 ] as const;
 
-const MODES = ["all", "hybrid", "vector", "bm25", "graph", "multi"] as const;
+const PAGE_SIZE = 100;
+
+// Filter dropdown: "all" (no filter) + every canonical mode from RUN_MODES, so a
+// newly-supported mode appears here automatically. modeOptions (in the component)
+// also unions in any mode seen in the data that isn't in this static list, so a
+// server-side-new mode surfaces even before the frontend knows about it.
+const KNOWN_FILTER_MODES = ["all", ...RUN_MODES] as const;
 const RANGES = [
   { key: "24h", label: "24h", days: 1 },
   { key: "2d", label: "2d", days: 2 },
@@ -115,7 +134,22 @@ export function Queries({ instanceId }: { instanceId?: string }) {
   const [mode, setMode] = useState<string>("all");
   const [range, setRange] = useState<RangeKey>("24h");
   const [contains, setContains] = useState("");
+  const [page, setPage] = useState(0);
   const [openQid, setOpenQid] = useState<string | null>(null);
+
+  // Any change to the window, mode, or text filter invalidates the page number.
+  const selectRange = (r: RangeKey) => {
+    setRange(r);
+    setPage(0);
+  };
+  const selectMode = (m: string) => {
+    setMode(m);
+    setPage(0);
+  };
+  const changeContains = (v: string) => {
+    setContains(v);
+    setPage(0);
+  };
 
   // "New query" composer: run a live query against the server. The server logs
   // it, so it also lands in history once we invalidate the list.
@@ -132,6 +166,7 @@ export function Queries({ instanceId }: { instanceId?: string }) {
   const days = RANGES.find((r) => r.key === range)!.days;
   const since = Math.floor(Date.now() / 1000 - days * 86400);
 
+  // Window fetch — the aggregate set the charts + analytics bucket over.
   const queriesQ = useQuery({
     queryKey: ["queries", id, mode, range, contains],
     queryFn: () =>
@@ -143,6 +178,37 @@ export function Queries({ instanceId }: { instanceId?: string }) {
       }),
     enabled: !!id,
     retry: false,
+  });
+
+  // Dropdown options: the known modes plus any extra mode observed in the loaded
+  // rows (sorted, appended) — auto-populates if the server logs a brand-new mode.
+  const modeOptions = useMemo(() => {
+    const seen = new Set<string>(KNOWN_FILTER_MODES);
+    const extra: string[] = [];
+    for (const r of queriesQ.data ?? []) {
+      if (r.mode && !seen.has(r.mode)) {
+        seen.add(r.mode);
+        extra.push(r.mode);
+      }
+    }
+    extra.sort();
+    return [...KNOWN_FILTER_MODES, ...extra];
+  }, [queriesQ.data]);
+
+  // Paginated fetch — one 100-row page of the history table (server offset).
+  const tableQ = useQuery({
+    queryKey: ["queries-page", id, mode, range, contains, page],
+    queryFn: () =>
+      getQueries(id!, {
+        since,
+        limit: PAGE_SIZE,
+        offset: page * PAGE_SIZE,
+        ...(mode !== "all" ? { mode } : {}),
+        ...(contains.trim() ? { contains: contains.trim() } : {}),
+      }),
+    enabled: !!id,
+    retry: false,
+    placeholderData: keepPreviousData,
   });
 
   const runM = useMutation({
@@ -182,6 +248,11 @@ export function Queries({ instanceId }: { instanceId?: string }) {
 
   const { formatShortDate, formatHour } = useDisplayFormat();
   const rows = queriesQ.data ?? [];
+  const pageRows = tableQ.data ?? [];
+  const shownFrom = pageRows.length === 0 ? 0 : page * PAGE_SIZE + 1;
+  const shownTo = page * PAGE_SIZE + pageRows.length;
+  const canPrev = page > 0;
+  const canNext = pageRows.length === PAGE_SIZE;
   const charts = useMemo(
     () => bucketize(rows, days, formatShortDate, formatHour),
     [rows, days, formatShortDate, formatHour],
@@ -237,16 +308,19 @@ export function Queries({ instanceId }: { instanceId?: string }) {
   if (!id) {
     return <NoInstance testId="tab-queries" message="Select an instance to browse its query history." />;
   }
-  if (isUnreachable(queriesQ.error)) {
+  if (isUnreachable(queriesQ.error) || isUnreachable(tableQ.error)) {
     return <StoppedState testId="queries-stopped" />;
   }
-  if (queriesQ.isError) {
+  if (queriesQ.isError || tableQ.isError) {
     return (
       <ErrorState
         testId="queries-error"
-        message={(queriesQ.error as Error)?.message}
-        onRetry={() => queriesQ.refetch()}
-        retrying={queriesQ.isFetching}
+        message={((queriesQ.error ?? tableQ.error) as Error)?.message}
+        onRetry={() => {
+          queriesQ.refetch();
+          tableQ.refetch();
+        }}
+        retrying={queriesQ.isFetching || tableQ.isFetching}
       />
     );
   }
@@ -526,7 +600,7 @@ export function Queries({ instanceId }: { instanceId?: string }) {
               key={r.key}
               type="button"
               data-testid={`btn-range-${r.key}`}
-              onClick={() => setRange(r.key)}
+              onClick={() => selectRange(r.key)}
               className={
                 range === r.key
                   ? "btn-primary btn-sm"
@@ -545,10 +619,10 @@ export function Queries({ instanceId }: { instanceId?: string }) {
           id="select-mode"
           data-testid="select-mode"
           value={mode}
-          onChange={(e) => setMode(e.target.value)}
+          onChange={(e) => selectMode(e.target.value)}
           className="rounded-lg border border-line bg-ink-700/50 px-3 py-1.5 text-sm text-fg focus:border-accent/60 focus:outline-none focus:ring-2 focus:ring-accent/30"
         >
-          {MODES.map((m) => (
+          {modeOptions.map((m) => (
             <option key={m} value={m}>
               {m === "all" ? "all modes" : m}
             </option>
@@ -568,7 +642,7 @@ export function Queries({ instanceId }: { instanceId?: string }) {
             data-testid="input-contains"
             type="text"
             value={contains}
-            onChange={(e) => setContains(e.target.value)}
+            onChange={(e) => changeContains(e.target.value)}
             placeholder="Search query text…"
             className="w-64 rounded-lg border border-line bg-ink-700/50 py-1.5 pl-9 pr-3 text-sm text-fg placeholder:text-fg-faint focus:border-accent/60 focus:outline-none focus:ring-2 focus:ring-accent/30"
           />
@@ -576,7 +650,7 @@ export function Queries({ instanceId }: { instanceId?: string }) {
       </div>
 
       <DataTable<QueryRow>
-        rows={rows}
+        rows={pageRows}
         columns={columns}
         rowKey={(r) => r.id}
         rowTestId={(r) => `query-row-${r.id}`}
@@ -599,6 +673,42 @@ export function Queries({ instanceId }: { instanceId?: string }) {
           ),
         }}
       />
+
+      {(page > 0 || pageRows.length > 0) && (
+        <div
+          data-testid="query-pager"
+          className="flex items-center justify-between gap-3 text-xs text-fg-muted"
+        >
+          <span className="tabular-nums">
+            {shownFrom.toLocaleString("en-US")}–{shownTo.toLocaleString("en-US")}
+          </span>
+          <div className="flex items-center gap-2">
+            <span className="tabular-nums text-fg-faint">Page {page + 1}</span>
+            <button
+              type="button"
+              data-testid="query-prev"
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              disabled={!canPrev}
+              aria-label="Previous page"
+              className="flex items-center gap-1 rounded-lg border border-line bg-ink-700/50 px-2.5 py-1 text-fg enabled:hover:border-accent/60 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+              Prev
+            </button>
+            <button
+              type="button"
+              data-testid="query-next"
+              onClick={() => setPage((p) => p + 1)}
+              disabled={!canNext}
+              aria-label="Next page"
+              className="flex items-center gap-1 rounded-lg border border-line bg-ink-700/50 px-2.5 py-1 text-fg enabled:hover:border-accent/60 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Next
+              <ChevronRight className="h-4 w-4" aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+      )}
 
       <QueryDrawer instanceId={id} qid={openQid} onClose={() => setOpenQid(null)} />
     </div>

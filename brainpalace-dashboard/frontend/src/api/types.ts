@@ -164,6 +164,31 @@ export const InstanceStatusPayload = z
     session_chunks: z.number().optional(),
     git_commits: z.number().optional(),
     features: z.unknown().optional(),
+    // Presentation-neutral status report — the single source rendered by both
+    // `bp status` and this tab. See brainpalace_server/status_report.py.
+    report: z
+      .object({
+        rows: z.array(
+          z.object({
+            key: z.string(),
+            label: z.string(),
+            value: z.string(),
+            tone: z
+              .enum(["default", "good", "warn", "bad", "dim", "accent"])
+              .default("default"),
+          }),
+        ),
+        alerts: z.array(
+          z.object({
+            kind: z.string(),
+            severity: z.enum(["info", "warn", "bad"]),
+            title: z.string(),
+            lines: z.array(z.string()),
+            action: z.string().nullish(),
+          }),
+        ),
+      })
+      .nullish(),
   })
   .passthrough();
 export type InstanceStatusPayload = z.infer<typeof InstanceStatusPayload>;
@@ -208,6 +233,28 @@ export type ChunkRow = {
 export type DocumentChunksPayload = {
   path: string;
   total_chunks: number;
+  chunks: ChunkRow[];
+};
+
+/** One distinct programmatically-ingested source (server `/ingest/sources`). */
+export type IngestSourceRow = {
+  source_id: string;
+  domain: string;
+  source: string;
+  chunk_count: number;
+  ingested_at: string | null;
+};
+export type IngestSourcesPayload = {
+  sources: IngestSourceRow[];
+  total: number;
+};
+
+/** Chunks of one ingested source_id (server `/ingest/text/{source_id}`). */
+export type IngestChunksPayload = {
+  source_id: string;
+  total: number;
+  offset: number;
+  limit: number;
   chunks: ChunkRow[];
 };
 

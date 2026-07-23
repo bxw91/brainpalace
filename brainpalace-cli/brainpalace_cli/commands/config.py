@@ -186,9 +186,17 @@ def wizard(ctx: click.Context, global_: bool, chat_summarizer: str) -> None:
     """
     from brainpalace_cli.commands.init import init_command
 
-    # Check existing config for validation issues before prompting.
+    # Check existing config for validation issues before prompting. First
+    # auto-migrate away dead/renamed keys (api:, session_extraction.mode, …) so
+    # a stranded pre-rename config is fixed rather than merely warned about; only
+    # residual real errors are then surfaced.
     existing_config = _find_config_file()
     if existing_config:
+        migration = migrate_config_file(existing_config)
+        if not migration.already_current:
+            console.print("\n[cyan]Migrated deprecated config keys:[/]")
+            for change in migration.changes:
+                console.print(f"  [cyan]->[/] {change}")
         existing_errors = validate_config_file(existing_config)
         if existing_errors:
             console.print(

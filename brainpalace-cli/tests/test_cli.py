@@ -91,6 +91,7 @@ class TestStatusCommand:
         mock_status.features = None  # no per-feature block from this mock
         mock_status.graph_index = None  # no graph index block from this mock
         mock_status.index_warnings = []  # no index-drift warnings
+        mock_status.report = None  # no shared status report from this mock
 
         mock_client.health.return_value = mock_health
         mock_client.status.return_value = mock_status
@@ -109,6 +110,7 @@ class TestStatusCommand:
             "watched_folders": 0,
         }
         assert output["indexing"]["embedding_cache"] is None
+        assert output["report"] is None
 
     @patch("brainpalace_cli.commands.status.DocServeClient")
     def test_status_connection_error(self, mock_client_class, runner):

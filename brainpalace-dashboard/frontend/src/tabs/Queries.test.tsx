@@ -348,3 +348,79 @@ describe("retrieval explorer", () => {
     expect(hint).toHaveTextContent("bm25");
   });
 });
+
+describe("mode filter dropdown", () => {
+  it("lists all canonical query modes, not a stale subset", async () => {
+    wrap(<Queries instanceId="a" />);
+    await screen.findByText("how does the proxy work");
+    const options = within(screen.getByTestId("select-mode"))
+      .getAllByRole("option")
+      .map((o) => o.getAttribute("value"));
+    expect(options).toEqual(
+      expect.arrayContaining([
+        "all",
+        "hybrid",
+        "vector",
+        "bm25",
+        "graph",
+        "multi",
+        "compute",
+        "scan",
+        "absence",
+        "timeline",
+      ]),
+    );
+  });
+
+  it("auto-populates a mode seen in the data but not in the static list", async () => {
+    vi.mocked(client.getQueries).mockResolvedValue([
+      { ...rows[0], id: "qx", mode: "experimental" },
+    ]);
+    wrap(<Queries instanceId="a" />);
+    await screen.findByText("how does the proxy work");
+    const options = within(screen.getByTestId("select-mode"))
+      .getAllByRole("option")
+      .map((o) => o.getAttribute("value"));
+    expect(options).toContain("experimental");
+  });
+});
+
+describe("history pagination", () => {
+  const tableCall = () =>
+    vi.mocked(client.getQueries).mock.calls.find(([, q]) => q?.limit === 100);
+
+  it("fetches the first 100-row page at offset 0", async () => {
+    wrap(<Queries instanceId="a" />);
+    await screen.findByText("how does the proxy work");
+    await waitFor(() => expect(tableCall()).toBeDefined());
+    expect(tableCall()?.[1]).toMatchObject({ limit: 100, offset: 0 });
+  });
+
+  it("disables Next on a short (< 100) page", async () => {
+    wrap(<Queries instanceId="a" />);
+    await screen.findByText("how does the proxy work");
+    expect(await screen.findByTestId("query-next")).toBeDisabled();
+    expect(screen.getByTestId("query-prev")).toBeDisabled();
+  });
+
+  it("advances the server offset when paging Next", async () => {
+    const fullPage: QueryRow[] = Array.from({ length: 100 }, (_, i) => ({
+      ...rows[0],
+      id: `p${i}`,
+      query: `q ${i}`,
+    }));
+    vi.mocked(client.getQueries).mockResolvedValue(fullPage);
+    wrap(<Queries instanceId="a" />);
+    const next = await screen.findByTestId("query-next");
+    await waitFor(() => expect(next).toBeEnabled());
+    fireEvent.click(next);
+    await waitFor(() =>
+      expect(
+        vi.mocked(client.getQueries).mock.calls.some(
+          ([, q]) => q?.limit === 100 && q?.offset === 100,
+        ),
+      ).toBe(true),
+    );
+    expect(screen.getByTestId("query-pager")).toHaveTextContent("Page 2");
+  });
+});

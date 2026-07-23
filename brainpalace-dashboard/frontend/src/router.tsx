@@ -15,6 +15,7 @@ import { Status } from "./tabs/Status";
 import { Config } from "./tabs/Config";
 import { Folders } from "./tabs/Folders";
 import { Documents } from "./tabs/Documents";
+import { Ingest } from "./tabs/Ingest";
 import { Queries } from "./tabs/Queries";
 import { Jobs } from "./tabs/Jobs";
 import { Cache } from "./tabs/Cache";
@@ -42,6 +43,7 @@ export const TABS: TabDef[] = [
   { path: "/config", label: "Config", scope: "instance" },
   { path: "/folders", label: "Folders", scope: "instance" },
   { path: "/documents", label: "Files", scope: "instance" },
+  { path: "/ingest", label: "Ingest", scope: "instance" },
   { path: "/queries", label: "Queries", scope: "instance" },
   { path: "/jobs", label: "Jobs", scope: "instance" },
   { path: "/cache", label: "Cache", scope: "instance" },
@@ -72,6 +74,7 @@ const statusRoute = make("/status", () => <Status />);
 const configRoute = make("/config", () => <Config />);
 const foldersRoute = make("/folders", () => <Folders />);
 const documentsRoute = make("/documents", () => <Documents />);
+const ingestRoute = make("/ingest", () => <Ingest />);
 const queriesRoute = make("/queries", () => <Queries />);
 const jobsRoute = make("/jobs", () => <Jobs />);
 const cacheRoute = make("/cache", () => <Cache />);
@@ -89,6 +92,7 @@ const routeTree = rootRoute.addChildren([
   configRoute,
   foldersRoute,
   documentsRoute,
+  ingestRoute,
   queriesRoute,
   jobsRoute,
   cacheRoute,

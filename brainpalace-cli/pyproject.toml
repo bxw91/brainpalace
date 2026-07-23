@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "brainpalace-cli"
-version = "26.7.10"
+version = "26.7.11"
 description = "BrainPalace CLI - Command-line interface for the typed-memory & retrieval engine for AI agents (code & docs today, more domains coming)"
 authors = ["bxw91"]
 readme = "README.md"

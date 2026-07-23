@@ -151,6 +151,15 @@ const SOURCE_LABEL: Record<string, string> = {
 };
 const channelLabel = (c: string) => CHANNEL_LABEL[c] ?? c;
 const sourceLabel = (s: string) => SOURCE_LABEL[s] ?? s;
+// Per-source tooltip for the Queue backlog: what the number actually counts, so
+// e.g. "Documents" doesn't read as the total indexed-document count.
+const QUEUE_SOURCE_HINT: Record<string, string> = {
+  doc: "Document chunks awaiting knowledge-graph extraction — NOT your total indexed documents. Drains when extraction.mode is subagent/auto.",
+  git: "Git-commit chunks awaiting knowledge-graph extraction. Drains when extraction.mode is subagent/auto.",
+  session: "Archived AI-coding sessions awaiting summarization. Drains when session summarization is on.",
+  code: "Code chunks awaiting knowledge-graph extraction.",
+};
+const queueSourceHint = (s: string) => QUEUE_SOURCE_HINT[s] ?? "";
 // Which feature drains each backlog source — shown when that feature is off.
 const queueOffNote = (s: string) =>
   s === "session" ? "summarization off" : "extraction off";
@@ -628,14 +637,16 @@ function QueueWidget({ queue }: { queue: UsageQueueRow[] }) {
       <SectionHeader
         icon={<Layers className="h-4 w-4" />}
         title="Queue backlog"
-        subtitle="Pending work waiting to be processed (current depth, not a trend)"
+        subtitle="Already-indexed items still awaiting their background pass — graph extraction (documents, git) or summarization (sessions). Live depth, not a total or a trend; drains only when that feature is on."
       />
       <div className="flex flex-wrap gap-6">
         {queue.map((q) => {
           const stale = isStale(q.sampled_at);
           return (
             <div key={q.source} className="flex flex-col gap-1">
-              <span className="eyebrow">{sourceLabel(q.source)}</span>
+              <span className="eyebrow" title={queueSourceHint(q.source)}>
+                {sourceLabel(q.source)}
+              </span>
               <span
                 data-testid={`usage-queue-${q.source}`}
                 className="font-display text-2xl font-semibold tabular-nums tracking-tight text-fg"

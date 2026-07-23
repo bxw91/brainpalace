@@ -12,7 +12,10 @@ from brainpalace_cli.cli import cli
 # ---------------------------------------------------------------------------
 
 
-# Config with old langextract keys that should be stripped on migration.
+# Config with old dead keys that should be stripped on migration: langextract
+# graphrag keys, the dead top-level `api:` block, and legacy
+# `session_extraction.mode`. `git_indexing` is a live bystander section that must
+# survive migration untouched.
 OLD_SCHEMA_CONFIG: dict = {
     "embedding": {"provider": "openai", "model": "text-embedding-3-large"},
     "summarization": {"provider": "anthropic", "model": "claude-haiku-4-5-20251001"},
@@ -23,7 +26,9 @@ OLD_SCHEMA_CONFIG: dict = {
         "use_llm_extraction": True,
         "doc_extractor": "langextract",
     },
+    "git_indexing": {"enabled": True, "depth": 5000},
     "api": {"host": "127.0.0.1", "port": 8000},
+    "session_extraction": {"mode": "off", "quiescence_seconds": 1800},
 }
 
 OLD_SCHEMA_FALSE_CONFIG: dict = {
@@ -35,7 +40,7 @@ OLD_SCHEMA_FALSE_CONFIG: dict = {
     },
 }
 
-# Current schema: no langextract keys.
+# Current schema: no dead keys (no langextract, no api:, no session_extraction.mode).
 CURRENT_SCHEMA_CONFIG: dict = {
     "embedding": {"provider": "openai", "model": "text-embedding-3-large"},
     "summarization": {"provider": "anthropic", "model": "claude-haiku-4-5-20251001"},
@@ -44,7 +49,8 @@ CURRENT_SCHEMA_CONFIG: dict = {
         "store_type": "simple",
         "use_code_metadata": True,
     },
-    "api": {"host": "127.0.0.1", "port": 8000},
+    "git_indexing": {"enabled": True, "depth": 5000},
+    "session_extraction": {"quiescence_seconds": 1800},
 }
 
 EMPTY_CONFIG: dict = {}
@@ -103,7 +109,8 @@ class TestMigrateConfigDict:
         assert result.changes == []
 
     def test_migrate_preserves_other_keys(self) -> None:
-        """migrate_config leaves embedding, summarization, api sections untouched."""
+        """migrate_config leaves live sections (embedding, summarization,
+        git_indexing) untouched while dropping the dead ones."""
         from brainpalace_cli.config_migrate import migrate_config
 
         result = migrate_config(OLD_SCHEMA_CONFIG)
@@ -111,7 +118,9 @@ class TestMigrateConfigDict:
         # These sections must be preserved exactly
         assert result.migrated["embedding"] == OLD_SCHEMA_CONFIG["embedding"]
         assert result.migrated["summarization"] == OLD_SCHEMA_CONFIG["summarization"]
-        assert result.migrated["api"] == OLD_SCHEMA_CONFIG["api"]
+        assert result.migrated["git_indexing"] == OLD_SCHEMA_CONFIG["git_indexing"]
+        # ...and the dead top-level api: block is gone
+        assert "api" not in result.migrated
 
     def test_migrate_does_not_mutate_input(self) -> None:
         """migrate_config must not mutate the original input dict."""
@@ -358,4 +367,66 @@ class TestStripLangextractKeys:
 
         cfg = {"graphrag": {"enabled": True}}
         result = migrate_config(cfg)
+        assert result.already_current is True
+
+
+# ---------------------------------------------------------------------------
+# Guard tests: dead top-level api: and legacy session_extraction.mode
+# ---------------------------------------------------------------------------
+
+
+class TestDropDeadApiSection:
+    """_drop_dead_api_section drops api:, never maps it to bind:."""
+
+    def test_dead_api_section_dropped(self) -> None:
+        """Top-level api: is removed (dead duplicate of bind:/config.json)."""
+        from brainpalace_cli.config_migrate import migrate_config
+
+        cfg = {
+            "api": {"host": "127.0.0.1", "port": 8000},
+            "graphrag": {"enabled": True},
+        }
+        result = migrate_config(cfg)
+        assert result.already_current is False
+        assert "api" not in result.migrated
+        # Must NOT be mapped to a bind: section (no stale host/port override)
+        assert "bind" not in result.migrated
+        assert len(result.changes) >= 1
+
+    def test_no_api_section_is_already_current(self) -> None:
+        """A config without api: needs no api migration."""
+        from brainpalace_cli.config_migrate import migrate_config
+
+        result = migrate_config({"graphrag": {"enabled": True}})
+        assert result.already_current is True
+
+
+class TestDropLegacySessionExtractionMode:
+    """_drop_legacy_session_extraction_mode drops mode, never maps it across."""
+
+    def test_mode_dropped_quiescence_preserved(self) -> None:
+        """session_extraction.mode is removed; quiescence_seconds is preserved."""
+        from brainpalace_cli.config_migrate import migrate_config
+
+        cfg = {"session_extraction": {"mode": "off", "quiescence_seconds": 1800}}
+        result = migrate_config(cfg)
+        assert result.already_current is False
+        assert result.migrated["session_extraction"] == {"quiescence_seconds": 1800}
+        # Must NOT map to extraction.mode (no surprise re-enable of paid engine)
+        assert "extraction" not in result.migrated
+
+    def test_section_removed_when_mode_was_sole_key(self) -> None:
+        """session_extraction is dropped entirely when mode was its only field."""
+        from brainpalace_cli.config_migrate import migrate_config
+
+        result = migrate_config({"session_extraction": {"mode": "provider"}})
+        assert result.already_current is False
+        assert "session_extraction" not in result.migrated
+        assert "extraction" not in result.migrated
+
+    def test_mode_absent_is_already_current(self) -> None:
+        """session_extraction without mode needs no migration."""
+        from brainpalace_cli.config_migrate import migrate_config
+
+        result = migrate_config({"session_extraction": {"quiescence_seconds": 1800}})
         assert result.already_current is True

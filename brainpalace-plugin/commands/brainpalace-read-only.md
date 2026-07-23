@@ -4,7 +4,7 @@ description: Enable/disable read-only mode (disables embedding, summarization, w
 parameters:
 skills:
   - using-brainpalace
-last_validated: 2026-06-24
+last_validated: 2026-07-23
 ---
 
 # BrainPalace Read-Only

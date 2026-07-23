@@ -220,22 +220,6 @@ pick_multi() {
     printf '%s' "${chosen[*]:-}"
 }
 
-run_timeout() {
-    # run_timeout SECS cmd [args...]
-    # Runs a command under `timeout` (GNU coreutils) or `gtimeout` (macOS via
-    # Homebrew coreutils) if either is on PATH; otherwise runs it bare — macOS
-    # ships neither by default, so this must degrade gracefully rather than
-    # error out.
-    local secs="$1"; shift
-    if command -v timeout >/dev/null 2>&1; then
-        timeout "$secs" "$@"
-    elif command -v gtimeout >/dev/null 2>&1; then
-        gtimeout "$secs" "$@"
-    else
-        "$@"
-    fi
-}
-
 # -----------------------------------------------------------------------------
 # Banner
 # -----------------------------------------------------------------------------
@@ -605,35 +589,29 @@ fi
 # -----------------------------------------------------------------------------
 
 install_claude_plugin() {
-    # Guarded, timeout-wrapped Claude Code plugin install via the marketplace.
-    # Non-fatal: on absent CLI / failure / timeout, warns and prints the
-    # manual command in a red box instead of aborting the script. Returns 0
-    # on success, 1 otherwise (callers treat this as advisory).
-    if ! command -v claude >/dev/null 2>&1; then
-        warn "claude: 'claude' CLI not found — install it, then run manually:"
-        box_red "claude plugins marketplace add bxw91/brainpalace" \
-                "claude plugins install brainpalace@brainpalace-marketplace"
-        return 1
-    fi
-    say "Installing Claude Code plugin via marketplace ..."
-    if run_timeout 60 claude plugins marketplace add bxw91/brainpalace \
-        && run_timeout 60 claude plugins install brainpalace@brainpalace-marketplace; then
-        ok "claude: plugin installed."
-        return 0
-    fi
-    warn "claude: automatic plugin install failed or timed out — run manually:"
-    box_red "claude plugins marketplace add bxw91/brainpalace" \
-            "claude plugins install brainpalace@brainpalace-marketplace"
-    return 1
+    # PRINT the plugin-install commands — never drive `claude plugins …` from the
+    # script. Driving it hangs: `marketplace add` git-clones over HTTPS (an
+    # interactive auth prompt when the keyring is locked) and `plugins install`
+    # blocks on its process/trust scan, with no way to Ctrl+C out (same reason
+    # Step 3 only prints — see the plugin-not-installed branch above). Claude Code
+    # manages its own plugins, so the user runs these from INSIDE Claude Code.
+    say "Claude Code plugin: run these from INSIDE Claude Code to install it"
+    say "(it manages its own plugins; chat/session summaries then run FREE):"
+    box_red "/plugin marketplace add bxw91/brainpalace" \
+            "/plugin install brainpalace"
+    say "Already installed? Update with the QUALIFIED name (bare name fails):"
+    box_red "claude plugin update brainpalace@brainpalace-marketplace"
+    return 0
 }
 
 # Assistant / runtime catalogue — shared by the project and no-project paths.
-# claude = plugin (global marketplace); codex/opencode/antigravity/skill-runtime
+# claude = plugin (printed /plugin commands, run inside Claude Code);
+# codex/opencode/antigravity/skill-runtime
 # = skills via install-agent; cursor/windsurf/vscode/kilo/cline = MCP config via
 # install-mcp --client (the single, merge-safe writer — no hand-rolled overwrite).
 ASSISTANT_KEYS=(claude codex opencode antigravity skill-runtime qwen kimi cursor windsurf vscode kilo cline)
 declare -A ASSISTANT_LABEL=(
-    [claude]="Claude Code           — installs the plugin via the marketplace (global)"
+    [claude]="Claude Code           — prints the /plugin install commands (run inside Claude Code)"
     [codex]="Codex                 — .codex/skills/brainpalace + AGENTS.md"
     [opencode]="OpenCode              — .opencode/plugins/brainpalace"
     [antigravity]="Antigravity (agy)     — .agents/skills/brainpalace + AGENTS.md"
@@ -671,7 +649,8 @@ execute_wirings() {
         RUNTIME="${ASSISTANT_KEYS[$((a_idx-1))]:-}"
         case "$RUNTIME" in
             claude)
-                install_claude_plugin && WIRED_ASSISTANTS+=("claude")
+                install_claude_plugin
+                WIRED_ASSISTANTS+=("claude (run /plugin inside Claude Code)")
                 ;;
             skill-runtime)
                 local skill_dir

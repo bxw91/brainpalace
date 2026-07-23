@@ -171,19 +171,22 @@ def render_overview(
     Empty fields and dependency-gated fields whose selector is inactive (e.g.
     ``storage.postgres`` while ``backend = chroma``) are omitted. A one-line,
     width-truncated section description (when the section has one) is printed
-    under each header; the full text still shows when drilling to edit. A blank
-    line separates divisions.
+    under each header; the full text still shows when drilling to edit. Divisions
+    are visually separated by colour (bold-cyan header, green field names, grey
+    description) rather than blank lines, which keeps the whole list compact; a
+    single blank line trails the list to separate it from the control prompt.
     """
     for i, (group, label) in enumerate(divisions, 1):
         gates = GROUP_GATES.get(group, [])
-        head = f"[ {i:>2}. {_label_with_cost(label, group)} ]"
+        head = click.style(
+            f"[ {i:>2}. {_label_with_cost(label, group)} ]", fg="cyan", bold=True
+        )
         desc = cf.GROUP_DESCRIPTIONS.get(group)
         if gates and not any(_gate_on(g, merged, edits) for g in gates):
             vals = " | ".join(_fmt(_eff(g, merged, edits)) for g in gates)
             click.echo(f"{head} {vals}")
             if desc:
-                click.echo(click.style(_one_line_desc(desc), dim=True))
-            click.echo("")
+                click.echo(click.style(_one_line_desc(desc), fg="bright_black"))
             continue
         parts = []
         specs = cf.group_fields(group)
@@ -205,11 +208,12 @@ def render_overview(
             val = _eff(spec.dotpath, merged, edits)
             if _is_empty(val):
                 continue
-            parts.append(f"{spec.prompt} = {_truncate_overview(_fmt(val))}")
+            name = click.style(spec.prompt, fg="green")
+            parts.append(f"{name} = {_truncate_overview(_fmt(val))}")
         click.echo(f"{head} {' | '.join(parts)}" if parts else head)
         if desc:
-            click.echo(click.style(_one_line_desc(desc), dim=True))
-        click.echo("")
+            click.echo(click.style(_one_line_desc(desc), fg="bright_black"))
+    click.echo("")
 
 
 def _edit_division(

@@ -129,13 +129,10 @@ ENDPOINT_SURFACES: dict[str, str] = {
         "unsurfaced: programmatic text-ingest with caller provenance, driven by "
         "the `brainpalace ingest` CLI / in-process adapters; no dashboard panel yet"
     ),
-    "/ingest/sources": (
-        "unsurfaced: enumerate distinct ingested source_ids with provenance + "
-        "chunk counts, driven by `brainpalace ingest sources`; no dashboard panel yet"
-    ),
+    "/ingest/sources": "Ingest (sources list)",
     "/ingest/text/{source_id}": (
-        "unsurfaced: un-ingest a source_id (DELETE, `brainpalace ingest --delete`) "
-        "and list its chunks (GET, `brainpalace ingest show`); no dashboard panel yet"
+        "Ingest (chunk browser, GET) — the DELETE un-ingest "
+        "(`brainpalace ingest --delete`) stays CLI-only"
     ),
     "/ingest/source/{source_id}": (
         "unsurfaced: full forget (chunks + records + references cascade) for "
@@ -224,7 +221,10 @@ CLI_DASHBOARD_COVERAGE: dict[str, str] = {
     "graph": "Graph",
     "hook": "cli_only: internal hook dispatcher, not a user command",
     "index": "Folders",
-    "ingest": "cli_only: scripted text ingest, advanced",
+    "ingest": (
+        "cli_only: scripted text ingest (write/delete) is CLI-only; the read-only "
+        "Ingest tab browses ingested sources + chunks"
+    ),
     "init": ("cli_only: project bootstrap; dashboard manages existing projects only"),
     "inject": "cli_only: scripted enrichment, advanced",
     "install-agent": "cli_only: runtime plugin install",

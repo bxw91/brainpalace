@@ -110,7 +110,7 @@ context: brainpalace
 agent: setup-assistant
 skills:
   - configuring-brainpalace
-last_validated: 2026-07-13
+last_validated: 2026-07-23
 ---
 
 # Initialize BrainPalace Project

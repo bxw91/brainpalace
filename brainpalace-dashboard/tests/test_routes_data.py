@@ -217,6 +217,34 @@ def test_document_chunks_proxies(monkeypatch):
     assert params["path"] == "/proj/a.py"
 
 
+def test_ingest_sources_proxies(monkeypatch):
+    fake = FakeProxy()
+    monkeypatch.setattr(rd, "proxy", fake)
+    c = TestClient(create_app())
+    c.get(
+        "/dashboard/api/instances/abc/ingest/sources",
+        params={"domain": "home", "include_sensitive": True},
+    )
+    method, path, _json, params = fake.calls[-1]
+    assert (method, path) == ("GET", "/ingest/sources")
+    assert params["domain"] == "home"
+    assert params["include_sensitive"] is True
+
+
+def test_ingest_chunks_proxies_to_source_path(monkeypatch):
+    fake = FakeProxy()
+    monkeypatch.setattr(rd, "proxy", fake)
+    c = TestClient(create_app())
+    c.get(
+        "/dashboard/api/instances/abc/ingest/chunks",
+        params={"source_id": "email-2024", "offset": 100, "limit": 50},
+    )
+    method, path, _json, params = fake.calls[-1]
+    assert (method, path) == ("GET", "/ingest/text/email-2024")
+    assert params["offset"] == 100
+    assert params["limit"] == 50
+
+
 def test_cache_history_proxies(monkeypatch):
     fake = FakeProxy()
     monkeypatch.setattr(rd, "proxy", fake)

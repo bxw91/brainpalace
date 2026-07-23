@@ -141,15 +141,16 @@ def test_section_header_shows_cost_class():
 
 
 def test_section_without_description_has_no_extra_line():
-    # Reranker has no GROUP_DESCRIPTIONS entry -> header is followed by a blank
-    # line, not a description.
+    # Reranker has no GROUP_DESCRIPTIONS entry -> its header is NOT followed by a
+    # description line (descriptions are indented 4 spaces; the next line is the
+    # following section header instead).
     from brainpalace_cli import config_fields as cf
 
     assert "reranker" not in cf.GROUP_DESCRIPTIONS
     merged = {"reranker": {"enabled": False}}
     lines = _render(merged).splitlines()
     idx = next(i for i, ln in enumerate(lines) if "Reranker" in ln)
-    assert lines[idx + 1].strip() == ""
+    assert not lines[idx + 1].startswith("    ")
 
 
 def test_indexing_section_exposes_fields():

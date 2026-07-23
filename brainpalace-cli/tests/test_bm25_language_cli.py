@@ -321,16 +321,19 @@ class TestQueryLanguage:
 
 
 class TestStatusBm25:
-    """status shows BM25 language/engine read from local config.yaml."""
+    """status shows BM25 language/engine — human view from the shared server
+    report, `--json` from the CLI's own local config.yaml read (back-compat)."""
 
     @patch("brainpalace_cli.commands.status.DocServeClient")
-    @patch("brainpalace_cli.commands.status._load_bm25_config_for_status")
-    def test_status_shows_bm25_language_engine(
-        self, mock_bm25_cfg, mock_client_class, runner, tmp_path
-    ):
-        """status output includes BM25 language and engine from config."""
-        mock_bm25_cfg.return_value = {"language": "hr", "engine": "lemma"}
+    def test_status_shows_bm25_language_engine(self, mock_client_class, runner):
+        """status output includes the report's bm25_language row.
 
+        The human-readable BM25 row is no longer built by the CLI reading
+        config.yaml directly — it comes from `report.rows` (single source,
+        see brainpalace_server.status_report), so this exercises the
+        rendering path with a report row rather than patching the (now
+        json-only) `_load_bm25_config_for_status` loader.
+        """
         mock_client = MagicMock()
         mock_client.__enter__ = MagicMock(return_value=mock_client)
         mock_client.__exit__ = MagicMock(return_value=False)
@@ -350,6 +353,17 @@ class TestStatusBm25:
             graph_index=None,
             features={},
             index_warnings=[],
+            report={
+                "rows": [
+                    {
+                        "key": "bm25_language",
+                        "label": "BM25 Language",
+                        "value": "hr (engine: lemma)",
+                        "tone": "default",
+                    }
+                ],
+                "alerts": [],
+            },
         )
         mock_client_class.return_value = mock_client
 
@@ -361,7 +375,8 @@ class TestStatusBm25:
     @patch("brainpalace_cli.commands.status.DocServeClient")
     @patch("brainpalace_cli.commands.status._load_bm25_config_for_status")
     def test_status_json_includes_bm25(self, mock_bm25_cfg, mock_client_class, runner):
-        """status --json includes bm25 config block."""
+        """status --json includes bm25 config block (back-compat key, kept
+        even though the human view now sources BM25 wording from `report`)."""
         mock_bm25_cfg.return_value = {"language": "de", "engine": "stem"}
 
         mock_client = MagicMock()
@@ -383,6 +398,7 @@ class TestStatusBm25:
             graph_index=None,
             features={},
             index_warnings=[],
+            report=None,
         )
         mock_client_class.return_value = mock_client
 

@@ -132,6 +132,41 @@ async def document_chunks(id_: str, folder: str, path: str, limit: int = 50) -> 
     )
 
 
+@router.get("/ingest/sources")
+async def ingest_sources(
+    id_: str,
+    domain: str | None = None,
+    source: str | None = None,
+    include_sensitive: bool = False,
+) -> Any:
+    params: dict[str, Any] = {"include_sensitive": include_sensitive}
+    if domain:
+        params["domain"] = domain
+    if source:
+        params["source"] = source
+    return await _call(id_, "GET", "/ingest/sources", params=params)
+
+
+@router.get("/ingest/chunks")
+async def ingest_chunks(
+    id_: str,
+    source_id: str,
+    offset: int = 0,
+    limit: int = 50,
+    include_sensitive: bool = False,
+) -> Any:
+    return await _call(
+        id_,
+        "GET",
+        f"/ingest/text/{source_id}",
+        params={
+            "offset": offset,
+            "limit": limit,
+            "include_sensitive": include_sensitive,
+        },
+    )
+
+
 @router.get("/graph")
 async def graph(id_: str) -> Any:
     # graph stats live inside /health/status; expose a focused view client-side.

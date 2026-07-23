@@ -76,6 +76,64 @@ def _strip_langextract_keys(
     return config, changes
 
 
+def _drop_dead_api_section(
+    config: dict[str, Any],
+) -> tuple[dict[str, Any], list[str]]:
+    """Drop the dead top-level ``api:`` section.
+
+    ``api.{host,port}`` was a duplicate bind block removed when the ``bind:``
+    registry section landed (it uses ``bind_host``/``port_range_start`` and the
+    real per-project runtime bind lives in ``config.json``). The server already
+    ignores ``api:``; it is dropped — NOT mapped to ``bind:`` — so no stale
+    host/port silently overrides the live bind.
+
+    Args:
+        config: Config dict (will NOT be mutated; a deep copy is made).
+
+    Returns:
+        Tuple of (updated config dict, list of change descriptions).
+    """
+    changes: list[str] = []
+    config = copy.deepcopy(config)
+    if "api" in config:
+        config.pop("api")
+        changes.append("api removed (dead duplicate — bind lives in bind:/config.json)")
+    return config, changes
+
+
+def _drop_legacy_session_extraction_mode(
+    config: dict[str, Any],
+) -> tuple[dict[str, Any], list[str]]:
+    """Drop the legacy ``session_extraction.mode`` field.
+
+    ``session_extraction.mode`` was superseded by ``extraction.mode`` (the sole
+    engine selector for both doc-graph and session extraction). The server no
+    longer reads it. It is dropped — NOT mapped to ``extraction.mode`` — so an
+    inert ``mode`` cannot silently re-enable a paid extraction engine. The
+    ``session_extraction`` section is removed entirely only when ``mode`` was its
+    sole key (``quiescence_seconds`` and any other live field are preserved).
+
+    Args:
+        config: Config dict (will NOT be mutated; a deep copy is made).
+
+    Returns:
+        Tuple of (updated config dict, list of change descriptions).
+    """
+    changes: list[str] = []
+    config = copy.deepcopy(config)
+    section = config.get("session_extraction")
+    if isinstance(section, dict) and "mode" in section:
+        section.pop("mode")
+        changes.append(
+            "session_extraction.mode removed (superseded by extraction.mode)"
+        )
+        if section:
+            config["session_extraction"] = section
+        else:
+            config.pop("session_extraction")
+    return config, changes
+
+
 # ---------------------------------------------------------------------------
 # MIGRATIONS list — applied in order by migrate_config
 # ---------------------------------------------------------------------------
@@ -84,6 +142,8 @@ MigrationFn = Callable[[dict[str, Any]], tuple[dict[str, Any], list[str]]]
 
 MIGRATIONS: list[MigrationFn] = [
     _strip_langextract_keys,
+    _drop_dead_api_section,
+    _drop_legacy_session_extraction_mode,
 ]
 
 

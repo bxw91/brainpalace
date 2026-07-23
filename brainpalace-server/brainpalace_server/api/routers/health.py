@@ -593,6 +593,20 @@ async def indexing_status(request: Request) -> dict[str, Any]:
     # Read-only mode flag (master provider kill switch).
     data["features"]["read_only"] = is_read_only()
 
+    # Presentation-neutral status report — single source rendered by both the
+    # CLI table and the dashboard Status tab (see status_report.py).
+    from brainpalace_server.config.bm25_config import load_bm25_config
+    from brainpalace_server.status_report import build_status_report
+
+    try:
+        _bm = load_bm25_config()
+        _bm25 = {"language": _bm.language, "engine": _bm.engine}
+    except Exception:  # noqa: BLE001 — status never blocks on config
+        _bm25 = {}
+    data["report"] = build_status_report(
+        data, bm25=_bm25, version=version_display()
+    ).model_dump()
+
     return data
 
 

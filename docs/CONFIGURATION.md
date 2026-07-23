@@ -1,5 +1,5 @@
 ---
-last_validated: 2026-07-21
+last_validated: 2026-07-23
 ---
 
 # Configuration Reference

@@ -1,22 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
-import {
-  FileText,
-  Boxes,
-  FolderTree,
-  Share2,
-  GitCommit,
-  Lock,
-  AlertTriangle,
-} from "lucide-react";
-import {
-  getInstanceStatus,
-  getInstanceHealth,
-  getConfig,
-  getSettings,
-} from "../api/client";
+import { FileText, Boxes, FolderTree, Share2, GitCommit, AlertTriangle } from "lucide-react";
+import { getInstanceStatus } from "../api/client";
 import { StatCard } from "../components/StatCard";
 import { useOptionalSelectedInstance } from "../state/selectedInstance";
-import { useDisplayFormat } from "../format/datetime";
 import {
   NoInstance,
   StoppedState,
@@ -26,13 +12,6 @@ import {
 } from "../components/TabState";
 
 const fmt = (n: number) => n.toLocaleString("en-US");
-
-function fmtBytes(n: number): string {
-  if (!n) return "0 B";
-  const u = ["B", "KB", "MB", "GB", "TB"];
-  const i = Math.min(Math.floor(Math.log(n) / Math.log(1024)), u.length - 1);
-  return `${(n / 1024 ** i).toFixed(i ? 1 : 0)} ${u[i]}`;
-}
 
 function asArray(v: unknown): unknown[] {
   return Array.isArray(v) ? v : [];
@@ -51,14 +30,52 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
+// Row keys the web promotes to banners (they are ROWS in the shared server
+// report, styled as banners here — a presentation choice on stable keys, the
+// wording still comes entirely from the server).
+const BANNER_KEYS = new Set(["read_only", "self_heal", "index_health"]);
+
+const TONE: Record<string, string> = {
+  default: "text-fg",
+  good: "text-run",
+  warn: "text-warn",
+  bad: "text-bad",
+  dim: "text-fg-muted",
+  accent: "text-accent",
+};
+
+const ALERT_BORDER: Record<string, string> = {
+  info: "border-accent/30 bg-accent/10 text-accent",
+  warn: "border-warn/30 bg-warn/15 text-warn",
+  bad: "border-bad/30 bg-bad/15 text-bad",
+};
+
+type ReportRow = { key: string; label: string; value: string; tone: string };
+type ReportAlert = {
+  kind: string;
+  severity: string;
+  title: string;
+  lines: string[];
+  action?: string | null;
+};
+
+/** Severity a toned ROW gets when promoted to a banner (no `severity` of its
+ *  own — only `tone`). */
+function bannerSeverity(tone: string): string {
+  if (tone === "bad") return "bad";
+  if (tone === "warn") return "warn";
+  return "info";
+}
+
 /**
  * Per-instance "Status" — the full `brainpalace status` view for the SELECTED
- * instance. Distinct from the fleet-wide Overview tab.
+ * instance. Distinct from the fleet-wide Overview tab. Rows and alerts are
+ * rendered from the server's shared `report` (brainpalace_server/status_report.py)
+ * — the same source `bp status` renders — so this tab can't drift from the CLI.
  */
 export function Status({ instanceId }: { instanceId?: string }) {
   const ctx = useOptionalSelectedInstance();
   const id = instanceId ?? ctx?.selectedId ?? null;
-  const { formatDateTime } = useDisplayFormat();
 
   const statusQ = useQuery({
     queryKey: ["status", id],
@@ -66,25 +83,6 @@ export function Status({ instanceId }: { instanceId?: string }) {
     enabled: !!id,
     retry: false,
     refetchInterval: 8000,
-  });
-  // Best-effort extras (version, bm25) — never block the page.
-  const healthQ = useQuery({
-    queryKey: ["health", id],
-    queryFn: () => getInstanceHealth(id!),
-    enabled: !!id,
-    retry: false,
-  });
-  const configQ = useQuery({
-    queryKey: ["config", id],
-    queryFn: () => getConfig(id!),
-    enabled: !!id,
-    retry: false,
-  });
-  // Control-plane (dashboard's own) version — fleet-wide, not per-instance.
-  const settingsQ = useQuery({
-    queryKey: ["dashboard-settings"],
-    queryFn: getSettings,
-    retry: false,
   });
 
   if (!id) {
@@ -116,84 +114,60 @@ export function Status({ instanceId }: { instanceId?: string }) {
 
   const s = statusQ.data;
   const features = obj(s.features);
-  const graph = obj(features.graph_index ?? s.graph_index);
-  const cache = obj(s.embedding_cache);
-  const watcher = obj(features.file_watcher ?? s.file_watcher);
-  const archive = obj(features.session_archive);
-  const memory = obj(features.session_memory);
-  const extraction = obj(features.session_extraction);
-  const lsp = obj(features.lsp);
   const git = obj(features.git_index);
-  const references = obj(features.references);
-  const referencesEnabled = references.enabled === true;
-  const cfg = obj(configQ.data);
-  const bm25 = obj(cfg.bm25);
+  const num = (v: unknown): number => (typeof v === "number" ? v : 0);
 
   const folders = asArray(s.indexed_folders).map((f) =>
     typeof f === "string" ? f : String((obj(f).folder_path ?? obj(f).path) ?? f),
   );
-  const indexing = s.indexing_in_progress
-    ? `In progress${
-        typeof s.progress_percent === "number"
-          ? ` — ${Math.round(s.progress_percent)}%`
-          : ""
-      }`
-    : "Idle";
-  const num = (v: unknown): number => (typeof v === "number" ? v : 0);
-  const hitRate =
-    typeof cache.hit_rate === "number"
-      ? `${(cache.hit_rate * 100).toFixed(1)}%`
-      : "—";
 
-  // Read-only mode + self-heal + index-health — mirror `brainpalace status`.
-  const readOnly = features.read_only === true;
-  const heal = obj(obj(features.self_heal).last);
-  const hasHeal =
-    heal.error != null || heal.incomplete_reason != null || heal.restored != null;
-  const healReadOnlySkip = heal.incomplete_reason === "read-only mode";
-  const healIncomplete = !!heal.error || (!!heal.incomplete_reason && !healReadOnlySkip);
-  const indexHealth = obj(features.index_health);
-  const healEvents = num(indexHealth.heal_events);
-  const healDropped = num(indexHealth.total_dropped);
-
-  const indexWarnings = asArray(s.index_warnings).map(String).filter(Boolean);
+  const report = (s.report ?? { rows: [], alerts: [] }) as {
+    rows: ReportRow[];
+    alerts: ReportAlert[];
+  };
+  const bannerRows = report.rows.filter((r) => BANNER_KEYS.has(r.key));
+  const tableRows = report.rows.filter((r) => !BANNER_KEYS.has(r.key));
 
   return (
     <div data-testid="tab-status" className="flex flex-col gap-6">
-      {indexWarnings.length > 0 && (
+      {report.alerts.map((alert) => (
         <div
-          data-testid="index-drift-banner"
+          key={alert.kind}
           role="alert"
-          className="flex items-start gap-2 rounded-lg border border-warn/30 bg-warn/15 px-4 py-3 text-sm text-warn"
+          className={`flex items-start gap-2 rounded-lg border px-4 py-3 text-sm ${
+            ALERT_BORDER[alert.severity] ?? ALERT_BORDER.warn
+          }`}
         >
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
           <div className="flex flex-col gap-1">
-            <span className="font-semibold">Index drift</span>
-            {indexWarnings.map((w, i) => (
-              <span key={i}>{w}</span>
+            <span className="font-semibold">{alert.title}</span>
+            {alert.lines.map((line, i) => (
+              <span key={i}>{line}</span>
             ))}
+            {alert.action && (
+              <code className="mt-1 w-fit rounded bg-ink-900/40 px-1 py-0.5 font-mono text-xs">
+                {alert.action}
+              </code>
+            )}
           </div>
         </div>
-      )}
-      {readOnly && (
+      ))}
+      {bannerRows.map((row) => (
         <div
-          data-testid="readonly-banner"
+          key={row.key}
           role="status"
-          className="flex items-start gap-2 rounded-lg border border-warn/30 bg-warn/15 px-4 py-3 text-sm text-warn"
+          className={`flex items-start gap-2 rounded-lg border px-4 py-3 text-sm ${
+            ALERT_BORDER[bannerSeverity(row.tone)]
+          }`}
         >
-          <Lock className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-          <span>
-            <span className="font-semibold">Read-only mode is ON.</span> Provider calls
-            are disabled (embedding, summarization, remote rerank); indexing jobs are
-            skipped and self-heal will not delete; vector/hybrid queries fall back to
-            BM25. Toggle with{" "}
-            <code className="rounded bg-ink-900/40 px-1 py-0.5 font-mono text-xs">
-              brainpalace read-only off
-            </code>{" "}
-            (restart to apply).
-          </span>
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+          <div className="flex flex-col gap-1">
+            <span className="font-semibold">{row.label}</span>
+            <span style={{ whiteSpace: "pre-line" }}>{row.value}</span>
+          </div>
         </div>
-      )}
+      ))}
+
       {/* Headline cards */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard
@@ -228,7 +202,7 @@ export function Status({ instanceId }: { instanceId?: string }) {
         />
       </div>
 
-      {/* Full detail table — mirrors `brainpalace status`. */}
+      {/* Full detail table — the shared server report, same source as `bp status`. */}
       <div className="panel p-6">
         <div className="mb-2 flex items-center gap-2">
           <Share2 className="h-4 w-4 text-accent" aria-hidden="true" />
@@ -237,166 +211,20 @@ export function Status({ instanceId }: { instanceId?: string }) {
           </h2>
         </div>
         <div className="divide-y divide-line/60">
-          <Row label="Server version" value={healthQ.data?.version ?? "—"} />
-          <Row
-            label="Dashboard version (control plane)"
-            value={settingsQ.data?.version ?? "—"}
-          />
-          <Row label="Indexing" value={indexing} />
-          <Row
-            label="Indexed folders"
-            value={
-              folders.length === 0 ? (
-                "none"
-              ) : (
-                <span className="flex flex-col items-end gap-0.5 font-mono text-xs">
-                  {folders.map((f) => (
-                    <span key={f} className="truncate">
-                      {f}
-                    </span>
-                  ))}
-                </span>
-              )
-            }
-          />
-          <Row
-            label="Last indexed"
-            value={
-              s.last_indexed_at
-                ? formatDateTime(new Date(s.last_indexed_at))
-                : "never"
-            }
-          />
-          <Row
-            label="File watcher"
-            value={
-              watcher.enabled || watcher.running
-                ? `running (${fmt(num(watcher.watched_folders))} folder(s))`
-                : "stopped"
-            }
-          />
-          <Row
-            label="Session archive"
-            value={
-              archive.enabled
-                ? `on — ${fmt(num(archive.archived_files))} files, ${fmtBytes(
-                    num(archive.archived_bytes),
-                  )} (${num(archive.retain_days) > 0 ? `${num(archive.retain_days)}d` : "forever"})`
-                : "off"
-            }
-          />
-          <Row
-            label="Session memory"
-            value={
-              memory.enabled
-                ? `on — ${fmt(num(memory.session_chunks))} chunks, ${fmt(
-                    num(memory.curated_memories),
-                  )} memories`
-                : "off"
-            }
-          />
-          <Row
-            label="Session summarization"
-            value={
-              extraction.mode && extraction.mode !== "off"
-                ? String(extraction.mode)
-                : "off"
-            }
-          />
-          <Row
-            label="Embedding cache"
-            value={`${fmt(num(cache.entry_count))} entries, ${hitRate} hit rate (${fmt(
-              num(cache.hits),
-            )} hits, ${fmt(num(cache.misses))} misses)`}
-          />
-          <Row
-            label="Graph index"
-            value={
-              graph.enabled
-                ? `enabled (${graph.store_type ?? "—"}) — ${fmt(
-                    num(graph.entity_count),
-                  )} entities, ${fmt(num(graph.relationship_count))} rels`
-                : "disabled"
-            }
-          />
-          <Row
-            label="LSP"
-            value={
-              lsp.enabled
-                ? `active (${asArray(lsp.active ?? lsp.languages).join(", ") || "—"})`
-                : asArray(lsp.detected).length
-                  ? `idle — detected ${asArray(lsp.detected).join(", ")}`
-                  : "not found — install pyright for exact call edges"
-            }
-          />
-          <Row
-            label="Git index"
-            value={
-              git.enabled
-                ? `on — ${fmt(num(git.commit_count))} commits`
-                : "off"
-            }
-          />
-          {referencesEnabled && num(references.total) > 0 && (
+          {tableRows.map((row) => (
             <Row
-              label="References"
-              value={`${fmt(num(references.total))} (${fmt(
-                num(references.unembedded),
-              )} unembedded)`}
-            />
-          )}
-          {healEvents > 0 && healDropped > 0 && (
-            <Row
-              label="Index health"
+              key={row.key}
+              label={row.label}
               value={
-                <span className="text-warn">
-                  ⚠ {fmt(healEvents)} heal event(s), ~{fmt(healDropped)} vectors shed —
-                  re-index to recover
+                <span
+                  className={TONE[row.tone] ?? "text-fg"}
+                  style={{ whiteSpace: "pre-line" }}
+                >
+                  {row.value}
                 </span>
               }
             />
-          )}
-          {readOnly && (
-            <Row
-              label="Read-only"
-              value={
-                <span className="text-warn">
-                  ON — provider calls disabled (embedding/summarization/remote-rerank
-                  off; vector queries → BM25; indexing skipped)
-                </span>
-              }
-            />
-          )}
-          {hasHeal && (
-            <Row
-              label="Self-heal"
-              value={
-                healIncomplete ? (
-                  <span className="text-bad">
-                    ⚠ incomplete — restored {fmt(num(heal.restored))}/
-                    {fmt(num(heal.recoverable))}; stage 2 skipped to protect data — fix
-                    + restart
-                  </span>
-                ) : healReadOnlySkip ? (
-                  <span className="text-warn">
-                    recovered {fmt(num(heal.restored))}/{fmt(num(heal.recoverable))}{" "}
-                    chunk(s) from cache+dead (no re-embed); stage 2 skipped — read-only
-                    (no deletes)
-                  </span>
-                ) : (
-                  <span className="text-run">
-                    restored {fmt(num(heal.restored))} chunk(s) from cache+dead (no
-                    re-embed); {fmt(num(heal.files_dropped))} file(s) re-indexing (
-                    {fmt(num(heal.residue))} chunk(s) need re-embed)
-                  </span>
-                )
-              }
-            />
-          )}
-          <Row
-            label="BM25 language"
-            value={`${bm25.language ?? "en"} (engine: ${bm25.engine ?? "stem"})`}
-          />
+          ))}
         </div>
       </div>
     </div>

@@ -24,6 +24,12 @@ def _load_bm25_config_for_status() -> dict[str, str]:
 
     Returns a dict with 'language' and 'engine' keys, or an empty dict when
     no config.yaml is found (e.g. status run outside an initialized project).
+
+    Kept ONLY for the `--json` output's back-compat `bm25` key (Global
+    Constraint: existing `bp status --json` keys are unchanged). The
+    human-readable BM25 row is no longer built from this — it comes from the
+    server's shared status report (``report.rows`` key ``bm25_language``),
+    same as every other row.
     """
     try:
         from brainpalace_server.config.bm25_config import load_bm25_config
@@ -34,152 +40,17 @@ def _load_bm25_config_for_status() -> dict[str, str]:
         return {}
 
 
-def _read_only_row(features: dict[str, Any]) -> tuple[str, str] | None:
-    """Return the (label, value) status row when read-only is active, else None."""
-    if features.get("read_only"):
-        return (
-            "Read-Only",
-            "[red]ON[/] — provider calls disabled (embedding/summarization/"
-            "remote-rerank off; vector queries → BM25; indexing skipped)",
-        )
-    return None
-
-
-# Canonical reason the server records when stage-2 is skipped *because* the
-# server is read-only (set in startup_reconcile.self_heal_on_startup). Matching
-# it lets status distinguish the intentional skip from a genuine incomplete
-# recovery. Keep in sync with the server literal.
-_READ_ONLY_SKIP_REASON = "read-only mode"
-
-
-def _self_heal_row(features: dict[str, Any]) -> tuple[str, str] | None:
-    """Return the (label, value) row for the last self-heal recovery, else None.
-
-    Distinguishes three outcomes so a healthy run is never shown as a problem:
-      * genuine failure/incomplete recovery → red ``⚠ INCOMPLETE … fix + restart``
-      * intentional read-only stage-2 skip (recovery succeeded, nothing deleted)
-        → green ``recovered X/Y … stage 2 skipped — read-only (no deletes)``
-      * complete recovery → green ``restored X … N re-indexing … M need re-index``
-    """
-    self_heal = features.get("self_heal")
-    if not isinstance(self_heal, dict):
-        return None
-    last = self_heal.get("last")
-    if not isinstance(last, dict):
-        return None
-
-    restored = int(last.get("restored", 0) or 0)
-    recoverable = int(last.get("recoverable", 0) or 0)
-    reason = last.get("incomplete_reason")
-
-    if last.get("error"):
-        return (
-            "Self-Heal",
-            f"[red]⚠ INCOMPLETE[/] — restored {restored:,}/{recoverable:,}; "
-            f"stage 2 skipped to protect data — fix + restart",
-        )
-    if reason == _READ_ONLY_SKIP_REASON:
-        return (
-            "Self-Heal",
-            f"[green]recovered {restored:,}/{recoverable:,} chunk(s)[/] from "
-            f"cache+dead (no re-embed); stage 2 skipped — read-only (no deletes)",
-        )
-    if reason:
-        return (
-            "Self-Heal",
-            f"[red]⚠ INCOMPLETE[/] — restored {restored:,}/{recoverable:,}; "
-            f"stage 2 skipped to protect data — fix + restart",
-        )
-    dropped_f = int(last.get("files_dropped", 0) or 0)
-    residue = int(last.get("residue", 0) or 0)
-    return (
-        "Self-Heal",
-        f"[green]restored {restored:,} chunk(s)[/] from cache+dead (no re-embed); "
-        f"{dropped_f:,} file(s) re-indexing ({residue:,} chunk(s) need re-embed)",
-    )
-
-
-def render_doc_graph_extraction_row(dge: dict[str, Any]) -> str:
-    """Render the ``doc_graph_extraction`` feature block as a single status string.
-
-    Pure function over the ``features["doc_graph_extraction"]`` dict so it is
-    independently unit-testable. M1 wording: ``off`` + pending chunks are
-    described as "un-graphed" (ledger present, extraction engine is off) — NOT
-    "pending" (which implies a running consumer).
-
-    ``state`` → display:
-    - ``off``         → dim "off" + (if ungraphed) un-graphed count with note
-    - ``subagent``    → green "on (subagent)" + pending count
-    - ``provider``    → green "on (provider: <label>)" + pending count
-    - ``unavailable`` → yellow warning (provider/auto requested, nothing usable)
-    """
-    state = str(dge.get("state", "off"))
-    pending = int(dge.get("pending", 0) or 0)
-    ungraphed = bool(dge.get("ungraphed", False))
-    provider = dge.get("provider")
-
-    if state == "off":
-        base = "[dim]off[/]"
-        if ungraphed:
-            return (
-                f"{base} — {pending:,} un-graphed "
-                f"(extraction off; enable with extraction.mode)"
-            )
-        return base
-    if state == "subagent":
-        suffix = f" — {pending:,} pending" if pending else ""
-        return f"[green]on (subagent)[/]{suffix}"
-    if state == "provider":
-        label = f": {provider}" if provider else ""
-        suffix = f" — {pending:,} pending" if pending else ""
-        return f"[green]on (provider{label})[/]{suffix}"
-    # unavailable
-    return (
-        "[yellow]unavailable — provider mode, no provider/lock[/] "
-        "(set EXTRACTION_PROVIDER_ENABLED=true)"
-    )
-
-
-def render_session_queue_row(arch: dict[str, Any]) -> str:
-    """Render the Session Queue (to-summarize backlog) value.
-
-    Pure function over ``features["session_archive"]``. Mirrors the doc
-    ``un-graphed`` wording: the count is the un-distilled archived-session
-    backlog, surfaced regardless of mode. With summarization off it is a
-    backlog the drain will not touch (the pending endpoint is mode-gated).
-    """
-    pending = int(arch.get("pending_summarization", 0) or 0)
-    if pending > 0:
-        return (
-            f"[yellow]{pending:,} pending[/] (un-summarized; "
-            f"drains when extraction.mode is subagent/auto)"
-        )
-    return "[dim]0 — empty[/]"
-
-
-def render_blocked_jobs_row(feat: dict[str, Any]) -> str | None:
-    """Loud blocked-indexing notice, or None when nothing is blocked.
-
-    Pure function over ``features["blocked_jobs"]``.
-    """
-    count = int(feat.get("count") or 0)
-    if count <= 0:
-        return None
-    latest = feat.get("latest") or {}
-    job_id = latest.get("job_id", "?")
-    tokens = latest.get("estimated_tokens")
-    limit = latest.get("limit")
-    nums = (
-        f" — needs ~{tokens:,} embedding tokens (cap {limit:,})"
-        if isinstance(tokens, int) and isinstance(limit, int)
-        else ""
-    )
-    more = f" (+{count - 1} more blocked)" if count > 1 else ""
-    return (
-        f"Indexing paused{nums}{more}. Nothing was spent.\n"
-        f"Approve: [bold]brainpalace jobs {job_id} --approve[/]  "
-        f"or raise [bold]indexing.max_embed_tokens_per_job[/]."
-    )
+# Tone -> Rich color name, matching brainpalace_server.status_report.Tone.
+_TONE_RICH: dict[str, str | None] = {
+    "default": None,
+    "good": "green",
+    "warn": "yellow",
+    "bad": "red",
+    "dim": "dim",
+    "accent": "cyan",
+}
+# Alert severity -> Rich Panel border color.
+_ALERT_BORDER = {"info": "cyan", "warn": "yellow", "bad": "red"}
 
 
 def _status_all(json_output: bool) -> None:
@@ -299,6 +170,7 @@ def status_command(
                         "graph_index": getattr(indexing, "graph_index", None),
                         "index_warnings": indexing.index_warnings,
                     },
+                    "report": getattr(indexing, "report", None),
                 }
                 if bm25_cfg:
                     output["bm25"] = bm25_cfg
@@ -323,383 +195,45 @@ def status_command(
                 Panel(status_text, title="Server Status", border_style=status_color)
             )
 
-            # Index-drift warnings: a config change (embedding provider/model or
-            # storage backend) no longer matches what the existing index was built
-            # with. Loud panel so it is not missed.
-            if indexing.index_warnings:
-                warn_body = "\n".join(f"• {w}" for w in indexing.index_warnings)
+            # Presentation-neutral status report — the single source both
+            # `bp status` and the dashboard Status tab render (see
+            # brainpalace_server.status_report). Add a row/alert there -> it
+            # appears here and on the web automatically.
+            report = getattr(indexing, "report", None) or {"rows": [], "alerts": []}
+
+            for alert in report.get("alerts", []):
+                severity = alert.get("severity", "warn")
+                border = _ALERT_BORDER.get(severity, "yellow")
+                emoji = "⚠ " if severity in ("warn", "bad") else ""
+                body = "\n".join(alert.get("lines", []))
+                if alert.get("action"):
+                    body += f"\n[bold]{alert['action']}[/]"
                 console.print(
                     Panel(
-                        warn_body,
-                        title="⚠ Index drift",
-                        border_style="yellow",
+                        body,
+                        title=f"{emoji}{alert.get('title', '')}",
+                        border_style=border,
                     )
                 )
 
-            # Create info table
+            # Create info table — every row comes from the shared report.
             table = Table(show_header=True, header_style="bold cyan")
             table.add_column("Metric", style="dim")
             table.add_column("Value")
-
-            table.add_row("Server Version", health.version)
-            table.add_row(
-                "Total Documents",
-                f"{indexing.total_documents} "
-                f"({indexing.code_documents} code · {indexing.doc_documents} docs)",
-            )
-            table.add_row(
-                "Total Chunks",
-                f"{indexing.total_chunks} "
-                f"({indexing.code_chunks} code · {indexing.doc_chunks} docs)",
-            )
-
-            if indexing.indexing_in_progress:
+            for row in report.get("rows", []):
+                style = _TONE_RICH.get(row.get("tone", "default"))
+                val = row.get("value", "")
                 table.add_row(
-                    "Indexing Progress", f"[yellow]{indexing.progress_percent:.1f}%[/]"
-                )
-                if indexing.current_job_id:
-                    table.add_row("Current Job", indexing.current_job_id)
-            else:
-                table.add_row("Indexing", "[green]Idle[/]")
-
-            if indexing.indexed_folders:
-                table.add_row(
-                    "Indexed Folders",
-                    "\n".join(indexing.indexed_folders[:5])
-                    + (
-                        f"\n... and {len(indexing.indexed_folders) - 5} more"
-                        if len(indexing.indexed_folders) > 5
-                        else ""
-                    ),
+                    row.get("label", ""), f"[{style}]{val}[/]" if style else val
                 )
 
-            if indexing.last_indexed_at:
-                table.add_row("Last Indexed", indexing.last_indexed_at)
-
-            features = getattr(indexing, "features", None) or {}
-
-            # Paused (budget-blocked) indexing — loud panel FIRST so it is not
-            # missed. Nothing was spent; approving spends the estimated tokens.
-            blocked_txt = render_blocked_jobs_row(features.get("blocked_jobs") or {})
-            if blocked_txt:
-                console.print(
-                    Panel(blocked_txt, title="⚠ Indexing paused", border_style="yellow")
-                )
-
-            # File watcher — prefer the consolidated feature view (clearer
-            # 0-folder state), fall back to the legacy top-level field.
-            fw_feat = features.get("file_watcher")
-            if isinstance(fw_feat, dict):
-                enabled = bool(fw_feat.get("enabled"))
-                watched = int(fw_feat.get("watched_folders", 0) or 0)
-                if enabled and watched == 0:
-                    table.add_row(
-                        "File Watcher",
-                        "running ([yellow]0 folders — none marked watch=auto[/])",
-                    )
-                elif enabled:
-                    table.add_row(
-                        "File Watcher", f"running ({watched} watched folder(s))"
-                    )
-                else:
-                    table.add_row("File Watcher", "stopped")
-            else:
-                file_watcher = indexing.file_watcher or {}
-                if file_watcher:
-                    running = bool(file_watcher.get("running", False))
-                    watched_folders = int(file_watcher.get("watched_folders", 0))
-                    watcher_status = "running" if running else "stopped"
-                    table.add_row(
-                        "File Watcher",
-                        f"{watcher_status} ({watched_folders} watched folder(s))",
-                    )
-
-            # Session archive (raw transcript backup) — independent of index.
-            arch = features.get("session_archive")
-            if isinstance(arch, dict):
-                if arch.get("enabled"):
-                    files = int(arch.get("archived_files", 0) or 0)
-                    size_mb = int(arch.get("archived_bytes", 0) or 0) / (1024 * 1024)
-                    retain = int(arch.get("retain_days", 0) or 0)
-                    window = "forever" if retain <= 0 else f"{retain}d"
-                    table.add_row(
-                        "Session Archive",
-                        f"[green]on[/] — {files:,} files, {size_mb:.1f} MB ({window})",
-                    )
-                else:
-                    table.add_row(
-                        "Session Archive",
-                        "[dim]off[/] (SESSION_ARCHIVE_ENABLED=false)",
-                    )
-                # To-summarize backlog (advisory; shown whenever archive is on).
-                if arch.get("enabled"):
-                    tools = arch.get("tools") or []
-                    table.add_row(
-                        "Session Tools",
-                        ", ".join(tools) if tools else "[dim]none detected[/]",
-                    )
-                    table.add_row("Session Queue", render_session_queue_row(arch))
-
-            # Session memory / INDEX (from the feature view).
-            sess = features.get("session_memory")
-            if isinstance(sess, dict):
-                if sess.get("enabled"):
-                    sess_state = "watching" if sess.get("watcher_running") else "idle"
-                    cap_txt = ""
-                    cap_cap = int(sess.get("memory_char_cap", 0) or 0)
-                    if cap_cap:
-                        cap_used = int(sess.get("memory_char_count", 0) or 0)
-                        cap_txt = f", {cap_used}/{cap_cap} chars"
-                    pressure = sess.get("memory_cap_pressure")
-                    warn_txt = ""
-                    if pressure:
-                        skipped = int(pressure.get("skipped", 0) or 0)
-                        warn_txt = (
-                            f"\n[yellow]⚠ cap pressure — {skipped} promotions "
-                            f"skipped (curate memory)[/]"
-                        )
-                    table.add_row(
-                        "Session Memory",
-                        f"[green]on[/] ({sess_state}) — "
-                        f"{int(sess.get('session_chunks', 0) or 0):,} session "
-                        f"chunks, {int(sess.get('curated_memories', 0) or 0):,} "
-                        f"curated{cap_txt}{warn_txt}",
-                    )
-                else:
-                    table.add_row(
-                        "Session Memory",
-                        "[dim]off[/] (enable: brainpalace init --sessions)",
-                    )
-
-            # Session summarization — distillation of transcripts (free, runs
-            # via the Claude Code subagent); independent of embedding/index.
-            # Always shown so the capability is visible even when off — it is a
-            # separate switch from Session Memory (embedding) and Session
-            # Archive (raw backup).
-            extract = features.get("session_extraction")
-            if isinstance(extract, dict):
-                mode = str(extract.get("mode", "off"))
-                if mode == "off":
-                    table.add_row(
-                        "Session Summarization",
-                        "[dim]off[/] (free; enable: brainpalace init)",
-                    )
-                else:
-                    done = int(extract.get("summarized_sessions", 0) or 0)
-                    total = int(extract.get("total_sessions", 0) or 0)
-                    pct = float(extract.get("summarized_pct", 0.0) or 0.0)
-                    if total:
-                        table.add_row(
-                            "Session Summarization",
-                            f"[green]{pct:.0f}%[/] summarized "
-                            f"({done:,}/{total:,} sessions, mode: {mode})",
-                        )
-                    else:
-                        table.add_row(
-                            "Session Summarization",
-                            f"[dim]no sessions yet[/] (mode: {mode})",
-                        )
-
-            # Session recall in search — what session-derived data the query
-            # path will surface. A disabled feature's (possibly stale) data is
-            # HARD-hidden from results until re-enabled; manually-saved
-            # `brainpalace remember` facts are always recallable.
-            sess_feat = features.get("session_memory")
-            ext_feat = features.get("session_extraction")
-            if isinstance(sess_feat, dict) or isinstance(ext_feat, dict):
-                vector_on = bool(
-                    isinstance(sess_feat, dict) and sess_feat.get("enabled")
-                )
-                summ_on = (
-                    isinstance(ext_feat, dict)
-                    and str(ext_feat.get("mode", "off")) != "off"
-                )
-                v_txt = "[green]on[/]" if vector_on else "[dim]off[/]"
-                s_txt = "[green]on[/]" if summ_on else "[dim]off[/]"
-                suffix = "" if vector_on and summ_on else " — disabled data hidden"
-                table.add_row(
-                    "Session Recall",
-                    f"vectors {v_txt}, summaries {s_txt}{suffix}",
-                )
-
-            # Doc-trust ranking weight (Phase 6.5a) — how much docs are trusted
-            # vs code in search. Read once at startup (config change needs a
-            # server restart to refresh).
-            ranking = features.get("ranking")
-            if isinstance(ranking, dict):
-                doc_weight = float(ranking.get("doc_weight", 0.5))
-                if doc_weight < 1.0:
-                    table.add_row(
-                        "Doc Trust Weight",
-                        f"{doc_weight:g} (docs ranked below code)",
-                    )
-                else:
-                    table.add_row(
-                        "Doc Trust Weight",
-                        f"{doc_weight:g} (docs equal to code)",
-                    )
-
-            # Show embedding cache status if available (Phase 16)
-            embedding_cache = indexing.embedding_cache
-            if embedding_cache:
-                entry_count = int(embedding_cache.get("entry_count", 0))
-                hit_rate = float(embedding_cache.get("hit_rate", 0.0))
-                hits = int(embedding_cache.get("hits", 0))
-                misses = int(embedding_cache.get("misses", 0))
-                table.add_row(
-                    "Embedding Cache",
-                    f"{entry_count:,} entries, {hit_rate:.1%} hit rate "
-                    f"({hits:,} hits, {misses:,} misses)",
-                )
-                if verbose:
-                    mem_entries = int(embedding_cache.get("mem_entries", 0))
-                    size_bytes = int(embedding_cache.get("size_bytes", 0))
-                    size_mb = size_bytes / (1024 * 1024) if size_bytes else 0.0
-                    table.add_row("  Memory Entries", f"{mem_entries:,}")
-                    table.add_row("  Cache Size", f"{size_mb:.2f} MB")
-
-            # Show graph index status if available (Feature 113)
-            graph_status = getattr(indexing, "graph_index", None)
-            if graph_status:
-                if graph_status.get("enabled"):
-                    entities = graph_status.get("entity_count", 0)
-                    rels = graph_status.get("relationship_count", 0)
-                    store = str(graph_status.get("store_type", "simple"))
-                    if store == "sqlite":
-                        store_note = "sqlite, temporal"
-                    elif store == "simple":
-                        store_note = "simple — no temporal validity"
-                    else:
-                        store_note = store
-                    graph_note = (
-                        f"[green]Enabled[/] ({store_note}) - "
-                        f"{entities} entities, {rels} rels"
-                    )
-                    if graph_status.get("needs_identity_rebuild"):
-                        graph_note += (
-                            " — [yellow]one-time rebuild pending"
-                            " (runs on next index)[/]"
-                        )
-                    table.add_row("Graph Index", graph_note)
-                else:
-                    table.add_row("Graph Index", "[dim]Disabled[/]")
-
-            # Programmatic text-ingest chunks (spec Item 3). Shown only when
-            # present, to keep code-project status noise-free. Separate from
-            # Total Documents, which stays folder-manifest-derived.
-            text_ingest = getattr(indexing, "text_ingest", None)
-            if isinstance(text_ingest, dict):
-                ingest_chunks = int(text_ingest.get("chunks", 0) or 0)
-                if ingest_chunks > 0:
-                    table.add_row(
-                        "Text Ingest",
-                        f"[green]{ingest_chunks:,}[/] chunks",
-                    )
-
-            # Doc-graph extraction (Plan 4, spec §12). Always shown when the
-            # feature block is present — even in `off` so un-graphed chunks are
-            # visible (M1) and can prompt the user to enable the mode.
-            dge = features.get("doc_graph_extraction")
-            if isinstance(dge, dict):
-                table.add_row(
-                    "Doc Graph Extraction",
-                    render_doc_graph_extraction_row(dge),
-                )
-
-            # Records / compute feature block (Task 14).
-            rec = features.get("records")
-            if isinstance(rec, dict):
-                total_rec = int(rec.get("total", 0) or 0)
-                unverified_rec = int(rec.get("unverified", 0) or 0)
-                metrics_rec = rec.get("metrics") or []
-                metrics_str = (
-                    ", ".join(str(m) for m in metrics_rec) if metrics_rec else "none"
-                )
-                table.add_row(
-                    "Records / Compute",
-                    f"{total_rec:,} ({unverified_rec:,} unverified)"
-                    f" · metrics: {metrics_str}",
-                )
-
-            # LSP cross-references (exact cross-file calls).
-            lsp_feat = features.get("lsp")
-            if isinstance(lsp_feat, dict):
-                if lsp_feat.get("enabled"):
-                    langs = ", ".join(lsp_feat.get("active") or []) or "—"
-                    table.add_row("LSP", f"[green]active[/] ({langs})")
-                elif lsp_feat.get("detected"):
-                    det = ", ".join(lsp_feat.get("detected") or [])
-                    table.add_row("LSP", f"[yellow]idle[/] — detected {det}")
-                else:
-                    configured = lsp_feat.get("configured") or []
-                    if configured:
-                        langs = ", ".join(configured)
-                        table.add_row(
-                            "LSP",
-                            f"[yellow]not installed[/] for {langs} — "
-                            f"run [bold]brainpalace lsp install[/]",
-                        )
-                    else:
-                        table.add_row(
-                            "LSP",
-                            "[dim]not found[/] — install pyright for exact call edges",
-                        )
-
-            git_idx = features.get("git_index")
-            if isinstance(git_idx, dict):
-                if git_idx.get("enabled"):
-                    commits = int(git_idx.get("commit_count", 0) or 0)
-                    table.add_row("Git Index", f"[green]on[/] — {commits:,} commits")
-                else:
-                    table.add_row(
-                        "Git Index",
-                        "[dim]off[/] (enable: brainpalace init --git-history)",
-                    )
-
-            # Reference catalog (Round 2 Plan C) — shown only when references
-            # exist, to keep code-project status noise-free.
-            refs = features.get("references")
-            if isinstance(refs, dict) and refs.get("enabled"):
-                ref_total = int(refs.get("total", 0) or 0)
-                if ref_total > 0:
-                    ref_unembedded = int(refs.get("unembedded", 0) or 0)
-                    table.add_row(
-                        "References",
-                        f"[green]{ref_total:,}[/] ({ref_unembedded:,} unembedded)",
-                    )
-
-            # Index health: self-heal audit (#5). Only show a row when a heal
-            # actually shed vectors — a clean index stays quiet.
-            index_health = features.get("index_health")
-            if isinstance(index_health, dict):
-                heal_events = int(index_health.get("heal_events", 0) or 0)
-                dropped = int(index_health.get("total_dropped", 0) or 0)
-                if heal_events and dropped:
-                    table.add_row(
-                        "Index Health",
-                        f"[yellow]⚠ {heal_events} heal event(s), "
-                        f"~{dropped:,} vectors shed[/] — "
-                        f"see .brainpalace/heal-events.jsonl; "
-                        f"re-index to recover (brainpalace index . --force)",
-                    )
-
-            # Read-only mode banner (master provider kill switch) — show first.
-            _ro_row = _read_only_row(features)
-            if _ro_row is not None:
-                table.add_row(*_ro_row)
-
-            # Self-heal recovery (lost chunks restored from cache+dead at start).
-            # The read-only stage-2 skip is shown as a healthy outcome, not a
-            # scary "INCOMPLETE" — see _self_heal_row.
-            sh_row = _self_heal_row(features)
-            if sh_row is not None:
-                table.add_row(*sh_row)
-
-            # Show BM25 language/engine from local config.yaml (Task 16)
-            if bm25_cfg:
-                lang = bm25_cfg.get("language", "en")
-                engine = bm25_cfg.get("engine", "stem")
-                table.add_row("BM25 Language", f"{lang} (engine: {engine})")
+            # --verbose embedding-cache extras stay CLI-only (not in the report).
+            if verbose and indexing.embedding_cache:
+                ec = indexing.embedding_cache
+                table.add_row("  Memory Entries", f"{int(ec.get('mem_entries', 0)):,}")
+                size_bytes = int(ec.get("size_bytes", 0))
+                size_mb = size_bytes / (1024 * 1024) if size_bytes else 0.0
+                table.add_row("  Cache Size", f"{size_mb:.2f} MB")
 
             console.print(table)
 

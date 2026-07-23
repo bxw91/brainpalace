@@ -64,6 +64,11 @@ class IndexingStatus:
     #: Index-drift warnings (embedding provider/model or storage backend changed
     #: away from what the existing index was built with). Empty when consistent.
     index_warnings: list[str] = field(default_factory=list)
+    #: Presentation-neutral status report — the single source `bp status` and
+    #: the dashboard Status tab both render (see
+    #: brainpalace_server.status_report). {"rows": [{key,label,value,tone}],
+    #: "alerts": [{kind,severity,title,lines,action}]}
+    report: dict[str, Any] | None = None
 
 
 @dataclass
@@ -306,6 +311,7 @@ class DocServeClient:
             features=data.get("features"),
             text_ingest=data.get("text_ingest"),
             index_warnings=data.get("index_warnings") or [],
+            report=data.get("report"),
         )
 
     def query(
